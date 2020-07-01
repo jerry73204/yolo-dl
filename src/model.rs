@@ -1,16 +1,283 @@
 use crate::common::*;
 use layers::*;
 
-fn yolov5<'a>() -> nn::FuncT<'a> {
-    todo!();
+pub fn yolo_v5_init() -> YoloInit {
+    YoloInit {
+        input_channels: 3,
+        num_classes: 80,
+        depth_multiple: 0.33,
+        width_multiple: 0.50,
+        layers: vec![
+            // backbone
+            LayerInit {
+                name: Some("backbone-p1".into()),
+                export: false,
+                kind: LayerKind::Focus {
+                    from: None,
+                    out_c: 64,
+                    k: 3,
+                },
+            },
+            LayerInit {
+                name: Some("backbone-p2".into()),
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 128,
+                    k: 3,
+                    s: 2,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 3,
+                    shortcut: true,
+                },
+            },
+            LayerInit {
+                name: Some("backbone-p3".into()),
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 256,
+                    k: 3,
+                    s: 2,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 9,
+                    shortcut: true,
+                },
+            },
+            LayerInit {
+                name: Some("backbone-p4".into()),
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 512,
+                    k: 3,
+                    s: 2,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 9,
+                    shortcut: true,
+                },
+            },
+            LayerInit {
+                name: Some("backbone-p5".into()),
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 1024,
+                    k: 3,
+                    s: 2,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::Spp {
+                    from: None,
+                    out_c: 1024,
+                    ks: vec![5, 9, 13],
+                },
+            },
+            // head p5
+            LayerInit {
+                name: Some("head-p5".into()),
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 3,
+                    shortcut: false,
+                },
+            },
+            // head p4
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 512,
+                    k: 1,
+                    s: 1,
+                },
+            },
+            LayerInit {
+                name: Some("upsample-p4".into()),
+                export: false,
+                kind: LayerKind::Upsample {
+                    from: None,
+                    scale_factor: 2.0,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::Concat {
+                    from: vec!["backbone-p4".into(), "upsample-p4".into()],
+                },
+            },
+            LayerInit {
+                name: Some("head-p4".into()),
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 3,
+                    shortcut: false,
+                },
+            },
+            // head p3
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 256,
+                    k: 1,
+                    s: 1,
+                },
+            },
+            LayerInit {
+                name: Some("upsample-p3".into()),
+                export: false,
+                kind: LayerKind::Upsample {
+                    from: None,
+                    scale_factor: 2.0,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::Concat {
+                    from: vec!["backbone-p3".into(), "upsample-p3".into()],
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 3,
+                    shortcut: false,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: true,
+                kind: LayerKind::HeadConv2d {
+                    from: None,
+                    k: 1,
+                    s: 1,
+                },
+            },
+            // head p2
+            LayerInit {
+                name: Some("head-conv-p2".into()),
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 256,
+                    k: 3,
+                    s: 2,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::Concat {
+                    from: vec!["head-conv-p2".into(), "head-p4".into()],
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 3,
+                    shortcut: false,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: true,
+                kind: LayerKind::HeadConv2d {
+                    from: None,
+                    k: 1,
+                    s: 1,
+                },
+            },
+            // head p1
+            LayerInit {
+                name: Some("head-conv-p1".into()),
+                export: false,
+                kind: LayerKind::ConvBlock {
+                    from: None,
+                    out_c: 512,
+                    k: 3,
+                    s: 2,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::Concat {
+                    from: vec!["head-conv-p1".into(), "head-p5".into()],
+                },
+            },
+            LayerInit {
+                name: None,
+                export: false,
+                kind: LayerKind::BottleneckCsp {
+                    from: None,
+                    repeat: 3,
+                    shortcut: false,
+                },
+            },
+            LayerInit {
+                name: None,
+                export: true,
+                kind: LayerKind::HeadConv2d {
+                    from: None,
+                    k: 1,
+                    s: 1,
+                },
+            },
+        ],
+        anchors: vec![
+            vec![(116, 90), (156, 198), (373, 326)], // P5/32
+            vec![(30, 61), (62, 45), (59, 119)],     // P4/1/6
+            vec![(10, 13), (16, 30), (33, 23)],      // P3/8
+        ],
+    }
 }
 
-#[derive(Debug, Clone)]
-struct YoloInit {
-    pub in_c: NonZeroUsize,
-    pub num_classes: NonZeroUsize,
-    pub depth_multiple: R64,
-    pub width_multiple: R64,
+pub fn yolo_v5<'p, P>(path: P)
+where
+    P: Borrow<nn::Path<'p>>,
+{
+    let init = yolo_v5_init();
+    let model = init.build(path);
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YoloInit {
+    pub input_channels: usize,
+    pub num_classes: usize,
+    pub depth_multiple: f64,
+    pub width_multiple: f64,
     pub layers: Vec<LayerInit>,
     pub anchors: Vec<Vec<(usize, usize)>>,
 }
@@ -22,7 +289,7 @@ impl YoloInit {
     {
         let path = path.borrow();
         let Self {
-            in_c: yolo_in_c,
+            input_channels,
             num_classes,
             depth_multiple,
             width_multiple,
@@ -30,10 +297,10 @@ impl YoloInit {
             anchors,
         } = self;
 
-        let input_channels = yolo_in_c.get();
-        let num_classes = num_classes.get();
-        let depth_multiple = depth_multiple.raw();
-        let width_multiple = width_multiple.raw();
+        assert!(input_channels > 0);
+        assert!(num_classes > 0);
+        assert!(depth_multiple.is_finite() && depth_multiple > 0.0);
+        assert!(width_multiple.is_finite() && width_multiple > 0.0);
         let num_anchors = anchors.len();
         let num_outputs_per_anchor = num_classes + 5;
 
@@ -95,73 +362,75 @@ impl YoloInit {
 
         // compute output channels per layer
         // layer_index -> (in_c?, out_c)
-        let in_out_channels: HashMap<usize, (Option<usize>, usize)> = layers
-            .iter()
-            .enumerate()
-            .fold(HashMap::new(), |mut channels, (index, layer)| {
-                let layer_index = index + 1;
-                let (from_index_opt, from_indexes_opt) = &input_indexes[&layer_index];
+        let in_out_channels: HashMap<usize, (Option<usize>, usize)> =
+            layers.iter().enumerate().fold(
+                iter::once((0, (None, input_channels))).collect::<HashMap<_, _>>(),
+                |mut channels, (index, layer)| {
+                    let layer_index = index + 1;
+                    let (from_index_opt, from_indexes_opt) = &input_indexes[&layer_index];
 
-                match layer.kind {
-                    LayerKind::Focus { out_c, .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = scale_channel(out_c);
-                        channels.insert(layer_index, (Some(in_c), out_c));
+                    match layer.kind {
+                        LayerKind::Focus { out_c, .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = scale_channel(out_c);
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::ConvBlock { out_c, .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = scale_channel(out_c);
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::Bottleneck { .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = in_c;
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::BottleneckCsp { .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = in_c;
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::Spp { out_c, .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = scale_channel(out_c);
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::HeadConv2d { .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = num_anchors * num_outputs_per_anchor;
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::Upsample { .. } => {
+                            let from_index = from_index_opt.unwrap();
+                            let in_c = channels[&from_index].1;
+                            let out_c = in_c;
+                            channels.insert(layer_index, (Some(in_c), out_c));
+                        }
+                        LayerKind::Concat { .. } => {
+                            let from_indexes = from_indexes_opt.as_ref().unwrap();
+                            let out_c = from_indexes
+                                .iter()
+                                .cloned()
+                                .map(|index| channels[&index].1)
+                                .sum();
+                            channels.insert(layer_index, (None, out_c));
+                        }
                     }
-                    LayerKind::ConvBlock { out_c, .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = scale_channel(out_c);
-                        channels.insert(layer_index, (Some(in_c), out_c));
-                    }
-                    LayerKind::Bottleneck { .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = in_c;
-                        channels.insert(layer_index, (Some(in_c), out_c));
-                    }
-                    LayerKind::BottleneckCsp { .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = in_c;
-                        channels.insert(layer_index, (Some(in_c), out_c));
-                    }
-                    LayerKind::Spp { out_c, .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = scale_channel(out_c);
-                        channels.insert(layer_index, (Some(in_c), out_c));
-                    }
-                    LayerKind::Conv2d { out_c, .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = scale_channel(out_c);
-                        channels.insert(layer_index, (Some(in_c), out_c));
-                    }
-                    LayerKind::Upsample { .. } => {
-                        let from_index = from_index_opt.unwrap();
-                        let in_c = channels[&from_index].1;
-                        let out_c = in_c;
-                        channels.insert(layer_index, (Some(in_c), out_c));
-                    }
-                    LayerKind::Concat { .. } => {
-                        let from_indexes = from_indexes_opt.as_ref().unwrap();
-                        let out_c = from_indexes
-                            .iter()
-                            .cloned()
-                            .map(|index| channels[&index].1)
-                            .sum();
-                        channels.insert(layer_index, (None, out_c));
-                    }
-                }
 
-                channels
-            });
+                    channels
+                },
+            );
 
         let export_indexes: Vec<usize> = layers.iter()
             .enumerate()
-            .map(|(index, layer)| {
+            .filter(|(index, layer)| layer.export)
+            .map(|(index, _layer)| {
                 let layer_index = index + 1;
                 let out_c = in_out_channels[&layer_index].1;
                 assert_eq!(out_c, num_anchors * num_outputs_per_anchor, "the exported layer must have exactly (n_anchros * (n_classes + 5)) output channels");
@@ -217,7 +486,9 @@ impl YoloInit {
                                 .fold(xs.shallow_clone(), |xs, block| block(&xs, train))
                         })
                     }
-                    LayerKind::BottleneckCsp { repeat, .. } => {
+                    LayerKind::BottleneckCsp {
+                        repeat, shortcut, ..
+                    } => {
                         let from_index = from_index_opt.unwrap();
                         let in_c = in_c_opt.unwrap();
 
@@ -225,6 +496,7 @@ impl YoloInit {
                             from_index,
                             BottleneckCspInit {
                                 repeat,
+                                shortcut,
                                 ..BottleneckCspInit::new(in_c, out_c)
                             }
                             .build(path),
@@ -244,7 +516,7 @@ impl YoloInit {
                             .build(path),
                         )
                     }
-                    LayerKind::Conv2d { k, s, .. } => {
+                    LayerKind::HeadConv2d { k, s, .. } => {
                         let from_index = from_index_opt.unwrap();
                         let in_c = in_c_opt.unwrap();
                         let conv = nn::conv2d(
@@ -314,14 +586,15 @@ impl YoloModule {
 mod layers {
     use super::*;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct LayerInit {
         pub name: Option<String>,
         pub export: bool,
         pub kind: LayerKind,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "kind")]
     pub enum LayerKind {
         Focus {
             from: Option<String>,
@@ -341,15 +614,15 @@ mod layers {
         BottleneckCsp {
             from: Option<String>,
             repeat: usize,
+            shortcut: bool,
         },
         Spp {
             from: Option<String>,
             out_c: usize,
             ks: Vec<usize>,
         },
-        Conv2d {
+        HeadConv2d {
             from: Option<String>,
-            out_c: usize,
             k: usize,
             s: usize,
         },
@@ -370,7 +643,7 @@ mod layers {
                 Self::Bottleneck { from, .. } => from.as_ref().map(|name| name.as_str()),
                 Self::BottleneckCsp { from, .. } => from.as_ref().map(|name| name.as_str()),
                 Self::Spp { from, .. } => from.as_ref().map(|name| name.as_str()),
-                Self::Conv2d { from, .. } => from.as_ref().map(|name| name.as_str()),
+                Self::HeadConv2d { from, .. } => from.as_ref().map(|name| name.as_str()),
                 Self::Upsample { from, .. } => from.as_ref().map(|name| name.as_str()),
                 _ => None,
             }
@@ -871,5 +1144,18 @@ mod layers {
                 },
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn yolov5_init_test() {
+        let device = Device::cuda_if_available();
+        let vs = nn::VarStore::new(device);
+        let root = vs.root();
+        yolo_v5(&root);
     }
 }
