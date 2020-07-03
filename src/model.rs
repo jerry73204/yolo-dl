@@ -1,12 +1,12 @@
 use crate::common::*;
 use layers::*;
 
-pub fn yolo_v5_init() -> YoloInit {
+pub fn yolo_v5_small_init() -> YoloInit {
     YoloInit {
         input_channels: 3,
         num_classes: 80,
-        depth_multiple: 0.33,
-        width_multiple: 0.50,
+        depth_multiple: R64::new(0.33),
+        width_multiple: R64::new(0.50),
         layers: vec![
             // backbone
             LayerInit {
@@ -120,7 +120,7 @@ pub fn yolo_v5_init() -> YoloInit {
                 export: false,
                 kind: LayerKind::Upsample {
                     from: None,
-                    scale_factor: 2.0,
+                    scale_factor: R64::new(2.0),
                 },
             },
             LayerInit {
@@ -155,7 +155,7 @@ pub fn yolo_v5_init() -> YoloInit {
                 export: false,
                 kind: LayerKind::Upsample {
                     from: None,
-                    scale_factor: 2.0,
+                    scale_factor: R64::new(2.0),
                 },
             },
             LayerInit {
@@ -264,23 +264,25 @@ pub fn yolo_v5_init() -> YoloInit {
     }
 }
 
-pub fn yolo_v5<'p, P>(path: P) -> Box<dyn FnMut(&Tensor, bool) -> (Vec<Tensor>, Option<Tensor>)>
+pub fn yolo_v5_small<'p, P>(
+    path: P,
+) -> Box<dyn FnMut(&Tensor, bool) -> (Vec<Tensor>, Option<Tensor>)>
 where
     P: Borrow<nn::Path<'p>>,
 {
-    let init = yolo_v5_init();
+    let init = yolo_v5_small_init();
     let model = init.build(path);
     model
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct YoloInit {
     pub input_channels: usize,
     pub num_classes: usize,
-    pub depth_multiple: f64,
-    pub width_multiple: f64,
-    pub layers: Vec<LayerInit>,
+    pub depth_multiple: R64,
+    pub width_multiple: R64,
     pub anchors: Vec<Vec<(usize, usize)>>,
+    pub layers: Vec<LayerInit>,
 }
 
 impl YoloInit {
@@ -300,11 +302,13 @@ impl YoloInit {
             layers,
             anchors,
         } = self;
+        let depth_multiple = depth_multiple.raw();
+        let width_multiple = width_multiple.raw();
 
         assert!(input_channels > 0);
         assert!(num_classes > 0);
-        assert!(depth_multiple.is_finite() && depth_multiple > 0.0);
-        assert!(width_multiple.is_finite() && width_multiple > 0.0);
+        assert!(depth_multiple > 0.0);
+        assert!(width_multiple > 0.0);
         let num_anchors = anchors.len();
         let num_outputs_per_anchor = num_classes + 5;
 
@@ -654,6 +658,7 @@ impl YoloInit {
                         YoloModule::single(from_index, move |xs, train| xs.apply_t(&conv, train))
                     }
                     LayerKind::Upsample { scale_factor, .. } => {
+                        let scale_factor = scale_factor.raw();
                         debug_assert_eq!(from_indexes.len(), 1);
                         let from_index = from_indexes[0];
 
@@ -782,14 +787,14 @@ impl YoloModule {
 mod layers {
     use super::*;
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct LayerInit {
         pub name: Option<String>,
         pub export: bool,
         pub kind: LayerKind,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(tag = "kind")]
     pub enum LayerKind {
         Focus {
@@ -824,7 +829,7 @@ mod layers {
         },
         Upsample {
             from: Option<String>,
-            scale_factor: f64,
+            scale_factor: R64,
         },
         Concat {
             from: Vec<String>,
@@ -1362,14 +1367,25 @@ mod layers {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use failure::Fallible;
 
     #[test]
-    fn yolov5_init_test() {
+    fn yolo_v5_small_serde_test() -> Fallible<()> {
+        let init = yolo_v5_small_init();
+        let text = serde_json::to_string_pretty(&init)?;
+        println!("{}", text);
+        let recovered = serde_json::from_str(&text)?;
+        assert_eq!(init, recovered);
+        Ok(())
+    }
+
+    #[test]
+    fn yolo_v5_small_test() {
         let device = Device::cuda_if_available();
         let vs = nn::VarStore::new(device);
         let root = vs.root();
 
-        let mut yolo_fn = yolo_v5(&root);
+        let mut yolo_fn = yolo_v5_small(&root);
 
         for _ in 0..10 {
             let input = Tensor::randn(
