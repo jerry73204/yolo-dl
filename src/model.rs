@@ -264,7 +264,7 @@ pub fn yolo_v5_init() -> YoloInit {
     }
 }
 
-pub fn yolo_v5<'p, P>(path: P) -> Box<dyn FnMut(&Tensor, bool) -> (Tensor, Option<Tensor>)>
+pub fn yolo_v5<'p, P>(path: P) -> Box<dyn FnMut(&Tensor, bool) -> (Vec<Tensor>, Option<Tensor>)>
 where
     P: Borrow<nn::Path<'p>>,
 {
@@ -284,7 +284,10 @@ pub struct YoloInit {
 }
 
 impl YoloInit {
-    pub fn build<'p, P>(self, path: P) -> Box<dyn FnMut(&Tensor, bool) -> (Tensor, Option<Tensor>)>
+    pub fn build<'p, P>(
+        self,
+        path: P,
+    ) -> Box<dyn FnMut(&Tensor, bool) -> (Vec<Tensor>, Option<Tensor>)>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -471,10 +474,7 @@ impl YoloInit {
         let in_out_channels: HashMap<usize, (Option<usize>, usize)> = ordered_layer_indexes
             .iter()
             .cloned()
-            .map(|layer_index| {
-                dbg!(layer_index);
-                (layer_index, &layers[&layer_index])
-            })
+            .map(|layer_index| (layer_index, &layers[&layer_index]))
             .fold(
                 iter::once((0, (None, input_channels))).collect::<HashMap<_, _>>(),
                 |mut channels, (layer_index, layer)| {
@@ -658,8 +658,16 @@ impl YoloInit {
                         let from_index = from_indexes[0];
 
                         YoloModule::single(from_index, move |xs, _train| {
+                            let (height, width) = match xs.size().as_slice() {
+                                &[_bsize, _channels, height, width] => (height, width),
+                                _ => unreachable!(),
+                            };
+
+                            let new_height = (height as f64 * scale_factor) as i64;
+                            let new_width = (width as f64 * scale_factor) as i64;
+
                             xs.upsample_nearest2d(
-                                &[], // TODO
+                                &[new_height, new_width],
                                 scale_factor,
                                 scale_factor,
                             )
@@ -702,8 +710,17 @@ impl YoloInit {
                     let inputs = input_indexes[&layer_index]
                         .iter()
                         .cloned()
-                        .map(|from_index| tmp_tensors.remove(&from_index).unwrap())
+                        .map(|from_index| &tmp_tensors[&from_index])
                         .collect::<Vec<_>>();
+
+                    // println!(
+                    //     "{}\t{:?}",
+                    //     layer_index,
+                    //     inputs
+                    //         .iter()
+                    //         .map(|tensor| tensor.size())
+                    //         .collect::<Vec<_>>()
+                    // );
 
                     let output = module.forward_t(inputs.as_slice(), train);
                     if exported_indexes.contains(&layer_index) {
@@ -1101,14 +1118,13 @@ mod layers {
             let conv2 = ConvBlockInit {
                 k: 1,
                 s: 1,
-                ..ConvBlockInit::new(intermediate_channels * ks.len(), out_c)
+                ..ConvBlockInit::new(intermediate_channels * (ks.len() + 1), out_c)
             }
             .build(path);
 
             Box::new(move |xs, train| {
                 let transformed_xs = conv1(xs, train);
 
-                let first_iter = iter::once(xs.shallow_clone());
                 let pyramid_iter = ks.iter().cloned().map(|k| {
                     let k = k as i64;
                     let padding = k / 2;
@@ -1123,7 +1139,13 @@ mod layers {
                         ceil_mode,
                     )
                 });
-                let cat_xs = Tensor::cat(&first_iter.chain(pyramid_iter).collect::<Vec<_>>(), 1);
+                let cat_xs = Tensor::cat(
+                    &iter::once(transformed_xs.shallow_clone())
+                        .chain(pyramid_iter)
+                        .collect::<Vec<_>>(),
+                    1,
+                );
+
                 conv2(&cat_xs, train)
             })
         }
@@ -1157,11 +1179,17 @@ mod layers {
             .build(path);
 
             Box::new(move |xs, train| {
+                let (height, width) = match xs.size().as_slice() {
+                    &[_bsize, _channels, height, width] => (height, width),
+                    _ => unreachable!(),
+                };
+
                 let xs = Tensor::cat(
                     &[
-                        xs.slice(2, 0, -1, 2).slice(3, 0, -1, 2),
-                        xs.slice(2, 1, -1, 2).slice(3, 0, -1, 2),
-                        xs.slice(2, 0, -1, 2).slice(3, 1, -1, 2),
+                        xs.slice(2, 0, height, 2).slice(3, 0, width, 2),
+                        xs.slice(2, 1, height, 2).slice(3, 0, width, 2),
+                        xs.slice(2, 0, height, 2).slice(3, 1, width, 2),
+                        xs.slice(2, 1, height, 2).slice(3, 1, width, 2),
                     ],
                     1,
                 );
@@ -1180,7 +1208,7 @@ mod layers {
         pub fn build<'p, P>(
             self,
             path: P,
-        ) -> Box<dyn FnMut(&[&Tensor], bool, i64, i64) -> (Tensor, Option<Tensor>)>
+        ) -> Box<dyn FnMut(&[&Tensor], bool, i64, i64) -> (Vec<Tensor>, Option<Tensor>)>
         where
             P: Borrow<nn::Path<'p>>,
         {
@@ -1209,7 +1237,8 @@ mod layers {
                             .flat_map(|(y, x)| vec![y as i64, x as i64])
                     })
                     .collect::<Vec<_>>(),
-            );
+            )
+            .to_device(device);
             let anchors_grid_tensor =
                 anchors_tensor.view(&[num_detections, 1, num_anchors, 1, 1, 2] as &[_]);
             let mut grid_opts = (0..num_detections).map(|_| None).collect::<Vec<_>>();
@@ -1237,7 +1266,7 @@ mod layers {
                             debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
 
                             // to shape [bsize, n_anchors, height, width, n_outputs]
-                            let training_outputs = xs
+                            let outputs = xs
                                 .view(&[
                                     batch_size,
                                     num_anchors,
@@ -1247,7 +1276,7 @@ mod layers {
                                 ] as &[_])
                                 .permute(&[0, 1, 3, 4, 2]);
 
-                            training_outputs
+                            outputs
                         })
                         .collect::<Vec<_>>();
 
@@ -1260,7 +1289,9 @@ mod layers {
                                     &[_bs, _c, h, w] => (h, w),
                                     _ => unreachable!(),
                                 };
-                                (image_height / height, image_width / width)
+                                let height_stride = image_height / height;
+                                let width_stride = image_width / width;
+                                (height_stride, width_stride)
                             })
                             .collect::<Vec<_>>();
 
@@ -1296,16 +1327,17 @@ mod layers {
                                 let stride_multiplier =
                                     Tensor::of_slice(&[height_stride, width_stride] as &[_])
                                         .view(&[1i64, 1, 1, 2] as &[_])
-                                        .expand_as(grid);
+                                        .expand_as(grid)
+                                        .to_device(device);
                                 let sigmoid = xs.sigmoid();
                                 let position = sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5
-                                    + &*grid * &stride_multiplier; // TODO: stride
+                                    + &*grid * &stride_multiplier;
                                 let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0)
                                     * anchors_grid_tensor.select(0, index as i64);
                                 let objectness = sigmoid.i((.., .., .., .., 4..5));
                                 let classification = sigmoid.i((.., .., .., .., 5..));
                                 let output =
-                                    Tensor::stack(&[position, size, objectness, classification], 4)
+                                    Tensor::cat(&[position, size, objectness, classification], 4)
                                         .view(&[batch_size, -1, num_outputs_per_anchor] as &[_]);
 
                                 output
@@ -1318,8 +1350,8 @@ mod layers {
                     };
 
                     (
-                        Tensor::stack(&training_outputs, 1),
-                        inference_outputs_opt.map(|outputs| Tensor::stack(&outputs, 1)),
+                        training_outputs,
+                        inference_outputs_opt.map(|outputs| Tensor::cat(&outputs, 1)),
                     )
                 },
             )
@@ -1336,6 +1368,40 @@ mod tests {
         let device = Device::cuda_if_available();
         let vs = nn::VarStore::new(device);
         let root = vs.root();
-        let _yolo_fn = yolo_v5(&root);
+
+        let mut yolo_fn = yolo_v5(&root);
+
+        for _ in 0..10 {
+            let input = Tensor::randn(
+                &[32, 3, 224, 224],
+                (Kind::Float, Device::cuda_if_available()),
+            );
+            let instant = std::time::Instant::now();
+            let (train_outputs, inference_outputs_opt) = yolo_fn(&input, false);
+
+            let train_output_shapes = train_outputs
+                .iter()
+                .map(|tensor| tensor.size())
+                .collect::<Vec<_>>();
+            println!("train output shapes: {:?}", train_output_shapes);
+
+            if let Some(output) = inference_outputs_opt {
+                println!("inference output shape: {:?}", output.size());
+                let expect = train_output_shapes
+                    .iter()
+                    .map(|shape| match shape.as_slice() {
+                        &[_bsize, channels, height, width, _outputs] => channels * height * width,
+                        _ => unreachable!(),
+                    })
+                    .sum::<i64>();
+
+                match output.size().as_slice() {
+                    &[_bsize, found, _] => assert_eq!(expect, found),
+                    _ => unreachable!(),
+                }
+            }
+
+            println!("elapsed {:?}", instant.elapsed());
+        }
     }
 }
