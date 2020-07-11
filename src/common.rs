@@ -1,5 +1,4 @@
-pub use itertools::izip;
-pub use itertools::Itertools;
+pub use itertools::{iproduct, izip, Itertools};
 pub use noisy_float::prelude::*;
 pub use serde::{Deserialize, Serialize};
 pub use std::{
