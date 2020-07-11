@@ -1,3 +1,4 @@
+pub use itertools::izip;
 pub use itertools::Itertools;
 pub use noisy_float::prelude::*;
 pub use serde::{Deserialize, Serialize};
@@ -7,4 +8,5 @@ pub use std::{
     iter,
     num::NonZeroUsize,
 };
-pub use tch::{nn, Device, IndexOp, Kind, Tensor};
+pub use tch::{nn, Device, IndexOp, Kind, Reduction, Tensor};
+pub use tch_tensor_like::TensorLike;

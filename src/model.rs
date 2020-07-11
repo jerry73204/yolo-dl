@@ -1,10 +1,95 @@
 use crate::common::*;
 use layers::*;
 
-pub fn yolo_v5_small_init() -> YoloInit {
+#[derive(Debug, TensorLike)]
+pub struct YoloOutput {
+    image_height: i64,
+    image_width: i64,
+    #[tensor_like(copy)]
+    device: Device,
+    anchor_size_multipliers: Vec<Tensor>,
+    feature_maps: Vec<Tensor>,
+}
+
+impl YoloOutput {
+    pub fn image_height(&self) -> i64 {
+        self.image_height
+    }
+
+    pub fn image_width(&self) -> i64 {
+        self.image_width
+    }
+
+    pub fn feature_maps(&self) -> &[Tensor] {
+        self.feature_maps.as_slice()
+    }
+
+    pub fn to_detections(&self) -> Vec<Detection> {
+        let detections = self
+            .feature_maps
+            .iter()
+            .enumerate()
+            .map(|(index, xs)| {
+                let (batch_size, height, width) = match xs.size().as_slice() {
+                    &[b, _na, h, w, _no] => (b, h, w),
+                    _ => unreachable!(),
+                };
+
+                // compute gride size
+                let grid_height = self.image_height / height;
+                let grid_width = self.image_width / width;
+
+                // prepare grid
+                let grid = {
+                    let grids = Tensor::meshgrid(&[
+                        Tensor::arange(height, (Kind::Float, self.device)),
+                        Tensor::arange(width, (Kind::Float, self.device)),
+                    ]);
+                    Tensor::stack(&[&grids[0], &grids[1]], 2)
+                        .view(&[1, 1, height, width, 2] as &[_])
+                };
+
+                let stride_multiplier = Tensor::of_slice(&[grid_height, grid_width] as &[_])
+                    .view([1, 1, 1, 2])
+                    .expand_as(&grid)
+                    .to_device(self.device);
+
+                // transform outputs
+                let sigmoid = xs.sigmoid();
+                let position =
+                    (sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid) * &stride_multiplier;
+                let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0)
+                    * &self.anchor_size_multipliers[index];
+                let objectness = sigmoid.i((.., .., .., .., 4..5));
+                let classification = sigmoid.i((.., .., .., .., 5..));
+
+                let detection = Detection {
+                    position,
+                    size,
+                    objectness,
+                    classification,
+                };
+
+                detection
+            })
+            .collect::<Vec<_>>();
+
+        detections
+    }
+}
+
+#[derive(Debug, TensorLike)]
+pub struct Detection {
+    pub position: Tensor,
+    pub size: Tensor,
+    pub objectness: Tensor,
+    pub classification: Tensor,
+}
+
+pub fn yolo_v5_small_init(input_channels: usize, num_classes: usize) -> YoloInit {
     YoloInit {
-        input_channels: 3,
-        num_classes: 80,
+        input_channels,
+        num_classes,
         depth_multiple: R64::new(0.33),
         width_multiple: R64::new(0.50),
         layers: vec![
@@ -266,11 +351,13 @@ pub fn yolo_v5_small_init() -> YoloInit {
 
 pub fn yolo_v5_small<'p, P>(
     path: P,
-) -> Box<dyn FnMut(&Tensor, bool) -> (Vec<Tensor>, Option<Tensor>)>
+    input_channels: usize,
+    num_classes: usize,
+) -> Box<dyn FnMut(&Tensor, bool) -> YoloOutput>
 where
     P: Borrow<nn::Path<'p>>,
 {
-    let init = yolo_v5_small_init();
+    let init = yolo_v5_small_init(input_channels, num_classes);
     let model = init.build(path);
     model
 }
@@ -286,10 +373,7 @@ pub struct YoloInit {
 }
 
 impl YoloInit {
-    pub fn build<'p, P>(
-        self,
-        path: P,
-    ) -> Box<dyn FnMut(&Tensor, bool) -> (Vec<Tensor>, Option<Tensor>)>
+    pub fn build<'p, P>(self, path: P) -> Box<dyn FnMut(&Tensor, bool) -> YoloOutput>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -673,8 +757,8 @@ impl YoloInit {
 
                             xs.upsample_nearest2d(
                                 &[new_height, new_width],
-                                scale_factor,
-                                scale_factor,
+                                Some(scale_factor),
+                                Some(scale_factor),
                             )
                         })
                     }
@@ -697,7 +781,7 @@ impl YoloInit {
         .build(path);
 
         // construct module function
-        Box::new(move |xs: &Tensor, train: bool| {
+        Box::new(move |xs: &Tensor, train: bool| -> YoloOutput {
             let (height, width) = match xs.size().as_slice() {
                 &[_bsize, _channels, height, width] => (height, width),
                 _ => unreachable!(),
@@ -1213,7 +1297,7 @@ mod layers {
         pub fn build<'p, P>(
             self,
             path: P,
-        ) -> Box<dyn FnMut(&[&Tensor], bool, i64, i64) -> (Vec<Tensor>, Option<Tensor>)>
+        ) -> Box<dyn FnMut(&[&Tensor], bool, i64, i64) -> YoloOutput>
         where
             P: Borrow<nn::Path<'p>>,
         {
@@ -1232,45 +1316,34 @@ mod layers {
             let num_outputs_per_anchor = num_classes as i64 + 5;
             let num_detections = anchors.len() as i64;
 
-            let anchors_tensor = Tensor::of_slice(
-                &anchors
-                    .iter()
-                    .flat_map(|anchor| {
-                        anchor
+            let anchor_size_multipliers = anchors
+                .iter()
+                .cloned()
+                .map(|sizes| {
+                    Tensor::of_slice(
+                        &sizes
                             .iter()
                             .cloned()
-                            .flat_map(|(y, x)| vec![y as i64, x as i64])
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .to_device(device);
-            let anchors_grid_tensor =
-                anchors_tensor.view(&[num_detections, 1, num_anchors, 1, 1, 2] as &[_]);
-            let mut grid_opts = (0..num_detections).map(|_| None).collect::<Vec<_>>();
-
-            let make_grid = |height: i64, width: i64, device: Device| -> Tensor {
-                let grids = Tensor::meshgrid(&[
-                    Tensor::arange(height, (Kind::Float, device)),
-                    Tensor::arange(width, (Kind::Float, device)),
-                ]);
-                Tensor::stack(&[&grids[0], &grids[1]], 2).view(&[1, 1, height, width, 2] as &[_])
-            };
+                            .flat_map(|(y, x)| vec![y, x])
+                            .map(|component| component as i64)
+                            .collect::<Vec<_>>(),
+                    )
+                    .to_device(device)
+                    .view([1, num_anchors, 1, 1, 2])
+                })
+                .collect::<Vec<_>>();
 
             Box::new(
                 move |tensors: &[&Tensor], train: bool, image_height: i64, image_width: i64| {
                     debug_assert_eq!(tensors.len() as i64, num_detections);
 
-                    let training_outputs = tensors
+                    let feature_maps = tensors
                         .iter()
                         .cloned()
                         .map(|xs| {
-                            let (batch_size, channels, height, width) = match xs.size().as_slice() {
-                                &[bs, c, h, w] => (bs, c, h, w),
-                                _ => unreachable!(),
-                            };
+                            let (batch_size, channels, height, width) = xs.size4().unwrap();
                             debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
 
-                            // to shape [bsize, n_anchors, height, width, n_outputs]
                             let outputs = xs
                                 .view(&[
                                     batch_size,
@@ -1281,83 +1354,18 @@ mod layers {
                                 ] as &[_])
                                 .permute(&[0, 1, 3, 4, 2]);
 
+                            // output shape [bsize, n_anchors, height, width, n_outputs]
                             outputs
                         })
                         .collect::<Vec<_>>();
 
-                    let inference_outputs_opt = if !train {
-                        let strides = tensors
-                            .iter()
-                            .cloned()
-                            .map(|xs| {
-                                let (height, width) = match xs.size().as_slice() {
-                                    &[_bs, _c, h, w] => (h, w),
-                                    _ => unreachable!(),
-                                };
-                                let height_stride = image_height / height;
-                                let width_stride = image_width / width;
-                                (height_stride, width_stride)
-                            })
-                            .collect::<Vec<_>>();
-
-                        let outputs = training_outputs
-                            .iter()
-                            .zip(strides.iter().cloned())
-                            .enumerate()
-                            .map(|(index, (xs, (height_stride, width_stride)))| {
-                                let (batch_size, height, width) = match xs.size().as_slice() {
-                                    &[bs, _n_a, h, w, _n_o] => (bs, h, w),
-                                    _ => unreachable!(),
-                                };
-
-                                // prepare grid
-                                let grid = {
-                                    let grid_opt = &mut grid_opts[index];
-                                    let grid = grid_opt
-                                        .get_or_insert_with(|| make_grid(height, width, device));
-                                    let grid = match grid.size().as_slice() {
-                                        &[_, _, grid_height, grid_width, _] => {
-                                            if grid_height != height || grid_width != width {
-                                                grid_opt.replace(make_grid(height, width, device));
-                                                grid_opt.as_mut().unwrap()
-                                            } else {
-                                                grid
-                                            }
-                                        }
-                                        _ => unreachable!(),
-                                    };
-                                    grid
-                                };
-
-                                let stride_multiplier =
-                                    Tensor::of_slice(&[height_stride, width_stride] as &[_])
-                                        .view(&[1i64, 1, 1, 2] as &[_])
-                                        .expand_as(grid)
-                                        .to_device(device);
-                                let sigmoid = xs.sigmoid();
-                                let position = sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5
-                                    + &*grid * &stride_multiplier;
-                                let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0)
-                                    * anchors_grid_tensor.select(0, index as i64);
-                                let objectness = sigmoid.i((.., .., .., .., 4..5));
-                                let classification = sigmoid.i((.., .., .., .., 5..));
-                                let output =
-                                    Tensor::cat(&[position, size, objectness, classification], 4)
-                                        .view(&[batch_size, -1, num_outputs_per_anchor] as &[_]);
-
-                                output
-                            })
-                            .collect::<Vec<_>>();
-
-                        Some(outputs)
-                    } else {
-                        None
-                    };
-
-                    (
-                        training_outputs,
-                        inference_outputs_opt.map(|outputs| Tensor::cat(&outputs, 1)),
-                    )
+                    YoloOutput {
+                        image_height,
+                        image_width,
+                        device,
+                        anchor_size_multipliers: anchor_size_multipliers.shallow_clone(),
+                        feature_maps,
+                    }
                 },
             )
         }
