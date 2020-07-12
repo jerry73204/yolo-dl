@@ -3,6 +3,7 @@ mod config;
 mod data;
 mod logging;
 mod message;
+mod util;
 
 use crate::{common::*, config::Config};
 
