@@ -7,6 +7,7 @@ pub struct Config {
     pub cache_dir: PathBuf,
     pub image_size: NonZeroUsize,
     pub mosaic_margin: R64,
+    pub logging_dir: PathBuf,
 }
 
 impl Config {

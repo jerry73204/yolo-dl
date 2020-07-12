@@ -1,4 +1,4 @@
-use crate::{common::*, config::Config};
+use crate::{common::*, config::Config, message::LoggingMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Record {

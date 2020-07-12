@@ -4,4 +4,5 @@
     "cache_dir": "cache",
     "image_size": 640,
     "mosaic_margin": 0.4,
+    "logging_dir": "logs",
 }

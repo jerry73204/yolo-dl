@@ -1,6 +1,8 @@
 mod common;
 mod config;
 mod data;
+mod logging;
+mod message;
 
 use crate::{common::*, config::Config};
 
@@ -16,6 +18,12 @@ struct Args {
 pub async fn main() -> Result<()> {
     let Args { config_file } = argh::from_env();
     let config = Arc::new(Config::open(&config_file)?);
+
+    // create channels
+    let (logging_tx, logging_rx) = broadcast::channel(2);
+
+    // start logger
+    let logging_future = logging::logging_worker(config.clone(), logging_rx).await?;
 
     // load data set
     let (records, categories) = crate::data::train_stream(config.clone()).await?;
