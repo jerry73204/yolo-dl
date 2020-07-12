@@ -529,13 +529,12 @@ impl DetectInit {
                     })
                     .collect::<Vec<_>>();
 
-                YoloOutput {
+                YoloOutput::new(
                     image_height,
                     image_width,
-                    device,
-                    anchor_size_multipliers: anchor_size_multipliers.shallow_clone(),
+                    anchor_size_multipliers.shallow_clone(),
                     feature_maps,
-                }
+                )
             },
         )
     }

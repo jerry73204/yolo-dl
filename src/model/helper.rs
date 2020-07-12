@@ -273,6 +273,6 @@ where
     P: Borrow<nn::Path<'p>>,
 {
     let init = yolo_v5_small_init(input_channels, num_classes);
-    let model = init.build(path);
+    let model = init.build(path).unwrap();
     model
 }

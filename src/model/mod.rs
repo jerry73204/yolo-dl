@@ -10,7 +10,6 @@ pub use module::*;
 mod tests {
     use super::*;
     use crate::common::*;
-    use anyhow::Result;
 
     #[test]
     fn yolo_v5_small_serde_test() -> Result<()> {
