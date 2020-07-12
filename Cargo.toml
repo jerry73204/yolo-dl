@@ -26,6 +26,9 @@ futures = "0.3"
 rand = "0.7"
 percent-encoding = "2.1"
 image = "0.23"
+tokio = { version = "0.2", features = ["sync"] }
+tfrecord = { version = "0.3", features = ["full"] }
 
 [patch.crates-io]
 tch = { git = "https://github.com/LaurentMazare/tch-rs.git" }
+tfrecord = { git = "https://github.com/jerry73204/rust-tfrecord.git", branch = "tch-with-anyhow" }

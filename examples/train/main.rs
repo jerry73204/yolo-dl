@@ -5,7 +5,7 @@ mod logging;
 mod message;
 mod util;
 
-use crate::{common::*, config::Config};
+use crate::{common::*, config::Config, data::DataSet};
 
 #[derive(Debug, Clone, FromArgs)]
 /// Train YOLO model
@@ -27,9 +27,10 @@ pub async fn main() -> Result<()> {
     let logging_future = logging::logging_worker(config.clone(), logging_rx).await?;
 
     // load data set
-    let (records, categories) = crate::data::train_stream(config.clone()).await?;
-    let input_channels = 3;
-    let num_classes = categories.len();
+    let dataset = DataSet::new(config.clone()).await?;
+    let input_channels = dataset.input_channels();
+    let num_classes = dataset.num_classes();
+    let train_stream = dataset.train_stream(logging_tx.clone()).await?;
 
     // init model
     let device = Device::cuda_if_available();
