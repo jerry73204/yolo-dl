@@ -145,15 +145,15 @@ impl DataSet {
         // add step count
         let stream = stream
             .enumerate()
-            .map(|(step, (epoch, record_vec))| (step, epoch, record_vec));
+            .map(|(step, (epoch, record_vec))| Ok((step, epoch, record_vec)));
 
         // start of unordered maps
-        let stream = stream.overflowing_enumerate();
+        let stream = stream.try_overflowing_enumerate();
 
         // load and cache images
         let cache_loader = Arc::new(CacheLoader::new(&cache_dir, image_size as usize, 3).await?);
 
-        let stream = stream.par_then_unordered(None, move |(index, args)| {
+        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
             let (step, epoch, record_vec) = args;
             let cache_loader = cache_loader.clone();
 
@@ -178,8 +178,8 @@ impl DataSet {
         });
 
         // make mosaic
-        let stream = stream.par_then_unordered(None, move |result| async move {
-            let (index, (step, epoch, record_image_vec)) = result?;
+        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
+            let (step, epoch, record_image_vec) = args;
             let mut rng = StdRng::from_entropy();
             debug_assert_eq!(record_image_vec.len(), 4);
 
@@ -246,34 +246,35 @@ impl DataSet {
             debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
 
             // merge cropped records
-            let merged_bboxes: Vec<_> = izip!(
-                record_tl.bboxes.into_iter(),
-                record_tr.bboxes.into_iter(),
-                record_bl.bboxes.into_iter(),
-                record_br.bboxes.into_iter(),
-            )
-            .collect();
+            let merged_bboxes: Vec<_> = record_tl
+                .bboxes
+                .into_iter()
+                .chain(record_tr.bboxes.into_iter())
+                .chain(record_bl.bboxes.into_iter())
+                .chain(record_br.bboxes.into_iter())
+                .collect();
 
             Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
         });
 
-        // reorder items
-        // let stream = stream.reorder_enumerated();
-
         // map to output type
-        // let stream = stream.map(|args| {
-        //     let (step, epoch, bboxes, image) = args;
-        //     TrainingRecord {
-        //         epoch,
-        //         step,
-        //         image,
-        //         bboxes,
-        //     }
-        // });
+        let stream = stream.try_par_then_unordered(None, |(index, args)| async move {
+            let (step, epoch, bboxes, image) = args;
+            let record = TrainingRecord {
+                epoch,
+                step,
+                image,
+                bboxes,
+            };
 
-        todo!();
+            Ok((index, record))
+        });
 
-        // Ok((records, categories))
+        // reorder items
+        let stream = stream.try_reorder_enumerated();
+
+        let stream = Box::pin(stream);
+        Ok(stream)
     }
 }
 

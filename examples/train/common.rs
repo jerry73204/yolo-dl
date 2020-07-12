@@ -5,7 +5,7 @@ pub use futures::stream::{Stream, StreamExt};
 pub use image::{imageops::FilterType, Pixel};
 pub use itertools::{izip, Itertools};
 pub use noisy_float::prelude::*;
-pub use par_stream::ParStreamExt;
+pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use rand::{prelude::*, rngs::StdRng};
 pub use serde::Deserialize;
