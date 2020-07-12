@@ -1,9 +1,13 @@
 pub use anyhow::{ensure, Error, Result};
 pub use argh::FromArgs;
 pub use coco::Category;
-pub use futures::stream::{Stream, StreamExt};
+pub use futures::{
+    stream::{Stream, StreamExt},
+    AsyncWriteExt,
+};
 pub use image::{imageops::FilterType, Pixel};
 pub use itertools::{izip, Itertools};
+pub use ndarray::Array3;
 pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
@@ -22,7 +26,7 @@ pub use std::{
     },
     time::Duration,
 };
-pub use tch::{kind::FLOAT_CPU, nn, Device, IndexOp, Tensor};
+pub use tch::{kind::FLOAT_CPU, nn, vision, Device, IndexOp, Kind, Tensor};
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, RwLock};

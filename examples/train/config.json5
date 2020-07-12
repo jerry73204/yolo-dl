@@ -5,4 +5,5 @@
     "image_size": 640,
     "mosaic_margin": 0.4,
     "logging_dir": "logs",
+    "mini_batch_size": 16,
 }

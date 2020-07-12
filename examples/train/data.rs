@@ -58,6 +58,7 @@ impl DataSet {
             ref cache_dir,
             image_size,
             mosaic_margin,
+            mini_batch_size,
             ..
         } = *self.config;
         let mosaic_margin = mosaic_margin.raw();
@@ -164,8 +165,20 @@ impl DataSet {
                         let cache_loader = cache_loader.clone();
 
                         async move {
-                            let image = cache_loader.load_cache(&record.path).await?;
-                            Fallible::Ok((record, image))
+                            let Record {
+                                ref path,
+                                height,
+                                width,
+                                ..
+                            } = *record;
+
+                            // load cache
+                            let image = cache_loader.load_cache(path, height, width).await?;
+
+                            // extend to specified size
+                            let resized = resize_image(&image, image_size, image_size)?;
+
+                            Fallible::Ok((record, resized))
                         }
                     })
                     .map(async_std::task::spawn);
@@ -180,79 +193,8 @@ impl DataSet {
         // make mosaic
         let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
             let (step, epoch, record_image_vec) = args;
-            let mut rng = StdRng::from_entropy();
-            debug_assert_eq!(record_image_vec.len(), 4);
-
-            // random select pivot point
-            let pivot_row =
-                (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
-            let pivot_col =
-                (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
-
-            // crop images
-            let ranges = vec![
-                (0, pivot_row, 0, pivot_col),
-                (0, pivot_row, pivot_col, image_size),
-                (pivot_row, image_size, 0, pivot_col),
-                (pivot_row, image_size, pivot_col, image_size),
-            ];
-
-            let mut record_cropped_iter =
-                futures::stream::iter(record_image_vec.into_iter().zip_eq(ranges.into_iter()))
-                    .par_then(
-                        None,
-                        |((record, image), (top, bottom, left, right))| async move {
-                            let Record {
-                                ref path,
-                                height,
-                                width,
-                                ref bboxes,
-                            } = *record;
-
-                            let cropped_image = crop_image(&image, top, bottom, left, right);
-                            let cropped_bboxes: Vec<_> = bboxes
-                                .into_iter()
-                                .filter_map(|bbox| crop_bbox(bbox, top, bottom, left, right))
-                                .collect();
-
-                            let cropped_record = Record {
-                                path: path.clone(),
-                                height,
-                                width,
-                                bboxes: cropped_bboxes,
-                            };
-
-                            (cropped_record, cropped_image)
-                        },
-                    );
-
-            let (record_tl, cropped_tl) = record_cropped_iter.next().await.unwrap();
-            let (record_tr, cropped_tr) = record_cropped_iter.next().await.unwrap();
-            let (record_bl, cropped_bl) = record_cropped_iter.next().await.unwrap();
-            let (record_br, cropped_br) = record_cropped_iter.next().await.unwrap();
-            debug_assert_eq!(record_cropped_iter.next().await, None);
-
-            // merge cropped images
-            let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 1);
-            debug_assert_eq!(merged_top.size3().unwrap(), (3, pivot_row, image_size));
-
-            let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 1);
-            debug_assert_eq!(
-                merged_bottom.size3().unwrap(),
-                (3, image_size - pivot_row, image_size)
-            );
-
-            let merged_image = Tensor::cat(&[merged_top, merged_bottom], 2);
-            debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
-
-            // merge cropped records
-            let merged_bboxes: Vec<_> = record_tl
-                .bboxes
-                .into_iter()
-                .chain(record_tr.bboxes.into_iter())
-                .chain(record_bl.bboxes.into_iter())
-                .chain(record_br.bboxes.into_iter())
-                .collect();
+            let (merged_bboxes, merged_image) =
+                make_mosaic(record_image_vec, image_size, mosaic_margin).await?;
 
             Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
         });
@@ -279,7 +221,12 @@ impl DataSet {
 }
 
 #[derive(Debug, Clone)]
-struct CacheLoader {
+pub struct AugmentationProcessor {
+    // TODO
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheLoader {
     cache_dir: async_std::path::PathBuf,
     image_size: usize,
     image_channels: usize,
@@ -305,10 +252,18 @@ impl CacheLoader {
         Ok(loader)
     }
 
-    pub async fn load_cache<P>(&self, image_path: P) -> Result<Tensor>
+    pub async fn load_cache<P>(
+        &self,
+        image_path: P,
+        orig_height: usize,
+        orig_width: usize,
+    ) -> Result<Tensor>
     where
         P: AsRef<async_std::path::Path>,
     {
+        use async_std::{fs::File, io::BufWriter};
+
+        // load config
         let Self {
             image_size,
             image_channels,
@@ -316,14 +271,27 @@ impl CacheLoader {
         } = *self;
 
         let image_path = image_path.as_ref().to_owned();
-        let cache_path = self.cache_dir.join(format!(
-            "{}-{}",
-            percent_encoding::utf8_percent_encode(image_path.to_str().unwrap(), NON_ALPHANUMERIC),
-            image_size
-        ));
-        let component_size = mem::size_of::<f32>();
-        let cache_size = image_size.pow(2) * image_channels * component_size;
+        ensure!(image_channels == 3, "image_channels != 3 is not supported");
 
+        // compute cache size
+        let scale =
+            (image_size as f64 / orig_height as f64).min(image_size as f64 / orig_width as f64);
+        let resize_height = (orig_height as f64 * scale) as usize;
+        let resize_width = (orig_width as f64 * scale) as usize;
+        let component_size = mem::size_of::<f32>();
+        let num_components = resize_height * resize_width * image_channels;
+        let cache_size = num_components * component_size;
+
+        // construct cache path
+        let cache_path = self.cache_dir.join(format!(
+            "{}-{}-{}-{}",
+            percent_encoding::utf8_percent_encode(image_path.to_str().unwrap(), NON_ALPHANUMERIC),
+            image_channels,
+            resize_height,
+            resize_width,
+        ));
+
+        // check if the cache is valid
         let is_valid = if cache_path.is_file().await {
             let image_modified = image_path.metadata().await?.modified()?;
             let cache_meta = cache_path.metadata().await?;
@@ -338,55 +306,57 @@ impl CacheLoader {
             false
         };
 
+        // write cache if the cache is not valid
         if !is_valid {
             // load and resize image
             let image = async_std::task::spawn_blocking(move || -> Result<_> {
                 let image = image::open(&image_path)?
-                    .resize(image_size as u32, image_size as u32, FilterType::CatmullRom)
+                    .resize_exact(
+                        resize_width as u32,
+                        resize_height as u32,
+                        FilterType::CatmullRom,
+                    )
                     .to_rgb();
                 Ok(image)
             })
             .await?;
 
-            // convert to bytes
-            let mut components =
-                image
-                    .enumerate_pixels()
-                    .flat_map(|(col, row, pixel)| {
-                        pixel.channels().iter().cloned().enumerate().map(
-                            move |(channel, component)| {
-                                let component = component as f32 / 255.0;
-                                (row, col, channel, component)
-                            },
-                        )
-                    })
-                    .collect::<Vec<_>>();
+            // convert to channel first
+            let array = Array3::from_shape_fn(
+                [image_channels, resize_height, resize_width],
+                |(channel, row, col)| {
+                    let component = image.get_pixel(col as u32, row as u32).channels()[channel];
+                    component as f32 / 255.0
+                },
+            );
 
-            // permute the components to channel first order
-            components.sort_by_cached_key(|(row, col, channel, _byte)| (*channel, *row, *col));
-
-            // save cache
-            let bytes = components
-                .into_iter()
-                .flat_map(|(_, _, _, component)| Vec::from(component.to_le_bytes()))
-                .collect::<Vec<_>>();
-            debug_assert_eq!(bytes.len(), cache_size);
-            async_std::fs::write(&cache_path, &bytes).await?;
+            // write cache
+            let mut writer = BufWriter::new(File::create(&cache_path).await?);
+            for bytes in array.map(|component| component.to_le_bytes()).iter() {
+                writer.write_all(bytes).await?;
+            }
+            writer.flush().await?;
         };
 
         // load from cache
         let image = Tensor::f_from_file(
             cache_path.to_str().unwrap(),
             false,
-            Some(cache_size as i64),
+            Some(num_components as i64),
             FLOAT_CPU,
-        )?;
+        )?
+        .view_(&[
+            image_channels as i64,
+            resize_height as i64,
+            resize_width as i64,
+        ])
+        .requires_grad_(false);
 
         Ok(image)
     }
 }
 
-fn crop_image(image: &Tensor, top: i64, bottom: i64, left: i64, right: i64) -> Tensor {
+pub fn crop_image(image: &Tensor, top: i64, bottom: i64, left: i64, right: i64) -> Tensor {
     debug_assert!(top >= 0);
     debug_assert!(bottom >= 0);
     debug_assert!(left >= 0);
@@ -398,7 +368,7 @@ fn crop_image(image: &Tensor, top: i64, bottom: i64, left: i64, right: i64) -> T
     cropped
 }
 
-fn crop_bbox(bbox: &BBox, top: i64, bottom: i64, left: i64, right: i64) -> Option<BBox> {
+pub fn crop_bbox(bbox: &BBox, top: i64, bottom: i64, left: i64, right: i64) -> Option<BBox> {
     let BBox {
         xywh: [bbox_left, bbox_top, w, h],
         category_id,
@@ -427,4 +397,123 @@ fn crop_bbox(bbox: &BBox, top: i64, bottom: i64, left: i64, right: i64) -> Optio
     } else {
         None
     }
+}
+
+pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
+    let (_channels, _height, _width) = input.size3().unwrap();
+
+    let resized = vision::image::resize_preserve_aspect_ratio(
+        &(input * 255.0).to_kind(Kind::Uint8),
+        out_w,
+        out_h,
+    )?
+    .to_kind(Kind::Float)
+        / 255.0;
+
+    Ok(resized)
+}
+
+pub fn batch_resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
+    let (bsize, _channels, _height, _width) = input.size4().unwrap();
+
+    let input_scaled = (input * 255.0).to_kind(Kind::Uint8);
+    let resized_vec = (0..bsize)
+        .map(|index| {
+            let resized = vision::image::resize_preserve_aspect_ratio(
+                &input_scaled.select(0, index),
+                out_w,
+                out_h,
+            )?;
+            Ok(resized)
+        })
+        .collect::<Fallible<Vec<_>>>()?;
+    let resized = Tensor::stack(resized_vec.as_slice(), 0);
+    let resized_scaled = resized.to_kind(Kind::Float) / 255.0;
+
+    Ok(resized_scaled)
+}
+
+pub async fn make_mosaic(
+    record_image_vec: Vec<(Arc<Record>, Tensor)>,
+    image_size: i64,
+    mosaic_margin: f64,
+) -> Fallible<(Vec<BBox>, Tensor)> {
+    debug_assert_eq!(record_image_vec.len(), 4);
+    let mut rng = StdRng::from_entropy();
+
+    // random select pivot point
+    let pivot_row = (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
+    let pivot_col = (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
+
+    // crop images
+    let ranges = vec![
+        (0, pivot_row, 0, pivot_col),
+        (0, pivot_row, pivot_col, image_size),
+        (pivot_row, image_size, 0, pivot_col),
+        (pivot_row, image_size, pivot_col, image_size),
+    ];
+
+    let mut record_cropped_iter =
+        futures::stream::iter(record_image_vec.into_iter().zip_eq(ranges.into_iter())).par_then(
+            None,
+            move |((record, image), (top, bottom, left, right))| async move {
+                let Record {
+                    ref path,
+                    height,
+                    width,
+                    ref bboxes,
+                } = *record;
+
+                {
+                    let (_c, h, w) = image.size3().unwrap();
+                    debug_assert_eq!(h, image_size);
+                    debug_assert_eq!(w, image_size);
+                }
+
+                let cropped_image = crop_image(&image, top, bottom, left, right);
+                let cropped_bboxes: Vec<_> = bboxes
+                    .into_iter()
+                    .filter_map(|bbox| crop_bbox(bbox, top, bottom, left, right))
+                    .collect();
+
+                let cropped_record = Record {
+                    path: path.clone(),
+                    height,
+                    width,
+                    bboxes: cropped_bboxes,
+                };
+
+                (cropped_record, cropped_image)
+            },
+        );
+
+    let (record_tl, cropped_tl) = record_cropped_iter.next().await.unwrap();
+    let (record_tr, cropped_tr) = record_cropped_iter.next().await.unwrap();
+    let (record_bl, cropped_bl) = record_cropped_iter.next().await.unwrap();
+    let (record_br, cropped_br) = record_cropped_iter.next().await.unwrap();
+    debug_assert_eq!(record_cropped_iter.next().await, None);
+
+    // merge cropped images
+    let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 1);
+    debug_assert_eq!(merged_top.size3().unwrap(), (3, pivot_row, image_size));
+
+    let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 1);
+    debug_assert_eq!(
+        merged_bottom.size3().unwrap(),
+        (3, image_size - pivot_row, image_size)
+    );
+
+    let merged_image = Tensor::cat(&[merged_top, merged_bottom], 2);
+    debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
+
+    // merge cropped records
+    let merged_bboxes: Vec<_> = record_tl
+        .bboxes
+        .into_iter()
+        .chain(record_tr.bboxes.into_iter())
+        .chain(record_bl.bboxes.into_iter())
+        .chain(record_br.bboxes.into_iter())
+        .collect();
+
+    Ok((merged_bboxes, merged_image))
 }

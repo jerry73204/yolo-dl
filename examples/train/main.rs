@@ -30,13 +30,17 @@ pub async fn main() -> Result<()> {
     let dataset = DataSet::new(config.clone()).await?;
     let input_channels = dataset.input_channels();
     let num_classes = dataset.num_classes();
-    let train_stream = dataset.train_stream(logging_tx.clone()).await?;
+    let mut train_stream = dataset.train_stream(logging_tx.clone()).await?;
 
     // init model
     let device = Device::cuda_if_available();
     let vs = nn::VarStore::new(device);
     let root = vs.root();
     let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+
+    while let Some(result) = train_stream.next().await {
+        let record = result?;
+    }
 
     Ok(())
 }

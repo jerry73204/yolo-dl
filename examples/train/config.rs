@@ -8,6 +8,7 @@ pub struct Config {
     pub image_size: NonZeroUsize,
     pub mosaic_margin: R64,
     pub logging_dir: PathBuf,
+    pub mini_batch_size: usize,
 }
 
 impl Config {
