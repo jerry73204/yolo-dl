@@ -4,6 +4,9 @@ use crate::common::*;
 pub struct Config {
     pub dataset_dir: PathBuf,
     pub dataset_name: String,
+    pub cache_dir: PathBuf,
+    pub image_size: NonZeroUsize,
+    pub mosaic_margin: R64,
 }
 
 impl Config {

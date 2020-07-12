@@ -1,4 +1,7 @@
 {
     "dataset_dir": "/mnt/external1/aeon/dataset/coco",
     "dataset_name": "train2017",
+    "cache_dir": "cache",
+    "image_size": 640,
+    "mosaic_margin": 0.4,
 }

@@ -21,6 +21,11 @@ async-std = { version = "1.6", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1"
 json5 = "0.2"
+par-stream = { git = "https://github.com/jerry73204/par-stream.git" }
+futures = "0.3"
+rand = "0.7"
+percent-encoding = "2.1"
+image = "0.23"
 
 [patch.crates-io]
 tch = { git = "https://github.com/LaurentMazare/tch-rs.git" }
