@@ -152,7 +152,9 @@ impl DataSet {
         let stream = stream.try_overflowing_enumerate();
 
         // load and cache images
-        let cache_loader = Arc::new(CacheLoader::new(&cache_dir, image_size as usize, 3).await?);
+        let cache_loader = Arc::new(
+            CacheLoader::new(&cache_dir, image_size as usize, 3, logging_tx.clone()).await?,
+        );
 
         let stream = stream.try_par_then_unordered(None, move |(index, args)| {
             let (step, epoch, record_vec) = args;
@@ -191,12 +193,20 @@ impl DataSet {
         });
 
         // make mosaic
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
-            let (step, epoch, record_image_vec) = args;
-            let (merged_bboxes, merged_image) =
-                make_mosaic(record_image_vec, image_size, mosaic_margin).await?;
+        let mosaic_processor = Arc::new(MosaicProcessor::new(
+            image_size,
+            mosaic_margin,
+            logging_tx.clone(),
+        ));
+        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
+            let mosaic_processor = mosaic_processor.clone();
+            async move {
+                let (step, epoch, record_image_vec) = args;
+                let (merged_bboxes, merged_image) =
+                    mosaic_processor.make_mosaic(record_image_vec).await?;
 
-            Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
+                Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
+            }
         });
 
         // map to output type
@@ -221,8 +231,228 @@ impl DataSet {
 }
 
 #[derive(Debug, Clone)]
-pub struct AugmentationProcessor {
-    // TODO
+pub struct RandomAffine {
+    rotate_radians: Option<f64>,
+    translation: Option<f64>,
+    scale: Option<(f64, f64)>,
+    shear: Option<f64>,
+    horizontal_flip: bool,
+    vertical_flip: bool,
+}
+
+impl RandomAffine {
+    pub fn new(
+        rotate_degrees: impl Into<Option<f64>>,
+        translation: impl Into<Option<f64>>,
+        scale: impl Into<Option<(f64, f64)>>,
+        shear: impl Into<Option<f64>>,
+        horizontal_flip: impl Into<Option<bool>>,
+        vertical_flip: impl Into<Option<bool>>,
+    ) -> Self {
+        let rotate_radians = rotate_degrees.into().map(|degrees| degrees.to_radians());
+        let translation = translation.into();
+        let scale = scale.into();
+        let shear = shear.into();
+        let horizontal_flip = horizontal_flip.into().unwrap_or(true);
+        let vertical_flip = vertical_flip.into().unwrap_or(false);
+
+        if let Some(val) = rotate_radians {
+            assert!(val >= 0.0);
+        }
+
+        if let Some(val) = translation {
+            assert!(val >= 0.0);
+        }
+
+        if let Some((min, max)) = scale {
+            assert!(min >= 0.0);
+            assert!(min >= 0.0);
+            assert!(min <= max);
+        }
+
+        if let Some(val) = shear {
+            assert!(val >= 0.0);
+        }
+
+        Self {
+            rotate_radians,
+            translation,
+            scale,
+            shear,
+            horizontal_flip,
+            vertical_flip,
+        }
+    }
+
+    pub fn random_affine(&self, image: &Tensor) -> Tensor {
+        let (channels, height, width) = image.size3().unwrap();
+        let device = image.device();
+        let mut rng = StdRng::from_entropy();
+
+        let affine_transform = {
+            let transform = Tensor::eye(3, (Kind::Float, device));
+            let transform = match self.horizontal_flip {
+                true => {
+                    if rng.gen::<bool>() {
+                        let flip: Tensor = Array::from_shape_vec(
+                            (3, 3),
+                            vec![
+                                -1.0f32, 0.0, 0.0, // row 1
+                                0.0, 1.0, 0.0, // row 2
+                                0.0, 0.0, 1.0, // row 3
+                            ],
+                        )
+                        .unwrap()
+                        .try_into()
+                        .unwrap();
+
+                        flip.matmul(&transform)
+                    } else {
+                        transform
+                    }
+                }
+                false => transform,
+            };
+            let transform = match self.vertical_flip {
+                true => {
+                    if rng.gen::<bool>() {
+                        let flip: Tensor = Array::from_shape_vec(
+                            (3, 3),
+                            vec![
+                                1f32, 0.0, 0.0, // row 1
+                                0.0, -1.0, 0.0, // row 2
+                                0.0, 0.0, 1.0, // row 3
+                            ],
+                        )
+                        .unwrap()
+                        .try_into()
+                        .unwrap();
+
+                        flip.matmul(&transform)
+                    } else {
+                        transform
+                    }
+                }
+                false => transform,
+            };
+            let transform = match self.scale {
+                Some((lower, upper)) => {
+                    let ratio = rng.gen_range(lower, upper) as f32;
+
+                    let scaling: Tensor = Array::from_shape_vec(
+                        (3, 3),
+                        vec![
+                            ratio, 0.0, 0.0, // row 1
+                            0.0, ratio, 0.0, // row 2
+                            0.0, 0.0, 1.0, // row 3
+                        ],
+                    )
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+
+                    scaling.matmul(&transform)
+                }
+                None => transform,
+            };
+            let transform = match self.shear {
+                Some(max_shear) => {
+                    let shear = rng.gen_range(-max_shear, max_shear);
+
+                    let translation: Tensor = Array::from_shape_vec(
+                        (3, 3),
+                        vec![
+                            1.0 + shear,
+                            0.0,
+                            0.0, // row 1
+                            0.0,
+                            1.0 + shear,
+                            0.0, // row 2
+                            0.0,
+                            0.0,
+                            1.0, // row 3
+                        ],
+                    )
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+
+                    translation.matmul(&transform)
+                }
+                None => transform,
+            };
+            let transform = match self.rotate_radians {
+                Some(max_randians) => {
+                    let angle = rng.gen_range(-max_randians, max_randians);
+                    let cos = angle.cos() as f32;
+                    let sin = angle.sin() as f32;
+
+                    let rotation: Tensor = Array::from_shape_vec(
+                        (3, 3),
+                        vec![
+                            cos, -sin, 0.0, // row 1
+                            sin, cos, 0.0, // row 2
+                            0.0, 0.0, 1.0, // row 3
+                        ],
+                    )
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+
+                    rotation.matmul(&transform)
+                }
+                None => transform,
+            };
+            let transform = match self.translation {
+                Some(max_translation) => {
+                    let horizontal_translation =
+                        rng.gen_range(-max_translation, max_translation) * height as f64;
+                    let vertical_translation =
+                        rng.gen_range(-max_translation, max_translation) * width as f64;
+
+                    let translation: Tensor = Array::from_shape_vec(
+                        (3, 3),
+                        vec![
+                            1.0,
+                            0.0,
+                            horizontal_translation, // row 1
+                            0.0,
+                            1.0,
+                            vertical_translation, // row 2
+                            0.0,
+                            0.0,
+                            1.0, // row 3
+                        ],
+                    )
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+
+                    translation.matmul(&transform)
+                }
+                None => transform,
+            };
+
+            let transform = transform.to_device(device);
+            transform
+        };
+
+        let affine_grid = Tensor::affine_grid_generator(
+            &affine_transform.i((0..2, ..)), // remove the last row
+            &[channels, height, width],
+            false,
+        );
+
+        let sampled = image.grid_sampler(
+            &affine_grid,
+            // See https://github.com/pytorch/pytorch/blob/f597ac6efc70431e66d945c16fa12b767989b032/aten/src/ATen/native/GridSampler.h#L10-L11
+            0,
+            0,
+            false,
+        );
+
+        sampled
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -230,10 +460,16 @@ pub struct CacheLoader {
     cache_dir: async_std::path::PathBuf,
     image_size: usize,
     image_channels: usize,
+    logging_tx: broadcast::Sender<LoggingMessage>,
 }
 
 impl CacheLoader {
-    pub async fn new<P>(cache_dir: P, image_size: usize, image_channels: usize) -> Result<Self>
+    pub async fn new<P>(
+        cache_dir: P,
+        image_size: usize,
+        image_channels: usize,
+        logging_tx: broadcast::Sender<LoggingMessage>,
+    ) -> Result<Self>
     where
         P: AsRef<async_std::path::Path>,
     {
@@ -247,6 +483,7 @@ impl CacheLoader {
             cache_dir,
             image_size,
             image_channels,
+            logging_tx,
         };
 
         Ok(loader)
@@ -309,27 +546,29 @@ impl CacheLoader {
         // write cache if the cache is not valid
         if !is_valid {
             // load and resize image
-            let image = async_std::task::spawn_blocking(move || -> Result<_> {
+            let array = async_std::task::spawn_blocking(move || -> Result<_> {
                 let image = image::open(&image_path)
-                    .with_context(|| format!("failed to open {}", image_path.display()))?
+                    .with_context(|| format!("failed to open {}", image_path.display()))?;
+                let image = image
                     .resize_exact(
                         resize_width as u32,
                         resize_height as u32,
                         FilterType::CatmullRom,
                     )
                     .to_rgb();
-                Ok(image)
+
+                // convert to channel first
+                let array = Array3::from_shape_fn(
+                    [image_channels, resize_height, resize_width],
+                    |(channel, row, col)| {
+                        let component = image.get_pixel(col as u32, row as u32).channels()[channel];
+                        component as f32 / 255.0
+                    },
+                );
+
+                Ok(array)
             })
             .await?;
-
-            // convert to channel first
-            let array = Array3::from_shape_fn(
-                [image_channels, resize_height, resize_width],
-                |(channel, row, col)| {
-                    let component = image.get_pixel(col as u32, row as u32).channels()[channel];
-                    component as f32 / 255.0
-                },
-            );
 
             // write cache
             let mut writer = BufWriter::new(File::create(&cache_path).await?);
@@ -340,18 +579,29 @@ impl CacheLoader {
         };
 
         // load from cache
-        let image = Tensor::f_from_file(
-            cache_path.to_str().unwrap(),
-            false,
-            Some(num_components as i64),
-            FLOAT_CPU,
-        )?
-        .view_(&[
-            image_channels as i64,
-            resize_height as i64,
-            resize_width as i64,
-        ])
-        .requires_grad_(false);
+        let image = async_std::task::spawn_blocking(move || -> Result<_> {
+            let image = Tensor::f_from_file(
+                cache_path.to_str().unwrap(),
+                false,
+                Some(num_components as i64),
+                FLOAT_CPU,
+            )?
+            .view_(&[
+                image_channels as i64,
+                resize_height as i64,
+                resize_width as i64,
+            ])
+            .requires_grad_(false);
+
+            Ok(image)
+        })
+        .await?;
+
+        // send to logger
+        {
+            let msg = LoggingMessage::new_images("cache-loader", &[&image]);
+            let _ = self.logging_tx.send(msg);
+        }
 
         Ok(image)
     }
@@ -434,30 +684,57 @@ pub fn batch_resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Te
     Ok(resized_scaled)
 }
 
-pub async fn make_mosaic(
-    record_image_vec: Vec<(Arc<Record>, Tensor)>,
+pub struct MosaicProcessor {
     image_size: i64,
     mosaic_margin: f64,
-) -> Fallible<(Vec<BBox>, Tensor)> {
-    debug_assert_eq!(record_image_vec.len(), 4);
-    let mut rng = StdRng::from_entropy();
+    logging_tx: broadcast::Sender<LoggingMessage>,
+}
 
-    // random select pivot point
-    let pivot_row = (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
-    let pivot_col = (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
+impl MosaicProcessor {
+    pub fn new(
+        image_size: i64,
+        mosaic_margin: f64,
+        logging_tx: broadcast::Sender<LoggingMessage>,
+    ) -> Self {
+        Self {
+            image_size,
+            mosaic_margin,
+            logging_tx,
+        }
+    }
 
-    // crop images
-    let ranges = vec![
-        (0, pivot_row, 0, pivot_col),
-        (0, pivot_row, pivot_col, image_size),
-        (pivot_row, image_size, 0, pivot_col),
-        (pivot_row, image_size, pivot_col, image_size),
-    ];
+    pub async fn make_mosaic(
+        &self,
+        record_image_vec: Vec<(Arc<Record>, Tensor)>,
+    ) -> Fallible<(Vec<BBox>, Tensor)> {
+        let Self {
+            image_size,
+            mosaic_margin,
+            ref logging_tx,
+        } = *self;
 
-    let mut record_cropped_iter =
-        futures::stream::iter(record_image_vec.into_iter().zip_eq(ranges.into_iter())).par_then(
-            None,
-            move |((record, image), (top, bottom, left, right))| async move {
+        debug_assert_eq!(record_image_vec.len(), 4);
+        let mut rng = StdRng::from_entropy();
+
+        // random select pivot point
+        let pivot_row =
+            (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
+        let pivot_col =
+            (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
+
+        // crop images
+        let ranges = vec![
+            (0, pivot_row, 0, pivot_col),
+            (0, pivot_row, pivot_col, image_size),
+            (pivot_row, image_size, 0, pivot_col),
+            (pivot_row, image_size, pivot_col, image_size),
+        ];
+
+        let mut record_cropped_iter = futures::stream::iter(
+            record_image_vec.into_iter().zip_eq(ranges.into_iter()),
+        )
+        .par_map(4, move |((record, image), (top, bottom, left, right))| {
+            move || {
                 let Record {
                     ref path,
                     height,
@@ -485,36 +762,52 @@ pub async fn make_mosaic(
                 };
 
                 (cropped_record, cropped_image)
-            },
-        );
+            }
+        });
 
-    let (record_tl, cropped_tl) = record_cropped_iter.next().await.unwrap();
-    let (record_tr, cropped_tr) = record_cropped_iter.next().await.unwrap();
-    let (record_bl, cropped_bl) = record_cropped_iter.next().await.unwrap();
-    let (record_br, cropped_br) = record_cropped_iter.next().await.unwrap();
-    debug_assert_eq!(record_cropped_iter.next().await, None);
+        let (record_tl, cropped_tl) = record_cropped_iter.next().await.unwrap();
+        let (record_tr, cropped_tr) = record_cropped_iter.next().await.unwrap();
+        let (record_bl, cropped_bl) = record_cropped_iter.next().await.unwrap();
+        let (record_br, cropped_br) = record_cropped_iter.next().await.unwrap();
+        debug_assert_eq!(record_cropped_iter.next().await, None);
 
-    // merge cropped images
-    let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 2);
-    debug_assert_eq!(merged_top.size3().unwrap(), (3, pivot_row, image_size));
+        // merge cropped images
+        let (merged_image, merged_bboxes) = async_std::task::spawn_blocking(move || {
+            let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 2);
+            debug_assert_eq!(merged_top.size3().unwrap(), (3, pivot_row, image_size));
 
-    let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 2);
-    debug_assert_eq!(
-        merged_bottom.size3().unwrap(),
-        (3, image_size - pivot_row, image_size)
-    );
+            let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 2);
+            debug_assert_eq!(
+                merged_bottom.size3().unwrap(),
+                (3, image_size - pivot_row, image_size)
+            );
 
-    let merged_image = Tensor::cat(&[merged_top, merged_bottom], 1);
-    debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
+            let merged_image = Tensor::cat(&[merged_top, merged_bottom], 1);
+            debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
 
-    // merge cropped records
-    let merged_bboxes: Vec<_> = record_tl
-        .bboxes
-        .into_iter()
-        .chain(record_tr.bboxes.into_iter())
-        .chain(record_bl.bboxes.into_iter())
-        .chain(record_br.bboxes.into_iter())
-        .collect();
+            // merge cropped records
+            let merged_bboxes: Vec<_> = record_tl
+                .bboxes
+                .into_iter()
+                .chain(record_tr.bboxes.into_iter())
+                .chain(record_bl.bboxes.into_iter())
+                .chain(record_br.bboxes.into_iter())
+                .collect();
 
-    Ok((merged_bboxes, merged_image))
+            (merged_image, merged_bboxes)
+        })
+        .await;
+
+        // send to logger
+        {
+            let msg = LoggingMessage::new_image_with_bboxes(
+                "mosaicache-processor",
+                &merged_image,
+                &merged_bboxes,
+            );
+            let _ = logging_tx.send(msg);
+        }
+
+        Ok((merged_bboxes, merged_image))
+    }
 }

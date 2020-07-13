@@ -40,6 +40,13 @@ pub async fn logging_worker(
 
                     debug_step += 1;
                 }
+                LoggingMessage::ImageWithBBox { tag, image, bboxes } => {
+                    event_writer
+                        .write_image_async(tag, debug_step, image)
+                        .await?;
+
+                    debug_step += 1;
+                }
             }
         }
 
