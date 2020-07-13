@@ -70,12 +70,32 @@ where
         }
     }
 
-    pub fn to<NewU>(&self, scale: V) -> Quantity<V, NewU>
+    pub fn to<NewU>(&self) -> Quantity<V, NewU>
+    where
+        NewU: Unit,
+    {
+        Quantity {
+            value: self.value,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn mul_to<NewU>(&self, scale: V) -> Quantity<V, NewU>
     where
         NewU: Unit,
     {
         Quantity {
             value: self.value * scale,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn div_to<NewU>(&self, scale: V) -> Quantity<V, NewU>
+    where
+        NewU: Unit,
+    {
+        Quantity {
+            value: self.value / scale,
             _phantom: PhantomData,
         }
     }
@@ -347,6 +367,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn unit_type_test() {}
+    fn unit_type_test() {
+        let pixels: Quantity<u32, Pixel> = 640.into();
+        assert_eq!(*pixels, 640);
+
+        let ratio: Quantity<f64, Ratio> = pixels.cast::<f64>().div_to(1000.0);
+        assert_eq!(*ratio, 640 as f64 / 1000.0);
+    }
 }
