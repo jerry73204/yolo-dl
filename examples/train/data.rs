@@ -295,9 +295,9 @@ impl CacheLoader {
         let is_valid = if cache_path.is_file().await {
             let image_modified = image_path.metadata().await?.modified()?;
             let cache_meta = cache_path.metadata().await?;
-            let cache_created = cache_meta.created()?;
+            let cache_modified = cache_meta.modified()?;
 
-            if cache_created > image_modified {
+            if cache_modified > image_modified {
                 cache_meta.len() == cache_size as u64
             } else {
                 false
@@ -310,7 +310,8 @@ impl CacheLoader {
         if !is_valid {
             // load and resize image
             let image = async_std::task::spawn_blocking(move || -> Result<_> {
-                let image = image::open(&image_path)?
+                let image = image::open(&image_path)
+                    .with_context(|| format!("failed to open {}", image_path.display()))?
                     .resize_exact(
                         resize_width as u32,
                         resize_height as u32,
@@ -494,16 +495,16 @@ pub async fn make_mosaic(
     debug_assert_eq!(record_cropped_iter.next().await, None);
 
     // merge cropped images
-    let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 1);
+    let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 2);
     debug_assert_eq!(merged_top.size3().unwrap(), (3, pivot_row, image_size));
 
-    let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 1);
+    let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 2);
     debug_assert_eq!(
         merged_bottom.size3().unwrap(),
         (3, image_size - pivot_row, image_size)
     );
 
-    let merged_image = Tensor::cat(&[merged_top, merged_bottom], 2);
+    let merged_image = Tensor::cat(&[merged_top, merged_bottom], 1);
     debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
 
     // merge cropped records

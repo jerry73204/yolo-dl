@@ -1,4 +1,4 @@
-pub use anyhow::{ensure, Error, Result};
+pub use anyhow::{ensure, Context, Error, Result};
 pub use argh::FromArgs;
 pub use coco::Category;
 pub use futures::{
