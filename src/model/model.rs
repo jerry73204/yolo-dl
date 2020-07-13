@@ -504,11 +504,11 @@ impl YoloOutput {
         self.image_width
     }
 
-    pub fn feature_maps(&self) -> &[Tensor] {
-        self.feature_maps.as_slice()
+    pub fn feature_maps(&self) -> Vec<Tensor> {
+        self.feature_maps.shallow_clone()
     }
 
-    pub fn detections(&mut self) -> &[Detection] {
+    pub fn detections(&mut self) -> Vec<Detection> {
         let Self {
             image_height,
             image_width,
@@ -518,67 +518,70 @@ impl YoloOutput {
         let feature_maps = self.feature_maps.shallow_clone();
         let anchor_size_multipliers = self.anchor_size_multipliers.shallow_clone();
 
-        self.detections_cache.get_or_insert_with(|| {
-            feature_maps
-                .iter()
-                .enumerate()
-                .flat_map(|(index, xs)| {
-                    let (batch_size, num_anchors, height, width) = match xs.size().as_slice() {
-                        &[b, na, h, w, _no] => (b, na, h, w),
-                        _ => unreachable!(),
-                    };
+        self.detections_cache
+            .get_or_insert_with(|| {
+                feature_maps
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, xs)| {
+                        let (batch_size, num_anchors, height, width) = match xs.size().as_slice() {
+                            &[b, na, h, w, _no] => (b, na, h, w),
+                            _ => unreachable!(),
+                        };
 
-                    // compute gride size
-                    let grid_height = image_height / height;
-                    let grid_width = image_width / width;
+                        // compute gride size
+                        let grid_height = image_height / height;
+                        let grid_width = image_width / width;
 
-                    // prepare grid
-                    let grid = {
-                        let grids = Tensor::meshgrid(&[
-                            Tensor::arange(height, (Kind::Float, device)),
-                            Tensor::arange(width, (Kind::Float, device)),
-                        ]);
-                        Tensor::stack(&[&grids[0], &grids[1]], 2)
-                            .view(&[1, 1, height, width, 2] as &[_])
-                    };
+                        // prepare grid
+                        let grid = {
+                            let grids = Tensor::meshgrid(&[
+                                Tensor::arange(height, (Kind::Float, device)),
+                                Tensor::arange(width, (Kind::Float, device)),
+                            ]);
+                            Tensor::stack(&[&grids[0], &grids[1]], 2)
+                                .view(&[1, 1, height, width, 2] as &[_])
+                        };
 
-                    let stride_multiplier = Tensor::of_slice(&[grid_height, grid_width] as &[_])
-                        .view([1, 1, 1, 2])
-                        .expand_as(&grid)
-                        .to_device(device);
+                        let stride_multiplier =
+                            Tensor::of_slice(&[grid_height, grid_width] as &[_])
+                                .view([1, 1, 1, 2])
+                                .expand_as(&grid)
+                                .to_device(device);
 
-                    // transform outputs
-                    let sigmoid = xs.sigmoid();
-                    let positions = (sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid)
-                        * &stride_multiplier;
-                    let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0)
-                        * &anchor_size_multipliers[index];
-                    let objectnesses = sigmoid.i((.., .., .., .., 4..5));
-                    let classifications = sigmoid.i((.., .., .., .., 5..));
+                        // transform outputs
+                        let sigmoid = xs.sigmoid();
+                        let positions = (sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid)
+                            * &stride_multiplier;
+                        let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0)
+                            * &anchor_size_multipliers[index];
+                        let objectnesses = sigmoid.i((.., .., .., .., 4..5));
+                        let classifications = sigmoid.i((.., .., .., .., 5..));
 
-                    let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
-                        move |(anchor_index, row, col)| {
-                            let position = positions.i((.., anchor_index, row, col, ..));
-                            let size = sizes.i((.., anchor_index, row, col, ..));
-                            let objectness = objectnesses.i((.., anchor_index, row, col, ..));
-                            let classification =
-                                classifications.i((.., anchor_index, row, col, ..));
+                        let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
+                            move |(anchor_index, row, col)| {
+                                let position = positions.i((.., anchor_index, row, col, ..));
+                                let size = sizes.i((.., anchor_index, row, col, ..));
+                                let objectness = objectnesses.i((.., anchor_index, row, col, ..));
+                                let classification =
+                                    classifications.i((.., anchor_index, row, col, ..));
 
-                            let detection = Detection {
-                                position,
-                                size,
-                                objectness,
-                                classification,
-                            };
+                                let detection = Detection {
+                                    position,
+                                    size,
+                                    objectness,
+                                    classification,
+                                };
 
-                            detection
-                        },
-                    );
+                                detection
+                            },
+                        );
 
-                    detections_iter
-                })
-                .collect::<Vec<_>>()
-        })
+                        detections_iter
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .shallow_clone()
     }
 }
 

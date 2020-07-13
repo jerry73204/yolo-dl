@@ -37,9 +37,9 @@ mod tests {
                 (Kind::Float, Device::cuda_if_available()),
             );
             let instant = std::time::Instant::now();
-            let output = yolo_fn(&input, false);
-            let feature_maps = output.feature_maps();
+            let mut output = yolo_fn(&input, false);
             let detections = output.detections();
+            let feature_maps = output.feature_maps();
 
             let feature_map_shapes = feature_maps
                 .iter()
