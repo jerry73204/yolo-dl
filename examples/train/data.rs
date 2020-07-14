@@ -62,7 +62,6 @@ impl DataSet {
             mini_batch_size,
             ..
         } = *self.config;
-        let mosaic_margin = mosaic_margin.raw();
         let image_size = image_size.get() as i64;
 
         let coco::DataSet {
@@ -668,14 +667,14 @@ pub fn batch_resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Te
 
 pub struct MosaicProcessor {
     image_size: i64,
-    mosaic_margin: f64,
+    mosaic_margin: Ratio,
     logging_tx: broadcast::Sender<LoggingMessage>,
 }
 
 impl MosaicProcessor {
     pub fn new(
         image_size: i64,
-        mosaic_margin: f64,
+        mosaic_margin: Ratio,
         logging_tx: broadcast::Sender<LoggingMessage>,
     ) -> Self {
         Self {
@@ -694,6 +693,7 @@ impl MosaicProcessor {
             mosaic_margin,
             ref logging_tx,
         } = *self;
+        let mosaic_margin = mosaic_margin.raw();
 
         debug_assert_eq!(bbox_image_vec.len(), 4);
         let mut rng = StdRng::from_entropy();

@@ -1,12 +1,13 @@
-use crate::common::*;
+use crate::{common::*, util::Ratio};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub dataset_dir: PathBuf,
     pub dataset_name: String,
     pub cache_dir: PathBuf,
     pub image_size: NonZeroUsize,
-    pub mosaic_margin: R64,
+    pub mosaic_prob: Ratio,
+    pub mosaic_margin: Ratio,
     pub logging_dir: PathBuf,
     pub mini_batch_size: usize,
 }

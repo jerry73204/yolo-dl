@@ -12,7 +12,10 @@ pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use rand::{prelude::*, rngs::StdRng};
-pub use serde::Deserialize;
+pub use serde::{
+    de::Error as DeserializeError, ser::Error as SerializeError, Deserialize, Deserializer,
+    Serialize, Serializer,
+};
 pub use std::{
     borrow::Borrow,
     cmp::Ordering,

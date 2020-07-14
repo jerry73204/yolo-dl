@@ -33,6 +33,25 @@ impl Ratio {
     }
 }
 
+impl Serialize for Ratio {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ratio {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::f_from_f64(value).map_err(|err| D::Error::custom(format!("{:?}", err)))
+    }
+}
+
 impl From<R64> for Ratio {
     fn from(value: R64) -> Self {
         Self::f_from_r64(value).unwrap()
