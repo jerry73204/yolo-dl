@@ -204,7 +204,7 @@ impl DataSet {
             logging_tx.clone(),
         ));
 
-        let stream = stream.and_then(move |(index, args)| {
+        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
             let mosaic_processor = mosaic_processor.clone();
             let mut rng = StdRng::from_entropy();
 
@@ -224,7 +224,7 @@ impl DataSet {
         });
 
         // map to output type
-        let stream = stream.and_then(|(index, args)| async move {
+        let stream = stream.try_par_then_unordered(None, |(index, args)| async move {
             let (step, epoch, bboxes, image) = args;
 
             let record = TrainingRecord {
