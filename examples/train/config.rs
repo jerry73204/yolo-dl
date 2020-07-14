@@ -11,6 +11,12 @@ pub struct Config {
     pub affine_prob: Ratio,
     pub logging_dir: PathBuf,
     pub mini_batch_size: usize,
+    pub rotate_degrees: Option<R64>,
+    pub translation: Option<R64>,
+    pub scale: Option<(R64, R64)>,
+    pub shear: Option<R64>,
+    pub horizontal_flip: bool,
+    pub vertical_flip: bool,
 }
 
 impl Config {

@@ -7,7 +7,7 @@ pub use futures::{
 };
 pub use image::{imageops::FilterType, Pixel};
 pub use itertools::{izip, Itertools};
-pub use ndarray::{Array, Array3};
+pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
@@ -20,7 +20,7 @@ pub use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::HashMap,
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     future::Future,
     hash::{Hash, Hasher},
     iter,
