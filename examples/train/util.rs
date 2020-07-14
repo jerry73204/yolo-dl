@@ -25,7 +25,7 @@ impl RateCounter {
 
             async_std::task::spawn(async move {
                 {
-                    while !closing.load(Ordering::SeqCst) {
+                    while !closing.load(atomic::Ordering::SeqCst) {
                         async_std::task::sleep(Duration::from_secs(1)).await;
                         let mut rate = rate_lock.write().await;
                         let mut curr = curr_lock.write().await;
@@ -93,6 +93,6 @@ impl Clone for RateCounter {
 
 impl Drop for RateCounter {
     fn drop(&mut self) {
-        self.closing.store(true, Ordering::SeqCst);
+        self.closing.store(true, atomic::Ordering::SeqCst);
     }
 }

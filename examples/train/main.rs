@@ -3,6 +3,7 @@ mod config;
 mod data;
 mod logging;
 mod message;
+mod unit;
 mod util;
 
 use crate::{common::*, config::Config, data::DataSet, util::RateCounter};

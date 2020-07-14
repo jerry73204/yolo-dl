@@ -3,44 +3,29 @@ use crate::common::*;
 pub trait Unit {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct Pixel;
+pub struct PixelUnit;
 
-impl Unit for Pixel {}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Ratio;
-
-impl Unit for Ratio {}
+impl Unit for PixelUnit {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct Grid;
+pub struct RatioUnit;
 
-impl Unit for Grid {}
+impl Unit for RatioUnit {}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GridUnit;
+
+impl Unit for GridUnit {}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
-pub struct Quantity<V, U>
-where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
-    U: Unit,
-{
+pub struct Quantity<V, U> {
     value: V,
     _phantom: PhantomData<U>,
 }
 
 impl<V, U> Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
     U: Unit,
 {
     pub fn new(value: V) -> Self {
@@ -50,19 +35,17 @@ where
         }
     }
 
-    pub fn get(&self) -> V {
+    pub fn get(&self) -> V
+    where
+        V: Copy,
+    {
         self.value
     }
 
     pub fn cast<NewV>(&self) -> Quantity<NewV, U>
     where
-        NewV: Copy
-            + Add<Output = NewV>
-            + Sub<Output = NewV>
-            + Mul<Output = NewV>
-            + Div<Output = NewV>
-            + Rem<Output = NewV>
-            + From<V>,
+        V: Copy,
+        NewV: From<V>,
     {
         Quantity {
             value: NewV::from(self.value),
@@ -72,6 +55,7 @@ where
 
     pub fn to<NewU>(&self) -> Quantity<V, NewU>
     where
+        V: Copy,
         NewU: Unit,
     {
         Quantity {
@@ -82,6 +66,7 @@ where
 
     pub fn mul_to<NewU>(&self, scale: V) -> Quantity<V, NewU>
     where
+        V: Copy + Mul<Output = V>,
         NewU: Unit,
     {
         Quantity {
@@ -92,6 +77,7 @@ where
 
     pub fn div_to<NewU>(&self, scale: V) -> Quantity<V, NewU>
     where
+        V: Copy + Div<Output = V>,
         NewU: Unit,
     {
         Quantity {
@@ -105,12 +91,6 @@ where
 
 impl<V, U> Deref for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
     U: Unit,
 {
     type Target = V;
@@ -122,12 +102,6 @@ where
 
 impl<V, U> DerefMut for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
     U: Unit,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -139,12 +113,6 @@ where
 
 impl<V, U> From<V> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
     U: Unit,
 {
     fn from(value: V) -> Self {
@@ -155,16 +123,76 @@ where
     }
 }
 
+// partial ord
+
+impl<V, U> PartialOrd<Quantity<V, U>> for Quantity<V, U>
+where
+    V: PartialOrd,
+    U: Unit,
+{
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        self.value.partial_cmp(&rhs.value)
+    }
+}
+
+impl<V, U> PartialOrd<V> for Quantity<V, U>
+where
+    V: PartialOrd,
+    U: Unit,
+{
+    fn partial_cmp(&self, rhs: &V) -> Option<Ordering> {
+        self.value.partial_cmp(&rhs)
+    }
+}
+
+// ord
+
+impl<V, U> Ord for Quantity<V, U>
+where
+    V: Ord,
+    U: Unit,
+{
+    fn cmp(&self, rhs: &Self) -> Ordering {
+        self.value.cmp(&rhs.value)
+    }
+}
+
+// partial eq
+
+impl<V, U> PartialEq<Quantity<V, U>> for Quantity<V, U>
+where
+    V: PartialEq,
+    U: Unit,
+{
+    fn eq(&self, rhs: &Self) -> bool {
+        self.value.eq(&rhs.value)
+    }
+}
+
+impl<V, U> PartialEq<V> for Quantity<V, U>
+where
+    V: PartialEq,
+    U: Unit,
+{
+    fn eq(&self, rhs: &V) -> bool {
+        self.value.eq(&rhs)
+    }
+}
+
+// eq
+
+impl<V, U> Eq for Quantity<V, U>
+where
+    V: PartialEq,
+    U: Unit,
+{
+}
+
 // add
 
 impl<V, U> Add<Quantity<V, U>> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Add<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -179,12 +207,7 @@ where
 
 impl<V, U> Add<V> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Add<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -201,12 +224,7 @@ where
 
 impl<V, U> Sub<Quantity<V, U>> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Sub<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -221,12 +239,7 @@ where
 
 impl<V, U> Sub<V> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Sub<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -243,12 +256,7 @@ where
 
 impl<V, U> Mul<Quantity<V, U>> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Mul<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -263,12 +271,7 @@ where
 
 impl<V, U> Mul<V> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Mul<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -285,12 +288,7 @@ where
 
 impl<V, U> Div<Quantity<V, U>> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Div<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -305,12 +303,7 @@ where
 
 impl<V, U> Div<V> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Div<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -327,12 +320,7 @@ where
 
 impl<V, U> Rem<Quantity<V, U>> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Rem<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
@@ -347,12 +335,7 @@ where
 
 impl<V, U> Rem<V> for Quantity<V, U>
 where
-    V: Copy
-        + Add<Output = V>
-        + Sub<Output = V>
-        + Mul<Output = V>
-        + Div<Output = V>
-        + Rem<Output = V>,
+    V: Rem<Output = V>,
     U: Unit,
 {
     type Output = Quantity<V, U>;
