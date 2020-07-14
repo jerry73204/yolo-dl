@@ -60,6 +60,7 @@ impl DataSet {
             image_size,
             mosaic_prob,
             mosaic_margin,
+            affine_prob,
             mini_batch_size,
             ..
         } = *self.config;

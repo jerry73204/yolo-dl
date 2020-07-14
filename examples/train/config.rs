@@ -8,6 +8,7 @@ pub struct Config {
     pub image_size: NonZeroUsize,
     pub mosaic_prob: Ratio,
     pub mosaic_margin: Ratio,
+    pub affine_prob: Ratio,
     pub logging_dir: PathBuf,
     pub mini_batch_size: usize,
 }

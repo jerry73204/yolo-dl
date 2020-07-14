@@ -5,6 +5,7 @@
     "image_size": 256,
     "mosaic_prob": 0.3,
     "mosaic_margin": 0.4,
+    "affine_prob": 0.3,
     "logging_dir": "logs",
     "mini_batch_size": 16,
 }
