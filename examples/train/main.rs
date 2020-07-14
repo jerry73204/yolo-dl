@@ -53,7 +53,7 @@ pub async fn main() -> Result<()> {
 
         rate_counter.add(1.0).await;
         if let Some(rate) = rate_counter.rate().await {
-            info!("rate {} msg/s", rate);
+            info!("rate {:.2} msg/s", rate);
         }
     }
 
