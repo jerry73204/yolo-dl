@@ -58,6 +58,7 @@ impl DataSet {
             ref dataset_name,
             ref cache_dir,
             image_size,
+            mosaic_prob,
             mosaic_margin,
             mini_batch_size,
             ..
@@ -204,12 +205,18 @@ impl DataSet {
 
         let stream = stream.and_then(move |(index, args)| {
             let mosaic_processor = mosaic_processor.clone();
+            let mut rng = StdRng::from_entropy();
+
             async move {
                 let (step, epoch, bbox_image_vec) = args;
 
-                // create mosaic image
-                let (merged_bboxes, merged_image) =
-                    mosaic_processor.make_mosaic(bbox_image_vec).await?;
+                // randomly create mosaic image
+                let (merged_bboxes, merged_image) = if rng.gen_range(0.0, 1.0) <= mosaic_prob.raw()
+                {
+                    mosaic_processor.make_mosaic(bbox_image_vec).await?
+                } else {
+                    bbox_image_vec.into_iter().next().unwrap()
+                };
 
                 Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
             }
