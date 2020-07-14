@@ -33,7 +33,6 @@ impl DataSet {
         let Config {
             dataset_dir,
             dataset_name,
-            cache_dir,
             ..
         } = &*config;
         let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
@@ -54,8 +53,6 @@ impl DataSet {
         logging_tx: broadcast::Sender<LoggingMessage>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         let Config {
-            ref dataset_dir,
-            ref dataset_name,
             ref cache_dir,
             image_size,
             mosaic_prob,
@@ -92,7 +89,7 @@ impl DataSet {
         let records = Arc::new(
             annotations
                 .iter()
-                .map(|(id, ann)| (ann.image_id, ann))
+                .map(|(_id, ann)| (ann.image_id, ann))
                 .into_group_map()
                 .into_iter()
                 .map(|(image_id, anns)| {

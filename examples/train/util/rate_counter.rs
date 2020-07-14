@@ -19,7 +19,7 @@ impl RateCounter {
         // run ticker
         {
             let tx = tx.clone();
-            let mut curr_lock = curr_lock.clone();
+            let curr_lock = curr_lock.clone();
             let rate_lock = rate_lock.clone();
             let closing = closing.clone();
 
@@ -78,7 +78,7 @@ impl Clone for RateCounter {
             rate_lock,
             curr_lock,
             tx,
-            rx,
+            ..
         } = self;
 
         Self {
