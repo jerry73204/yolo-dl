@@ -5,291 +5,60 @@ use crate::{
     util::{PixelBBox, Ratio, RatioBBox},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Record {
-    pub path: PathBuf,
-    pub height: usize,
-    pub width: usize,
-    pub bboxes: Vec<PixelBBox>,
+// utility funcions
+
+pub fn crop_image(image: &Tensor, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Tensor {
+    assert!(left < right);
+    assert!(top < bottom);
+
+    let (_channels, height, width) = image.size3().unwrap();
+    let height = height as f64;
+    let width = width as f64;
+
+    let top = (f64::from(top) * height) as i64;
+    let bottom = (f64::from(bottom) * height) as i64;
+    let left = (f64::from(left) * width) as i64;
+    let right = (f64::from(right) * width) as i64;
+
+    let cropped = image.i((.., top..bottom, left..right));
+    cropped
 }
 
-#[derive(Debug, TensorLike)]
-pub struct TrainingRecord {
-    pub epoch: usize,
-    pub step: usize,
-    pub image: Tensor,
-    #[tensor_like(clone)]
-    pub bboxes: Vec<RatioBBox>,
+pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
+    let (_channels, _height, _width) = input.size3().unwrap();
+
+    let resized = vision::image::resize_preserve_aspect_ratio(
+        &(input * 255.0).to_kind(Kind::Uint8),
+        out_w,
+        out_h,
+    )?
+    .to_kind(Kind::Float)
+        / 255.0;
+
+    Ok(resized)
 }
 
-#[derive(Debug)]
-pub struct DataSet {
-    config: Arc<Config>,
-    dataset: coco::DataSet,
+pub fn batch_resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
+    let (bsize, _channels, _height, _width) = input.size4().unwrap();
+
+    let input_scaled = (input * 255.0).to_kind(Kind::Uint8);
+    let resized_vec = (0..bsize)
+        .map(|index| {
+            let resized = vision::image::resize_preserve_aspect_ratio(
+                &input_scaled.select(0, index),
+                out_w,
+                out_h,
+            )?;
+            Ok(resized)
+        })
+        .collect::<Fallible<Vec<_>>>()?;
+    let resized = Tensor::stack(resized_vec.as_slice(), 0);
+    let resized_scaled = resized.to_kind(Kind::Float) / 255.0;
+
+    Ok(resized_scaled)
 }
 
-impl DataSet {
-    pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let Config {
-            dataset_dir,
-            dataset_name,
-            ..
-        } = &*config;
-        let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
-
-        Ok(Self { config, dataset })
-    }
-
-    pub fn input_channels(&self) -> usize {
-        3
-    }
-
-    pub fn num_classes(&self) -> usize {
-        self.dataset.instances.categories.len()
-    }
-
-    pub async fn train_stream(
-        &self,
-        logging_tx: broadcast::Sender<LoggingMessage>,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
-        let Config {
-            ref cache_dir,
-            image_size,
-            mosaic_prob,
-            mosaic_margin,
-            affine_prob,
-            mini_batch_size,
-            rotate_degrees,
-            translation,
-            scale,
-            shear,
-            horizontal_flip,
-            vertical_flip,
-            ..
-        } = *self.config;
-        let image_size = image_size.get() as i64;
-
-        let coco::DataSet {
-            instances,
-            image_dir,
-            ..
-        } = &self.dataset;
-
-        let annotations = instances
-            .annotations
-            .iter()
-            .map(|ann| (ann.id, ann))
-            .collect::<HashMap<_, _>>();
-        let images = instances
-            .images
-            .iter()
-            .map(|img| (img.id, img))
-            .collect::<HashMap<_, _>>();
-
-        let records = Arc::new(
-            annotations
-                .iter()
-                .map(|(_id, ann)| (ann.image_id, ann))
-                .into_group_map()
-                .into_iter()
-                .map(|(image_id, anns)| {
-                    let image = &images[&image_id];
-                    let bboxes = anns
-                        .into_iter()
-                        .map(|ann| {
-                            let [x, y, w, h] = ann.bbox.clone();
-                            let category_id = ann.category_id;
-                            PixelBBox::new([y.into(), x.into(), h.into(), w.into()], category_id)
-                        })
-                        .collect::<Vec<_>>();
-
-                    Record {
-                        path: image_dir.join(&image.file_name),
-                        height: image.height,
-                        width: image.width,
-                        bboxes,
-                    }
-                })
-                .map(Arc::new)
-                .collect::<Vec<_>>(),
-        );
-
-        // repeat records
-        let stream = futures::stream::repeat(records).enumerate();
-
-        // sample 4 records per step
-        let stream = stream.flat_map(|(epoch, records)| {
-            let mut rng = rand::thread_rng();
-            let num_records = records.len();
-
-            let mut index_iters: Vec<_> = (0..4)
-                .map(|_| {
-                    let mut indexes: Vec<_> = (0..num_records).collect();
-                    indexes.shuffle(&mut rng);
-                    indexes.into_iter()
-                })
-                .collect();
-
-            let record_vec_iter = (0..num_records)
-                .map(|_| {
-                    let record_vec: Vec<Arc<Record>> = index_iters
-                        .iter_mut()
-                        .map(|iter| iter.next().unwrap())
-                        .map(|index| records[index].clone())
-                        .collect();
-                    (epoch, record_vec)
-                })
-                .collect::<Vec<_>>();
-
-            futures::stream::iter(record_vec_iter)
-        });
-
-        // add step count
-        let stream = stream
-            .enumerate()
-            .map(|(step, (epoch, record_vec))| Ok((step, epoch, record_vec)));
-
-        // load and cache images
-        let cache_loader = Arc::new(
-            CacheLoader::new(&cache_dir, image_size as usize, 3, logging_tx.clone()).await?,
-        );
-
-        let stream = stream.and_then(move |args| {
-            let (step, epoch, record_vec) = args;
-            let cache_loader = cache_loader.clone();
-
-            async move {
-                let load_cache_futs = record_vec
-                    .into_iter()
-                    .map(|record| {
-                        let cache_loader = cache_loader.clone();
-
-                        async move {
-                            let Record {
-                                ref path,
-                                height,
-                                width,
-                                ..
-                            } = *record;
-
-                            // load cache
-                            let image = cache_loader.load_cache(path, height, width).await?;
-
-                            // extend to specified size
-                            let resized = resize_image(&image, image_size, image_size)?;
-
-                            // convert to ratio bbox
-                            let bboxes: Vec<_> = record
-                                .bboxes
-                                .iter()
-                                .map(|bbox| bbox.to_ratio_bbox(height, width))
-                                .collect();
-
-                            Fallible::Ok((bboxes, resized))
-                        }
-                    })
-                    .map(async_std::task::spawn);
-
-                let bbox_image_vec: Vec<(_, _)> =
-                    futures::future::try_join_all(load_cache_futs).await?;
-
-                Fallible::Ok((step, epoch, bbox_image_vec))
-            }
-        });
-
-        // start of unordered ops
-        let stream = Box::pin(stream).try_overflowing_enumerate();
-
-        // make mosaic
-        let mosaic_processor = Arc::new(MosaicProcessor::new(
-            image_size,
-            mosaic_margin,
-            logging_tx.clone(),
-        ));
-
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
-            let mosaic_processor = mosaic_processor.clone();
-            let mut rng = StdRng::from_entropy();
-
-            async move {
-                let (step, epoch, bbox_image_vec) = args;
-
-                // randomly create mosaic image
-                let (merged_bboxes, merged_image) = if rng.gen_range(0.0, 1.0) <= mosaic_prob.raw()
-                {
-                    mosaic_processor.make_mosaic(bbox_image_vec).await?
-                } else {
-                    bbox_image_vec.into_iter().next().unwrap()
-                };
-
-                Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
-            }
-        });
-
-        // add batch dimension
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
-            let (step, epoch, bboxes, image) = args;
-            let new_image = image.unsqueeze(0);
-            Fallible::Ok((index, (step, epoch, bboxes, new_image)))
-        });
-
-        // apply random affine
-        let random_affine = Arc::new(RandomAffine::new(
-            rotate_degrees,
-            translation,
-            scale,
-            shear,
-            horizontal_flip,
-            vertical_flip,
-        ));
-
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
-            let random_affine = random_affine.clone();
-            let mut rng = StdRng::from_entropy();
-
-            async move {
-                let (step, epoch, bboxes, image) = args;
-
-                // randomly create mosaic image
-                let (new_bboxes, new_image) = if rng.gen_range(0.0, 1.0) <= affine_prob.raw() {
-                    let new_image = async_std::task::spawn_blocking(move || {
-                        random_affine.batch_random_affine(&image)
-                    })
-                    .await;
-
-                    // TODO: random affine on bboxes
-                    let new_bboxes = bboxes;
-
-                    (new_bboxes, new_image)
-                } else {
-                    (bboxes, image)
-                };
-
-                Fallible::Ok((index, (step, epoch, new_bboxes, new_image)))
-            }
-        });
-
-        // map to output type
-        let stream = stream.try_par_then_unordered(None, |(index, args)| async move {
-            let (step, epoch, bboxes, image) = args;
-
-            let record = TrainingRecord {
-                epoch,
-                step,
-                image,
-                bboxes,
-            };
-
-            Ok((index, record))
-        });
-
-        // reorder items
-        let stream = Box::pin(stream).try_reorder_enumerated();
-
-        let stream = Box::pin(stream);
-        Ok(stream)
-    }
-}
+// random affine
 
 #[derive(Debug, Clone)]
 pub struct RandomAffine {
@@ -528,21 +297,17 @@ impl RandomAffine {
     }
 }
 
+// cache loader
+
 #[derive(Debug, Clone)]
 pub struct CacheLoader {
     cache_dir: async_std::path::PathBuf,
     image_size: usize,
     image_channels: usize,
-    logging_tx: broadcast::Sender<LoggingMessage>,
 }
 
 impl CacheLoader {
-    pub async fn new<P>(
-        cache_dir: P,
-        image_size: usize,
-        image_channels: usize,
-        logging_tx: broadcast::Sender<LoggingMessage>,
-    ) -> Result<Self>
+    pub async fn new<P>(cache_dir: P, image_size: usize, image_channels: usize) -> Result<Self>
     where
         P: AsRef<async_std::path::Path>,
     {
@@ -556,7 +321,6 @@ impl CacheLoader {
             cache_dir,
             image_size,
             image_channels,
-            logging_tx,
         };
 
         Ok(loader)
@@ -670,83 +434,22 @@ impl CacheLoader {
         })
         .await?;
 
-        // send to logger
-        {
-            let msg = LoggingMessage::new_images("cache-loader", &[&image]);
-            let _ = self.logging_tx.send(msg);
-        }
-
         Ok(image)
     }
 }
 
-pub fn crop_image(image: &Tensor, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Tensor {
-    assert!(left < right);
-    assert!(top < bottom);
-
-    let (_channels, height, width) = image.size3().unwrap();
-    let height = height as f64;
-    let width = width as f64;
-
-    let top = (f64::from(top) * height) as i64;
-    let bottom = (f64::from(bottom) * height) as i64;
-    let left = (f64::from(left) * width) as i64;
-    let right = (f64::from(right) * width) as i64;
-
-    let cropped = image.i((.., top..bottom, left..right));
-    cropped
-}
-
-pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
-    let (_channels, _height, _width) = input.size3().unwrap();
-
-    let resized = vision::image::resize_preserve_aspect_ratio(
-        &(input * 255.0).to_kind(Kind::Uint8),
-        out_w,
-        out_h,
-    )?
-    .to_kind(Kind::Float)
-        / 255.0;
-
-    Ok(resized)
-}
-
-pub fn batch_resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
-    let (bsize, _channels, _height, _width) = input.size4().unwrap();
-
-    let input_scaled = (input * 255.0).to_kind(Kind::Uint8);
-    let resized_vec = (0..bsize)
-        .map(|index| {
-            let resized = vision::image::resize_preserve_aspect_ratio(
-                &input_scaled.select(0, index),
-                out_w,
-                out_h,
-            )?;
-            Ok(resized)
-        })
-        .collect::<Fallible<Vec<_>>>()?;
-    let resized = Tensor::stack(resized_vec.as_slice(), 0);
-    let resized_scaled = resized.to_kind(Kind::Float) / 255.0;
-
-    Ok(resized_scaled)
-}
+// mosaic processor
 
 pub struct MosaicProcessor {
     image_size: i64,
     mosaic_margin: Ratio,
-    logging_tx: broadcast::Sender<LoggingMessage>,
 }
 
 impl MosaicProcessor {
-    pub fn new(
-        image_size: i64,
-        mosaic_margin: Ratio,
-        logging_tx: broadcast::Sender<LoggingMessage>,
-    ) -> Self {
+    pub fn new(image_size: i64, mosaic_margin: Ratio) -> Self {
         Self {
             image_size,
             mosaic_margin,
-            logging_tx,
         }
     }
 
@@ -757,7 +460,6 @@ impl MosaicProcessor {
         let Self {
             image_size,
             mosaic_margin,
-            ref logging_tx,
         } = *self;
         let mosaic_margin = mosaic_margin.raw();
 
@@ -822,16 +524,6 @@ impl MosaicProcessor {
             (merged_bboxes, merged_image)
         })
         .await;
-
-        // send to logger
-        {
-            let msg = LoggingMessage::new_image_with_bboxes(
-                "mosaicache-processor",
-                &merged_image,
-                &merged_bboxes,
-            );
-            let _ = logging_tx.send(msg);
-        }
 
         Ok((merged_bboxes, merged_image))
     }
