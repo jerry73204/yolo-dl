@@ -42,4 +42,4 @@ pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, RwLock};
 pub type Fallible<T> = Result<T, Error>;
 pub use approx::abs_diff_eq;
-pub use log::info;
+pub use log::{info, warn};

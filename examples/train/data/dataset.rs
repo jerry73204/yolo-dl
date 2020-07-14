@@ -264,6 +264,7 @@ impl DataSet {
             vertical_flip,
         ));
 
+        warn!("TODO: random affine on bboxes is not implemented");
         let stream = stream.try_par_then_unordered(None, move |(index, args)| {
             let random_affine = random_affine.clone();
             let mut rng = StdRng::from_entropy();
