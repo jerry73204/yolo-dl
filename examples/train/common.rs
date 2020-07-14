@@ -23,7 +23,7 @@ pub use std::{
     convert::{TryFrom, TryInto},
     future::Future,
     hash::{Hash, Hasher},
-    iter,
+    iter::{self, Sum},
     marker::PhantomData,
     mem,
     num::NonZeroUsize,

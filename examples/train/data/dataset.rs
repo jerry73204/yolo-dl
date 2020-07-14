@@ -20,7 +20,7 @@ pub struct TrainingRecord {
     pub step: usize,
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<RatioBBox>,
+    pub bboxes: Vec<Vec<RatioBBox>>,
 }
 
 #[derive(Debug)]
@@ -290,8 +290,67 @@ impl DataSet {
             }
         });
 
-        // pack to mini-batches
-        // TODO
+        // reorder items
+        let stream = Box::pin(stream).try_reorder_enumerated();
+
+        // group into chunks
+        let stream = stream
+            .chunks(mini_batch_size)
+            .overflowing_enumerate()
+            .par_then_unordered(None, |(index, results)| async move {
+                let chunk = results.into_iter().collect::<Fallible<Vec<_>>>()?;
+                Fallible::Ok((index, chunk))
+            });
+
+        // convert to batched type
+        let stream = stream.try_par_then_unordered(None, |(index, chunk)| {
+            // summerizable type
+            struct State {
+                pub step: usize,
+                pub epoch: usize,
+                pub bboxes_vec: Vec<Vec<RatioBBox>>,
+                pub image_vec: Vec<Tensor>,
+            }
+
+            impl Sum<(usize, usize, Vec<RatioBBox>, Tensor)> for State {
+                fn sum<I>(mut iter: I) -> Self
+                where
+                    I: Iterator<Item = (usize, usize, Vec<RatioBBox>, Tensor)>,
+                {
+                    let (mut min_step, mut min_epoch, bboxes, image) =
+                        iter.next().expect("the iterator canont be empty");
+                    let mut bboxes_vec = vec![bboxes];
+                    let mut image_vec = vec![image];
+
+                    while let Some((step, epoch, bboxes, image)) = iter.next() {
+                        min_step = min_step.min(step);
+                        min_epoch = min_epoch.min(epoch);
+                        bboxes_vec.push(bboxes);
+                        image_vec.push(image);
+                    }
+
+                    Self {
+                        step: min_step,
+                        epoch: min_epoch,
+                        bboxes_vec,
+                        image_vec,
+                    }
+                }
+            }
+
+            async move {
+                let State {
+                    step,
+                    epoch,
+                    bboxes_vec,
+                    image_vec,
+                } = chunk.into_iter().sum();
+
+                let image_batch = Tensor::stack(&image_vec, 0);
+
+                Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch)))
+            }
+        });
 
         // map to output type
         let stream = stream.try_par_then_unordered(None, |(index, args)| async move {
@@ -307,8 +366,8 @@ impl DataSet {
             Ok((index, record))
         });
 
-        // reorder items
-        let stream = Box::pin(stream).try_reorder_enumerated();
+        // reorder back
+        let stream = stream.try_reorder_enumerated();
 
         let stream = Box::pin(stream);
         Ok(stream)
