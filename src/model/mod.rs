@@ -1,7 +1,9 @@
+mod activation;
 mod helper;
 mod model;
 mod module;
 
+pub use activation::*;
 pub use helper::*;
 pub use model::*;
 pub use module::*;
