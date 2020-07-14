@@ -148,15 +148,12 @@ impl DataSet {
             .enumerate()
             .map(|(step, (epoch, record_vec))| Ok((step, epoch, record_vec)));
 
-        // start of unordered maps
-        let stream = stream.try_overflowing_enumerate();
-
         // load and cache images
         let cache_loader = Arc::new(
             CacheLoader::new(&cache_dir, image_size as usize, 3, logging_tx.clone()).await?,
         );
 
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
+        let stream = stream.and_then(move |args| {
             let (step, epoch, record_vec) = args;
             let cache_loader = cache_loader.clone();
 
@@ -188,9 +185,12 @@ impl DataSet {
                 let record_image_vec: Vec<(_, _)> =
                     futures::future::try_join_all(load_cache_futs).await?;
 
-                Fallible::Ok((index, (step, epoch, record_image_vec)))
+                Fallible::Ok((step, epoch, record_image_vec))
             }
         });
+
+        // start of unordered maps
+        let stream = Box::pin(stream).try_overflowing_enumerate();
 
         // make mosaic
         let mosaic_processor = Arc::new(MosaicProcessor::new(
@@ -198,7 +198,7 @@ impl DataSet {
             mosaic_margin,
             logging_tx.clone(),
         ));
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
+        let stream = stream.and_then(move |(index, args)| {
             let mosaic_processor = mosaic_processor.clone();
             async move {
                 let (step, epoch, record_image_vec) = args;
@@ -210,7 +210,7 @@ impl DataSet {
         });
 
         // map to output type
-        let stream = stream.try_par_then_unordered(None, |(index, args)| async move {
+        let stream = stream.and_then(|(index, args)| async move {
             let (step, epoch, bboxes, image) = args;
             let record = TrainingRecord {
                 epoch,
@@ -223,7 +223,7 @@ impl DataSet {
         });
 
         // reorder items
-        let stream = stream.try_reorder_enumerated();
+        let stream = Box::pin(stream).try_reorder_enumerated();
 
         let stream = Box::pin(stream);
         Ok(stream)
@@ -733,36 +733,34 @@ impl MosaicProcessor {
         let mut record_cropped_iter = futures::stream::iter(
             record_image_vec.into_iter().zip_eq(ranges.into_iter()),
         )
-        .par_map(4, move |((record, image), (top, bottom, left, right))| {
-            move || {
-                let Record {
-                    ref path,
-                    height,
-                    width,
-                    ref bboxes,
-                } = *record;
+        .map(move |((record, image), (top, bottom, left, right))| {
+            let Record {
+                ref path,
+                height,
+                width,
+                ref bboxes,
+            } = *record;
 
-                {
-                    let (_c, h, w) = image.size3().unwrap();
-                    debug_assert_eq!(h, image_size);
-                    debug_assert_eq!(w, image_size);
-                }
-
-                let cropped_image = crop_image(&image, top, bottom, left, right);
-                let cropped_bboxes: Vec<_> = bboxes
-                    .into_iter()
-                    .filter_map(|bbox| crop_bbox(bbox, top, bottom, left, right))
-                    .collect();
-
-                let cropped_record = Record {
-                    path: path.clone(),
-                    height,
-                    width,
-                    bboxes: cropped_bboxes,
-                };
-
-                (cropped_record, cropped_image)
+            {
+                let (_c, h, w) = image.size3().unwrap();
+                debug_assert_eq!(h, image_size);
+                debug_assert_eq!(w, image_size);
             }
+
+            let cropped_image = crop_image(&image, top, bottom, left, right);
+            let cropped_bboxes: Vec<_> = bboxes
+                .into_iter()
+                .filter_map(|bbox| crop_bbox(bbox, top, bottom, left, right))
+                .collect();
+
+            let cropped_record = Record {
+                path: path.clone(),
+                height,
+                width,
+                bboxes: cropped_bboxes,
+            };
+
+            (cropped_record, cropped_image)
         });
 
         let (record_tl, cropped_tl) = record_cropped_iter.next().await.unwrap();

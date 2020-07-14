@@ -2,7 +2,7 @@ pub use anyhow::{ensure, Context, Error, Result};
 pub use argh::FromArgs;
 pub use coco::Category;
 pub use futures::{
-    stream::{Stream, StreamExt},
+    stream::{Stream, StreamExt, TryStreamExt},
     AsyncWriteExt,
 };
 pub use image::{imageops::FilterType, Pixel};
@@ -19,8 +19,9 @@ pub use std::{
     collections::HashMap,
     convert::TryInto,
     future::Future,
-    iter, mem,
+    iter,
     marker::PhantomData,
+    mem,
     num::NonZeroUsize,
     ops::{Add, Deref, DerefMut, Div, Mul, Rem, Sub},
     path::{Path, PathBuf},
@@ -29,8 +30,7 @@ pub use std::{
         atomic::{self, AtomicBool},
         Arc,
     },
-    time::Duration,
-    time::Instant,
+    time::{Duration, Instant},
 };
 pub use tch::{kind::FLOAT_CPU, nn, vision, Device, IndexOp, Kind, Tensor};
 pub use tch_tensor_like::TensorLike;
