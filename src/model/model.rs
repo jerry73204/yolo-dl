@@ -524,7 +524,7 @@ impl YoloOutput {
                     .iter()
                     .enumerate()
                     .flat_map(|(index, xs)| {
-                        let (batch_size, num_anchors, height, width) = match xs.size().as_slice() {
+                        let (_batch_size, num_anchors, height, width) = match xs.size().as_slice() {
                             &[b, na, h, w, _no] => (b, na, h, w),
                             _ => unreachable!(),
                         };

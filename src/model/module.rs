@@ -504,7 +504,7 @@ impl DetectInit {
             .collect::<Vec<_>>();
 
         Box::new(
-            move |tensors: &[&Tensor], train: bool, image_height: i64, image_width: i64| {
+            move |tensors: &[&Tensor], _train: bool, image_height: i64, image_width: i64| {
                 debug_assert_eq!(tensors.len() as i64, num_detections);
 
                 let feature_maps = tensors
