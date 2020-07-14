@@ -1,4 +1,4 @@
-pub use anyhow::{ensure, Context, Error, Result};
+pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use argh::FromArgs;
 pub use coco::Category;
 pub use futures::{
@@ -19,6 +19,7 @@ pub use std::{
     collections::HashMap,
     convert::TryInto,
     future::Future,
+    hash::{Hash, Hasher},
     iter,
     marker::PhantomData,
     mem,
@@ -37,4 +38,5 @@ pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, RwLock};
 pub type Fallible<T> = Result<T, Error>;
+pub use approx::abs_diff_eq;
 pub use log::info;

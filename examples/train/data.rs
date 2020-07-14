@@ -1,17 +1,16 @@
-use crate::{common::*, config::Config, message::LoggingMessage};
+use crate::{
+    common::*,
+    config::Config,
+    message::LoggingMessage,
+    util::{PixelBBox, Ratio, RatioBBox},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Record {
     pub path: PathBuf,
     pub height: usize,
     pub width: usize,
-    pub bboxes: Vec<BBox>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BBox {
-    pub xywh: [R64; 4],
-    pub category_id: usize,
+    pub bboxes: Vec<PixelBBox>,
 }
 
 #[derive(Debug, TensorLike)]
@@ -20,9 +19,10 @@ pub struct TrainingRecord {
     pub step: usize,
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<BBox>,
+    pub bboxes: Vec<RatioBBox>,
 }
 
+#[derive(Debug)]
 pub struct DataSet {
     config: Arc<Config>,
     dataset: coco::DataSet,
@@ -33,6 +33,7 @@ impl DataSet {
         let Config {
             dataset_dir,
             dataset_name,
+            cache_dir,
             ..
         } = &*config;
         let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
@@ -80,11 +81,6 @@ impl DataSet {
             .iter()
             .map(|img| (img.id, img))
             .collect::<HashMap<_, _>>();
-        let categories = instances
-            .categories
-            .iter()
-            .map(|cat| (cat.id, cat))
-            .collect::<HashMap<_, _>>();
 
         let records = Arc::new(
             annotations
@@ -96,9 +92,10 @@ impl DataSet {
                     let image = &images[&image_id];
                     let bboxes = anns
                         .into_iter()
-                        .map(|ann| BBox {
-                            xywh: ann.bbox.clone(),
-                            category_id: ann.category_id,
+                        .map(|ann| {
+                            let [x, y, w, h] = ann.bbox.clone();
+                            let category_id = ann.category_id;
+                            PixelBBox::new([y.into(), x.into(), h.into(), w.into()], category_id)
                         })
                         .collect::<Vec<_>>();
 
@@ -177,19 +174,26 @@ impl DataSet {
                             // extend to specified size
                             let resized = resize_image(&image, image_size, image_size)?;
 
-                            Fallible::Ok((record, resized))
+                            // convert to ratio bbox
+                            let bboxes: Vec<_> = record
+                                .bboxes
+                                .iter()
+                                .map(|bbox| bbox.to_ratio_bbox(height, width))
+                                .collect();
+
+                            Fallible::Ok((bboxes, resized))
                         }
                     })
                     .map(async_std::task::spawn);
 
-                let record_image_vec: Vec<(_, _)> =
+                let bbox_image_vec: Vec<(_, _)> =
                     futures::future::try_join_all(load_cache_futs).await?;
 
-                Fallible::Ok((step, epoch, record_image_vec))
+                Fallible::Ok((step, epoch, bbox_image_vec))
             }
         });
 
-        // start of unordered maps
+        // start of unordered ops
         let stream = Box::pin(stream).try_overflowing_enumerate();
 
         // make mosaic
@@ -198,12 +202,15 @@ impl DataSet {
             mosaic_margin,
             logging_tx.clone(),
         ));
+
         let stream = stream.and_then(move |(index, args)| {
             let mosaic_processor = mosaic_processor.clone();
             async move {
-                let (step, epoch, record_image_vec) = args;
+                let (step, epoch, bbox_image_vec) = args;
+
+                // create mosaic image
                 let (merged_bboxes, merged_image) =
-                    mosaic_processor.make_mosaic(record_image_vec).await?;
+                    mosaic_processor.make_mosaic(bbox_image_vec).await?;
 
                 Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
             }
@@ -212,6 +219,7 @@ impl DataSet {
         // map to output type
         let stream = stream.and_then(|(index, args)| async move {
             let (step, epoch, bboxes, image) = args;
+
             let record = TrainingRecord {
                 epoch,
                 step,
@@ -607,47 +615,21 @@ impl CacheLoader {
     }
 }
 
-pub fn crop_image(image: &Tensor, top: i64, bottom: i64, left: i64, right: i64) -> Tensor {
-    debug_assert!(top >= 0);
-    debug_assert!(bottom >= 0);
-    debug_assert!(left >= 0);
-    debug_assert!(right >= 0);
-    debug_assert!(left < right);
-    debug_assert!(top < bottom);
-    let (channels, height, width) = image.size3().unwrap();
+pub fn crop_image(image: &Tensor, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Tensor {
+    assert!(left < right);
+    assert!(top < bottom);
+
+    let (_channels, height, width) = image.size3().unwrap();
+    let height = height as f64;
+    let width = width as f64;
+
+    let top = (f64::from(top) * height) as i64;
+    let bottom = (f64::from(bottom) * height) as i64;
+    let left = (f64::from(left) * width) as i64;
+    let right = (f64::from(right) * width) as i64;
+
     let cropped = image.i((.., top..bottom, left..right));
     cropped
-}
-
-pub fn crop_bbox(bbox: &BBox, top: i64, bottom: i64, left: i64, right: i64) -> Option<BBox> {
-    let BBox {
-        xywh: [bbox_left, bbox_top, w, h],
-        category_id,
-    } = *bbox;
-    let bbox_right = bbox_left + w;
-    let bbox_bottom = bbox_top + h;
-
-    let crop_top = bbox_left.raw().max(top as f64);
-    let crop_bottom = bbox_right.raw().max(bottom as f64);
-    let crop_left = bbox_left.raw().max(left as f64);
-    let crop_right = bbox_right.raw().max(right as f64);
-
-    let crop_width = crop_right - crop_left;
-    let crop_height = crop_bottom - crop_top;
-
-    if crop_height >= 1.0 && crop_width >= 1.0 {
-        Some(BBox {
-            xywh: [
-                R64::new(crop_left),
-                R64::new(crop_top),
-                R64::new(crop_width),
-                R64::new(crop_height),
-            ],
-            category_id,
-        })
-    } else {
-        None
-    }
 }
 
 pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
@@ -705,42 +687,34 @@ impl MosaicProcessor {
 
     pub async fn make_mosaic(
         &self,
-        record_image_vec: Vec<(Arc<Record>, Tensor)>,
-    ) -> Fallible<(Vec<BBox>, Tensor)> {
+        bbox_image_vec: Vec<(Vec<RatioBBox>, Tensor)>,
+    ) -> Fallible<(Vec<RatioBBox>, Tensor)> {
         let Self {
             image_size,
             mosaic_margin,
             ref logging_tx,
         } = *self;
 
-        debug_assert_eq!(record_image_vec.len(), 4);
+        debug_assert_eq!(bbox_image_vec.len(), 4);
         let mut rng = StdRng::from_entropy();
 
         // random select pivot point
-        let pivot_row =
-            (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
-        let pivot_col =
-            (rng.gen_range(mosaic_margin, 1.0 - mosaic_margin) * image_size as f64) as i64;
+        let pivot_row: Ratio = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin).into();
+        let pivot_col: Ratio = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin).into();
 
         // crop images
         let ranges = vec![
-            (0, pivot_row, 0, pivot_col),
-            (0, pivot_row, pivot_col, image_size),
-            (pivot_row, image_size, 0, pivot_col),
-            (pivot_row, image_size, pivot_col, image_size),
+            (0.0.into(), pivot_row, 0.0.into(), pivot_col),
+            (0.0.into(), pivot_row, pivot_col, 1.0.into()),
+            (pivot_row, 1.0.into(), 0.0.into(), pivot_col),
+            (pivot_row, 1.0.into(), pivot_col, 1.0.into()),
         ];
 
-        let mut record_cropped_iter = futures::stream::iter(
-            record_image_vec.into_iter().zip_eq(ranges.into_iter()),
+        let mut crop_iter = futures::stream::iter(
+            bbox_image_vec.into_iter().zip_eq(ranges.into_iter()),
         )
-        .map(move |((record, image), (top, bottom, left, right))| {
-            let Record {
-                ref path,
-                height,
-                width,
-                ref bboxes,
-            } = *record;
-
+        .map(move |((bboxes, image), (top, bottom, left, right))| {
+            // sanity check
             {
                 let (_c, h, w) = image.size3().unwrap();
                 debug_assert_eq!(h, image_size);
@@ -750,49 +724,36 @@ impl MosaicProcessor {
             let cropped_image = crop_image(&image, top, bottom, left, right);
             let cropped_bboxes: Vec<_> = bboxes
                 .into_iter()
-                .filter_map(|bbox| crop_bbox(bbox, top, bottom, left, right))
+                .filter_map(|bbox| bbox.crop(top, bottom, left, right))
                 .collect();
 
-            let cropped_record = Record {
-                path: path.clone(),
-                height,
-                width,
-                bboxes: cropped_bboxes,
-            };
-
-            (cropped_record, cropped_image)
+            (cropped_bboxes, cropped_image)
         });
 
-        let (record_tl, cropped_tl) = record_cropped_iter.next().await.unwrap();
-        let (record_tr, cropped_tr) = record_cropped_iter.next().await.unwrap();
-        let (record_bl, cropped_bl) = record_cropped_iter.next().await.unwrap();
-        let (record_br, cropped_br) = record_cropped_iter.next().await.unwrap();
-        debug_assert_eq!(record_cropped_iter.next().await, None);
+        let (bboxes_tl, cropped_tl) = crop_iter.next().await.unwrap();
+        let (bboxes_tr, cropped_tr) = crop_iter.next().await.unwrap();
+        let (bboxes_bl, cropped_bl) = crop_iter.next().await.unwrap();
+        let (bboxes_br, cropped_br) = crop_iter.next().await.unwrap();
+        debug_assert_eq!(crop_iter.next().await, None);
 
         // merge cropped images
-        let (merged_image, merged_bboxes) = async_std::task::spawn_blocking(move || {
+        let (merged_bboxes, merged_image) = async_std::task::spawn_blocking(move || {
             let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 2);
-            debug_assert_eq!(merged_top.size3().unwrap(), (3, pivot_row, image_size));
 
             let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 2);
-            debug_assert_eq!(
-                merged_bottom.size3().unwrap(),
-                (3, image_size - pivot_row, image_size)
-            );
 
             let merged_image = Tensor::cat(&[merged_top, merged_bottom], 1);
             debug_assert_eq!(merged_image.size3().unwrap(), (3, image_size, image_size));
 
-            // merge cropped records
-            let merged_bboxes: Vec<_> = record_tl
-                .bboxes
+            // merge cropped bboxes
+            let merged_bboxes: Vec<_> = bboxes_tl
                 .into_iter()
-                .chain(record_tr.bboxes.into_iter())
-                .chain(record_bl.bboxes.into_iter())
-                .chain(record_br.bboxes.into_iter())
+                .chain(bboxes_tr.into_iter())
+                .chain(bboxes_bl.into_iter())
+                .chain(bboxes_br.into_iter())
                 .collect();
 
-            (merged_image, merged_bboxes)
+            (merged_bboxes, merged_image)
         })
         .await;
 

@@ -20,7 +20,7 @@ impl RateCounter {
         {
             let tx = tx.clone();
             let mut curr_lock = curr_lock.clone();
-            let mut rate_lock = rate_lock.clone();
+            let rate_lock = rate_lock.clone();
             let closing = closing.clone();
 
             async_std::task::spawn(async move {

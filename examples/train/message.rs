@@ -1,4 +1,4 @@
-use crate::{common::*, data::BBox};
+use crate::{common::*, util::RatioBBox};
 
 #[derive(Debug, TensorLike)]
 pub enum LoggingMessage {
@@ -12,7 +12,7 @@ pub enum LoggingMessage {
         tag: String,
         image: Tensor,
         #[tensor_like(clone)]
-        bboxes: Vec<BBox>,
+        bboxes: Vec<RatioBBox>,
     },
 }
 
@@ -31,7 +31,7 @@ impl LoggingMessage {
         Self::Images { tag, images }
     }
 
-    pub fn new_image_with_bboxes<S, T>(tag: S, image: T, bboxes: &[BBox]) -> Self
+    pub fn new_image_with_bboxes<S, T>(tag: S, image: T, bboxes: &[RatioBBox]) -> Self
     where
         S: ToString,
         T: Borrow<Tensor>,
