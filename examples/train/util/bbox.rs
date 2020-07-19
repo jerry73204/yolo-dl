@@ -2,8 +2,8 @@ use crate::{common::*, util::Ratio};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PixelBBox {
-    tlhw: [R64; 4],
-    category_id: usize,
+    pub tlhw: [R64; 4],
+    pub category_id: usize,
 }
 
 impl PixelBBox {
@@ -64,8 +64,8 @@ impl PixelBBox {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RatioBBox {
-    tlhw: [Ratio; 4],
-    category_id: usize,
+    pub tlhw: [Ratio; 4],
+    pub category_id: usize,
 }
 
 impl RatioBBox {
