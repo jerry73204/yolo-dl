@@ -52,10 +52,10 @@ impl PixelBBox {
         let ratio_l = pixel_l / image_width;
         let ratio_r = pixel_r / image_width;
 
-        let ratio_cy = (ratio_t + ratio_b) / 2.0;
-        let ratio_cx = (ratio_l + ratio_r) / 2.0;
         let ratio_h = ratio_b - ratio_t;
         let ratio_w = ratio_r - ratio_l;
+        let ratio_cy = ratio_t + ratio_h / 2.0;
+        let ratio_cx = ratio_l + ratio_w / 2.0;
 
         RatioBBox::new(
             [
@@ -108,10 +108,10 @@ impl RatioBBox {
         let crop_r = orig_r.max(right);
 
         if crop_l < crop_r && crop_t < crop_b {
-            let crop_cy = (crop_t + crop_b) / 2.0;
-            let crop_cx = (crop_l + crop_r) / 2.0;
             let crop_w = crop_r - crop_l;
             let crop_h = crop_b - crop_t;
+            let crop_cy = crop_t + crop_h / 2.0;
+            let crop_cx = crop_l + crop_w / 2.0;
 
             Some(RatioBBox {
                 cycxhw: [crop_cy, crop_cx, crop_h, crop_w],
@@ -120,5 +120,38 @@ impl RatioBBox {
         } else {
             None
         }
+    }
+
+    /// Returns range in tlbr format.
+    pub fn tlbr(&self) -> [Ratio; 4] {
+        let [cy, cx, h, w] = self.cycxhw;
+        let t = cy - h / 2.0;
+        let l = cx - w / 2.0;
+        let b = cy + h / 2.0;
+        let r = cx + w / 2.0;
+
+        [t, l, b, r]
+    }
+
+    /// Compute intersection area in cycxhw format.
+    pub fn intersect(&self, rhs: &Self) -> Option<[Ratio; 4]> {
+        let [lt, ll, lb, lr] = self.tlbr();
+        let [rt, rl, rb, rr] = rhs.tlbr();
+
+        let t = lt.max(rt);
+        let l = lt.max(rt);
+        let b = lb.min(rb);
+        let r = lr.min(rr);
+
+        let h = b - t;
+        let w = r - l;
+        let cy = t + h / 2.0;
+        let cx = l + w / 2.0;
+
+        if abs_diff_eq!(cy.raw(), 0.0) || abs_diff_eq!(cx.raw(), 0.0) {
+            return None;
+        }
+
+        Some([cy, cx, h, w])
     }
 }
