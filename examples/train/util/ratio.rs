@@ -9,7 +9,6 @@ use crate::common::*;
     PartialOrd,
     Ord,
     Hash,
-    derive_more::Mul,
     derive_more::Rem,
     derive_more::AddAssign,
     derive_more::SubAssign,
@@ -110,6 +109,42 @@ impl Sub for Ratio {
 
     fn sub(self, rhs: Self) -> Self::Output {
         let value = self.0 - rhs.0;
+        Self::f_from_r64(value).unwrap()
+    }
+}
+
+impl Mul<Ratio> for Ratio {
+    type Output = Ratio;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let value = self.0 * rhs.0;
+        Self::f_from_r64(value).unwrap()
+    }
+}
+
+impl Mul<f64> for Ratio {
+    type Output = Ratio;
+
+    fn mul(self, rhs: f64) -> Self::Output {
+        let value = self.0 * rhs;
+        Self::f_from_r64(value).unwrap()
+    }
+}
+
+impl Div<Ratio> for Ratio {
+    type Output = Ratio;
+
+    fn div(self, rhs: Ratio) -> Self::Output {
+        let value = self.0 / rhs.0;
+        Self::f_from_r64(value).unwrap()
+    }
+}
+
+impl Div<f64> for Ratio {
+    type Output = Ratio;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        let value = self.0 / rhs;
         Self::f_from_r64(value).unwrap()
     }
 }

@@ -19,44 +19,51 @@ impl PixelBBox {
 
     pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> RatioBBox {
         let Self {
-            tlhw: [orig_t, orig_l, orig_h, orig_w],
+            tlhw: [pixel_t, pixel_l, pixel_h, pixel_w],
             category_id,
         } = *self;
 
         let image_height = R64::new(image_height as f64);
         let image_width = R64::new(image_width as f64);
 
-        let mut orig_b = orig_t + orig_h;
-        let mut orig_r = orig_l + orig_w;
+        let mut pixel_b = pixel_t + pixel_h;
+        let mut pixel_r = pixel_l + pixel_w;
 
         // fix the value if it slightly exceeds the boundary
-        if orig_b > image_height {
-            if abs_diff_eq!(orig_b.raw(), image_height.raw()) {
-                orig_b = image_height;
+        if pixel_b > image_height {
+            if abs_diff_eq!(pixel_b.raw(), image_height.raw()) {
+                pixel_b = image_height;
             } else {
                 panic!("the bbox exceeds the image boundary");
             }
         }
 
-        if orig_r > image_width {
-            if abs_diff_eq!(orig_r.raw(), image_width.raw()) {
-                orig_r = image_width;
+        if pixel_r > image_width {
+            if abs_diff_eq!(pixel_r.raw(), image_width.raw()) {
+                pixel_r = image_width;
             } else {
                 panic!("the bbox exceeds the image boundary");
             }
         }
 
         // construct ratio bbox
-        let new_t = orig_t / image_height;
-        let new_b = orig_b / image_height;
-        let new_l = orig_l / image_width;
-        let new_r = orig_r / image_width;
+        let ratio_t = pixel_t / image_height;
+        let ratio_b = pixel_b / image_height;
+        let ratio_l = pixel_l / image_width;
+        let ratio_r = pixel_r / image_width;
 
-        let new_h = new_b - new_t;
-        let new_w = new_r - new_l;
+        let ratio_cy = (ratio_t + ratio_b) / 2.0;
+        let ratio_cx = (ratio_l + ratio_r) / 2.0;
+        let ratio_h = ratio_b - ratio_t;
+        let ratio_w = ratio_r - ratio_l;
 
         RatioBBox::new(
-            [new_t.into(), new_l.into(), new_h.into(), new_w.into()],
+            [
+                ratio_cy.into(),
+                ratio_cx.into(),
+                ratio_h.into(),
+                ratio_w.into(),
+            ],
             category_id,
         )
     }
@@ -64,29 +71,36 @@ impl PixelBBox {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RatioBBox {
-    pub tlhw: [Ratio; 4],
+    pub cycxhw: [Ratio; 4],
     pub category_id: usize,
 }
 
 impl RatioBBox {
-    pub fn new(tlhw: [Ratio; 4], category_id: usize) -> Self {
-        let [t, l, h, w] = tlhw;
+    pub fn new(cycxhw: [Ratio; 4], category_id: usize) -> Self {
+        let [cy, cx, h, w] = cycxhw;
 
         // checked add
-        let _b = t + h;
-        let _r = l + w;
+        let _t = cy - h / 2.0;
+        let _l = cx - w / 2.0;
+        let _b = cy + h / 2.0;
+        let _r = cx + w / 2.0;
 
-        Self { tlhw, category_id }
+        Self {
+            cycxhw,
+            category_id,
+        }
     }
 
     pub fn crop(&self, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Option<RatioBBox> {
         let Self {
-            tlhw: [orig_t, orig_l, orig_h, orig_w],
+            cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
             category_id,
         } = *self;
 
-        let orig_b = orig_t + orig_h;
-        let orig_r = orig_l + orig_w;
+        let orig_t = orig_cy - orig_h / 2.0;
+        let orig_l = orig_cx - orig_w / 2.0;
+        let orig_b = orig_cy + orig_h / 2.0;
+        let orig_r = orig_cx + orig_w / 2.0;
 
         let crop_t = orig_t.max(top);
         let crop_b = orig_b.max(bottom);
@@ -94,11 +108,13 @@ impl RatioBBox {
         let crop_r = orig_r.max(right);
 
         if crop_l < crop_r && crop_t < crop_b {
+            let crop_cy = (crop_t + crop_b) / 2.0;
+            let crop_cx = (crop_l + crop_r) / 2.0;
             let crop_w = crop_r - crop_l;
             let crop_h = crop_b - crop_t;
 
             Some(RatioBBox {
-                tlhw: [crop_t, crop_l, crop_h, crop_w],
+                cycxhw: [crop_cy, crop_cx, crop_h, crop_w],
                 category_id,
             })
         } else {
