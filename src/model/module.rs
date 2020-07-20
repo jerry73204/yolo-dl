@@ -486,28 +486,25 @@ impl DetectInit {
         let num_outputs_per_anchor = num_classes as i64 + 5;
         let num_detections = anchors.len() as i64;
 
-        let anchor_size_multipliers = anchors
-            .iter()
-            .cloned()
-            .map(|sizes| {
-                Tensor::of_slice(
-                    &sizes
-                        .iter()
-                        .cloned()
-                        .flat_map(|(y, x)| vec![y, x])
-                        .map(|component| component as i64)
-                        .collect::<Vec<_>>(),
-                )
-                .to_device(device)
-                .view([1, num_anchors, 1, 1, 2])
-            })
-            .collect::<Vec<_>>();
-
         Box::new(
             move |tensors: &[&Tensor], _train: bool, image_height: i64, image_width: i64| {
                 debug_assert_eq!(tensors.len() as i64, num_detections);
 
-                let feature_maps = tensors
+                // compute grid size in pixels
+                let grid_sizes: Vec<_> = tensors
+                    .iter()
+                    .map(|xs| {
+                        let (_batch_size, _channels, height, width) = xs.size4().unwrap();
+
+                        let grid_height = image_height / height;
+                        let grid_width = image_width / width;
+
+                        (grid_height as usize, grid_width as usize)
+                    })
+                    .collect();
+
+                // construct feature maps
+                let feature_maps: Vec<_> = tensors
                     .iter()
                     .cloned()
                     .map(|xs| {
@@ -527,14 +524,108 @@ impl DetectInit {
                         // output shape [bsize, n_anchors, height, width, n_outputs]
                         outputs
                     })
-                    .collect::<Vec<_>>();
+                    .collect();
 
-                YoloOutput::new(
+                // construct human-readable outputs
+                let detections: HashMap<_, _> = feature_maps
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(layer_index, xs)| {
+                        let (num_anchors, height, width) = match xs.size().as_slice() {
+                            &[_b, na, h, w, _no] => (na, h, w),
+
+                            _ => unreachable!(),
+                        };
+
+                        // gride size in pixels
+                        let grid_height = image_height / height;
+                        let grid_width = image_width / width;
+
+                        // base position for each grid in grid units
+                        let grid_base_positions = {
+                            let grids = Tensor::meshgrid(&[
+                                Tensor::arange(height, (Kind::Float, device)),
+                                Tensor::arange(width, (Kind::Float, device)),
+                            ]);
+                            Tensor::stack(&[&grids[0], &grids[1]], 2)
+                                .view(&[1, 1, height, width, 2] as &[_])
+                        };
+
+                        // anchor sizes in grid units
+                        let anchor_base_sizes = {
+                            let components: Vec<_> = anchors[layer_index]
+                                .iter()
+                                .cloned()
+                                .flat_map(|(y_pixel, x_pixel)| {
+                                    let y_grid = y_pixel as f64 / grid_height as f64;
+                                    let x_grid = x_pixel as f64 / grid_width as f64;
+                                    vec![y_grid, x_grid]
+                                })
+                                .collect();
+
+                            Tensor::of_slice(&components).to_device(device).view([
+                                1,
+                                num_anchors,
+                                1,
+                                1,
+                                2,
+                            ])
+                        };
+
+                        // transform outputs
+                        let sigmoid = xs.sigmoid();
+
+                        // positions in grid units
+                        let positions =
+                            sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
+
+                        // bbox sizes in grid units
+                        let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
+
+                        // objectness
+                        let objectnesses = sigmoid.i((.., .., .., .., 4..5));
+
+                        // sparse classification
+                        let classifications = sigmoid.i((.., .., .., .., 5..));
+
+                        // construct predictions per grid
+                        let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
+                            move |(anchor_index, row, col)| {
+                                let position = positions.i((.., anchor_index, row, col, ..));
+                                let size = sizes.i((.., anchor_index, row, col, ..));
+                                let objectness = objectnesses.i((.., anchor_index, row, col, ..));
+                                let classification =
+                                    classifications.i((.., anchor_index, row, col, ..));
+
+                                let detection_index = DetectionIndex {
+                                    layer_index,
+                                    anchor_index: anchor_index as usize,
+                                    grid_row: row as usize,
+                                    grid_col: col as usize,
+                                };
+                                let detection = Detection {
+                                    index: detection_index.clone(),
+                                    position,
+                                    size,
+                                    objectness,
+                                    classification,
+                                };
+
+                                (detection_index, detection)
+                            },
+                        );
+
+                        detections_iter
+                    })
+                    .collect();
+
+                YoloOutput {
                     image_height,
                     image_width,
-                    anchor_size_multipliers.shallow_clone(),
-                    feature_maps,
-                )
+                    detections,
+                    device,
+                    grid_sizes,
+                }
             },
         )
     }

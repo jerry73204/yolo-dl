@@ -468,34 +468,17 @@ impl YoloInit {
 
 #[derive(Debug, TensorLike)]
 pub struct YoloOutput {
-    image_height: i64,
-    image_width: i64,
+    pub(crate) image_height: i64,
+    pub(crate) image_width: i64,
     #[tensor_like(copy)]
-    device: Device,
-    anchor_size_multipliers: Vec<Tensor>,
-    feature_maps: Vec<Tensor>,
-    detections_cache: Option<Vec<Detection>>,
+    pub(crate) device: Device,
+    /// Grid sizes in pixels per layer.
+    pub(crate) grid_sizes: Vec<(usize, usize)>,
+    /// Detections indexed by (layer_index, anchor_index, col, row) measured in grid units
+    pub(crate) detections: HashMap<DetectionIndex, Detection>,
 }
 
 impl YoloOutput {
-    pub(crate) fn new(
-        image_height: i64,
-        image_width: i64,
-        anchor_size_multipliers: Vec<Tensor>,
-        feature_maps: Vec<Tensor>,
-    ) -> Self {
-        let device = feature_maps[0].device();
-
-        Self {
-            image_height,
-            image_width,
-            device,
-            anchor_size_multipliers,
-            feature_maps,
-            detections_cache: None,
-        }
-    }
-
     pub fn image_height(&self) -> i64 {
         self.image_height
     }
@@ -504,89 +487,56 @@ impl YoloOutput {
         self.image_width
     }
 
-    pub fn feature_maps(&self) -> Vec<Tensor> {
-        self.feature_maps.shallow_clone()
+    pub fn detections(&self) -> &HashMap<DetectionIndex, Detection> {
+        &self.detections
     }
 
-    pub fn detections(&mut self) -> Vec<Detection> {
-        let Self {
-            image_height,
-            image_width,
-            device,
-            ..
-        } = *self;
-        let feature_maps = self.feature_maps.shallow_clone();
-        let anchor_size_multipliers = self.anchor_size_multipliers.shallow_clone();
-
-        self.detections_cache
-            .get_or_insert_with(|| {
-                feature_maps
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(index, xs)| {
-                        let (_batch_size, num_anchors, height, width) = match xs.size().as_slice() {
-                            &[b, na, h, w, _no] => (b, na, h, w),
-                            _ => unreachable!(),
-                        };
-
-                        // compute gride size
-                        let grid_height = image_height / height;
-                        let grid_width = image_width / width;
-
-                        // prepare grid
-                        let grid = {
-                            let grids = Tensor::meshgrid(&[
-                                Tensor::arange(height, (Kind::Float, device)),
-                                Tensor::arange(width, (Kind::Float, device)),
-                            ]);
-                            Tensor::stack(&[&grids[0], &grids[1]], 2)
-                                .view(&[1, 1, height, width, 2] as &[_])
-                        };
-
-                        let stride_multiplier =
-                            Tensor::of_slice(&[grid_height, grid_width] as &[_])
-                                .view([1, 1, 1, 2])
-                                .expand_as(&grid)
-                                .to_device(device);
-
-                        // transform outputs
-                        let sigmoid = xs.sigmoid();
-                        let positions = (sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid)
-                            * &stride_multiplier;
-                        let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0)
-                            * &anchor_size_multipliers[index];
-                        let objectnesses = sigmoid.i((.., .., .., .., 4..5));
-                        let classifications = sigmoid.i((.., .., .., .., 5..));
-
-                        let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
-                            move |(anchor_index, row, col)| {
-                                let position = positions.i((.., anchor_index, row, col, ..));
-                                let size = sizes.i((.., anchor_index, row, col, ..));
-                                let objectness = objectnesses.i((.., anchor_index, row, col, ..));
-                                let classification =
-                                    classifications.i((.., anchor_index, row, col, ..));
-
-                                let detection = Detection {
-                                    position,
-                                    size,
-                                    objectness,
-                                    classification,
-                                };
-
-                                detection
-                            },
-                        );
-
-                        detections_iter
-                    })
-                    .collect::<Vec<_>>()
-            })
+    pub fn detections_in_pixels(&self) -> HashMap<DetectionIndex, Detection> {
+        self.detections
             .shallow_clone()
+            .into_iter()
+            .map(|(detection_index, detection)| {
+                let Detection {
+                    index,
+                    position: position_grids,
+                    size: size_grids,
+                    objectness,
+                    classification,
+                } = detection;
+
+                let layer_index = index.layer_index;
+                let (grid_height, grid_width) = self.grid_sizes[layer_index];
+
+                let grid_size_multiplier =
+                    Tensor::of_slice(&[grid_height as i64, grid_width as i64]).view([1, 2]);
+                let position_pixels = position_grids * &grid_size_multiplier;
+                let size_pixels = size_grids * &grid_size_multiplier;
+
+                let new_detection = Detection {
+                    index,
+                    position: position_pixels,
+                    size: size_pixels,
+                    objectness,
+                    classification,
+                };
+
+                (detection_index, new_detection)
+            })
+            .collect()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+pub struct DetectionIndex {
+    pub layer_index: usize,
+    pub anchor_index: usize,
+    pub grid_row: usize,
+    pub grid_col: usize,
 }
 
 #[derive(Debug, TensorLike)]
 pub struct Detection {
+    pub index: DetectionIndex,
     pub position: Tensor,
     pub size: Tensor,
     pub objectness: Tensor,
