@@ -12,6 +12,8 @@ pub struct YoloLossInit {
     pub anchors_list: Vec<Vec<(usize, usize)>>,
     pub match_grid_method: Option<MatchGrid>,
     pub iou_kind: Option<IoUKind>,
+    pub smooth_bce_coef: Option<f64>,
+    pub objectness_iou_ratio: Option<f64>,
 }
 
 impl YoloLossInit {
@@ -23,11 +25,17 @@ impl YoloLossInit {
             anchors_list,
             match_grid_method,
             iou_kind,
+            smooth_bce_coef,
+            objectness_iou_ratio,
         } = self;
         let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
         let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
         let iou_kind = iou_kind.unwrap_or(IoUKind::GIoU);
+        let smooth_bce_coef = smooth_bce_coef.unwrap_or(0.01);
+        let objectness_iou_ratio = objectness_iou_ratio.unwrap_or(1.0);
         assert!(focal_loss_gamma >= 0.0);
+        assert!(smooth_bce_coef >= 0.0 && smooth_bce_coef <= 1.0);
+        assert!(objectness_iou_ratio >= 0.0 && objectness_iou_ratio <= 1.0);
 
         let bce_class = FocalLossInit {
             pos_weight: pos_weight.as_ref().map(|weight| weight.shallow_clone()),
@@ -55,6 +63,8 @@ impl YoloLossInit {
             anchors_list,
             match_grid_method,
             iou_kind,
+            smooth_bce_coef,
+            objectness_iou_ratio,
         }
     }
 }
@@ -68,6 +78,8 @@ impl YoloLossInit {
             anchors_list,
             match_grid_method: None,
             iou_kind: None,
+            smooth_bce_coef: None,
+            objectness_iou_ratio: None,
         }
     }
 }
@@ -93,6 +105,8 @@ pub struct YoloLoss {
     anchors_list: Vec<Vec<(usize, usize)>>,
     match_grid_method: MatchGrid,
     iou_kind: IoUKind,
+    smooth_bce_coef: f64,
+    objectness_iou_ratio: f64,
 }
 
 impl YoloLoss {
@@ -226,7 +240,7 @@ impl YoloLoss {
         };
 
         // construct target tensors
-        let (target_positions, target_sizes) = {
+        let (target_positions, target_sizes, target_sparse_classifications) = {
             let init_state = (vec![], vec![], vec![], vec![], vec![]);
 
             let final_state = targets.iter().fold(init_state, |mut state, bbox| {
@@ -235,13 +249,13 @@ impl YoloLoss {
                 let BBox {
                     cycxhw: [cy, cx, h, w],
                     category_id,
-                } = *bbox;
+                } = **bbox;
 
                 cy_vec.push(cy.raw());
                 cx_vec.push(cx.raw());
                 h_vec.push(h.raw());
                 w_vec.push(w.raw());
-                category_id_vec.push(category_id);
+                category_id_vec.push(category_id as i64);
 
                 state
             });
@@ -252,19 +266,52 @@ impl YoloLoss {
             let target_cx = Tensor::of_slice(&cx_vec).view([-1, 1]);
             let target_h = Tensor::of_slice(&h_vec).view([-1, 1]);
             let target_w = Tensor::of_slice(&w_vec).view([-1, 1]);
+            let target_sparse_classifications = Tensor::of_slice(&category_id_vec).view([-1, 1]);
 
             let target_positions = Tensor::cat(&[&target_cy, &target_cx], 1);
             let target_sizes = Tensor::cat(&[&target_h, &target_w], 1);
 
-            (target_positions, target_sizes)
+            (
+                target_positions,
+                target_sizes,
+                target_sparse_classifications,
+            )
         };
 
+        // IoU loss
         let iou_loss = self.iou_loss(
             &pred_positions,
             &pred_sizes,
             &target_positions,
             &target_sizes,
         );
+
+        // classification loss
+        let classification_loss = {
+            // smooth bce
+            let pos = 1.0 - 0.5 * self.smooth_bce_coef;
+            let neg = 1.0 - pos;
+
+            // convert to sparse tensor
+            let target_classifications = tch::no_grad(|| {
+                let target = pred_classifications.full_like(neg);
+                target
+                    .gather(1, &target_sparse_classifications, false)
+                    .fill_(pos);
+                target
+            });
+
+            self.bce_class
+                .forward(&pred_classifications, &target_classifications);
+        };
+
+        // objectness loss
+        let target_objectnesses =
+            &iou_loss * self.objectness_iou_ratio + (1.0 - self.objectness_iou_ratio);
+        let objectness_loss = self
+            .bce_objectness
+            .forward(&pred_objectnesses, &target_objectnesses);
+
         todo!();
     }
 
@@ -275,6 +322,10 @@ impl YoloLoss {
         target_positions: &Tensor,
         target_sizes: &Tensor,
     ) -> Tensor {
+        use std::f64::consts::PI;
+
+        let epsilon = 1e-16;
+
         // unpack parameters
         let pred_cy = pred_positions.i((.., 0));
         let pred_cx = pred_positions.i((.., 1));
@@ -306,30 +357,49 @@ impl YoloLoss {
         let intersect_area = &intersect_h * &intersect_w;
 
         // compute IoU
-        let union_area = &pred_area + &target_area - &intersect_area;
+        let union_area = &pred_area + &target_area - &intersect_area + epsilon;
         let iou = &intersect_area / &union_area; // TODO: plus epsilon
 
         let loss = match self.iou_kind {
             IoUKind::IoU => iou,
-            IoUKind::GIoU => {
+            _ => {
                 let closure_t = pred_t.min1(&target_t);
                 let closure_l = pred_l.min1(&target_l);
                 let closure_b = pred_b.max1(&target_b);
                 let closure_r = pred_r.max1(&target_r);
                 let closure_h = &closure_b - &closure_t;
                 let closure_w = &closure_r - &closure_l;
-                let closure_area = &closure_h * &closure_w + 1e-16;
-                &iou - (&closure_area - &union_area) / &closure_area
-            }
-            IoUKind::CIoU => {
-                todo!();
-            }
-            IoUKind::DIoU => {
-                todo!();
+                let closure_area = &closure_h * &closure_w + epsilon;
+
+                match self.iou_kind {
+                    IoUKind::GIoU => &iou - (&closure_area - &union_area) / &closure_area,
+                    _ => {
+                        let diagonal_square = closure_h.pow(2.0) + closure_w.pow(2.0) + epsilon;
+                        let center_dist_square =
+                            (&pred_cy - &target_cy).pow(2.0) + (&pred_cx - &target_cx).pow(2.0);
+
+                        match self.iou_kind {
+                            IoUKind::DIoU => &iou - &center_dist_square / &diagonal_square,
+                            IoUKind::CIoU => {
+                                let pred_angle = pred_h.atan2(&pred_w);
+                                let target_angle = target_h.atan2(&target_w);
+
+                                let shape_loss =
+                                    (&pred_angle - &target_angle).pow(2.0) * 4.0 / PI.powi(2);
+                                let shape_loss_coef =
+                                    tch::no_grad(|| &shape_loss / (1.0 - &iou + &shape_loss));
+
+                                &iou - &center_dist_square / &diagonal_square
+                                    + &shape_loss_coef * &shape_loss
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
             }
         };
 
-        todo!();
+        loss
     }
 
     /// Match target bboxes with grids.
