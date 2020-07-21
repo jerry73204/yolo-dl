@@ -479,9 +479,20 @@ impl DetectInit {
             anchors,
         } = self;
 
+        // ensure every layer has equal number of anchors
         assert!(anchors
             .iter()
             .all(|anchor| anchor.len() == anchors[0].len()));
+
+        let anchors: Vec<Vec<(i64, i64)>> = anchors
+            .into_iter()
+            .map(|list| {
+                list.into_iter()
+                    .map(|(h, w)| (h as i64, w as i64))
+                    .collect()
+            })
+            .collect();
+
         let num_anchors = anchors[0].len() as i64;
         let num_outputs_per_anchor = num_classes as i64 + 5;
         let num_detections = anchors.len() as i64;
@@ -489,17 +500,27 @@ impl DetectInit {
         Box::new(
             move |tensors: &[&Tensor], _train: bool, image_height: i64, image_width: i64| {
                 debug_assert_eq!(tensors.len() as i64, num_detections);
+                let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
                 // compute grid size in pixels
                 let grid_sizes: Vec<_> = tensors
                     .iter()
                     .map(|xs| {
-                        let (_batch_size, _channels, height, width) = xs.size4().unwrap();
+                        let (b, _c, height, width) = xs.size4().unwrap();
+                        debug_assert_eq!(b, batch_size);
 
                         let grid_height = image_height / height;
                         let grid_width = image_width / width;
 
-                        (grid_height as usize, grid_width as usize)
+                        (grid_height, grid_width)
+                    })
+                    .collect();
+
+                let feature_sizes: Vec<_> = tensors
+                    .iter()
+                    .map(|xs| {
+                        let (_b, _c, height, width) = xs.size4().unwrap();
+                        (height, width)
                     })
                     .collect();
 
@@ -508,7 +529,8 @@ impl DetectInit {
                     .iter()
                     .cloned()
                     .map(|xs| {
-                        let (batch_size, channels, height, width) = xs.size4().unwrap();
+                        let (b, channels, height, width) = xs.size4().unwrap();
+                        debug_assert_eq!(b, batch_size);
                         debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
 
                         let outputs = xs
@@ -527,7 +549,7 @@ impl DetectInit {
                     .collect();
 
                 // construct human-readable outputs
-                let detections: HashMap<_, _> = feature_maps
+                let detections: Vec<_> = feature_maps
                     .iter()
                     .enumerate()
                     .flat_map(|(layer_index, xs)| {
@@ -600,18 +622,18 @@ impl DetectInit {
                                 let detection_index = DetectionIndex {
                                     layer_index,
                                     anchor_index: anchor_index as usize,
-                                    grid_row: row as usize,
-                                    grid_col: col as usize,
+                                    grid_row: row,
+                                    grid_col: col,
                                 };
                                 let detection = Detection {
-                                    index: detection_index.clone(),
+                                    index: detection_index,
                                     position,
                                     size,
                                     objectness,
                                     classification,
                                 };
 
-                                (detection_index, detection)
+                                detection
                             },
                         );
 
@@ -622,9 +644,12 @@ impl DetectInit {
                 YoloOutput {
                     image_height,
                     image_width,
+                    batch_size,
+                    feature_sizes,
                     detections,
                     device,
                     grid_sizes,
+                    anchors: anchors.clone(),
                 }
             },
         )

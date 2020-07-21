@@ -470,12 +470,16 @@ impl YoloInit {
 pub struct YoloOutput {
     pub(crate) image_height: i64,
     pub(crate) image_width: i64,
+    pub(crate) batch_size: i64,
     #[tensor_like(copy)]
     pub(crate) device: Device,
+    /// Feature map sizes in grid units per layer.
+    pub(crate) feature_sizes: Vec<(i64, i64)>,
     /// Grid sizes in pixels per layer.
-    pub(crate) grid_sizes: Vec<(usize, usize)>,
+    pub(crate) grid_sizes: Vec<(i64, i64)>,
     /// Detections indexed by (layer_index, anchor_index, col, row) measured in grid units
-    pub(crate) detections: HashMap<DetectionIndex, Detection>,
+    pub(crate) detections: Vec<Detection>,
+    pub(crate) anchors: Vec<Vec<(i64, i64)>>,
 }
 
 impl YoloOutput {
@@ -487,15 +491,15 @@ impl YoloOutput {
         self.image_width
     }
 
-    pub fn detections(&self) -> &HashMap<DetectionIndex, Detection> {
-        &self.detections
+    pub fn detections(&self) -> &[Detection] {
+        self.detections.as_slice()
     }
 
-    pub fn detections_in_pixels(&self) -> HashMap<DetectionIndex, Detection> {
+    pub fn detections_in_pixels(&self) -> Vec<Detection> {
         self.detections
             .shallow_clone()
             .into_iter()
-            .map(|(detection_index, detection)| {
+            .map(|detection| {
                 let Detection {
                     index,
                     position: position_grids,
@@ -520,9 +524,17 @@ impl YoloOutput {
                     classification,
                 };
 
-                (detection_index, new_detection)
+                new_detection
             })
             .collect()
+    }
+
+    pub fn anchors(&self) -> &[Vec<(i64, i64)>] {
+        self.anchors.as_slice()
+    }
+
+    pub fn batch_size(&self) -> i64 {
+        self.batch_size
     }
 }
 
@@ -530,8 +542,8 @@ impl YoloOutput {
 pub struct DetectionIndex {
     pub layer_index: usize,
     pub anchor_index: usize,
-    pub grid_row: usize,
-    pub grid_col: usize,
+    pub grid_row: i64,
+    pub grid_col: i64,
 }
 
 #[derive(Debug, TensorLike)]

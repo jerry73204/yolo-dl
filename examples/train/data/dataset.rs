@@ -1,17 +1,13 @@
 use super::*;
-use crate::{
-    common::*,
-    config::Config,
-    message::LoggingMessage,
-    util::{PixelBBox, Ratio, RatioBBox},
-};
+use crate::{common::*, config::Config, message::LoggingMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Record {
     pub path: PathBuf,
     pub height: usize,
     pub width: usize,
-    pub bboxes: Vec<PixelBBox>,
+    /// Bounding box in pixel units.
+    pub bboxes: Vec<BBox>,
 }
 
 #[derive(Debug, TensorLike)]
@@ -21,16 +17,6 @@ pub struct TrainingRecord {
     pub image: Tensor,
     #[tensor_like(clone)]
     pub bboxes: Vec<Vec<RatioBBox>>,
-    /// Number of bboxes per sample.
-    pub num_bboxes: Vec<usize>,
-    /// Batched tensor of cycxhw sequences where sizes are in ratio units.
-    ///
-    /// It has shape \[batch_size, max_num_bboxes, 4\].
-    pub bbox_target: Tensor,
-    /// Batched tensor of category sequences.
-    ///
-    /// It has shape \[batch_size, max_num_bboxes\].
-    pub category_target: Tensor,
 }
 
 #[derive(Debug)]
@@ -110,7 +96,7 @@ impl DataSet {
                         .map(|ann| {
                             let [x, y, w, h] = ann.bbox.clone();
                             let category_id = ann.category_id;
-                            PixelBBox::new([y.into(), x.into(), h.into(), w.into()], category_id)
+                            BBox::from_tlhw([y.into(), x.into(), h.into(), w.into()], category_id)
                         })
                         .collect::<Vec<_>>();
 
@@ -367,75 +353,11 @@ impl DataSet {
         let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
             let (step, epoch, bboxes, image) = args;
 
-            let num_bboxes: Vec<_> = bboxes.iter().map(|list| list.len()).collect();
-            let max_num_bboxes = itertools::max(num_bboxes.iter().cloned()).unwrap();
-
-            let (bbox_target, category_target) = {
-                let init_state = (vec![], vec![], vec![], vec![], vec![]);
-
-                let final_state = bboxes.iter().fold(init_state, |mut state, list| {
-                    let (cy_vec, cx_vec, h_vec, w_vec, category_vec) = &mut state;
-
-                    let num_remaining = max_num_bboxes - list.len();
-                    let pad_iter = iter::repeat(0.0).take(num_remaining);
-                    let category_pad_iter = iter::repeat(0).take(num_remaining);
-
-                    let cy_iter = list
-                        .iter()
-                        .map(|bbox| bbox.cycxhw[0].raw())
-                        .chain(pad_iter.clone());
-                    let cx_iter = list
-                        .iter()
-                        .map(|bbox| bbox.cycxhw[1].raw())
-                        .chain(pad_iter.clone());
-                    let h_iter = list
-                        .iter()
-                        .map(|bbox| bbox.cycxhw[2].raw())
-                        .chain(pad_iter.clone());
-                    let w_iter = list
-                        .iter()
-                        .map(|bbox| bbox.cycxhw[3].raw())
-                        .chain(pad_iter.clone());
-                    let category_iter = list
-                        .iter()
-                        .map(|bbox| bbox.category_id as i64)
-                        .chain(category_pad_iter.clone());
-
-                    cy_vec.extend(cy_iter);
-                    cx_vec.extend(cx_iter);
-                    h_vec.extend(h_iter);
-                    w_vec.extend(w_iter);
-                    category_vec.extend(category_iter);
-
-                    state
-                });
-
-                let (cy_vec, cx_vec, h_vec, w_vec, category_vec) = final_state;
-                let mini_batch_size = mini_batch_size as i64;
-                let max_num_bboxes = max_num_bboxes as i64;
-
-                let cy_tensor =
-                    Tensor::of_slice(&cy_vec).view([mini_batch_size, max_num_bboxes, 1]);
-                let cx_tensor =
-                    Tensor::of_slice(&cx_vec).view([mini_batch_size, max_num_bboxes, 1]);
-                let h_tensor = Tensor::of_slice(&h_vec).view([mini_batch_size, max_num_bboxes, 1]);
-                let w_tensor = Tensor::of_slice(&w_vec).view([mini_batch_size, max_num_bboxes, 1]);
-
-                let bbox_tensor = Tensor::cat(&[cy_tensor, cx_tensor, h_tensor, w_tensor], 2);
-                let category_tensor =
-                    Tensor::of_slice(&category_vec).view([mini_batch_size, max_num_bboxes]);
-
-                (bbox_tensor, category_tensor)
-            };
-
             let record = TrainingRecord {
                 epoch,
                 step,
                 image,
                 bboxes,
-                num_bboxes,
-                bbox_target,
-                category_target,
             };
 
             Ok((index, record))

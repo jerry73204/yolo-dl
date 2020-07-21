@@ -43,3 +43,4 @@ pub use tokio::sync::{broadcast, RwLock};
 pub type Fallible<T> = Result<T, Error>;
 pub use approx::abs_diff_eq;
 pub use log::{info, warn};
+pub use yolo_dl::utils::{BBox, Ratio, RatioBBox};

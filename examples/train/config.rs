@@ -1,4 +1,5 @@
-use crate::{common::*, util::Ratio};
+use crate::common::*;
+use yolo_dl::utils::Ratio;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

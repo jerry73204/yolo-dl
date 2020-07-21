@@ -1,56 +1,95 @@
-use crate::{common::*, util::Ratio};
+use crate::{common::*, utils::Ratio};
 
+/// Bounding box in arbitrary units.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PixelBBox {
-    pub tlhw: [R64; 4],
+pub struct BBox {
+    pub cycxhw: [R64; 4],
     pub category_id: usize,
 }
 
-impl PixelBBox {
-    pub fn new(tlhw: [R64; 4], category_id: usize) -> Self {
+impl BBox {
+    pub fn from_tlhw(tlhw: [R64; 4], category_id: usize) -> Self {
         let [t, l, h, w] = tlhw;
-        assert!(t >= 0.0);
-        assert!(l >= 0.0);
-        assert!(h >= 0.0);
-        assert!(w >= 0.0);
+        let cy = t + h / 2.0;
+        let cx = l + w / 2.0;
 
-        Self { tlhw, category_id }
+        Self {
+            cycxhw: [cy, cx, h, w],
+            category_id,
+        }
+    }
+
+    pub fn from_cycxhw(cycxhw: [R64; 4], category_id: usize) -> Self {
+        Self {
+            cycxhw,
+            category_id,
+        }
     }
 
     pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> RatioBBox {
         let Self {
-            tlhw: [pixel_t, pixel_l, pixel_h, pixel_w],
+            cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
             category_id,
         } = *self;
 
         let image_height = R64::new(image_height as f64);
         let image_width = R64::new(image_width as f64);
 
-        let mut pixel_b = pixel_t + pixel_h;
-        let mut pixel_r = pixel_l + pixel_w;
+        let mut orig_t = orig_cy - orig_h / 2.0;
+        let mut orig_l = orig_cx - orig_w / 2.0;
+        let mut orig_b = orig_cy + orig_h / 2.0;
+        let mut orig_r = orig_cx + orig_w / 2.0;
 
         // fix the value if it slightly exceeds the boundary
-        if pixel_b > image_height {
-            if abs_diff_eq!(pixel_b.raw(), image_height.raw()) {
-                pixel_b = image_height;
+        if orig_t < 0.0 {
+            if abs_diff_eq!(orig_t.raw(), 0.0) {
+                orig_t = R64::new(0.0);
             } else {
-                panic!("the bbox exceeds the image boundary");
+                panic!(
+                    "the bbox exceeds the image boundary: expect minimum top 0.0, found {}",
+                    orig_t
+                );
             }
         }
 
-        if pixel_r > image_width {
-            if abs_diff_eq!(pixel_r.raw(), image_width.raw()) {
-                pixel_r = image_width;
+        if orig_l < 0.0 {
+            if abs_diff_eq!(orig_l.raw(), 0.0) {
+                orig_l = R64::new(0.0);
             } else {
-                panic!("the bbox exceeds the image boundary");
+                panic!(
+                    "the bbox exceeds the image boundary: expect minimum left 0.0, found {}",
+                    orig_l
+                );
+            }
+        }
+
+        if orig_b > image_height {
+            if abs_diff_eq!(orig_b.raw(), image_height.raw()) {
+                orig_b = image_height;
+            } else {
+                panic!(
+                    "the bbox exceeds the image boundary: expect maximum bottom {}, found {}",
+                    image_height, orig_b
+                );
+            }
+        }
+
+        if orig_r > image_width {
+            if abs_diff_eq!(orig_r.raw(), image_width.raw()) {
+                orig_r = image_width;
+            } else {
+                panic!(
+                    "the bbox exceeds the image boundary: expect maximum right {}, found {}",
+                    image_width, orig_r
+                );
             }
         }
 
         // construct ratio bbox
-        let ratio_t = pixel_t / image_height;
-        let ratio_b = pixel_b / image_height;
-        let ratio_l = pixel_l / image_width;
-        let ratio_r = pixel_r / image_width;
+        let ratio_t = orig_t / image_height;
+        let ratio_b = orig_b / image_height;
+        let ratio_l = orig_l / image_width;
+        let ratio_r = orig_r / image_width;
 
         let ratio_h = ratio_b - ratio_t;
         let ratio_w = ratio_r - ratio_l;
@@ -119,6 +158,23 @@ impl RatioBBox {
             })
         } else {
             None
+        }
+    }
+
+    pub fn to_bbox(&self, height: R64, width: R64) -> BBox {
+        let Self {
+            cycxhw: [ratio_cy, ratio_cx, ratio_h, ratio_w],
+            category_id,
+        } = *self;
+
+        let cy = *ratio_cy * height;
+        let cx = *ratio_cx * width;
+        let h = *ratio_h * height;
+        let w = *ratio_w * width;
+
+        BBox {
+            cycxhw: [cy, cx, h, w],
+            category_id,
         }
     }
 
