@@ -14,6 +14,9 @@ pub struct YoloLossInit {
     pub smooth_bce_coef: Option<f64>,
     pub objectness_iou_ratio: Option<f64>,
     pub anchor_scale_thresh: Option<f64>,
+    pub iou_loss_weight: Option<f64>,
+    pub objectness_loss_weight: Option<f64>,
+    pub classification_loss_weight: Option<f64>,
 }
 
 impl YoloLossInit {
@@ -27,6 +30,9 @@ impl YoloLossInit {
             smooth_bce_coef,
             objectness_iou_ratio,
             anchor_scale_thresh,
+            iou_loss_weight,
+            objectness_loss_weight,
+            classification_loss_weight,
         } = self;
 
         let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
@@ -35,10 +41,17 @@ impl YoloLossInit {
         let smooth_bce_coef = smooth_bce_coef.unwrap_or(0.01);
         let objectness_iou_ratio = objectness_iou_ratio.unwrap_or(1.0);
         let anchor_scale_thresh = anchor_scale_thresh.unwrap_or(4.0);
+        let iou_loss_weight = iou_loss_weight.unwrap_or(0.05);
+        let objectness_loss_weight = objectness_loss_weight.unwrap_or(1.0);
+        let classification_loss_weight = classification_loss_weight.unwrap_or(0.58);
+
         assert!(focal_loss_gamma >= 0.0);
         assert!(smooth_bce_coef >= 0.0 && smooth_bce_coef <= 1.0);
         assert!(objectness_iou_ratio >= 0.0 && objectness_iou_ratio <= 1.0);
         assert!(anchor_scale_thresh >= 1.0);
+        assert!(iou_loss_weight >= 0.0);
+        assert!(objectness_loss_weight >= 0.0);
+        assert!(classification_loss_weight >= 0.0);
 
         let bce_class = FocalLossInit {
             pos_weight: pos_weight.as_ref().map(|weight| weight.shallow_clone()),
@@ -64,6 +77,9 @@ impl YoloLossInit {
             smooth_bce_coef,
             objectness_iou_ratio,
             anchor_scale_thresh,
+            iou_loss_weight,
+            objectness_loss_weight,
+            classification_loss_weight
         }
     }
 }
@@ -79,6 +95,9 @@ impl Default for YoloLossInit {
             smooth_bce_coef: None,
             objectness_iou_ratio: None,
             anchor_scale_thresh: None,
+            iou_loss_weight: None,
+            objectness_loss_weight: None,
+            classification_loss_weight: None,
         }
     }
 }
@@ -106,6 +125,9 @@ pub struct YoloLoss {
     smooth_bce_coef: f64,
     objectness_iou_ratio: f64,
     anchor_scale_thresh: f64,
+    iou_loss_weight: f64,
+    objectness_loss_weight: f64,
+    classification_loss_weight: f64,
 }
 
 impl YoloLoss {
@@ -283,12 +305,14 @@ impl YoloLoss {
         };
 
         // IoU loss
-        let iou_loss = self.iou_loss(
-            &pred_positions,
-            &pred_sizes,
-            &target_positions,
-            &target_sizes,
-        );
+        let iou_loss = {
+            1.0 - self.iou_loss(
+                &pred_positions,
+                &pred_sizes,
+                &target_positions,
+                &target_sizes,
+            )
+        };
 
         // classification loss
         let classification_loss = {
