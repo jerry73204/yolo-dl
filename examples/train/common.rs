@@ -36,7 +36,11 @@ pub use std::{
     },
     time::{Duration, Instant},
 };
-pub use tch::{kind::FLOAT_CPU, nn, vision, Device, IndexOp, Kind, Tensor};
+pub use tch::{
+    kind::FLOAT_CPU,
+    nn::{self, OptimizerConfig},
+    vision, Device, IndexOp, Kind, Tensor,
+};
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, RwLock};

@@ -57,6 +57,7 @@ pub async fn main() -> Result<()> {
             let root = vs.root();
             let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
             let yolo_loss = YoloLossInit::default().build();
+            let mut optimizer = nn::Adam::default().build(&vs, 0.01)?;
             let mut rate = 0.0;
 
             // training
@@ -76,6 +77,9 @@ pub async fn main() -> Result<()> {
 
                 // compute loss
                 let loss = yolo_loss.forward(&output, &bboxes);
+
+                // optimizer
+                optimizer.backward_step(&loss);
 
                 // print message
                 rate_counter.add(1.0).await;
