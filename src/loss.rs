@@ -139,171 +139,28 @@ impl YoloLoss {
         let num_classes = prediction.num_classes;
 
         // match target bboxes and grids, and group them by detector cells
-        // indexed by (layer_index, grid_row, grid_col)
+        // indexed by grid positions
         let target_bboxes: HashMap<GridIndex, Rc<BBox>> =
             self.build_target_bboxes(prediction, target);
-        let target_indexes: Vec<_> = target_bboxes.iter().map(|(index, _)| index).collect();
 
         // index detections
-        let pred_detections: HashMap<GridIndex, Grid> = prediction
-            .detections
-            .iter()
-            .flat_map(|detection| {
-                let (batch_size, _) = detection.cycxhw.size2().unwrap();
-
-                let DetectionIndex {
-                    layer_index,
-                    anchor_index,
-                    grid_row,
-                    grid_col,
-                } = detection.index;
-
-                (0..batch_size).map(move |batch_index| {
-                    let Detection {
-                        cycxhw,
-                        objectness,
-                        classification,
-                        ..
-                    } = detection.shallow_clone();
-                    let index = GridIndex {
-                        batch_index: batch_index as usize,
-                        layer_index,
-                        anchor_index,
-                        grid_row,
-                        grid_col,
-                    };
-                    let grid = Grid {
-                        cycxhw: cycxhw.i((batch_index, ..)),
-                        objectness: objectness.i((batch_index, ..)),
-                        classification: classification.i((batch_index, ..)),
-                    };
-
-                    (index, grid)
-                })
-            })
-            .collect();
+        let pred_detections = Self::build_indexed_detections(prediction);
 
         // IoU loss
-        let iou_loss = {
-            let (pred_cycxhw, target_cycxhw) = {
-                let final_state = target_bboxes
-                    .iter()
-                    .map(|(index, target_bbox)| {
-                        let prediction = &pred_detections[&index];
-                        let pred_cycxhw = &prediction.cycxhw;
-                        let target_cycxhw = &target_bbox.cycxhw;
-
-                        (pred_cycxhw, target_cycxhw)
-                    })
-                    .fold((vec![], vec![]), |mut state, args| {
-                        let (pred_cycxhw_vec, target_cycxhw_vec) = &mut state;
-                        let (pred_cycxhw, target_cycxhw) = args;
-
-                        pred_cycxhw_vec.push(pred_cycxhw.view([1, 4]));
-                        target_cycxhw_vec
-                            .extend(target_cycxhw.iter().map(|value| value.raw() as f32));
-
-                        state
-                    });
-
-                let (pred_cycxhw_vec, target_cycxhw_vec) = final_state;
-                let pred_cycxhw = Tensor::cat(&pred_cycxhw_vec, 0);
-                let target_cycxhw = Tensor::of_slice(&target_cycxhw_vec)
-                    .view([-1, 4])
-                    .to_device(device);
-
-                (pred_cycxhw, target_cycxhw)
-            };
-
-            // IoU loss
-            let iou_loss: Tensor = { 1.0 - self.iou_loss(&pred_cycxhw, &target_cycxhw) };
-
-            match self.reduction {
-                Reduction::Mean => iou_loss.mean(Kind::Float),
-                Reduction::Sum => iou_loss.sum(Kind::Float),
-                _ => panic!("reduction {:?} is not supported", self.reduction),
-            }
-        };
+        let (iou_loss, non_reduced_iou_loss) =
+            self.iou_loss(&pred_detections, &target_bboxes, device);
 
         // classification loss
-        let classification_loss = {
-            // smooth bce
-            let pos = 1.0 - 0.5 * self.smooth_bce_coef;
-            let neg = 1.0 - pos;
-
-            let (pred_class, target_class) = {
-                let final_state = target_bboxes
-                    .iter()
-                    .map(|(index, target_bbox)| {
-                        let prediction = &pred_detections[&index];
-                        let pred_class = &prediction.classification;
-                        let target_class = target_bbox.category_id as i64;
-
-                        (pred_class, target_class)
-                    })
-                    .fold((vec![], vec![]), |mut state, args| {
-                        let (pred_class_vec, target_class_vec) = &mut state;
-                        let (pred_class, target_class) = args;
-
-                        pred_class_vec.push(pred_class.view([-1, num_classes]));
-                        target_class_vec.push(target_class);
-
-                        state
-                    });
-
-                let (pred_class_vec, target_class_vec) = final_state;
-                let pred_class = Tensor::cat(&pred_class_vec, 0);
-                let target_class = {
-                    let indexes = Tensor::of_slice(&target_class_vec).to_device(device);
-                    let pos_values = Tensor::full(&indexes.size(), pos, (Kind::Float, device));
-                    let target = pred_class
-                        .full_like(neg)
-                        .view([-1])
-                        .scatter(0, &indexes, &pos_values)
-                        .view([-1, num_classes]);
-                    target
-                };
-
-                (pred_class, target_class)
-            };
-
-            self.bce_class.forward(&pred_class, &target_class)
-        };
+        let classification_loss =
+            self.classification_loss(&pred_detections, &target_bboxes, num_classes, device);
 
         // objectness loss
-        let objectness_loss = {
-            let target_indexes_set: HashSet<_> = target_indexes.iter().cloned().collect();
-
-            let (indexes_vec, pred_vec) =
-                pred_detections
-                    .iter()
-                    .enumerate()
-                    .fold((vec![], vec![]), |mut state, args| {
-                        let (indexes_vec, pred_vec) = &mut state;
-                        let (instance_index, (grid_index, detection)) = args;
-
-                        if target_indexes_set.contains(grid_index) {
-                            indexes_vec.push(instance_index as i64);
-                        }
-                        pred_vec.push(detection.objectness.view([1, 1]));
-
-                        state
-                    });
-
-            let instance_indexes = Tensor::of_slice(&indexes_vec)
-                .view([-1, 1])
-                .to_device(device);
-            let pred_objectness = Tensor::cat(&pred_vec, 0);
-            let target_objectness = pred_objectness.full_like(0.0).scatter(
-                0,
-                &instance_indexes,
-                &(&iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
-                    + (1.0 - self.objectness_iou_ratio)),
-            );
-
-            self.bce_objectness
-                .forward(&pred_objectness, &target_objectness)
-        };
+        let objectness_loss = self.objectness_loss(
+            &pred_detections,
+            &target_bboxes,
+            &non_reduced_iou_loss,
+            device,
+        );
 
         // normalize and balancing
         let loss = self.iou_loss_weight * &iou_loss
@@ -313,7 +170,144 @@ impl YoloLoss {
         loss
     }
 
-    fn iou_loss(&self, pred_cycxhw: &Tensor, target_cycxhw: &Tensor) -> Tensor {
+    fn iou_loss(
+        &self,
+        pred_detections: &HashMap<GridIndex, Grid>,
+        target_bboxes: &HashMap<GridIndex, Rc<BBox>>,
+        device: Device,
+    ) -> (Tensor, Tensor) {
+        let (pred_cycxhw, target_cycxhw) = {
+            let final_state = target_bboxes
+                .iter()
+                .map(|(index, target_bbox)| {
+                    let prediction = &pred_detections[&index];
+                    let pred_cycxhw = &prediction.cycxhw;
+                    let target_cycxhw = &target_bbox.cycxhw;
+
+                    (pred_cycxhw, target_cycxhw)
+                })
+                .fold((vec![], vec![]), |mut state, args| {
+                    let (pred_cycxhw_vec, target_cycxhw_vec) = &mut state;
+                    let (pred_cycxhw, target_cycxhw) = args;
+
+                    pred_cycxhw_vec.push(pred_cycxhw.view([1, 4]));
+                    target_cycxhw_vec.extend(target_cycxhw.iter().map(|value| value.raw() as f32));
+
+                    state
+                });
+
+            let (pred_cycxhw_vec, target_cycxhw_vec) = final_state;
+            let pred_cycxhw = Tensor::cat(&pred_cycxhw_vec, 0);
+            let target_cycxhw = Tensor::of_slice(&target_cycxhw_vec)
+                .view([-1, 4])
+                .to_device(device);
+
+            (pred_cycxhw, target_cycxhw)
+        };
+
+        // IoU loss
+        let iou_loss: Tensor = { 1.0 - self.compute_iou(&pred_cycxhw, &target_cycxhw) };
+
+        let reduced_iou_loss = match self.reduction {
+            Reduction::Mean => iou_loss.mean(Kind::Float),
+            Reduction::Sum => iou_loss.sum(Kind::Float),
+            _ => panic!("reduction {:?} is not supported", self.reduction),
+        };
+
+        (reduced_iou_loss, iou_loss)
+    }
+
+    fn classification_loss(
+        &self,
+        pred_detections: &HashMap<GridIndex, Grid>,
+        target_bboxes: &HashMap<GridIndex, Rc<BBox>>,
+        num_classes: i64,
+        device: Device,
+    ) -> Tensor {
+        // smooth bce
+        let pos = 1.0 - 0.5 * self.smooth_bce_coef;
+        let neg = 1.0 - pos;
+
+        let (pred_class, target_class) = {
+            let final_state = target_bboxes
+                .iter()
+                .map(|(index, target_bbox)| {
+                    let prediction = &pred_detections[&index];
+                    let pred_class = &prediction.classification;
+                    let target_class = target_bbox.category_id as i64;
+
+                    (pred_class, target_class)
+                })
+                .fold((vec![], vec![]), |mut state, args| {
+                    let (pred_class_vec, target_class_vec) = &mut state;
+                    let (pred_class, target_class) = args;
+
+                    pred_class_vec.push(pred_class.view([-1, num_classes]));
+                    target_class_vec.push(target_class);
+
+                    state
+                });
+
+            let (pred_class_vec, target_class_vec) = final_state;
+            let pred_class = Tensor::cat(&pred_class_vec, 0);
+            let target_class = {
+                let indexes = Tensor::of_slice(&target_class_vec).to_device(device);
+                let pos_values = Tensor::full(&indexes.size(), pos, (Kind::Float, device));
+                let target = pred_class
+                    .full_like(neg)
+                    .view([-1])
+                    .scatter(0, &indexes, &pos_values)
+                    .view([-1, num_classes]);
+                target
+            };
+
+            (pred_class, target_class)
+        };
+
+        self.bce_class.forward(&pred_class, &target_class)
+    }
+
+    fn objectness_loss(
+        &self,
+        pred_detections: &HashMap<GridIndex, Grid>,
+        target_bboxes: &HashMap<GridIndex, Rc<BBox>>,
+        non_reduced_iou_loss: &Tensor,
+        device: Device,
+    ) -> Tensor {
+        let target_indexes: HashSet<_> = target_bboxes.iter().map(|(index, _)| index).collect();
+
+        let (indexes_vec, pred_vec) =
+            pred_detections
+                .iter()
+                .enumerate()
+                .fold((vec![], vec![]), |mut state, args| {
+                    let (indexes_vec, pred_vec) = &mut state;
+                    let (instance_index, (grid_index, detection)) = args;
+
+                    if target_indexes.contains(grid_index) {
+                        indexes_vec.push(instance_index as i64);
+                    }
+                    pred_vec.push(detection.objectness.view([1, 1]));
+
+                    state
+                });
+
+        let instance_indexes = Tensor::of_slice(&indexes_vec)
+            .view([-1, 1])
+            .to_device(device);
+        let pred_objectness = Tensor::cat(&pred_vec, 0);
+        let target_objectness = pred_objectness.full_like(0.0).scatter(
+            0,
+            &instance_indexes,
+            &(&non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
+                + (1.0 - self.objectness_iou_ratio)),
+        );
+
+        self.bce_objectness
+            .forward(&pred_objectness, &target_objectness)
+    }
+
+    fn compute_iou(&self, pred_cycxhw: &Tensor, target_cycxhw: &Tensor) -> Tensor {
         use std::f64::consts::PI;
 
         let epsilon = 1e-16;
@@ -533,6 +527,47 @@ impl YoloLoss {
             .collect();
 
         targets
+    }
+
+    /// Build HashSet of predictions indexed by per-grid position
+    fn build_indexed_detections(prediction: &YoloOutput) -> HashMap<GridIndex, Grid> {
+        prediction
+            .detections
+            .iter()
+            .flat_map(|detection| {
+                let (batch_size, _) = detection.cycxhw.size2().unwrap();
+
+                let DetectionIndex {
+                    layer_index,
+                    anchor_index,
+                    grid_row,
+                    grid_col,
+                } = detection.index;
+
+                (0..batch_size).map(move |batch_index| {
+                    let Detection {
+                        cycxhw,
+                        objectness,
+                        classification,
+                        ..
+                    } = detection.shallow_clone();
+                    let index = GridIndex {
+                        batch_index: batch_index as usize,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    };
+                    let grid = Grid {
+                        cycxhw: cycxhw.i((batch_index, ..)),
+                        objectness: objectness.i((batch_index, ..)),
+                        classification: classification.i((batch_index, ..)),
+                    };
+
+                    (index, grid)
+                })
+            })
+            .collect()
     }
 }
 
