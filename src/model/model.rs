@@ -12,7 +12,7 @@ pub struct YoloInit {
 }
 
 impl YoloInit {
-    pub fn build<'p, P>(self, path: P) -> Result<Box<dyn FnMut(&Tensor, bool) -> YoloOutput>>
+    pub fn build<'p, P>(self, path: P) -> Result<Box<dyn FnMut(&Tensor, bool) -> YoloOutput + Send>>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -421,10 +421,7 @@ impl YoloInit {
 
         // construct module function
         let func = Box::new(move |xs: &Tensor, train: bool| -> YoloOutput {
-            let (height, width) = match xs.size().as_slice() {
-                &[_bsize, _channels, height, width] => (height, width),
-                _ => unreachable!(),
-            };
+            let (_batch_size, _channels, height, width) = xs.size4().unwrap();
             let mut tmp_tensors =
                 iter::once((0, xs.shallow_clone())).collect::<HashMap<usize, Tensor>>();
             let mut exported_tensors = vec![];

@@ -2,24 +2,24 @@ use super::*;
 use crate::common::*;
 
 pub enum YoloModule {
-    Single(usize, Box<dyn 'static + Fn(&Tensor, bool) -> Tensor>),
+    Single(usize, Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>),
     Multi(
         Vec<usize>,
-        Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor>,
+        Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
     ),
 }
 
 impl YoloModule {
     pub fn single<F>(from_index: usize, f: F) -> Self
     where
-        F: 'static + Fn(&Tensor, bool) -> Tensor,
+        F: 'static + Fn(&Tensor, bool) -> Tensor + Send,
     {
         Self::Single(from_index, Box::new(f))
     }
 
     pub fn multi<F>(from_indexes: Vec<usize>, f: F) -> Self
     where
-        F: 'static + Fn(&[&Tensor], bool) -> Tensor,
+        F: 'static + Fn(&[&Tensor], bool) -> Tensor + Send,
     {
         Self::Multi(from_indexes, Box::new(f))
     }
@@ -138,7 +138,7 @@ impl ConvBlockInit {
         }
     }
 
-    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor>
+    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor + Send>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -199,7 +199,7 @@ impl BottleneckInit {
         }
     }
 
-    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor>
+    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor + Send>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -264,7 +264,7 @@ impl BottleneckCspInit {
         }
     }
 
-    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor>
+    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor + Send>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -361,7 +361,7 @@ impl SppInit {
         }
     }
 
-    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor>
+    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor + Send>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -425,7 +425,7 @@ impl FocusInit {
         Self { in_c, out_c, k: 1 }
     }
 
-    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor>
+    pub fn build<'p, P>(self, path: P) -> Box<dyn Fn(&Tensor, bool) -> Tensor + Send>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -467,7 +467,10 @@ pub struct DetectInit {
 }
 
 impl DetectInit {
-    pub fn build<'p, P>(self, path: P) -> Box<dyn FnMut(&[&Tensor], bool, i64, i64) -> YoloOutput>
+    pub fn build<'p, P>(
+        self,
+        path: P,
+    ) -> Box<dyn FnMut(&[&Tensor], bool, i64, i64) -> YoloOutput + Send>
     where
         P: Borrow<nn::Path<'p>>,
     {

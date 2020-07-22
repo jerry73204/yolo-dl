@@ -268,7 +268,7 @@ pub fn yolo_v5_small<'p, P>(
     path: P,
     input_channels: usize,
     num_classes: usize,
-) -> Box<dyn FnMut(&Tensor, bool) -> YoloOutput>
+) -> Box<dyn FnMut(&Tensor, bool) -> YoloOutput + Send>
 where
     P: Borrow<nn::Path<'p>>,
 {

@@ -9,11 +9,11 @@ pub struct YoloLossInit {
     pub pos_weight: Option<Tensor>,
     pub reduction: Reduction,
     pub focal_loss_gamma: Option<f64>,
-    pub anchors_list: Vec<Vec<(usize, usize)>>,
     pub match_grid_method: Option<MatchGrid>,
     pub iou_kind: Option<IoUKind>,
     pub smooth_bce_coef: Option<f64>,
     pub objectness_iou_ratio: Option<f64>,
+    pub anchor_scale_thresh: Option<f64>,
 }
 
 impl YoloLossInit {
@@ -22,20 +22,22 @@ impl YoloLossInit {
             pos_weight,
             reduction,
             focal_loss_gamma,
-            anchors_list,
             match_grid_method,
             iou_kind,
             smooth_bce_coef,
             objectness_iou_ratio,
+            anchor_scale_thresh,
         } = self;
         let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
         let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
         let iou_kind = iou_kind.unwrap_or(IoUKind::GIoU);
         let smooth_bce_coef = smooth_bce_coef.unwrap_or(0.01);
         let objectness_iou_ratio = objectness_iou_ratio.unwrap_or(1.0);
+        let anchor_scale_thresh = anchor_scale_thresh.unwrap_or(4.0);
         assert!(focal_loss_gamma >= 0.0);
         assert!(smooth_bce_coef >= 0.0 && smooth_bce_coef <= 1.0);
         assert!(objectness_iou_ratio >= 0.0 && objectness_iou_ratio <= 1.0);
+        assert!(anchor_scale_thresh >= 1.0);
 
         let bce_class = FocalLossInit {
             pos_weight: pos_weight.as_ref().map(|weight| weight.shallow_clone()),
@@ -53,33 +55,29 @@ impl YoloLossInit {
         }
         .build();
 
-        let gain = Tensor::ones(&[6], (Kind::Float, Device::Cpu));
-        let offsets = Tensor::of_slice(&[1, 0, 0, 1, -1, 0, 0, -1]).view([3, 2]);
-        let anchor_tensors = Tensor::arange(anchors_list.len() as i64, (Kind::Int64, Device::Cpu));
-
         YoloLoss {
             bce_class,
             bce_objectness,
-            anchors_list,
             match_grid_method,
             iou_kind,
             smooth_bce_coef,
             objectness_iou_ratio,
+            anchor_scale_thresh,
         }
     }
 }
 
-impl YoloLossInit {
-    pub fn new(anchors_list: Vec<Vec<(usize, usize)>>) -> Self {
+impl Default for YoloLossInit {
+    fn default() -> Self {
         Self {
             pos_weight: None,
             reduction: Reduction::Mean,
             focal_loss_gamma: None,
-            anchors_list,
             match_grid_method: None,
             iou_kind: None,
             smooth_bce_coef: None,
             objectness_iou_ratio: None,
+            anchor_scale_thresh: None,
         }
     }
 }
@@ -102,20 +100,20 @@ pub enum IoUKind {
 pub struct YoloLoss {
     bce_class: FocalLoss,
     bce_objectness: FocalLoss,
-    anchors_list: Vec<Vec<(usize, usize)>>,
     match_grid_method: MatchGrid,
     iou_kind: IoUKind,
     smooth_bce_coef: f64,
     objectness_iou_ratio: f64,
+    anchor_scale_thresh: f64,
 }
 
 impl YoloLoss {
-    pub fn forward(&self, prediction: &YoloOutput, target_bboxes: Vec<Vec<RatioBBox>>) -> Tensor {
+    pub fn forward(&self, prediction: &YoloOutput, target_bboxes: &Vec<Vec<RatioBBox>>) -> Tensor {
         let batch_size = prediction.batch_size();
 
         // match target bboxes and grids, and group them by detector cells
         // indexed by (layer_index, grid_row, grid_col)
-        let matched_grids = self.match_grids(prediction, &target_bboxes);
+        let matched_grids = self.match_grids(prediction, target_bboxes);
         let grouped_target_bboxes: HashMap<(usize, i64, i64), Vec<_>> = matched_grids
             .iter()
             .flat_map(|args| {
@@ -170,7 +168,6 @@ impl YoloLoss {
                             classification,
                             ..
                         } = detection;
-                        let (batch_size, _) = position.size2().unwrap();
 
                         // select predictions by batch indexes
                         let (batch_indexes, targets) = targets_with_batch_indexes.into_iter().fold(
@@ -295,14 +292,14 @@ impl YoloLoss {
             // convert to sparse tensor
             let target_classifications = tch::no_grad(|| {
                 let target = pred_classifications.full_like(neg);
-                target
+                let target = target
                     .gather(1, &target_sparse_classifications, false)
                     .fill_(pos);
                 target
             });
 
             self.bce_class
-                .forward(&pred_classifications, &target_classifications);
+                .forward(&pred_classifications, &target_classifications)
         };
 
         // objectness loss

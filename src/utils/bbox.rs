@@ -41,8 +41,10 @@ impl BBox {
         let mut orig_r = orig_cx + orig_w / 2.0;
 
         // fix the value if it slightly exceeds the boundary
+        let epsilon = 1e-8;
+
         if orig_t < 0.0 {
-            if abs_diff_eq!(orig_t.raw(), 0.0) {
+            if abs_diff_eq!(orig_t.raw(), 0.0, epsilon = epsilon) {
                 orig_t = R64::new(0.0);
             } else {
                 panic!(
@@ -53,7 +55,7 @@ impl BBox {
         }
 
         if orig_l < 0.0 {
-            if abs_diff_eq!(orig_l.raw(), 0.0) {
+            if abs_diff_eq!(orig_l.raw(), 0.0, epsilon = epsilon) {
                 orig_l = R64::new(0.0);
             } else {
                 panic!(
@@ -64,7 +66,7 @@ impl BBox {
         }
 
         if orig_b > image_height {
-            if abs_diff_eq!(orig_b.raw(), image_height.raw()) {
+            if abs_diff_eq!(orig_b.raw(), image_height.raw(), epsilon = epsilon) {
                 orig_b = image_height;
             } else {
                 panic!(
@@ -75,7 +77,7 @@ impl BBox {
         }
 
         if orig_r > image_width {
-            if abs_diff_eq!(orig_r.raw(), image_width.raw()) {
+            if abs_diff_eq!(orig_r.raw(), image_width.raw(), epsilon = epsilon) {
                 orig_r = image_width;
             } else {
                 panic!(
