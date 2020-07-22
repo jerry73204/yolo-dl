@@ -134,7 +134,6 @@ pub struct YoloLoss {
 
 impl YoloLoss {
     pub fn forward(&self, prediction: &YoloOutput, target: &Vec<Vec<RatioBBox>>) -> Tensor {
-        let batch_size = prediction.batch_size();
         let device = prediction.device;
         let num_classes = prediction.num_classes;
 
@@ -394,8 +393,6 @@ impl YoloLoss {
         prediction: &YoloOutput,
         target: &Vec<Vec<RatioBBox>>,
     ) -> HashMap<GridIndex, Rc<BBox>> {
-        let image_height = prediction.image_height;
-        let image_width = prediction.image_width;
         let feature_info = &prediction.feature_info;
 
         let bbox_iter = target
@@ -480,7 +477,12 @@ impl YoloLoss {
                                 }
                                 .into_iter();
 
-                                orig_iter.chain(top_iter).chain(left_iter).collect()
+                                orig_iter
+                                    .chain(top_iter)
+                                    .chain(left_iter)
+                                    .chain(bottom_iter)
+                                    .chain(right_iter)
+                                    .collect()
                             }
                         }
                     };
@@ -680,20 +682,20 @@ pub struct FocalLoss {
 impl FocalLoss {
     pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
         let Self {
-            bce,
+            ref bce,
             gamma,
             alpha,
             reduction,
-        } = self;
+        } = *self;
 
-        let bce_loss = self.bce.forward(input, target);
+        let bce_loss = bce.forward(input, target);
         let input_prob = input.sigmoid();
         let p_t: Tensor = target * &input_prob + (1.0 - target) * (1.0 - &input_prob);
-        let alpha_factor = target * self.alpha + (1.0 - target) * (1.0 - self.alpha);
-        let modulating_factor = (-&p_t + 1.0).pow(self.gamma);
+        let alpha_factor = target * alpha + (1.0 - target) * (1.0 - alpha);
+        let modulating_factor = (-&p_t + 1.0).pow(gamma);
         let loss: Tensor = bce_loss * alpha_factor * modulating_factor;
 
-        match self.reduction {
+        match reduction {
             Reduction::Mean => loss.mean(Kind::Float),
             Reduction::Sum => loss.sum(Kind::Float),
             Reduction::None => loss,

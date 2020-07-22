@@ -197,7 +197,7 @@ impl RatioBBox {
         let [rt, rl, rb, rr] = rhs.tlbr();
 
         let t = lt.max(rt);
-        let l = lt.max(rt);
+        let l = ll.max(rl);
         let b = lb.min(rb);
         let r = lr.min(rr);
 
