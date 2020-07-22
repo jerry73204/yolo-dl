@@ -343,7 +343,7 @@ impl DataSet {
                     image_vec,
                 } = chunk.into_iter().sum();
 
-                let image_batch = Tensor::stack(&image_vec, 0);
+                let image_batch = Tensor::cat(&image_vec, 0);
 
                 Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch)))
             }
