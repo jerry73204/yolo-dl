@@ -28,6 +28,7 @@ impl YoloLossInit {
             objectness_iou_ratio,
             anchor_scale_thresh,
         } = self;
+
         let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
         let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
         let iou_kind = iou_kind.unwrap_or(IoUKind::GIoU);
@@ -110,6 +111,7 @@ pub struct YoloLoss {
 impl YoloLoss {
     pub fn forward(&self, prediction: &YoloOutput, target_bboxes: &Vec<Vec<RatioBBox>>) -> Tensor {
         let batch_size = prediction.batch_size();
+        let device = prediction.device;
 
         // match target bboxes and grids, and group them by detector cells
         // indexed by (layer_index, grid_row, grid_col)
@@ -179,28 +181,31 @@ impl YoloLoss {
                                 state
                             },
                         );
-                        let batch_selector = Tensor::of_slice(&batch_indexes);
 
-                        let selected_position = position.gather(
-                            0,
-                            &batch_selector.view([-1, 1]).expand_as(&position),
-                            false,
-                        );
-                        let selected_size = position.gather(
-                            0,
-                            &batch_selector.view([-1, 1]).expand_as(&size),
-                            false,
-                        );
-                        let selected_objectness = position.gather(
-                            0,
-                            &batch_selector.view([-1, 1]).expand_as(&objectness),
-                            false,
-                        );
-                        let selected_classification = position.gather(
-                            0,
-                            &batch_selector.view([-1, 1]).expand_as(&classification),
-                            false,
-                        );
+                        let index_tensor = Tensor::of_slice(&batch_indexes)
+                            .to_device(device)
+                            .view([-1, 1]);
+
+                        let selected_position = {
+                            let (_, channels) = position.size2().unwrap();
+                            let index_tensor = index_tensor.expand(&[-1, channels], false);
+                            position.gather(0, &index_tensor, false)
+                        };
+                        let selected_size = {
+                            let (_, channels) = size.size2().unwrap();
+                            let index_tensor = index_tensor.expand(&[-1, channels], false);
+                            size.gather(0, &index_tensor, false)
+                        };
+                        let selected_objectness = {
+                            let (_, channels) = objectness.size2().unwrap();
+                            let index_tensor = index_tensor.expand(&[-1, channels], false);
+                            objectness.gather(0, &index_tensor, false)
+                        };
+                        let selected_classification = {
+                            let (_, channels) = classification.size2().unwrap();
+                            let index_tensor = index_tensor.expand(&[-1, channels], false);
+                            classification.gather(0, &index_tensor, false)
+                        };
 
                         let (
                             gathered_positions,
@@ -259,11 +264,13 @@ impl YoloLoss {
 
             let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = final_state;
 
-            let target_cy = Tensor::of_slice(&cy_vec).view([-1, 1]);
-            let target_cx = Tensor::of_slice(&cx_vec).view([-1, 1]);
-            let target_h = Tensor::of_slice(&h_vec).view([-1, 1]);
-            let target_w = Tensor::of_slice(&w_vec).view([-1, 1]);
-            let target_sparse_classifications = Tensor::of_slice(&category_id_vec).view([-1, 1]);
+            let target_cy = Tensor::of_slice(&cy_vec).view([-1, 1]).to_device(device);
+            let target_cx = Tensor::of_slice(&cx_vec).view([-1, 1]).to_device(device);
+            let target_h = Tensor::of_slice(&h_vec).view([-1, 1]).to_device(device);
+            let target_w = Tensor::of_slice(&w_vec).view([-1, 1]).to_device(device);
+            let target_sparse_classifications = Tensor::of_slice(&category_id_vec)
+                .view([-1, 1])
+                .to_device(device);
 
             let target_positions = Tensor::cat(&[&target_cy, &target_cx], 1);
             let target_sizes = Tensor::cat(&[&target_h, &target_w], 1);
@@ -292,9 +299,15 @@ impl YoloLoss {
             // convert to sparse tensor
             let target_classifications = tch::no_grad(|| {
                 let target = pred_classifications.full_like(neg);
-                let target = target
-                    .gather(1, &target_sparse_classifications, false)
-                    .fill_(pos);
+                let target = target.scatter(
+                    1,
+                    &target_sparse_classifications,
+                    &Tensor::full(
+                        &target_sparse_classifications.size(),
+                        pos,
+                        (Kind::Float, device),
+                    ),
+                );
                 target
             });
 
@@ -396,7 +409,7 @@ impl YoloLoss {
             }
         };
 
-        loss
+        loss.view([-1, 1])
     }
 
     /// Match target bboxes with grids.
