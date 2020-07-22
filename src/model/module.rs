@@ -505,25 +505,30 @@ impl DetectInit {
                 debug_assert_eq!(tensors.len() as i64, num_detections);
                 let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
-                // compute grid size in pixels
-                let grid_sizes: Vec<_> = tensors
-                    .iter()
-                    .map(|xs| {
-                        let (b, _c, height, width) = xs.size4().unwrap();
+                // compute sizes for each feature map
+                let feature_info: Vec<_> = izip!(tensors.iter(), anchors.iter())
+                    .map(|(tensor, anchors_in_pixels)| {
+                        let (b, _c, feature_height, feature_width) = tensor.size4().unwrap();
                         debug_assert_eq!(b, batch_size);
 
-                        let grid_height = image_height / height;
-                        let grid_width = image_width / width;
+                        let per_grid_height = image_height as f64 / feature_height as f64;
+                        let per_grid_width = image_width as f64 / feature_width as f64;
 
-                        (grid_height, grid_width)
-                    })
-                    .collect();
+                        let anchors_in_grids: Vec<_> = anchors_in_pixels
+                            .iter()
+                            .cloned()
+                            .map(|(h, w)| (h as f64 / per_grid_height, w as f64 / per_grid_width))
+                            .collect();
 
-                let feature_sizes: Vec<_> = tensors
-                    .iter()
-                    .map(|xs| {
-                        let (_b, _c, height, width) = xs.size4().unwrap();
-                        (height, width)
+                        let info = FeatureInfo {
+                            feature_height,
+                            feature_width,
+                            per_grid_height,
+                            per_grid_width,
+                            anchors: anchors_in_grids,
+                        };
+
+                        info
                     })
                     .collect();
 
@@ -584,7 +589,7 @@ impl DetectInit {
                                 .flat_map(|(y_pixel, x_pixel)| {
                                     let y_grid = y_pixel as f64 / grid_height as f64;
                                     let x_grid = x_pixel as f64 / grid_width as f64;
-                                    vec![y_grid, x_grid]
+                                    vec![y_grid as f32, x_grid as f32]
                                 })
                                 .collect();
 
@@ -607,6 +612,9 @@ impl DetectInit {
                         // bbox sizes in grid units
                         let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
 
+                        // bbox parameters in grid units
+                        let cycxhw = Tensor::cat(&[positions, sizes], 4);
+
                         // objectness
                         let objectnesses = sigmoid.i((.., .., .., .., 4..5));
 
@@ -616,8 +624,7 @@ impl DetectInit {
                         // construct predictions per grid
                         let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
                             move |(anchor_index, row, col)| {
-                                let position = positions.i((.., anchor_index, row, col, ..));
-                                let size = sizes.i((.., anchor_index, row, col, ..));
+                                let cycxhw = cycxhw.i((.., anchor_index, row, col, ..));
                                 let objectness = objectnesses.i((.., anchor_index, row, col, ..));
                                 let classification =
                                     classifications.i((.., anchor_index, row, col, ..));
@@ -630,8 +637,7 @@ impl DetectInit {
                                 };
                                 let detection = Detection {
                                     index: detection_index,
-                                    position,
-                                    size,
+                                    cycxhw,
                                     objectness,
                                     classification,
                                 };
@@ -648,11 +654,10 @@ impl DetectInit {
                     image_height,
                     image_width,
                     batch_size,
-                    feature_sizes,
+                    num_classes: num_classes as i64,
                     detections,
                     device,
-                    grid_sizes,
-                    anchors: anchors.clone(),
+                    feature_info,
                 }
             },
         )

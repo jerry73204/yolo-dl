@@ -468,15 +468,26 @@ pub struct YoloOutput {
     pub(crate) image_height: i64,
     pub(crate) image_width: i64,
     pub(crate) batch_size: i64,
+    pub(crate) num_classes: i64,
     #[tensor_like(copy)]
     pub(crate) device: Device,
-    /// Feature map sizes in grid units per layer.
-    pub(crate) feature_sizes: Vec<(i64, i64)>,
-    /// Grid sizes in pixels per layer.
-    pub(crate) grid_sizes: Vec<(i64, i64)>,
     /// Detections indexed by (layer_index, anchor_index, col, row) measured in grid units
     pub(crate) detections: Vec<Detection>,
-    pub(crate) anchors: Vec<Vec<(i64, i64)>>,
+    pub(crate) feature_info: Vec<FeatureInfo>,
+}
+
+#[derive(Debug, TensorLike)]
+pub struct FeatureInfo {
+    /// Feature map height in grid units
+    pub feature_height: i64,
+    /// Feature map width in grid units
+    pub feature_width: i64,
+    /// Per-grid height in pixels
+    pub per_grid_height: f64,
+    /// Per-grid width in pixels
+    pub per_grid_width: f64,
+    /// Anchros (height, width) in grid units
+    pub anchors: Vec<(f64, f64)>,
 }
 
 impl YoloOutput {
@@ -499,24 +510,30 @@ impl YoloOutput {
             .map(|detection| {
                 let Detection {
                     index,
-                    position: position_grids,
-                    size: size_grids,
+                    cycxhw: cycxhw_grids,
                     objectness,
                     classification,
                 } = detection;
 
                 let layer_index = index.layer_index;
-                let (grid_height, grid_width) = self.grid_sizes[layer_index];
+                let FeatureInfo {
+                    per_grid_height,
+                    per_grid_width,
+                    ..
+                } = self.feature_info[layer_index];
 
-                let grid_size_multiplier =
-                    Tensor::of_slice(&[grid_height as i64, grid_width as i64]).view([1, 2]);
-                let position_pixels = position_grids * &grid_size_multiplier;
-                let size_pixels = size_grids * &grid_size_multiplier;
+                let grid_size_multiplier = Tensor::of_slice(&[
+                    per_grid_height,
+                    per_grid_width,
+                    per_grid_height,
+                    per_grid_width,
+                ])
+                .view([1, 4]);
+                let cycxhw_pixels = cycxhw_grids * &grid_size_multiplier;
 
                 let new_detection = Detection {
                     index,
-                    position: position_pixels,
-                    size: size_pixels,
+                    cycxhw: cycxhw_pixels,
                     objectness,
                     classification,
                 };
@@ -524,10 +541,6 @@ impl YoloOutput {
                 new_detection
             })
             .collect()
-    }
-
-    pub fn anchors(&self) -> &[Vec<(i64, i64)>] {
-        self.anchors.as_slice()
     }
 
     pub fn batch_size(&self) -> i64 {
@@ -546,8 +559,7 @@ pub struct DetectionIndex {
 #[derive(Debug, TensorLike)]
 pub struct Detection {
     pub index: DetectionIndex,
-    pub position: Tensor,
-    pub size: Tensor,
+    pub cycxhw: Tensor,
     pub objectness: Tensor,
     pub classification: Tensor,
 }
