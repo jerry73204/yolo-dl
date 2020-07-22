@@ -33,6 +33,7 @@ tfrecord = { version = "0.3", features = ["full"] }
 ndarray = "0.13"
 log = "0.4"
 pretty_env_logger = "0.4"
+tch-serde = "0.1.2"
 
 [patch.crates-io]
 tch = { git = "https://github.com/LaurentMazare/tch-rs.git" }

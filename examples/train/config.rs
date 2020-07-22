@@ -18,6 +18,8 @@ pub struct Config {
     pub shear: Option<R64>,
     pub horizontal_flip: bool,
     pub vertical_flip: bool,
+    #[serde(with = "tch_serde::serde_device")]
+    pub device: Device,
 }
 
 impl Config {
