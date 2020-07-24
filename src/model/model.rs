@@ -516,8 +516,19 @@ pub struct YoloOutput {
     pub(crate) num_classes: i64,
     #[tensor_like(copy)]
     pub(crate) device: Device,
-    /// Detections indexed by (layer_index, anchor_index, col, row) measured in grid units
-    pub(crate) detections: Vec<Detection>,
+    /// Grid indexes tensor of shape \[bsize, num_grids, 3\]
+    ///
+    /// The last dimension represents (anchor_array_index, grid_row, grid_col)
+    /// The anchor_array_index is the index of anchor_sizes field.
+    pub(crate) grid_indexes: Tensor,
+    /// Compount output tensor of shape \[bsize, num_grids, 5 + num_classes\]
+    ///
+    /// The last dimension represents (cy, cx, h, w, objectness, classifications..)
+    pub(crate) outputs: Tensor,
+    /// Tensor of anchor box sizes of shape [n_anchors, 2], where n_anchors is indexed by anchor_array_index.
+    ///
+    /// The last dimension represents (height, width) in grid units
+    pub(crate) anchor_sizes: Tensor,
     pub(crate) feature_info: Vec<FeatureInfo>,
 }
 
@@ -530,48 +541,40 @@ impl YoloOutput {
         self.image_width
     }
 
-    pub fn detections(&self) -> &[Detection] {
-        self.detections.as_slice()
+    pub fn anchor_indexes(&self) -> Tensor {
+        self.grid_indexes.i((.., .., 0..1))
     }
 
-    pub fn detections_in_pixels(&self) -> Vec<Detection> {
-        self.detections
-            .shallow_clone()
-            .into_iter()
-            .map(|detection| {
-                let Detection {
-                    index,
-                    cycxhw: cycxhw_grids,
-                    objectness,
-                    classification,
-                } = detection;
+    pub fn grid_rows(&self) -> Tensor {
+        self.grid_indexes.i((.., .., 1..2))
+    }
 
-                let layer_index = index.layer_index;
-                let FeatureInfo {
-                    per_grid_height,
-                    per_grid_width,
-                    ..
-                } = self.feature_info[layer_index];
+    pub fn grid_cols(&self) -> Tensor {
+        self.grid_indexes.i((.., .., 2..3))
+    }
 
-                let grid_size_multiplier = Tensor::of_slice(&[
-                    per_grid_height,
-                    per_grid_width,
-                    per_grid_height,
-                    per_grid_width,
-                ])
-                .view([1, 4]);
-                let cycxhw_pixels = cycxhw_grids * &grid_size_multiplier;
+    pub fn bbox_cy(&self) -> Tensor {
+        self.outputs.i((.., .., 0..1))
+    }
 
-                let new_detection = Detection {
-                    index,
-                    cycxhw: cycxhw_pixels,
-                    objectness,
-                    classification,
-                };
+    pub fn bbox_cx(&self) -> Tensor {
+        self.outputs.i((.., .., 1..2))
+    }
 
-                new_detection
-            })
-            .collect()
+    pub fn bbox_h(&self) -> Tensor {
+        self.outputs.i((.., .., 2..3))
+    }
+
+    pub fn bbox_w(&self) -> Tensor {
+        self.outputs.i((.., .., 3..4))
+    }
+
+    pub fn objectnesses(&self) -> Tensor {
+        self.outputs.i((.., .., 4..5))
+    }
+
+    pub fn classifications(&self) -> Tensor {
+        self.outputs.i((.., .., 5..))
     }
 
     pub fn batch_size(&self) -> i64 {

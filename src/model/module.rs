@@ -561,6 +561,38 @@ impl DetectModule {
             })
             .collect();
 
+        // construct anchor tensors
+        let (anchor_array_index_lookup, anchor_sizes) = {
+            let (lookup, sizes): (HashMap<_, _>, Vec<_>) = feature_info
+                .iter()
+                .enumerate()
+                .flat_map(|(layer_index, info)| {
+                    info.anchors
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(move |(anchor_index, (h, w))| (layer_index, anchor_index, h, w))
+                })
+                .enumerate()
+                .map(|(anchor_array_index, args)| {
+                    let (layer_index, anchor_index, h, w) = args;
+                    (
+                        ((layer_index, anchor_index), anchor_array_index),
+                        vec![h as f32, w as f32],
+                    )
+                })
+                .unzip();
+
+            let anchor_sizes = {
+                let components: Vec<_> = sizes.into_iter().flat_map(|size| size).collect();
+                Tensor::of_slice(&components)
+                    .view([-1, 2])
+                    .to_device(self.device)
+            };
+
+            (lookup, anchor_sizes)
+        };
+
         // construct feature maps
         let feature_maps: Vec<_> = izip!(tensors.iter(), self.anchors_list.iter())
             .map(|(xs, anchors)| {
@@ -584,104 +616,134 @@ impl DetectModule {
             })
             .collect();
 
-        // construct human-readable outputs
-        let detections: Vec<_> = izip!(feature_maps.iter(), self.anchors_list.iter())
-            .enumerate()
-            .flat_map(|(layer_index, (xs, anchors))| {
-                let (num_anchors, height, width) = match xs.size().as_slice() {
-                    &[_b, na, h, w, _no] => (na, h, w),
-                    _ => unreachable!(),
-                };
-                debug_assert_eq!(num_anchors, anchors.len() as i64);
+        // aggregate all grid predictions in one tensor
+        let (grid_indexes_vec, compound_vec): (Vec<_>, Vec<_>) =
+            izip!(feature_maps.iter(), self.anchors_list.iter())
+                .enumerate()
+                .map(|(layer_index, (xs, anchors))| {
+                    let (num_anchors, height, width) = match xs.size().as_slice() {
+                        &[_b, na, h, w, _no] => (na, h, w),
+                        _ => unreachable!(),
+                    };
+                    debug_assert_eq!(num_anchors, anchors.len() as i64);
 
-                // gride size in pixels
-                let grid_height = image_height / height;
-                let grid_width = image_width / width;
+                    // gride size in pixels
+                    let grid_height = image_height / height;
+                    let grid_width = image_width / width;
 
-                // base position for each grid in grid units
-                let grid_base_positions = {
-                    let grids = Tensor::meshgrid(&[
-                        Tensor::arange(height, (Kind::Float, self.device)),
-                        Tensor::arange(width, (Kind::Float, self.device)),
-                    ]);
-                    Tensor::stack(&[&grids[0], &grids[1]], 2)
-                        .view(&[1, 1, height, width, 2] as &[_])
-                };
+                    // base position for each grid in grid units
+                    let grid_base_positions = {
+                        let grids = Tensor::meshgrid(&[
+                            Tensor::arange(height, (Kind::Float, self.device)),
+                            Tensor::arange(width, (Kind::Float, self.device)),
+                        ]);
+                        Tensor::stack(&[&grids[0], &grids[1]], 2).view([1, 1, height, width, 2])
+                    };
 
-                // anchor sizes in grid units
-                let anchor_base_sizes = {
-                    let components: Vec<_> = anchors
-                        .iter()
-                        .cloned()
-                        .flat_map(|(y_pixel, x_pixel)| {
-                            let y_grid = y_pixel as f64 / grid_height as f64;
-                            let x_grid = x_pixel as f64 / grid_width as f64;
-                            vec![y_grid as f32, x_grid as f32]
-                        })
-                        .collect();
+                    // anchor sizes in grid units
+                    let anchor_base_sizes = {
+                        let components: Vec<_> = anchors
+                            .iter()
+                            .cloned()
+                            .flat_map(|(y_pixel, x_pixel)| {
+                                let y_grid = y_pixel as f64 / grid_height as f64;
+                                let x_grid = x_pixel as f64 / grid_width as f64;
+                                vec![y_grid as f32, x_grid as f32]
+                            })
+                            .collect();
 
-                    Tensor::of_slice(&components).to_device(self.device).view([
-                        1,
-                        num_anchors,
-                        1,
-                        1,
-                        2,
-                    ])
-                };
+                        Tensor::of_slice(&components).to_device(self.device).view([
+                            1,
+                            num_anchors,
+                            1,
+                            1,
+                            2,
+                        ])
+                    };
 
-                // transform outputs
-                let sigmoid = xs.sigmoid();
+                    // transform outputs
+                    let sigmoid = xs.sigmoid();
 
-                // positions in grid units
-                let positions =
-                    sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
+                    // positions in grid units
+                    let positions =
+                        sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
 
-                // bbox sizes in grid units
-                let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
+                    // bbox sizes in grid units
+                    let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
 
-                // bbox parameters in grid units
-                let cycxhw = Tensor::cat(&[positions, sizes], 4);
+                    // objectness
+                    let objectnesses = sigmoid.i((.., .., .., .., 4..5));
 
-                // objectness
-                let objectnesses = sigmoid.i((.., .., .., .., 4..5));
+                    // sparse classification
+                    let classifications = sigmoid.i((.., .., .., .., 5..));
 
-                // sparse classification
-                let classifications = sigmoid.i((.., .., .., .., 5..));
+                    // grid indexes tensor of size
+                    // [batch_size, layer_index(=1), num_anchors, height, width, 4]
+                    // indexed by (layer_index, anchor_array_index, grid_row, grid_col)
+                    let grid_indexes = {
+                        let anchor_array_indexes: Vec<_> = (0..num_anchors)
+                            .map(|anchor_index| {
+                                anchor_array_index_lookup[&(layer_index, anchor_index as usize)]
+                                    as i64
+                            })
+                            .collect();
 
-                // construct predictions per grid
-                let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
-                    move |(anchor_index, row, col)| {
-                        let cycxhw = cycxhw.i((.., anchor_index, row, col, ..));
-                        let objectness = objectnesses.i((.., anchor_index, row, col, ..));
-                        let classification = classifications.i((.., anchor_index, row, col, ..));
+                        let indexes = Tensor::meshgrid(&[
+                            Tensor::of_slice(&anchor_array_indexes).to_device(self.device),
+                            Tensor::arange(height, (Kind::Int64, self.device)),
+                            Tensor::arange(width, (Kind::Int64, self.device)),
+                        ]);
+                        let anchor_array_indexes = &indexes[0];
+                        let grid_row_indexes = &indexes[1];
+                        let grid_col_indexes = &indexes[2];
 
-                        let detection_index = DetectionIndex {
-                            layer_index,
-                            anchor_index: anchor_index as usize,
-                            grid_row: row,
-                            grid_col: col,
-                        };
-                        let detection = Detection {
-                            index: detection_index,
-                            cycxhw,
-                            objectness,
-                            classification,
-                        };
+                        Tensor::stack(
+                            &[anchor_array_indexes, grid_row_indexes, grid_col_indexes],
+                            3,
+                        )
+                        .view([1, num_anchors, height, width, 3])
+                        .expand(&[batch_size, num_anchors, height, width, 3], false)
+                    };
 
-                        detection
-                    },
-                );
+                    // merge to compound tensor of size
+                    // [batch_size, layer_size(=1), num_anchors, height, width, 5 + num_classes]
+                    let compound = Tensor::cat(
+                        &[
+                            positions.view([batch_size, num_anchors, height, width, 2]),
+                            sizes.view([batch_size, num_anchors, height, width, 2]),
+                            objectnesses.view([batch_size, num_anchors, height, width, 1]),
+                            classifications.view([
+                                batch_size,
+                                num_anchors,
+                                height,
+                                width,
+                                self.num_classes,
+                            ]),
+                        ],
+                        4,
+                    );
 
-                detections_iter
-            })
-            .collect();
+                    // flatten
+                    debug_assert_eq!(compound.size(), grid_indexes.size());
+                    let grid_indexes = grid_indexes.view([batch_size, -1, 3]);
+                    let compound = compound.view([batch_size, -1, 5 + self.num_classes]);
+
+                    (grid_indexes, compound)
+                })
+                .unzip();
+
+        let grid_indexes = Tensor::cat(&grid_indexes_vec, 1);
+        let compound = Tensor::cat(&compound_vec, 1);
+        debug_assert_eq!(compound.size(), grid_indexes.size());
 
         YoloOutput {
             image_height,
             image_width,
             batch_size,
             num_classes: self.num_classes,
-            detections,
+            grid_indexes,
+            outputs: compound,
+            anchor_sizes,
             device: self.device,
             feature_info,
         }
