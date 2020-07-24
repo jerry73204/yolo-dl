@@ -39,7 +39,7 @@ impl YoloInit {
 
         // annotate each layer with layer index
         // layer_index -> layer_config
-        let layers: HashMap<usize, _> = layers
+        let index_to_config: HashMap<usize, _> = layers
             .into_iter()
             .enumerate()
             .map(|(index, layer)| {
@@ -50,7 +50,7 @@ impl YoloInit {
 
         // compute layer name to index correspondence
         // name -> layer_index
-        let layer_names: HashMap<&str, usize> = layers
+        let name_to_index: HashMap<&str, usize> = index_to_config
             .iter()
             .filter_map(|(layer_index, layer)| {
                 layer
@@ -61,15 +61,15 @@ impl YoloInit {
             .collect();
 
         // compute input indexes per layer
-        // layer_index -> (from_index?, from_indexes?)
-        let input_indexes: HashMap<usize, Vec<usize>> = layers
+        // layer_index -> (from_indexes)
+        let mut index_to_inputs: HashMap<usize, Vec<usize>> = index_to_config
             .iter()
             .map(|(layer_index, layer)| {
                 let kind = &layer.kind;
 
                 let from_indexes = match (kind.from_name(), kind.from_multiple_names()) {
                     (Some(name), None) => {
-                        let from_index = *layer_names
+                        let from_index = *name_to_index
                             .get(name)
                             .expect(&format!(r#"undefined layer name "{}""#, name));
                         vec![from_index]
@@ -81,7 +81,7 @@ impl YoloInit {
                     (None, Some(names)) => names
                         .iter()
                         .map(|name| {
-                            *layer_names
+                            *name_to_index
                                 .get(name.as_str())
                                 .expect(&format!(r#"undefined layer name "{}""#, name))
                         })
@@ -112,7 +112,7 @@ impl YoloInit {
 
             // list directed edges among nodes
             // layer_index -> [output_indexes]
-            let output_indexes = input_indexes
+            let output_indexes = index_to_inputs
                 .iter()
                 .flat_map(|(layer_index, from_indexes)| {
                     from_indexes
@@ -127,13 +127,13 @@ impl YoloInit {
                 visit_index: usize,
                 layer_index: usize,
                 mut state: State,
-                input_indexes: &HashMap<usize, Vec<usize>>,
+                index_to_inputs: &HashMap<usize, Vec<usize>>,
                 output_indexes: &HashMap<usize, Vec<usize>>,
             ) -> (usize, State) {
                 debug_assert_eq!(state.marks.get(&layer_index), None);
 
                 // if any one of incoming node is not visited, give up and visit later
-                for from_layer_index in input_indexes[&layer_index].iter().cloned() {
+                for from_layer_index in index_to_inputs[&layer_index].iter().cloned() {
                     if let None = state.marks.get(&from_layer_index) {
                         return (visit_index, state);
                     }
@@ -161,7 +161,7 @@ impl YoloInit {
                                 next_index,
                                 to_layer_index,
                                 state,
-                                input_indexes,
+                                index_to_inputs,
                                 output_indexes,
                             );
                             next_index = new_next_index;
@@ -179,10 +179,10 @@ impl YoloInit {
                 topo_indexes: HashMap::<usize, usize>::new(),
             };
             let (end_visit_index, new_state) =
-                visit_fn(0, 0, state, &input_indexes, &output_indexes);
+                visit_fn(0, 0, state, &index_to_inputs, &output_indexes);
             state = new_state;
 
-            for layer_index in (1..=layers.len()).rev() {
+            for layer_index in (1..=index_to_config.len()).rev() {
                 if let None = state.marks.get(&layer_index) {
                     panic!("the model graph is not connected");
                 }
@@ -196,7 +196,7 @@ impl YoloInit {
 
         // compute output channels per layer
         // layer_index -> (in_c?, out_c)
-        let in_out_channels: HashMap<usize, (Option<usize>, usize)> = {
+        let index_to_channels: HashMap<usize, (Option<usize>, usize)> = {
             let init_state: HashMap<_, _> = {
                 let mut state = HashMap::new();
                 state.insert(0, (None, input_channels));
@@ -206,9 +206,9 @@ impl YoloInit {
             ordered_layer_indexes
                 .iter()
                 .cloned()
-                .map(|layer_index| (layer_index, &layers[&layer_index]))
+                .map(|layer_index| (layer_index, &index_to_config[&layer_index]))
                 .fold(init_state, |mut channels, (layer_index, layer)| {
-                    let from_indexes = &input_indexes[&layer_index];
+                    let from_indexes = &index_to_inputs[&layer_index];
 
                     match layer.kind {
                         LayerKind::Focus { out_c, .. } => {
@@ -275,7 +275,7 @@ impl YoloInit {
         };
 
         // list of exported layer indexes and anchors
-        let exported_anchors: HashMap<usize, Vec<(usize, usize)>> = layers.iter()
+        let mut index_to_anchors: HashMap<usize, Vec<(usize, usize)>> = index_to_config.iter()
             .filter_map(|(layer_index, layer)| {
                 match layer.kind {
                     LayerKind::HeadConv2d {ref anchors, ..} => Some((layer_index, anchors.clone())),
@@ -283,22 +283,22 @@ impl YoloInit {
                 }
             })
             .map(|(layer_index, anchors)| {
-                let out_c = in_out_channels[&layer_index].1;
-                assert_eq!(out_c, anchors.len() * num_outputs_per_anchor, "the exported layer must have exactly (n_anchros * (n_classes + 5)) output channels");
+                let out_c = index_to_channels[&layer_index].1;
+                debug_assert_eq!(out_c, anchors.len() * num_outputs_per_anchor, "the exported layer must have exactly (n_anchros * (n_classes + 5)) output channels");
                 (*layer_index, anchors)
             }).collect();
 
         // build modules for each layer
         // layer_index -> module
-        let modules: HashMap<usize, YoloModule> = layers
+        let mut index_to_module: HashMap<usize, YoloModule> = index_to_config
             .iter()
             .map(|(layer_index, layer_init)| {
                 // locals
                 let layer_index = *layer_index;
                 let LayerInit { kind, .. } = layer_init;
 
-                let from_indexes = &input_indexes[&layer_index];
-                let (in_c_opt, out_c): (Option<usize>, usize) = in_out_channels[&layer_index];
+                let from_indexes = &index_to_inputs[&layer_index];
+                let (in_c_opt, out_c): (Option<usize>, usize) = index_to_channels[&layer_index];
 
                 // build layer
                 let module = match *kind {
@@ -422,7 +422,7 @@ impl YoloInit {
 
         // construct detection head
         let mut detection_module = {
-            let anchors_list: Vec<_> = exported_anchors
+            let anchors_list: Vec<_> = index_to_anchors
                 .iter()
                 .map(|(_layer_index, anchros)| anchros.to_vec())
                 .collect();
@@ -434,11 +434,24 @@ impl YoloInit {
         };
 
         // construct model
+        let layers: Vec<_> = ordered_layer_indexes
+            .into_iter()
+            .map(|layer_index| {
+                let module = index_to_module.remove(&layer_index).unwrap();
+                let input_indexes = index_to_inputs.remove(&layer_index).unwrap();
+                let anchors_opt = index_to_anchors.remove(&layer_index);
+
+                Layer {
+                    layer_index,
+                    module,
+                    input_indexes,
+                    anchors_opt,
+                }
+            })
+            .collect();
+
         let yolo_model = YoloModel {
-            ordered_layer_indexes,
-            modules,
-            input_indexes,
-            exported_anchors,
+            layers,
             detection_module,
         };
 
@@ -448,10 +461,7 @@ impl YoloInit {
 
 #[derive(Debug)]
 pub struct YoloModel {
-    ordered_layer_indexes: Vec<usize>,
-    modules: HashMap<usize, YoloModule>,
-    input_indexes: HashMap<usize, Vec<usize>>,
-    exported_anchors: HashMap<usize, Vec<(usize, usize)>>,
+    layers: Vec<Layer>,
     detection_module: DetectModule,
 }
 
@@ -462,38 +472,40 @@ impl YoloModel {
         let mut exported_tensors = vec![];
 
         // run the network
-        self.ordered_layer_indexes
-            .iter()
-            .cloned()
-            .for_each(|layer_index| {
-                let module = &self.modules[&layer_index];
-                let inputs = self.input_indexes[&layer_index]
-                    .iter()
-                    .cloned()
-                    .map(|from_index| &tmp_tensors[&from_index])
-                    .collect::<Vec<_>>();
+        self.layers.iter().for_each(|layer| {
+            let Layer {
+                layer_index,
+                ref module,
+                ref input_indexes,
+                ref anchors_opt,
+            } = *layer;
 
-                // println!(
-                //     "{}\t{:?}",
-                //     layer_index,
-                //     inputs
-                //         .iter()
-                //         .map(|tensor| tensor.size())
-                //         .collect::<Vec<_>>()
-                // );
+            let inputs: Vec<_> = input_indexes
+                .iter()
+                .map(|from_index| &tmp_tensors[from_index])
+                .collect();
 
-                let output = module.forward_t(inputs.as_slice(), train);
-                if self.exported_anchors.contains_key(&layer_index) {
-                    exported_tensors.push(output.shallow_clone());
-                }
-                tmp_tensors.insert(layer_index, output);
-            });
+            let output = module.forward_t(inputs.as_slice(), train);
+
+            if let Some(anchors) = anchors_opt {
+                exported_tensors.push(output.shallow_clone());
+            }
+            tmp_tensors.insert(layer_index, output);
+        });
 
         // run detection module
-        let exported_tensors = exported_tensors.iter().collect::<Vec<_>>();
+        let exported_tensors: Vec<_> = exported_tensors.iter().collect();
         self.detection_module
             .forward_t(exported_tensors.as_slice(), train, height, width)
     }
+}
+
+#[derive(Debug)]
+struct Layer {
+    layer_index: usize,
+    module: YoloModule,
+    input_indexes: Vec<usize>,
+    anchors_opt: Option<Vec<(usize, usize)>>,
 }
 
 #[derive(Debug, TensorLike)]
