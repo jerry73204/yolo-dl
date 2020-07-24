@@ -421,7 +421,7 @@ impl YoloInit {
             .collect();
 
         // construct detection head
-        let mut detection_module = {
+        let detection_module = {
             let anchors_list: Vec<_> = index_to_anchors
                 .iter()
                 .map(|(_layer_index, anchros)| anchros.to_vec())
@@ -487,7 +487,7 @@ impl YoloModel {
 
             let output = module.forward_t(inputs.as_slice(), train);
 
-            if let Some(anchors) = anchors_opt {
+            if let Some(_anchors) = anchors_opt {
                 exported_tensors.push(output.shallow_clone());
             }
             tmp_tensors.insert(layer_index, output);

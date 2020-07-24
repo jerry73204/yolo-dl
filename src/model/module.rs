@@ -570,13 +570,13 @@ impl DetectModule {
                 debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
 
                 let outputs = xs
-                    .view(&[
+                    .view([
                         batch_size,
                         num_anchors,
                         num_outputs_per_anchor,
                         height,
                         width,
-                    ] as &[_])
+                    ])
                     .permute(&[0, 1, 3, 4, 2]);
 
                 // output shape [bsize, n_anchors, height, width, n_outputs]
