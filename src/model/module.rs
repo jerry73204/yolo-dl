@@ -47,7 +47,6 @@ impl YoloModule {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LayerInit {
     pub name: Option<String>,
-    pub export: bool,
     pub kind: LayerKind,
 }
 
@@ -83,6 +82,7 @@ pub enum LayerKind {
         from: Option<String>,
         k: usize,
         s: usize,
+        anchors: Vec<(usize, usize)>,
     },
     Upsample {
         from: Option<String>,
@@ -463,7 +463,7 @@ impl FocusInit {
 #[derive(Debug, Clone)]
 pub struct DetectInit {
     pub num_classes: usize,
-    pub anchors: Vec<Vec<(usize, usize)>>,
+    pub anchors_list: Vec<Vec<(usize, usize)>>,
 }
 
 impl DetectInit {
@@ -479,15 +479,10 @@ impl DetectInit {
 
         let Self {
             num_classes,
-            anchors,
+            anchors_list,
         } = self;
 
-        // ensure every layer has equal number of anchors
-        assert!(anchors
-            .iter()
-            .all(|anchor| anchor.len() == anchors[0].len()));
-
-        let anchors: Vec<Vec<(i64, i64)>> = anchors
+        let anchors_list: Vec<Vec<(i64, i64)>> = anchors_list
             .into_iter()
             .map(|list| {
                 list.into_iter()
@@ -496,9 +491,8 @@ impl DetectInit {
             })
             .collect();
 
-        let num_anchors = anchors[0].len() as i64;
         let num_outputs_per_anchor = num_classes as i64 + 5;
-        let num_detections = anchors.len() as i64;
+        let num_detections = anchors_list.len() as i64;
 
         Box::new(
             move |tensors: &[&Tensor], _train: bool, image_height: i64, image_width: i64| {
@@ -506,7 +500,7 @@ impl DetectInit {
                 let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
                 // compute sizes for each feature map
-                let feature_info: Vec<_> = izip!(tensors.iter(), anchors.iter())
+                let feature_info: Vec<_> = izip!(tensors.iter(), anchors_list.iter())
                     .map(|(tensor, anchors_in_pixels)| {
                         let (b, _c, feature_height, feature_width) = tensor.size4().unwrap();
                         debug_assert_eq!(b, batch_size);
@@ -533,11 +527,10 @@ impl DetectInit {
                     .collect();
 
                 // construct feature maps
-                let feature_maps: Vec<_> = tensors
-                    .iter()
-                    .cloned()
-                    .map(|xs| {
+                let feature_maps: Vec<_> = izip!(tensors.iter(), anchors_list.iter())
+                    .map(|(xs, anchors)| {
                         let (b, channels, height, width) = xs.size4().unwrap();
+                        let num_anchors = anchors.len() as i64;
                         debug_assert_eq!(b, batch_size);
                         debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
 
@@ -557,15 +550,14 @@ impl DetectInit {
                     .collect();
 
                 // construct human-readable outputs
-                let detections: Vec<_> = feature_maps
-                    .iter()
+                let detections: Vec<_> = izip!(feature_maps.iter(), anchors_list.iter())
                     .enumerate()
-                    .flat_map(|(layer_index, xs)| {
+                    .flat_map(|(layer_index, (xs, anchors))| {
                         let (num_anchors, height, width) = match xs.size().as_slice() {
                             &[_b, na, h, w, _no] => (na, h, w),
-
                             _ => unreachable!(),
                         };
+                        debug_assert_eq!(num_anchors, anchors.len() as i64);
 
                         // gride size in pixels
                         let grid_height = image_height / height;
@@ -583,7 +575,7 @@ impl DetectInit {
 
                         // anchor sizes in grid units
                         let anchor_base_sizes = {
-                            let components: Vec<_> = anchors[layer_index]
+                            let components: Vec<_> = anchors
                                 .iter()
                                 .cloned()
                                 .flat_map(|(y_pixel, x_pixel)| {

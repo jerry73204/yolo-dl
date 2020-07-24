@@ -7,7 +7,6 @@ pub struct YoloInit {
     pub num_classes: usize,
     pub depth_multiple: R64,
     pub width_multiple: R64,
-    pub anchors: Vec<Vec<(usize, usize)>>,
     pub layers: Vec<LayerInit>,
 }
 
@@ -23,7 +22,6 @@ impl YoloInit {
             depth_multiple,
             width_multiple,
             layers,
-            anchors,
         } = self;
         let depth_multiple = depth_multiple.raw();
         let width_multiple = width_multiple.raw();
@@ -32,7 +30,6 @@ impl YoloInit {
         ensure!(num_classes > 0, "num_classes must be positive");
         ensure!(depth_multiple > 0.0, "depth_multiple must be positive");
         ensure!(width_multiple > 0.0, "width_multiple must be positive");
-        let num_anchors = anchors.len();
         let num_outputs_per_anchor = num_classes + 5;
 
         let scale_channel = |channel: usize| -> usize {
@@ -42,18 +39,18 @@ impl YoloInit {
 
         // annotate each layer with layer index
         // layer_index -> layer_config
-        let layers = layers
+        let layers: HashMap<usize, _> = layers
             .into_iter()
             .enumerate()
             .map(|(index, layer)| {
                 let layer_index = index + 1;
                 (layer_index, layer)
             })
-            .collect::<HashMap<usize, _>>();
+            .collect();
 
         // compute layer name to index correspondence
         // name -> layer_index
-        let layer_names = layers
+        let layer_names: HashMap<&str, usize> = layers
             .iter()
             .filter_map(|(layer_index, layer)| {
                 layer
@@ -61,11 +58,11 @@ impl YoloInit {
                     .as_ref()
                     .map(|name| (name.as_str(), *layer_index))
             })
-            .collect::<HashMap<&str, usize>>();
+            .collect();
 
         // compute input indexes per layer
         // layer_index -> (from_index?, from_indexes?)
-        let input_indexes = layers
+        let input_indexes: HashMap<usize, Vec<usize>> = layers
             .iter()
             .map(|(layer_index, layer)| {
                 let kind = &layer.kind;
@@ -95,10 +92,11 @@ impl YoloInit {
                 (*layer_index, from_indexes)
             })
             .chain(iter::once((0, vec![])))
-            .collect::<HashMap<usize, Vec<usize>>>();
+            .collect();
 
         // topological sort on layers
-        let ordered_layer_indexes = {
+        // ordered list of layer indexes
+        let ordered_layer_indexes: Vec<usize> = {
             // type defs
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
             enum Mark {
@@ -193,18 +191,23 @@ impl YoloInit {
             (0..end_visit_index)
                 .map(|topo_index| state.topo_indexes[&topo_index])
                 .filter(|layer_index| *layer_index != 0) // exclude input layer
-                .collect::<Vec<usize>>()
+                .collect()
         };
 
         // compute output channels per layer
         // layer_index -> (in_c?, out_c)
-        let in_out_channels: HashMap<usize, (Option<usize>, usize)> = ordered_layer_indexes
-            .iter()
-            .cloned()
-            .map(|layer_index| (layer_index, &layers[&layer_index]))
-            .fold(
-                iter::once((0, (None, input_channels))).collect::<HashMap<_, _>>(),
-                |mut channels, (layer_index, layer)| {
+        let in_out_channels: HashMap<usize, (Option<usize>, usize)> = {
+            let init_state: HashMap<_, _> = {
+                let mut state = HashMap::new();
+                state.insert(0, (None, input_channels));
+                state
+            };
+
+            ordered_layer_indexes
+                .iter()
+                .cloned()
+                .map(|layer_index| (layer_index, &layers[&layer_index]))
+                .fold(init_state, |mut channels, (layer_index, layer)| {
                     let from_indexes = &input_indexes[&layer_index];
 
                     match layer.kind {
@@ -243,11 +246,11 @@ impl YoloInit {
                             let out_c = scale_channel(out_c);
                             channels.insert(layer_index, (Some(in_c), out_c));
                         }
-                        LayerKind::HeadConv2d { .. } => {
+                        LayerKind::HeadConv2d { ref anchors, .. } => {
                             debug_assert_eq!(from_indexes.len(), 1);
                             let from_index = from_indexes[0];
                             let in_c = channels[&from_index].1;
-                            let out_c = num_anchors * num_outputs_per_anchor;
+                            let out_c = anchors.len() * num_outputs_per_anchor;
                             channels.insert(layer_index, (Some(in_c), out_c));
                         }
                         LayerKind::Upsample { .. } => {
@@ -268,17 +271,22 @@ impl YoloInit {
                     }
 
                     channels
-                },
-            );
+                })
+        };
 
         // list of exported layer indexes
-        let exported_indexes: Vec<usize> = layers.iter()
-            .filter(|(_layer_index, layer)| layer.export)
-            .map(|(layer_index, _layer)| {
+        let exported_anchors: HashMap<usize, Vec<(usize, usize)>> = layers.iter()
+            .filter_map(|(layer_index, layer)| {
+                match layer.kind {
+                    LayerKind::HeadConv2d {ref anchors, ..} => Some((layer_index, anchors.clone())),
+                    _ => None
+                }
+            })
+            .map(|(layer_index, anchors)| {
                 let out_c = in_out_channels[&layer_index].1;
-                assert_eq!(out_c, num_anchors * num_outputs_per_anchor, "the exported layer must have exactly (n_anchros * (n_classes + 5)) output channels");
-                *layer_index
-            }).collect::<Vec<_>>();
+                assert_eq!(out_c, anchors.len() * num_outputs_per_anchor, "the exported layer must have exactly (n_anchros * (n_classes + 5)) output channels");
+                (*layer_index, anchors)
+            }).collect();
 
         // build modules for each layer
         // layer_index -> module
@@ -413,17 +421,23 @@ impl YoloInit {
             .collect::<HashMap<usize, YoloModule>>();
 
         // construct detection head
-        let mut detection_module = DetectInit {
-            num_classes,
-            anchors,
-        }
-        .build(path);
+        let mut detection_module = {
+            let anchors_list: Vec<_> = exported_anchors
+                .iter()
+                .map(|(_layer_index, anchros)| anchros.to_vec())
+                .collect();
+            DetectInit {
+                num_classes,
+                anchors_list,
+            }
+            .build(path)
+        };
 
         // construct module function
         let func = Box::new(move |xs: &Tensor, train: bool| -> YoloOutput {
             let (_batch_size, _channels, height, width) = xs.size4().unwrap();
-            let mut tmp_tensors =
-                iter::once((0, xs.shallow_clone())).collect::<HashMap<usize, Tensor>>();
+            let mut tmp_tensors: HashMap<usize, Tensor> =
+                iter::once((0, xs.shallow_clone())).collect();
             let mut exported_tensors = vec![];
 
             // run the network
@@ -448,7 +462,7 @@ impl YoloInit {
                     // );
 
                     let output = module.forward_t(inputs.as_slice(), train);
-                    if exported_indexes.contains(&layer_index) {
+                    if exported_anchors.contains_key(&layer_index) {
                         exported_tensors.push(output.shallow_clone());
                     }
                     tmp_tensors.insert(layer_index, output);
