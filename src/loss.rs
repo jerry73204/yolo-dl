@@ -176,7 +176,7 @@ impl YoloLoss {
         device: Device,
     ) -> (Tensor, Tensor) {
         let (pred_cycxhw, target_cycxhw) = {
-            let final_state = target_bboxes
+            let (pred_cycxhw_vec, target_cycxhw_vecs): (Vec<_>, Vec<_>) = target_bboxes
                 .iter()
                 .map(|(index, target_bbox)| {
                     let prediction = &pred_detections[&index];
@@ -185,21 +185,27 @@ impl YoloLoss {
 
                     (pred_cycxhw, target_cycxhw)
                 })
-                .fold((vec![], vec![]), |mut state, args| {
-                    let (pred_cycxhw_vec, target_cycxhw_vec) = &mut state;
+                .map(|args| {
                     let (pred_cycxhw, target_cycxhw) = args;
 
-                    pred_cycxhw_vec.push(pred_cycxhw.view([1, 4]));
-                    target_cycxhw_vec.extend(target_cycxhw.iter().map(|value| value.raw() as f32));
+                    (
+                        pred_cycxhw.view([1, 4]),
+                        target_cycxhw
+                            .iter()
+                            .map(|value| value.raw() as f32)
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .unzip();
 
-                    state
-                });
-
-            let (pred_cycxhw_vec, target_cycxhw_vec) = final_state;
             let pred_cycxhw = Tensor::cat(&pred_cycxhw_vec, 0);
-            let target_cycxhw = Tensor::of_slice(&target_cycxhw_vec)
-                .view([-1, 4])
-                .to_device(device);
+            let target_cycxhw = {
+                let components: Vec<_> =
+                    target_cycxhw_vecs.into_iter().flat_map(|vec| vec).collect();
+                Tensor::of_slice(&components)
+                    .view([-1, 4])
+                    .to_device(device)
+            };
 
             (pred_cycxhw, target_cycxhw)
         };
@@ -228,7 +234,7 @@ impl YoloLoss {
         let neg = 1.0 - pos;
 
         let (pred_class, target_class) = {
-            let final_state = target_bboxes
+            let (pred_class_vec, target_class_vec): (Vec<_>, Vec<_>) = target_bboxes
                 .iter()
                 .map(|(index, target_bbox)| {
                     let prediction = &pred_detections[&index];
@@ -237,17 +243,12 @@ impl YoloLoss {
 
                     (pred_class, target_class)
                 })
-                .fold((vec![], vec![]), |mut state, args| {
-                    let (pred_class_vec, target_class_vec) = &mut state;
+                .map(|args| {
                     let (pred_class, target_class) = args;
+                    (pred_class.view([-1, num_classes]), target_class)
+                })
+                .unzip();
 
-                    pred_class_vec.push(pred_class.view([-1, num_classes]));
-                    target_class_vec.push(target_class);
-
-                    state
-                });
-
-            let (pred_class_vec, target_class_vec) = final_state;
             let pred_class = Tensor::cat(&pred_class_vec, 0);
             let target_class = {
                 let indexes = Tensor::of_slice(&target_class_vec).to_device(device);
