@@ -11,7 +11,7 @@ pub struct YoloInit {
 }
 
 impl YoloInit {
-    pub fn build<'p, P>(self, path: P) -> Result<Box<dyn FnMut(&Tensor, bool) -> YoloOutput + Send>>
+    pub fn build<'p, P>(self, path: P) -> Result<YoloModel>
     where
         P: Borrow<nn::Path<'p>>,
     {
@@ -274,7 +274,7 @@ impl YoloInit {
                 })
         };
 
-        // list of exported layer indexes
+        // list of exported layer indexes and anchors
         let exported_anchors: HashMap<usize, Vec<(usize, usize)>> = layers.iter()
             .filter_map(|(layer_index, layer)| {
                 match layer.kind {
@@ -290,7 +290,7 @@ impl YoloInit {
 
         // build modules for each layer
         // layer_index -> module
-        let modules = layers
+        let modules: HashMap<usize, YoloModule> = layers
             .iter()
             .map(|(layer_index, layer_init)| {
                 // locals
@@ -418,7 +418,7 @@ impl YoloInit {
 
                 (layer_index, module)
             })
-            .collect::<HashMap<usize, YoloModule>>();
+            .collect();
 
         // construct detection head
         let mut detection_module = {
@@ -433,47 +433,66 @@ impl YoloInit {
             .build(path)
         };
 
-        // construct module function
-        let func = Box::new(move |xs: &Tensor, train: bool| -> YoloOutput {
-            let (_batch_size, _channels, height, width) = xs.size4().unwrap();
-            let mut tmp_tensors: HashMap<usize, Tensor> =
-                iter::once((0, xs.shallow_clone())).collect();
-            let mut exported_tensors = vec![];
+        // construct model
+        let yolo_model = YoloModel {
+            ordered_layer_indexes,
+            modules,
+            input_indexes,
+            exported_anchors,
+            detection_module,
+        };
 
-            // run the network
-            ordered_layer_indexes
-                .iter()
-                .cloned()
-                .for_each(|layer_index| {
-                    let module = &modules[&layer_index];
-                    let inputs = input_indexes[&layer_index]
-                        .iter()
-                        .cloned()
-                        .map(|from_index| &tmp_tensors[&from_index])
-                        .collect::<Vec<_>>();
+        Ok(yolo_model)
+    }
+}
 
-                    // println!(
-                    //     "{}\t{:?}",
-                    //     layer_index,
-                    //     inputs
-                    //         .iter()
-                    //         .map(|tensor| tensor.size())
-                    //         .collect::<Vec<_>>()
-                    // );
+#[derive(Debug)]
+pub struct YoloModel {
+    ordered_layer_indexes: Vec<usize>,
+    modules: HashMap<usize, YoloModule>,
+    input_indexes: HashMap<usize, Vec<usize>>,
+    exported_anchors: HashMap<usize, Vec<(usize, usize)>>,
+    detection_module: DetectModule,
+}
 
-                    let output = module.forward_t(inputs.as_slice(), train);
-                    if exported_anchors.contains_key(&layer_index) {
-                        exported_tensors.push(output.shallow_clone());
-                    }
-                    tmp_tensors.insert(layer_index, output);
-                });
+impl YoloModel {
+    pub fn forward_t(&self, xs: &Tensor, train: bool) -> YoloOutput {
+        let (_batch_size, _channels, height, width) = xs.size4().unwrap();
+        let mut tmp_tensors: HashMap<usize, Tensor> = iter::once((0, xs.shallow_clone())).collect();
+        let mut exported_tensors = vec![];
 
-            // run detection module
-            let exported_tensors = exported_tensors.iter().collect::<Vec<_>>();
-            detection_module(exported_tensors.as_slice(), train, height, width)
-        });
+        // run the network
+        self.ordered_layer_indexes
+            .iter()
+            .cloned()
+            .for_each(|layer_index| {
+                let module = &self.modules[&layer_index];
+                let inputs = self.input_indexes[&layer_index]
+                    .iter()
+                    .cloned()
+                    .map(|from_index| &tmp_tensors[&from_index])
+                    .collect::<Vec<_>>();
 
-        Ok(func)
+                // println!(
+                //     "{}\t{:?}",
+                //     layer_index,
+                //     inputs
+                //         .iter()
+                //         .map(|tensor| tensor.size())
+                //         .collect::<Vec<_>>()
+                // );
+
+                let output = module.forward_t(inputs.as_slice(), train);
+                if self.exported_anchors.contains_key(&layer_index) {
+                    exported_tensors.push(output.shallow_clone());
+                }
+                tmp_tensors.insert(layer_index, output);
+            });
+
+        // run detection module
+        let exported_tensors = exported_tensors.iter().collect::<Vec<_>>();
+        self.detection_module
+            .forward_t(exported_tensors.as_slice(), train, height, width)
     }
 }
 
@@ -488,20 +507,6 @@ pub struct YoloOutput {
     /// Detections indexed by (layer_index, anchor_index, col, row) measured in grid units
     pub(crate) detections: Vec<Detection>,
     pub(crate) feature_info: Vec<FeatureInfo>,
-}
-
-#[derive(Debug, TensorLike)]
-pub struct FeatureInfo {
-    /// Feature map height in grid units
-    pub feature_height: i64,
-    /// Feature map width in grid units
-    pub feature_width: i64,
-    /// Per-grid height in pixels
-    pub per_grid_height: f64,
-    /// Per-grid width in pixels
-    pub per_grid_width: f64,
-    /// Anchros (height, width) in grid units
-    pub anchors: Vec<(f64, f64)>,
 }
 
 impl YoloOutput {
@@ -560,6 +565,20 @@ impl YoloOutput {
     pub fn batch_size(&self) -> i64 {
         self.batch_size
     }
+}
+
+#[derive(Debug, TensorLike)]
+pub struct FeatureInfo {
+    /// Feature map height in grid units
+    pub feature_height: i64,
+    /// Feature map width in grid units
+    pub feature_width: i64,
+    /// Per-grid height in pixels
+    pub per_grid_height: f64,
+    /// Per-grid width in pixels
+    pub per_grid_width: f64,
+    /// Anchros (height, width) in grid units
+    pub anchors: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]

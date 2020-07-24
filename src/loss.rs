@@ -552,7 +552,7 @@ impl YoloLoss {
                         objectness,
                         classification,
                         ..
-                    } = detection.shallow_clone();
+                    } = detection;
                     let index = GridIndex {
                         batch_index: batch_index as usize,
                         layer_index,
@@ -560,6 +560,7 @@ impl YoloLoss {
                         grid_row,
                         grid_col,
                     };
+
                     let grid = Grid {
                         cycxhw: cycxhw.i((batch_index, ..)),
                         objectness: objectness.i((batch_index, ..)),

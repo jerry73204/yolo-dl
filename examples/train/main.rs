@@ -50,48 +50,57 @@ pub async fn main() -> Result<()> {
     let training_worker_future = {
         let config = config.clone();
 
-        async_std::task::spawn(async move {
-            // init model
-            info!("initializing model");
-            let vs = nn::VarStore::new(config.device);
-            let root = vs.root();
-            let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
-            let yolo_loss = YoloLossInit::default().build();
-            let mut optimizer = nn::Adam::default().build(&vs, 0.01)?;
-            let mut rate = 0.0;
-
-            // training
-            info!("start training");
-            let mut rate_counter = RateCounter::new(0.9);
-
-            while let Ok(record) = training_rx.recv().await {
-                let TrainingRecord {
-                    epoch,
-                    step,
-                    image,
-                    bboxes,
-                } = record.to_device(config.device);
-
-                // forward pass
-                let output = model(&image, true);
-
-                // compute loss
-                let loss = yolo_loss.forward(&output, &bboxes);
-
-                // optimizer
-                optimizer.backward_step(&loss);
-
-                // print message
-                rate_counter.add(1.0).await;
-                rate = rate_counter.rate().await.unwrap_or(rate);
-                info!("epoch: {}\tstep: {}\trate: {:.2} step/s", epoch, step, rate);
-            }
-
-            Fallible::Ok(())
+        async_std::task::spawn_blocking(move || {
+            train_worker(config, input_channels, num_classes, training_rx)
         })
     };
 
     futures::try_join!(training_data_future, training_worker_future, logging_future)?;
 
     Ok(())
+}
+
+fn train_worker(
+    config: Arc<Config>,
+    input_channels: usize,
+    num_classes: usize,
+    training_rx: async_std::sync::Receiver<TrainingRecord>,
+) -> Fallible<()> {
+    // init model
+    info!("initializing model");
+    let vs = nn::VarStore::new(config.device);
+    let root = vs.root();
+    let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+    let yolo_loss = YoloLossInit::default().build();
+    let mut optimizer = nn::Adam::default().build(&vs, 0.01)?;
+    let mut rate = 0.0;
+
+    // training
+    info!("start training");
+    // let mut rate_counter = RateCounter::new(0.9);
+
+    while let Ok(record) = async_std::task::block_on(training_rx.recv()) {
+        let TrainingRecord {
+            epoch,
+            step,
+            image,
+            bboxes,
+        } = record.to_device(config.device);
+
+        // forward pass
+        let output = model.forward_t(&image, true);
+
+        // compute loss
+        let loss = yolo_loss.forward(&output, &bboxes);
+
+        // optimizer
+        optimizer.backward_step(&loss);
+
+        // print message
+        // rate_counter.add(1.0).await;
+        // rate = rate_counter.rate().await.unwrap_or(rate);
+        info!("epoch: {}\tstep: {}", epoch, step);
+    }
+
+    Fallible::Ok(())
 }

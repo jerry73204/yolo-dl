@@ -6,7 +6,7 @@ pub use serde::{de::Error as DeserializeError, Deserialize, Deserializer, Serial
 pub use std::{
     borrow::{Borrow, Cow},
     collections::{HashMap, HashSet},
-    iter,
+    fmt, iter,
     num::NonZeroUsize,
     ops::{Add, Deref, DerefMut, Div, Mul, Rem, Sub},
     rc::Rc,

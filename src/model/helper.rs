@@ -235,11 +235,7 @@ pub fn yolo_v5_small_init(input_channels: usize, num_classes: usize) -> YoloInit
     }
 }
 
-pub fn yolo_v5_small<'p, P>(
-    path: P,
-    input_channels: usize,
-    num_classes: usize,
-) -> Box<dyn FnMut(&Tensor, bool) -> YoloOutput + Send>
+pub fn yolo_v5_small<'p, P>(path: P, input_channels: usize, num_classes: usize) -> YoloModel
 where
     P: Borrow<nn::Path<'p>>,
 {
