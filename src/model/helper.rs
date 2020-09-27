@@ -243,3 +243,16 @@ where
     let model = init.build(path).unwrap();
     model
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_model_config() -> Result<()> {
+        let init = yolo_v5_small_init(3, 80);
+        let text = serde_json::to_string_pretty(&init)?;
+        std::fs::write("yolo5s.json", &text)?;
+        Ok(())
+    }
+}
