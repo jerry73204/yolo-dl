@@ -244,10 +244,12 @@ impl DataSet {
         };
 
         // add batch dimension
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
-            let (step, epoch, bboxes, image) = args;
-            let new_image = image.unsqueeze(0);
-            Fallible::Ok((index, (step, epoch, bboxes, new_image)))
+        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
+            async move {
+                let (step, epoch, bboxes, image) = args;
+                let new_image = image.unsqueeze(0);
+                Fallible::Ok((index, (step, epoch, bboxes, new_image)))
+            }
         });
 
         // apply random affine
@@ -294,9 +296,11 @@ impl DataSet {
         let stream = stream
             .chunks(mini_batch_size)
             .overflowing_enumerate()
-            .par_then_unordered(None, |(index, results)| async move {
-                let chunk = results.into_iter().collect::<Fallible<Vec<_>>>()?;
-                Fallible::Ok((index, chunk))
+            .par_then_unordered(None, |(index, results)| {
+                async move {
+                    let chunk = results.into_iter().collect::<Fallible<Vec<_>>>()?;
+                    Fallible::Ok((index, chunk))
+                }
             });
 
         // convert to batched type
@@ -350,17 +354,19 @@ impl DataSet {
         });
 
         // map to output type
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
-            let (step, epoch, bboxes, image) = args;
+        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
+            async move {
+                let (step, epoch, bboxes, image) = args;
 
-            let record = TrainingRecord {
-                epoch,
-                step,
-                image,
-                bboxes,
-            };
+                let record = TrainingRecord {
+                    epoch,
+                    step,
+                    image,
+                    bboxes,
+                };
 
-            Ok((index, record))
+                Ok((index, record))
+            }
         });
 
         // reorder back
