@@ -185,6 +185,7 @@ impl YoloLoss {
             widths: pred_w,
             ..
         } = pred_instances;
+
         let pred_t = pred_cy - pred_h / 2.0;
         let pred_b = pred_cy + pred_h / 2.0;
         let pred_l = pred_cx - pred_w / 2.0;
@@ -277,10 +278,8 @@ impl YoloLoss {
         // convert sparse index to dense one-hot-like
         let target_class_dense = {
             let pos_values = Tensor::full(&target_class_sparse.size(), pos, (Kind::Float, device));
-            let target = pred_instances
-                .classifications
+            let target = pred_class
                 .full_like(neg)
-                .view([-1])
                 .scatter(0, &target_class_sparse, &pos_values)
                 .view([-1, num_classes]);
             target
@@ -295,6 +294,7 @@ impl YoloLoss {
         target_bboxes: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
         non_reduced_iou_loss: &Tensor,
     ) -> Tensor {
+        let device = prediction.device;
         let layer_sizes = prediction
             .outputs
             .iter()
@@ -332,7 +332,8 @@ impl YoloLoss {
                     flat_index
                 })
                 .collect_vec(),
-        );
+        )
+        .to_device(device);
         let pred_objectness = Tensor::cat(
             &prediction
                 .outputs
@@ -341,10 +342,11 @@ impl YoloLoss {
                 .collect_vec(),
             0,
         );
-        let target_objectness = pred_objectness.full_like(0.0).scatter(
+        let target_objectness = pred_objectness.full_like(0.0).index_copy(
             0,
             &flat_target_indexes,
-            &(&non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
+            &(&non_reduced_iou_loss.detach().clamp(0.0, 1.0).view([-1])
+                * self.objectness_iou_ratio
                 + (1.0 - self.objectness_iou_ratio)),
         );
 
@@ -509,6 +511,7 @@ impl YoloLoss {
         prediction: &YoloOutput,
         target: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
     ) -> (MultiInstance, Tensor, Tensor, Tensor, Tensor, Tensor) {
+        let device = prediction.device;
         let (instances, cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = target
             .iter()
             .map(|(index, bbox)| {
@@ -528,11 +531,13 @@ impl YoloLoss {
             .unzip_n_vec();
 
         let pred_instances = MultiInstance::new(&instances);
-        let target_cy = Tensor::of_slice(&cy_vec);
-        let target_cx = Tensor::of_slice(&cx_vec);
-        let target_h = Tensor::of_slice(&h_vec);
-        let target_w = Tensor::of_slice(&w_vec);
-        let target_category_id = Tensor::of_slice(&category_id_vec);
+        let target_cy = Tensor::of_slice(&cy_vec).view([-1, 1]).to_device(device);
+        let target_cx = Tensor::of_slice(&cx_vec).view([-1, 1]).to_device(device);
+        let target_h = Tensor::of_slice(&h_vec).view([-1, 1]).to_device(device);
+        let target_w = Tensor::of_slice(&w_vec).view([-1, 1]).to_device(device);
+        let target_category_id = Tensor::of_slice(&category_id_vec)
+            .view([-1, 1])
+            .to_device(device);
 
         (
             pred_instances,
