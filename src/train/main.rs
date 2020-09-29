@@ -10,7 +10,7 @@ use crate::{common::*, config::Config, data::DataSet, data::TrainingRecord, util
 #[derive(Debug, Clone, FromArgs)]
 /// Train YOLO model
 struct Args {
-    #[argh(option, default = "PathBuf::from(\"config.json5\")")]
+    #[argh(option, default = "PathBuf::from(\"train.json5\")")]
     /// configuration file
     pub config_file: PathBuf,
 }
