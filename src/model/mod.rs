@@ -1,9 +1,11 @@
 mod activation;
+mod config;
 mod helper;
 mod model;
 mod module;
 
 pub use activation::*;
+pub use config::*;
 pub use helper::*;
 pub use model::*;
 pub use module::*;
@@ -40,7 +42,7 @@ mod tests {
             );
             let instant = std::time::Instant::now();
             let mut output = yolo_fn.forward_t(&input, false);
-            let detections = output.detections();
+            // let detections = output.detections();
             // let feature_maps = output.feature_maps();
 
             // let feature_map_shapes = feature_maps

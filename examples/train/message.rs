@@ -12,7 +12,7 @@ pub enum LoggingMessage {
         tag: String,
         image: Tensor,
         #[tensor_like(clone)]
-        bboxes: Vec<RatioBBox>,
+        bboxes: Vec<LabeledRatioBBox>,
     },
 }
 
@@ -31,7 +31,7 @@ impl LoggingMessage {
         Self::Images { tag, images }
     }
 
-    pub fn new_image_with_bboxes<S, T>(tag: S, image: T, bboxes: &[RatioBBox]) -> Self
+    pub fn new_image_with_bboxes<S, T>(tag: S, image: T, bboxes: &[LabeledRatioBBox]) -> Self
     where
         S: ToString,
         T: Borrow<Tensor>,

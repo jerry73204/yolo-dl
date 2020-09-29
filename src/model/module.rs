@@ -1,5 +1,8 @@
 use super::*;
-use crate::common::*;
+use crate::{
+    common::*,
+    utils::{GridSize, PixelSize, Unzip4},
+};
 
 pub enum YoloModule {
     Single(usize, Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>),
@@ -58,78 +61,6 @@ impl YoloModule {
                 module_fn(&inputs, train)
             }
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct LayerInit {
-    pub name: Option<String>,
-    pub kind: LayerKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-pub enum LayerKind {
-    Focus {
-        from: Option<String>,
-        out_c: usize,
-        k: usize,
-    },
-    ConvBlock {
-        from: Option<String>,
-        out_c: usize,
-        k: usize,
-        s: usize,
-    },
-    Bottleneck {
-        from: Option<String>,
-        repeat: usize,
-    },
-    BottleneckCsp {
-        from: Option<String>,
-        repeat: usize,
-        shortcut: bool,
-    },
-    Spp {
-        from: Option<String>,
-        out_c: usize,
-        ks: Vec<usize>,
-    },
-    HeadConv2d {
-        from: Option<String>,
-        k: usize,
-        s: usize,
-        anchors: Vec<(usize, usize)>,
-    },
-    Upsample {
-        from: Option<String>,
-        scale_factor: R64,
-    },
-    Concat {
-        from: Vec<String>,
-    },
-}
-
-impl LayerKind {
-    pub fn from_name(&self) -> Option<&str> {
-        match self {
-            Self::Focus { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::ConvBlock { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::Bottleneck { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::BottleneckCsp { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::Spp { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::HeadConv2d { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::Upsample { from, .. } => from.as_ref().map(|name| name.as_str()),
-            _ => None,
-        }
-    }
-
-    pub fn from_multiple_names(&self) -> Option<&[String]> {
-        let names = match self {
-            Self::Concat { from, .. } => from.as_slice(),
-            _ => return None,
-        };
-        Some(names)
     }
 }
 
@@ -480,7 +411,7 @@ impl FocusInit {
 #[derive(Debug, Clone)]
 pub struct DetectInit {
     pub num_classes: usize,
-    pub anchors_list: Vec<Vec<(usize, usize)>>,
+    pub anchors_list: Vec<Vec<PixelSize<usize>>>,
 }
 
 impl DetectInit {
@@ -496,11 +427,13 @@ impl DetectInit {
             anchors_list,
         } = self;
 
-        let anchors_list: Vec<Vec<(i64, i64)>> = anchors_list
+        let anchors_list: Vec<Vec<_>> = anchors_list
             .into_iter()
             .map(|list| {
                 list.into_iter()
-                    .map(|(h, w)| (h as i64, w as i64))
+                    .map(|PixelSize { height, width, .. }| {
+                        PixelSize::new(height as i64, width as i64)
+                    })
                     .collect()
             })
             .collect();
@@ -516,7 +449,7 @@ impl DetectInit {
 #[derive(Debug)]
 pub struct DetectModule {
     num_classes: i64,
-    anchors_list: Vec<Vec<(i64, i64)>>,
+    anchors_list: Vec<Vec<PixelSize<i64>>>,
     device: Device,
 }
 
@@ -528,32 +461,32 @@ impl DetectModule {
         image_height: i64,
         image_width: i64,
     ) -> YoloOutput {
+        debug_assert_eq!(tensors.len(), self.anchors_list.len());
         let num_outputs_per_anchor = self.num_classes + 5;
-        let num_detections = self.anchors_list.len() as i64;
-
-        debug_assert_eq!(tensors.len() as i64, num_detections);
         let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
         // compute sizes for each feature map
-        let feature_info: Vec<_> = izip!(tensors.iter(), self.anchors_list.iter())
+        let feature_info: Vec<_> = tensors
+            .iter()
+            .zip_eq(self.anchors_list.iter())
             .map(|(tensor, anchors_in_pixels)| {
                 let (b, _c, feature_height, feature_width) = tensor.size4().unwrap();
                 debug_assert_eq!(b, batch_size);
 
-                let per_grid_height = image_height as f64 / feature_height as f64;
-                let per_grid_width = image_width as f64 / feature_width as f64;
+                let grid_height = image_height as f64 / feature_height as f64;
+                let grid_width = image_width as f64 / feature_width as f64;
 
                 let anchors_in_grids: Vec<_> = anchors_in_pixels
                     .iter()
                     .cloned()
-                    .map(|(h, w)| (h as f64 / per_grid_height, w as f64 / per_grid_width))
+                    .map(|PixelSize { height, width, .. }| {
+                        GridSize::new(height as f64 / grid_height, width as f64 / grid_width)
+                    })
                     .collect();
 
                 let info = FeatureInfo {
-                    feature_height,
-                    feature_width,
-                    per_grid_height,
-                    per_grid_width,
+                    feature_size: GridSize::new(feature_height, feature_width),
+                    grid_size: PixelSize::new(grid_height, grid_width),
                     anchors: anchors_in_grids,
                 };
 
@@ -588,10 +521,7 @@ impl DetectModule {
         let detections: Vec<_> = izip!(feature_maps.iter(), self.anchors_list.iter())
             .enumerate()
             .flat_map(|(layer_index, (xs, anchors))| {
-                let (num_anchors, height, width) = match xs.size().as_slice() {
-                    &[_b, na, h, w, _no] => (na, h, w),
-                    _ => unreachable!(),
-                };
+                let (_batch, num_anchors, height, width, _n_outputs) = xs.size5().unwrap();
                 debug_assert_eq!(num_anchors, anchors.len() as i64);
 
                 // gride size in pixels
@@ -613,11 +543,17 @@ impl DetectModule {
                     let components: Vec<_> = anchors
                         .iter()
                         .cloned()
-                        .flat_map(|(y_pixel, x_pixel)| {
-                            let y_grid = y_pixel as f64 / grid_height as f64;
-                            let x_grid = x_pixel as f64 / grid_width as f64;
-                            vec![y_grid as f32, x_grid as f32]
-                        })
+                        .flat_map(
+                            |PixelSize {
+                                 height: h_pixel,
+                                 width: w_pixel,
+                                 ..
+                             }| {
+                                let h_grid = h_pixel as f64 / grid_height as f64;
+                                let w_grid = w_pixel as f64 / grid_width as f64;
+                                vec![h_grid as f32, w_grid as f32]
+                            },
+                        )
                         .collect();
 
                     Tensor::of_slice(&components).to_device(self.device).view([
@@ -657,7 +593,7 @@ impl DetectModule {
 
                         let detection_index = DetectionIndex {
                             layer_index,
-                            anchor_index: anchor_index as usize,
+                            anchor_index,
                             grid_row: row,
                             grid_col: col,
                         };
@@ -676,14 +612,114 @@ impl DetectModule {
             })
             .collect();
 
+        let layer_outputs = izip!(tensors.iter(), self.anchors_list.iter())
+            .map(|(xs, anchors)| {
+                let (b, channels, height, width) = xs.size4().unwrap();
+                let num_anchors = anchors.len() as i64;
+                debug_assert_eq!(b, batch_size);
+                debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
+
+                // gride size in pixels
+                let grid_height = image_height as f64 / height as f64;
+                let grid_width = image_width as f64 / width as f64;
+
+                // convert anchor sizes to grid units
+                let anchors_in_grids: Vec<_> = anchors
+                    .iter()
+                    .cloned()
+                    .map(|PixelSize { height, width, .. }| {
+                        GridSize::new(height as f64 / grid_height, width as f64 / grid_width)
+                    })
+                    .collect();
+
+                // transform outputs
+                let (position, size, objectness, classification) = {
+                    // base position for each grid in grid units
+                    let grid_base_positions = {
+                        let grids = Tensor::meshgrid(&[
+                            Tensor::arange(height, (Kind::Float, self.device)),
+                            Tensor::arange(width, (Kind::Float, self.device)),
+                        ]);
+                        Tensor::stack(&[&grids[0], &grids[1]], 2)
+                            .view(&[1, 1, height, width, 2] as &[_])
+                    };
+
+                    // anchor sizes in grid units
+                    let anchor_base_sizes = {
+                        let components: Vec<_> = anchors
+                            .iter()
+                            .cloned()
+                            .flat_map(
+                                |PixelSize {
+                                     height: h_pixel,
+                                     width: w_pixel,
+                                     ..
+                                 }| {
+                                    let h_grid = h_pixel as f64 / grid_height;
+                                    let w_grid = w_pixel as f64 / grid_width;
+                                    vec![h_grid as f32, w_grid as f32]
+                                },
+                            )
+                            .collect();
+
+                        Tensor::of_slice(&components).to_device(self.device).view([
+                            1,
+                            num_anchors,
+                            1,
+                            1,
+                            2,
+                        ])
+                    };
+
+                    // convert into shape [bsize, n_anchors, height, width, n_outputs]
+                    let outputs = xs
+                        .view([
+                            batch_size,
+                            num_anchors,
+                            num_outputs_per_anchor,
+                            height,
+                            width,
+                        ])
+                        .permute(&[0, 1, 3, 4, 2]);
+
+                    let sigmoid = outputs.sigmoid();
+
+                    // positions in grid units
+                    let position =
+                        sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
+
+                    // bbox sizes in grid units
+                    let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
+
+                    // objectness
+                    let objectness = sigmoid.i((.., .., .., .., 4..5));
+
+                    // sparse classification
+                    let classification = sigmoid.i((.., .., .., .., 5..));
+
+                    (position, size, objectness, classification)
+                };
+
+                LayerOutput {
+                    position,
+                    size,
+                    objectness,
+                    classification,
+                    feature_size: GridSize::new(height, width),
+                    grid_size: PixelSize::new(grid_height, grid_width),
+                    anchors: anchors_in_grids,
+                }
+            })
+            .collect();
+
         YoloOutput {
-            image_height,
-            image_width,
+            image_size: PixelSize::new(image_height, image_width),
             batch_size,
             num_classes: self.num_classes,
-            detections,
+            // detections,
             device: self.device,
-            feature_info,
+            // feature_info,
+            outputs: layer_outputs,
         }
     }
 }

@@ -450,8 +450,8 @@ impl MosaicProcessor {
 
     pub async fn make_mosaic(
         &self,
-        bbox_image_vec: Vec<(Vec<RatioBBox>, Tensor)>,
-    ) -> Fallible<(Vec<RatioBBox>, Tensor)> {
+        bbox_image_vec: Vec<(Vec<LabeledRatioBBox>, Tensor)>,
+    ) -> Fallible<(Vec<LabeledRatioBBox>, Tensor)> {
         let Self {
             image_size,
             mosaic_margin,

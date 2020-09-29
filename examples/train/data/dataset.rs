@@ -4,10 +4,11 @@ use crate::{common::*, config::Config, message::LoggingMessage};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Record {
     pub path: PathBuf,
-    pub height: usize,
-    pub width: usize,
+    // pub height: usize,
+    // pub width: usize,
+    pub size: PixelSize<usize>,
     /// Bounding box in pixel units.
-    pub bboxes: Vec<BBox>,
+    pub bboxes: Vec<LabeledPixelBBox<R64>>,
 }
 
 #[derive(Debug, TensorLike)]
@@ -16,7 +17,7 @@ pub struct TrainingRecord {
     pub step: usize,
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<RatioBBox>>,
+    pub bboxes: Vec<Vec<LabeledRatioBBox>>,
 }
 
 #[derive(Debug)]
@@ -96,14 +97,15 @@ impl DataSet {
                         .map(|ann| {
                             let [x, y, w, h] = ann.bbox.clone();
                             let category_id = ann.category_id;
-                            BBox::from_tlhw([y.into(), x.into(), h.into(), w.into()], category_id)
+                            let bbox =
+                                PixelBBox::from_tlhw([y.into(), x.into(), h.into(), w.into()]);
+                            LabeledPixelBBox { bbox, category_id }
                         })
                         .collect::<Vec<_>>();
 
                     Record {
                         path: image_dir.join(&image.file_name),
-                        height: image.height,
-                        width: image.width,
+                        size: PixelSize::new(image.height, image.width),
                         bboxes,
                     }
                 })
@@ -166,8 +168,7 @@ impl DataSet {
                             async move {
                                 let Record {
                                     ref path,
-                                    height,
-                                    width,
+                                    size: PixelSize { height, width, .. },
                                     ..
                                 } = *record;
 
@@ -309,14 +310,14 @@ impl DataSet {
             struct State {
                 pub step: usize,
                 pub epoch: usize,
-                pub bboxes_vec: Vec<Vec<RatioBBox>>,
+                pub bboxes_vec: Vec<Vec<LabeledRatioBBox>>,
                 pub image_vec: Vec<Tensor>,
             }
 
-            impl Sum<(usize, usize, Vec<RatioBBox>, Tensor)> for State {
+            impl Sum<(usize, usize, Vec<LabeledRatioBBox>, Tensor)> for State {
                 fn sum<I>(mut iter: I) -> Self
                 where
-                    I: Iterator<Item = (usize, usize, Vec<RatioBBox>, Tensor)>,
+                    I: Iterator<Item = (usize, usize, Vec<LabeledRatioBBox>, Tensor)>,
                 {
                     let (mut min_step, mut min_epoch, bboxes, image) =
                         iter.next().expect("the iterator canont be empty");

@@ -1,35 +1,88 @@
-use crate::{common::*, utils::Ratio};
+use crate::{
+    common::*,
+    utils::{GridUnit, PixelUnit, Ratio, RatioUnit, Unit},
+};
 
-/// Bounding box in arbitrary units.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BBox {
-    pub cycxhw: [R64; 4],
+pub struct LabeledBBox<T, U>
+where
+    U: Unit,
+{
+    pub bbox: BBox<T, U>,
     pub category_id: usize,
 }
 
-impl BBox {
-    pub fn from_tlhw(tlhw: [R64; 4], category_id: usize) -> Self {
+pub type LabeledPixelBBox<T> = LabeledBBox<T, PixelUnit>;
+pub type LabeledGridBBox<T> = LabeledBBox<T, GridUnit>;
+pub type LabeledRatioBBox = LabeledBBox<Ratio, RatioUnit>;
+
+impl<U> LabeledBBox<R64, U>
+where
+    U: Unit,
+{
+    pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> LabeledRatioBBox {
+        LabeledRatioBBox {
+            bbox: self.bbox.to_ratio_bbox(image_height, image_width),
+            category_id: self.category_id,
+        }
+    }
+}
+
+impl LabeledBBox<Ratio, RatioUnit> {
+    pub fn crop(
+        &self,
+        top: Ratio,
+        bottom: Ratio,
+        left: Ratio,
+        right: Ratio,
+    ) -> Option<LabeledRatioBBox> {
+        Some(LabeledRatioBBox {
+            bbox: self.bbox.crop(top, bottom, left, right)?,
+            category_id: self.category_id,
+        })
+    }
+}
+
+/// Bounding box in arbitrary units.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BBox<T, U>
+where
+    U: Unit,
+{
+    pub cycxhw: [T; 4],
+    _phantom: PhantomData<U>,
+}
+
+pub type RatioBBox = BBox<Ratio, RatioUnit>;
+pub type GridBBox<T> = BBox<T, GridUnit>;
+pub type PixelBBox<T> = BBox<T, PixelUnit>;
+
+impl<U> BBox<R64, U>
+where
+    U: Unit,
+{
+    pub fn from_tlhw(tlhw: [R64; 4]) -> Self {
         let [t, l, h, w] = tlhw;
         let cy = t + h / 2.0;
         let cx = l + w / 2.0;
 
         Self {
             cycxhw: [cy, cx, h, w],
-            category_id,
+            _phantom: PhantomData,
         }
     }
 
-    pub fn from_cycxhw(cycxhw: [R64; 4], category_id: usize) -> Self {
+    pub fn from_cycxhw(cycxhw: [R64; 4]) -> Self {
         Self {
             cycxhw,
-            category_id,
+            _phantom: PhantomData,
         }
     }
 
     pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> RatioBBox {
         let Self {
             cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
-            category_id,
+            ..
         } = *self;
 
         let image_height = R64::new(image_height as f64);
@@ -98,26 +151,17 @@ impl BBox {
         let ratio_cy = ratio_t + ratio_h / 2.0;
         let ratio_cx = ratio_l + ratio_w / 2.0;
 
-        RatioBBox::new(
-            [
-                ratio_cy.into(),
-                ratio_cx.into(),
-                ratio_h.into(),
-                ratio_w.into(),
-            ],
-            category_id,
-        )
+        RatioBBox::new([
+            ratio_cy.into(),
+            ratio_cx.into(),
+            ratio_h.into(),
+            ratio_w.into(),
+        ])
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RatioBBox {
-    pub cycxhw: [Ratio; 4],
-    pub category_id: usize,
-}
-
-impl RatioBBox {
-    pub fn new(cycxhw: [Ratio; 4], category_id: usize) -> Self {
+impl BBox<Ratio, RatioUnit> {
+    pub fn new(cycxhw: [Ratio; 4]) -> Self {
         let [cy, cx, h, w] = cycxhw;
 
         // checked add
@@ -128,14 +172,14 @@ impl RatioBBox {
 
         Self {
             cycxhw,
-            category_id,
+            _phantom: PhantomData,
         }
     }
 
     pub fn crop(&self, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Option<RatioBBox> {
         let Self {
             cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
-            category_id,
+            ..
         } = *self;
 
         let orig_t = orig_cy - orig_h / 2.0;
@@ -156,17 +200,20 @@ impl RatioBBox {
 
             Some(RatioBBox {
                 cycxhw: [crop_cy, crop_cx, crop_h, crop_w],
-                category_id,
+                _phantom: PhantomData,
             })
         } else {
             None
         }
     }
 
-    pub fn to_bbox(&self, height: R64, width: R64) -> BBox {
+    pub fn to_bbox<U>(&self, height: R64, width: R64) -> BBox<R64, U>
+    where
+        U: Unit,
+    {
         let Self {
             cycxhw: [ratio_cy, ratio_cx, ratio_h, ratio_w],
-            category_id,
+            ..
         } = *self;
 
         let cy = *ratio_cy * height;
@@ -176,7 +223,7 @@ impl RatioBBox {
 
         BBox {
             cycxhw: [cy, cx, h, w],
-            category_id,
+            _phantom: PhantomData,
         }
     }
 

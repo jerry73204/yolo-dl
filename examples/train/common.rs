@@ -49,5 +49,5 @@ pub use approx::abs_diff_eq;
 pub use log::{info, warn};
 pub use yolo_dl::{
     loss::YoloLossInit,
-    utils::{BBox, Ratio, RatioBBox},
+    utils::{BBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox, PixelSize, Ratio, RatioBBox},
 };

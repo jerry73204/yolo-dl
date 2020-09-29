@@ -1,7 +1,7 @@
 use crate::{
     common::*,
-    model::{Detection, DetectionIndex, FeatureInfo, YoloOutput},
-    utils::{BBox, RatioBBox},
+    model::{InstanceIndex, LayerOutput, MultiInstance, YoloOutput},
+    utils::{GridSize, LabeledGridBBox, LabeledRatioBBox, Unzip2, Unzip6},
 };
 
 #[derive(Debug)]
@@ -133,17 +133,20 @@ pub struct YoloLoss {
 }
 
 impl YoloLoss {
-    pub fn forward(&self, prediction: &YoloOutput, target: &Vec<Vec<RatioBBox>>) -> Tensor {
+    pub fn forward(&self, prediction: &YoloOutput, target: &Vec<Vec<LabeledRatioBBox>>) -> Tensor {
         let device = prediction.device;
         let num_classes = prediction.num_classes;
 
         // match target bboxes and grids, and group them by detector cells
         // indexed by grid positions
-        let target_bboxes: HashMap<GridIndex, Rc<BBox>> =
-            self.build_target_bboxes(prediction, target);
+        let target_bboxes = self.match_target_bboxes(&prediction, target);
 
         // index detections
         let pred_detections = Self::build_indexed_detections(prediction);
+
+        // collect selected instances
+        let (instances, target_cy, target_cx, target_h, target_w, target_category_id) =
+            Self::collect_instances(prediction, &target_bboxes);
 
         // IoU loss
         let (iou_loss, non_reduced_iou_loss) =
@@ -169,10 +172,19 @@ impl YoloLoss {
         loss
     }
 
+    fn iou_loss_2(
+        &self,
+        instances: &MultiInstance,
+        target_bboxes: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
+        device: Device,
+    ) -> (Tensor, Tensor) {
+        todo!();
+    }
+
     fn iou_loss(
         &self,
-        pred_detections: &HashMap<GridIndex, Grid>,
-        target_bboxes: &HashMap<GridIndex, Rc<BBox>>,
+        pred_detections: &HashMap<InstanceIndex, Grid>,
+        target_bboxes: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
         device: Device,
     ) -> (Tensor, Tensor) {
         let (pred_cycxhw, target_cycxhw) = {
@@ -181,7 +193,7 @@ impl YoloLoss {
                 .map(|(index, target_bbox)| {
                     let prediction = &pred_detections[&index];
                     let pred_cycxhw = &prediction.cycxhw;
-                    let target_cycxhw = &target_bbox.cycxhw;
+                    let target_cycxhw = &target_bbox.bbox.cycxhw;
 
                     (pred_cycxhw, target_cycxhw)
                 })
@@ -224,8 +236,8 @@ impl YoloLoss {
 
     fn classification_loss(
         &self,
-        pred_detections: &HashMap<GridIndex, Grid>,
-        target_bboxes: &HashMap<GridIndex, Rc<BBox>>,
+        pred_detections: &HashMap<InstanceIndex, Grid>,
+        target_bboxes: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
         num_classes: i64,
         device: Device,
     ) -> Tensor {
@@ -240,7 +252,6 @@ impl YoloLoss {
                     let prediction = &pred_detections[&index];
                     let pred_class = &prediction.classification;
                     let target_class = target_bbox.category_id as i64;
-
                     (pred_class, target_class)
                 })
                 .map(|args| {
@@ -269,8 +280,8 @@ impl YoloLoss {
 
     fn objectness_loss(
         &self,
-        pred_detections: &HashMap<GridIndex, Grid>,
-        target_bboxes: &HashMap<GridIndex, Rc<BBox>>,
+        pred_detections: &HashMap<InstanceIndex, Grid>,
+        target_bboxes: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
         non_reduced_iou_loss: &Tensor,
         device: Device,
     ) -> Tensor {
@@ -389,38 +400,42 @@ impl YoloLoss {
     }
 
     /// Match target bboxes with grids.
-    fn build_target_bboxes(
+    fn match_target_bboxes(
         &self,
         prediction: &YoloOutput,
-        target: &Vec<Vec<RatioBBox>>,
-    ) -> HashMap<GridIndex, Rc<BBox>> {
-        let feature_info = &prediction.feature_info;
-
+        target: &Vec<Vec<LabeledRatioBBox>>,
+    ) -> HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>> {
         let bbox_iter = target
             .iter()
             .enumerate()
             .flat_map(|(batch_index, bboxes)| bboxes.iter().map(move |bbox| (batch_index, bbox)));
 
         // pair up each target bbox and each grid
-        let targets: HashMap<_, _> = iproduct!(bbox_iter, feature_info.iter().enumerate())
+        let targets: HashMap<_, _> = iproduct!(bbox_iter, prediction.outputs.iter().enumerate())
             .flat_map(|args| {
                 // unpack variables
-                let ((batch_index, ratio_bbox), (layer_index, info)) = args;
-                let FeatureInfo {
-                    feature_height,
-                    feature_width,
+                let ((batch_index, ratio_bbox), (layer_index, layer)) = args;
+                let LayerOutput {
+                    feature_size:
+                        GridSize {
+                            height: feature_height,
+                            width: feature_width,
+                            ..
+                        },
                     ref anchors,
                     ..
-                } = *info;
+                } = *layer;
 
                 // compute bbox in grid units
                 let grid_bbox = {
                     let height = R64::new(feature_height as f64);
                     let width = R64::new(feature_width as f64);
-                    let bbox = ratio_bbox.to_bbox(height, width);
-                    Rc::new(bbox)
+                    Rc::new(LabeledGridBBox {
+                        bbox: ratio_bbox.bbox.to_bbox(height, width),
+                        category_id: ratio_bbox.category_id,
+                    })
                 };
-                let [grid_cy, grid_cx, grid_h, grid_w] = grid_bbox.cycxhw;
+                let [grid_cy, grid_cx, grid_h, grid_w] = grid_bbox.bbox.cycxhw;
 
                 // collect neighbor grid indexes
                 let grid_indexes = {
@@ -491,13 +506,17 @@ impl YoloLoss {
                     grid_indexes
                 };
 
-                // filter by anchor sizes
                 anchors
                     .iter()
                     .cloned()
                     .enumerate()
                     .filter(move |(_index, anchor_size)| {
-                        let (anchor_height, anchor_width) = *anchor_size;
+                        // filter by anchor sizes
+                        let GridSize {
+                            height: anchor_height,
+                            width: anchor_width,
+                            ..
+                        } = *anchor_size;
                         let grid_h = grid_h.raw();
                         let grid_w = grid_w.raw();
 
@@ -512,10 +531,10 @@ impl YoloLoss {
                             .iter()
                             .cloned()
                             .map(move |(grid_row, grid_col)| {
-                                let index = GridIndex {
+                                let index = InstanceIndex {
                                     batch_index,
                                     layer_index,
-                                    anchor_index,
+                                    anchor_index: anchor_index as i64,
                                     grid_row,
                                     grid_col,
                                 };
@@ -533,45 +552,83 @@ impl YoloLoss {
     }
 
     /// Build HashSet of predictions indexed by per-grid position
-    fn build_indexed_detections(prediction: &YoloOutput) -> HashMap<GridIndex, Grid> {
-        prediction
-            .detections
+    fn collect_instances(
+        prediction: &YoloOutput,
+        target: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
+    ) -> (MultiInstance, Tensor, Tensor, Tensor, Tensor, Tensor) {
+        let (instances, cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = target
             .iter()
-            .flat_map(|detection| {
-                let (batch_size, _) = detection.cycxhw.size2().unwrap();
-
-                let DetectionIndex {
-                    layer_index,
-                    anchor_index,
-                    grid_row,
-                    grid_col,
-                } = detection.index;
-
-                (0..batch_size).map(move |batch_index| {
-                    let Detection {
-                        cycxhw,
-                        objectness,
-                        classification,
-                        ..
-                    } = detection;
-                    let index = GridIndex {
-                        batch_index: batch_index as usize,
-                        layer_index,
-                        anchor_index,
-                        grid_row,
-                        grid_col,
-                    };
-
-                    let grid = Grid {
-                        cycxhw: cycxhw.i((batch_index, ..)),
-                        objectness: objectness.i((batch_index, ..)),
-                        classification: classification.i((batch_index, ..)),
-                    };
-
-                    (index, grid)
-                })
+            .map(|(index, bbox)| {
+                let instance = prediction.get(index).unwrap();
+                let [cy, cx, h, w] = bbox.bbox.cycxhw;
+                let category_id = bbox.category_id;
+                bbox.category_id;
+                (
+                    instance,
+                    cy.raw() as f32,
+                    cx.raw() as f32,
+                    h.raw() as f32,
+                    w.raw() as f32,
+                    category_id as i64,
+                )
             })
-            .collect()
+            .unzip_n_vec();
+        let multi_instance = MultiInstance::new(&instances);
+        let cy_tensor = Tensor::of_slice(&cy_vec);
+        let cx_tensor = Tensor::of_slice(&cx_vec);
+        let h_tensor = Tensor::of_slice(&h_vec);
+        let w_tensor = Tensor::of_slice(&w_vec);
+        let category_id_tensor = Tensor::of_slice(&category_id_vec);
+        (
+            multi_instance,
+            cy_tensor,
+            cx_tensor,
+            h_tensor,
+            w_tensor,
+            category_id_tensor,
+        )
+    }
+
+    /// Build HashSet of predictions indexed by per-grid position
+    fn build_indexed_detections(prediction: &YoloOutput) -> HashMap<InstanceIndex, Grid> {
+        // prediction
+        //     .detections
+        //     .iter()
+        //     .flat_map(|detection| {
+        //         let (batch_size, _) = detection.cycxhw.size2().unwrap();
+
+        //         let DetectionIndex {
+        //             layer_index,
+        //             anchor_index,
+        //             grid_row,
+        //             grid_col,
+        //         } = detection.index;
+
+        //         (0..batch_size).map(move |batch_index| {
+        //             let Detection {
+        //                 cycxhw,
+        //                 objectness,
+        //                 classification,
+        //                 ..
+        //             } = detection;
+        //             let index = InstanceIndex {
+        //                 batch_index: batch_index as usize,
+        //                 layer_index,
+        //                 anchor_index,
+        //                 grid_row,
+        //                 grid_col,
+        //             };
+        //             let grid = Grid {
+        //                 cycxhw: cycxhw.i((batch_index, ..)),
+        //                 objectness: objectness.i((batch_index, ..)),
+        //                 classification: classification.i((batch_index, ..)),
+        //             };
+
+        //             (index, grid)
+        //         })
+        //     })
+        //     .collect()
+        todo!();
     }
 }
 
@@ -704,15 +761,6 @@ impl FocalLoss {
             Reduction::Other(_) => unreachable!(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
-struct GridIndex {
-    pub batch_index: usize,
-    pub layer_index: usize,
-    pub anchor_index: usize,
-    pub grid_row: i64,
-    pub grid_col: i64,
 }
 
 #[derive(Debug, TensorLike)]
