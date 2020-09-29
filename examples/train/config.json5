@@ -1,5 +1,5 @@
 {
-    "dataset_dir": "/mnt/external1/aeon/dataset/coco",
+    "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
     "dataset_name": "train2017",
     "cache_dir": "/mnt/external1/aeon/yolo-dl-cache",
     "image_size": 256,
