@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    utils::{GridSize, PixelSize, Unzip4},
+    utils::{GridSize, PixelSize, Unzip6},
 };
 
 #[derive(Debug)]
@@ -60,47 +60,10 @@ pub struct YoloOutput {
     pub(crate) num_classes: i64,
     #[tensor_like(copy)]
     pub(crate) device: Device,
-    // /// Detections indexed by (layer_index, anchor_index, col, row) measured in grid units
-    // pub(crate) detections: Vec<Detection>,
-    // pub(crate) feature_info: Vec<FeatureInfo>,
     pub(crate) outputs: Vec<LayerOutput>,
 }
 
 impl YoloOutput {
-    // pub fn detections_in_pixels(&self) -> Vec<Detection> {
-    //     self.detections
-    //         .shallow_clone()
-    //         .into_iter()
-    //         .map(|detection| {
-    //             let Detection {
-    //                 index,
-    //                 cycxhw: cycxhw_grids,
-    //                 objectness,
-    //                 classification,
-    //             } = detection;
-
-    //             let layer_index = index.layer_index;
-    //             let FeatureInfo {
-    //                 grid_size: PixelSize { height, width, .. },
-    //                 ..
-    //             } = self.feature_info[layer_index];
-
-    //             let grid_size_multiplier =
-    //                 Tensor::of_slice(&[height, width, height, width]).view([1, 4]);
-    //             let cycxhw_pixels = cycxhw_grids * &grid_size_multiplier;
-
-    //             let new_detection = Detection {
-    //                 index,
-    //                 cycxhw: cycxhw_pixels,
-    //                 objectness,
-    //                 classification,
-    //             };
-
-    //             new_detection
-    //         })
-    //         .collect()
-    // }
-
     pub fn get(&self, index: &InstanceIndex) -> Option<Instance> {
         let InstanceIndex {
             batch_index,
@@ -112,11 +75,17 @@ impl YoloOutput {
         let batch_index = batch_index as i64;
 
         let layer = self.outputs.get(layer_index)?;
-        let position = layer
-            .position
+        let cy = layer
+            .cy
             .i((batch_index, anchor_index, grid_row, grid_col, ..));
-        let size = layer
-            .size
+        let cx = layer
+            .cx
+            .i((batch_index, anchor_index, grid_row, grid_col, ..));
+        let height = layer
+            .height
+            .i((batch_index, anchor_index, grid_row, grid_col, ..));
+        let width = layer
+            .width
             .i((batch_index, anchor_index, grid_row, grid_col, ..));
         let objectness = layer
             .objectness
@@ -127,8 +96,10 @@ impl YoloOutput {
                 .i((batch_index, anchor_index, grid_row, grid_col, ..));
 
         Some(Instance {
-            position,
-            size,
+            cy,
+            cx,
+            height,
+            width,
             objectness,
             classification,
         })
@@ -163,8 +134,10 @@ pub struct Detection {
 
 #[derive(Debug, TensorLike)]
 pub struct LayerOutput {
-    pub position: Tensor,
-    pub size: Tensor,
+    pub cy: Tensor,
+    pub cx: Tensor,
+    pub height: Tensor,
+    pub width: Tensor,
     pub objectness: Tensor,
     pub classification: Tensor,
     /// feature map size in grid units
@@ -186,30 +159,36 @@ pub struct InstanceIndex {
 
 #[derive(Debug, TensorLike)]
 pub struct MultiInstance {
-    pub positions: Tensor,
-    pub sizes: Tensor,
+    pub cys: Tensor,
+    pub cxs: Tensor,
+    pub heights: Tensor,
+    pub widths: Tensor,
     pub objectnesses: Tensor,
     pub classifications: Tensor,
 }
 
 impl MultiInstance {
     pub fn new(instances: &[Instance]) -> MultiInstance {
-        let (positions, sizes, objectnesses, classifications) = instances
+        let (cys, cxs, heights, widths, objectnesses, classifications) = instances
             .iter()
             .map(|instance| {
                 let Instance {
-                    position,
-                    size,
+                    cy,
+                    cx,
+                    height,
+                    width,
                     objectness,
                     classification,
                 } = instance;
-                (position, size, objectness, classification)
+                (cy, cx, height, width, objectness, classification)
             })
             .unzip_n_vec();
 
         MultiInstance {
-            positions: Tensor::stack(&positions, 0),
-            sizes: Tensor::stack(&sizes, 0),
+            cys: Tensor::stack(&cys, 0),
+            cxs: Tensor::stack(&cxs, 0),
+            heights: Tensor::stack(&heights, 0),
+            widths: Tensor::stack(&widths, 0),
             objectnesses: Tensor::stack(&objectnesses, 0),
             classifications: Tensor::stack(&classifications, 0),
         }
@@ -218,8 +197,10 @@ impl MultiInstance {
 
 #[derive(Debug, TensorLike)]
 pub struct Instance {
-    pub position: Tensor,
-    pub size: Tensor,
+    pub cy: Tensor,
+    pub cx: Tensor,
+    pub height: Tensor,
+    pub width: Tensor,
     pub objectness: Tensor,
     pub classification: Tensor,
 }

@@ -494,124 +494,7 @@ impl DetectModule {
             })
             .collect();
 
-        // construct feature maps
-        let feature_maps: Vec<_> = izip!(tensors.iter(), self.anchors_list.iter())
-            .map(|(xs, anchors)| {
-                let (b, channels, height, width) = xs.size4().unwrap();
-                let num_anchors = anchors.len() as i64;
-                debug_assert_eq!(b, batch_size);
-                debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
-
-                let outputs = xs
-                    .view([
-                        batch_size,
-                        num_anchors,
-                        num_outputs_per_anchor,
-                        height,
-                        width,
-                    ])
-                    .permute(&[0, 1, 3, 4, 2]);
-
-                // output shape [bsize, n_anchors, height, width, n_outputs]
-                outputs
-            })
-            .collect();
-
-        // construct human-readable outputs
-        let detections: Vec<_> = izip!(feature_maps.iter(), self.anchors_list.iter())
-            .enumerate()
-            .flat_map(|(layer_index, (xs, anchors))| {
-                let (_batch, num_anchors, height, width, _n_outputs) = xs.size5().unwrap();
-                debug_assert_eq!(num_anchors, anchors.len() as i64);
-
-                // gride size in pixels
-                let grid_height = image_height / height;
-                let grid_width = image_width / width;
-
-                // base position for each grid in grid units
-                let grid_base_positions = {
-                    let grids = Tensor::meshgrid(&[
-                        Tensor::arange(height, (Kind::Float, self.device)),
-                        Tensor::arange(width, (Kind::Float, self.device)),
-                    ]);
-                    Tensor::stack(&[&grids[0], &grids[1]], 2)
-                        .view(&[1, 1, height, width, 2] as &[_])
-                };
-
-                // anchor sizes in grid units
-                let anchor_base_sizes = {
-                    let components: Vec<_> = anchors
-                        .iter()
-                        .cloned()
-                        .flat_map(
-                            |PixelSize {
-                                 height: h_pixel,
-                                 width: w_pixel,
-                                 ..
-                             }| {
-                                let h_grid = h_pixel as f64 / grid_height as f64;
-                                let w_grid = w_pixel as f64 / grid_width as f64;
-                                vec![h_grid as f32, w_grid as f32]
-                            },
-                        )
-                        .collect();
-
-                    Tensor::of_slice(&components).to_device(self.device).view([
-                        1,
-                        num_anchors,
-                        1,
-                        1,
-                        2,
-                    ])
-                };
-
-                // transform outputs
-                let sigmoid = xs.sigmoid();
-
-                // positions in grid units
-                let positions =
-                    sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
-
-                // bbox sizes in grid units
-                let sizes = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
-
-                // bbox parameters in grid units
-                let cycxhw = Tensor::cat(&[positions, sizes], 4);
-
-                // objectness
-                let objectnesses = sigmoid.i((.., .., .., .., 4..5));
-
-                // sparse classification
-                let classifications = sigmoid.i((.., .., .., .., 5..));
-
-                // construct predictions per grid
-                let detections_iter = iproduct!(0..num_anchors, 0..height, 0..width).map(
-                    move |(anchor_index, row, col)| {
-                        let cycxhw = cycxhw.i((.., anchor_index, row, col, ..));
-                        let objectness = objectnesses.i((.., anchor_index, row, col, ..));
-                        let classification = classifications.i((.., anchor_index, row, col, ..));
-
-                        let detection_index = DetectionIndex {
-                            layer_index,
-                            anchor_index,
-                            grid_row: row,
-                            grid_col: col,
-                        };
-                        let detection = Detection {
-                            index: detection_index,
-                            cycxhw,
-                            objectness,
-                            classification,
-                        };
-
-                        detection
-                    },
-                );
-
-                detections_iter
-            })
-            .collect();
-
+        // compute outputs
         let layer_outputs = izip!(tensors.iter(), self.anchors_list.iter())
             .map(|(xs, anchors)| {
                 let (b, channels, height, width) = xs.size4().unwrap();
@@ -633,7 +516,7 @@ impl DetectModule {
                     .collect();
 
                 // transform outputs
-                let (position, size, objectness, classification) = {
+                let (cy, cx, h, w, objectness, classification) = {
                     // base position for each grid in grid units
                     let grid_base_positions = {
                         let grids = Tensor::meshgrid(&[
@@ -687,9 +570,13 @@ impl DetectModule {
                     // positions in grid units
                     let position =
                         sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
+                    let cy = position.i((.., .., .., .., 0..1));
+                    let cx = position.i((.., .., .., .., 1..2));
 
                     // bbox sizes in grid units
                     let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
+                    let h = size.i((.., .., .., .., 0..1));
+                    let w = size.i((.., .., .., .., 1..2));
 
                     // objectness
                     let objectness = sigmoid.i((.., .., .., .., 4..5));
@@ -697,12 +584,14 @@ impl DetectModule {
                     // sparse classification
                     let classification = sigmoid.i((.., .., .., .., 5..));
 
-                    (position, size, objectness, classification)
+                    (cy, cx, h, w, objectness, classification)
                 };
 
                 LayerOutput {
-                    position,
-                    size,
+                    cy,
+                    cx,
+                    height: h,
+                    width: w,
                     objectness,
                     classification,
                     feature_size: GridSize::new(height, width),
@@ -716,9 +605,7 @@ impl DetectModule {
             image_size: PixelSize::new(image_height, image_width),
             batch_size,
             num_classes: self.num_classes,
-            // detections,
             device: self.device,
-            // feature_info,
             outputs: layer_outputs,
         }
     }
