@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    utils::{GridSize, PixelSize, Unzip6},
+    utils::{GridSize, PixelSize},
 };
 
 #[derive(Debug)]
@@ -62,7 +62,7 @@ pub struct YoloOutput {
     pub(crate) device: Device,
     pub(crate) layer_meta: Vec<LayerMeta>,
     // below tensors have shape [n_instances, n_outputs] where
-    // - n_instances = batch_size x (\sum_(1<= i <= n_layers) n_anchors_i x feature_height_i x feature_width_i)
+    // - n_instances = (\sum_(1<= i <= n_layers) n_anchors_i x feature_height_i x feature_width_i) x batch_size
     // - n_outputs depends on output kind (cy, cx, height, width, objectness -> 1; classification -> n_classes)
     pub(crate) cy: Tensor,
     pub(crate) cx: Tensor,
@@ -87,18 +87,11 @@ impl YoloOutput {
             feature_size: GridSize { height, width, .. },
             ..
         } = self.layer_meta[layer_index];
-        let grids_per_batch = self.layer_meta.last().unwrap().end_flat_index;
 
         // batch last
         let flat_index = (begin_flat_index + grid_col + width * (grid_row + height * anchor_index))
             * self.batch_size
             + batch_index as i64;
-
-        // batch first
-        // let flat_index = batch_index as i64 * grids_per_batch
-        //     + begin_flat_index
-        //     + grid_col
-        //     + width * (grid_row + height * anchor_index);
 
         flat_index
     }

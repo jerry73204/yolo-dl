@@ -310,7 +310,7 @@ impl YoloLoss {
         let pred_objectness = &prediction.objectness;
         let target_objectness = {
             let mut target = pred_objectness.full_like(0.0);
-            target.scatter_(
+            let _ = target.scatter_(
                 0,
                 &pred_flat_indexes,
                 &(&non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
