@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    utils::{GridSize, PixelSize, Unzip4},
+    utils::{GridSize, PixelSize, Unzip7},
 };
 
 pub enum YoloModule {
@@ -465,148 +465,156 @@ impl DetectModule {
         let num_outputs_per_anchor = self.num_classes + 5;
         let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
-        // compute sizes for each feature map
-        let feature_info: Vec<_> = tensors
-            .iter()
-            .zip_eq(self.anchors_list.iter())
-            .map(|(tensor, anchors_in_pixels)| {
-                let (b, _c, feature_height, feature_width) = tensor.size4().unwrap();
-                debug_assert_eq!(b, batch_size);
-
-                let grid_height = image_height as f64 / feature_height as f64;
-                let grid_width = image_width as f64 / feature_width as f64;
-
-                let anchors_in_grids: Vec<_> = anchors_in_pixels
-                    .iter()
-                    .cloned()
-                    .map(|PixelSize { height, width, .. }| {
-                        GridSize::new(height as f64 / grid_height, width as f64 / grid_width)
-                    })
-                    .collect();
-
-                let info = FeatureInfo {
-                    feature_size: GridSize::new(feature_height, feature_width),
-                    grid_size: PixelSize::new(grid_height, grid_width),
-                    anchors: anchors_in_grids,
-                };
-
-                info
-            })
-            .collect();
-
         // compute outputs
-        let layer_outputs = izip!(tensors.iter(), self.anchors_list.iter())
-            .map(|(xs, anchors)| {
-                let (b, channels, height, width) = xs.size4().unwrap();
-                let num_anchors = anchors.len() as i64;
-                debug_assert_eq!(b, batch_size);
-                debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
+        let (cy_vec, cx_vec, h_vec, w_vec, objectness_vec, classification_vec, layer_meta) =
+            izip!(tensors.iter(), self.anchors_list.iter())
+                .scan(0, |base_flat_index, (xs, anchors)| {
+                    let (bsize, channels, height, width) = xs.size4().unwrap();
+                    let num_anchors = anchors.len() as i64;
+                    debug_assert_eq!(bsize, batch_size);
+                    debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
 
-                // gride size in pixels
-                let grid_height = image_height as f64 / height as f64;
-                let grid_width = image_width as f64 / width as f64;
+                    // gride size in pixels
+                    let grid_height = image_height as f64 / height as f64;
+                    let grid_width = image_width as f64 / width as f64;
 
-                // convert anchor sizes to grid units
-                let anchors_in_grids: Vec<_> = anchors
-                    .iter()
-                    .cloned()
-                    .map(|PixelSize { height, width, .. }| {
-                        GridSize::new(height as f64 / grid_height, width as f64 / grid_width)
-                    })
-                    .collect();
+                    // convert anchor sizes to grid units
+                    let anchors_in_grids = anchors
+                        .iter()
+                        .cloned()
+                        .map(|PixelSize { height, width, .. }| {
+                            GridSize::new(height as f64 / grid_height, width as f64 / grid_width)
+                        })
+                        .collect_vec();
 
-                // transform outputs
-                let (cy, cx, h, w, objectness, classification) = {
-                    // base position for each grid in grid units
-                    let grid_base_positions = {
-                        let grids = Tensor::meshgrid(&[
-                            Tensor::arange(height, (Kind::Float, self.device)),
-                            Tensor::arange(width, (Kind::Float, self.device)),
-                        ]);
-                        Tensor::stack(&[&grids[0], &grids[1]], 2)
-                            .view(&[1, 1, height, width, 2] as &[_])
+                    let layer_meta = {
+                        let begin_flat_index = *base_flat_index;
+                        *base_flat_index += num_anchors * height * width;
+                        let end_flat_index = *base_flat_index;
+
+                        // compute base flat index
+                        let layer_meta = LayerMeta {
+                            feature_size: GridSize::new(height, width),
+                            grid_size: PixelSize::new(grid_height, grid_width),
+                            anchors: anchors_in_grids,
+                            begin_flat_index,
+                            end_flat_index,
+                        };
+                        layer_meta
                     };
 
-                    // anchor sizes in grid units
-                    let anchor_base_sizes = {
-                        let components: Vec<_> = anchors
-                            .iter()
-                            .cloned()
-                            .flat_map(
-                                |PixelSize {
-                                     height: h_pixel,
-                                     width: w_pixel,
-                                     ..
-                                 }| {
-                                    let h_grid = h_pixel as f64 / grid_height;
-                                    let w_grid = w_pixel as f64 / grid_width;
-                                    vec![h_grid as f32, w_grid as f32]
-                                },
-                            )
-                            .collect();
+                    // transform outputs
+                    let (cy, cx, h, w, objectness, classification) = {
+                        // base position for each grid in grid units
+                        let grid_base_positions = {
+                            let grids = Tensor::meshgrid(&[
+                                Tensor::arange(height, (Kind::Float, self.device)),
+                                Tensor::arange(width, (Kind::Float, self.device)),
+                            ]);
+                            Tensor::stack(&[&grids[0], &grids[1]], 2)
+                                .view(&[1, height, width, 1, 2] as &[_])
+                        };
 
-                        Tensor::of_slice(&components).to_device(self.device).view([
-                            1,
-                            num_anchors,
-                            1,
-                            1,
-                            2,
-                        ])
+                        // anchor sizes in grid units
+                        let anchor_base_sizes = {
+                            let components: Vec<_> = anchors
+                                .iter()
+                                .cloned()
+                                .flat_map(
+                                    |PixelSize {
+                                         height: h_pixel,
+                                         width: w_pixel,
+                                         ..
+                                     }| {
+                                        let h_grid = h_pixel as f64 / grid_height;
+                                        let w_grid = w_pixel as f64 / grid_width;
+                                        vec![h_grid as f32, w_grid as f32]
+                                    },
+                                )
+                                .collect();
+
+                            Tensor::of_slice(&components).to_device(self.device).view([
+                                num_anchors,
+                                1,
+                                1,
+                                1,
+                                2,
+                            ])
+                        };
+
+                        // convert shape to [n_anchors, height, width, batch_size, n_outputs]
+                        let outputs = xs
+                            .view([
+                                batch_size,
+                                num_anchors,
+                                num_outputs_per_anchor,
+                                height,
+                                width,
+                            ])
+                            .permute(&[1, 3, 4, 0, 2]);
+
+                        // dbg!(
+                        //     outputs.size(),
+                        //     batch_size,
+                        //     num_anchors,
+                        //     height,
+                        //     width,
+                        //     num_outputs_per_anchor
+                        // );
+
+                        let sigmoid = outputs.sigmoid();
+
+                        // positions in grid units
+                        let position =
+                            sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
+                        let cy = position.i((.., .., .., .., 0..1));
+                        let cx = position.i((.., .., .., .., 1..2));
+
+                        // bbox sizes in grid units
+                        let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
+                        let h = size.i((.., .., .., .., 0..1));
+                        let w = size.i((.., .., .., .., 1..2));
+
+                        // objectness
+                        let objectness = sigmoid.i((.., .., .., .., 4..5));
+
+                        // sparse classification
+                        let classification = sigmoid.i((.., .., .., .., 5..));
+
+                        let cy = cy.view([-1, batch_size, 1]);
+                        let cx = cx.view([-1, batch_size, 1]);
+                        let h = h.view([-1, batch_size, 1]);
+                        let w = w.view([-1, batch_size, 1]);
+                        let objectness = objectness.view([-1, batch_size, 1]);
+                        let classification =
+                            classification.view([-1, batch_size, self.num_classes]);
+
+                        (cy, cx, h, w, objectness, classification)
                     };
 
-                    // convert into shape [bsize, n_anchors, height, width, n_outputs]
-                    let outputs = xs
-                        .view([
-                            batch_size,
-                            num_anchors,
-                            num_outputs_per_anchor,
-                            height,
-                            width,
-                        ])
-                        .permute(&[0, 1, 3, 4, 2]);
+                    Some((cy, cx, h, w, objectness, classification, layer_meta))
+                })
+                .unzip_n_vec();
 
-                    let sigmoid = outputs.sigmoid();
-
-                    // positions in grid units
-                    let position =
-                        sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + &grid_base_positions;
-                    let cy = position.i((.., .., .., .., 0..1));
-                    let cx = position.i((.., .., .., .., 1..2));
-
-                    // bbox sizes in grid units
-                    let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * &anchor_base_sizes;
-                    let h = size.i((.., .., .., .., 0..1));
-                    let w = size.i((.., .., .., .., 1..2));
-
-                    // objectness
-                    let objectness = sigmoid.i((.., .., .., .., 4..5));
-
-                    // sparse classification
-                    let classification = sigmoid.i((.., .., .., .., 5..));
-
-                    (cy, cx, h, w, objectness, classification)
-                };
-
-                LayerOutput {
-                    cy,
-                    cx,
-                    height: h,
-                    width: w,
-                    objectness,
-                    classification,
-                    feature_size: GridSize::new(height, width),
-                    grid_size: PixelSize::new(grid_height, grid_width),
-                    anchors: anchors_in_grids,
-                }
-            })
-            .collect();
+        let cy = Tensor::cat(&cy_vec, 0).view([-1, 1]);
+        let cx = Tensor::cat(&cx_vec, 0).view([-1, 1]);
+        let h = Tensor::cat(&h_vec, 0).view([-1, 1]);
+        let w = Tensor::cat(&w_vec, 0).view([-1, 1]);
+        let objectness = Tensor::cat(&objectness_vec, 0).view([-1, 1]);
+        let classification = Tensor::cat(&classification_vec, 0).view([-1, self.num_classes]);
 
         YoloOutput {
             image_size: PixelSize::new(image_height, image_width),
             batch_size,
             num_classes: self.num_classes,
             device: self.device,
-            outputs: layer_outputs,
+            cy,
+            cx,
+            height: h,
+            width: w,
+            objectness,
+            classification,
+            layer_meta,
         }
     }
 }

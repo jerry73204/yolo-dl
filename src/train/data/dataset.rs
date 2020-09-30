@@ -383,7 +383,7 @@ impl DataSet {
 
         // reorder back
         // let stream = Box::pin(stream).try_reorder_enumerated();
-        let stream = stream.and_then(|(inedx, args)| async move { Ok(args) });
+        let stream = stream.and_then(|(index, args)| async move { Ok(args) });
 
         let stream = Box::pin(stream);
         Ok(stream)

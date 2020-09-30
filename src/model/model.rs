@@ -60,60 +60,60 @@ pub struct YoloOutput {
     pub(crate) num_classes: i64,
     #[tensor_like(copy)]
     pub(crate) device: Device,
-    pub(crate) outputs: Vec<LayerOutput>,
+    pub(crate) layer_meta: Vec<LayerMeta>,
+    // below tensors have shape [n_instances, n_outputs] where
+    // - n_instances = batch_size x (\sum_(1<= i <= n_layers) n_anchors_i x feature_height_i x feature_width_i)
+    // - n_outputs depends on output kind (cy, cx, height, width, objectness -> 1; classification -> n_classes)
+    pub(crate) cy: Tensor,
+    pub(crate) cx: Tensor,
+    pub(crate) height: Tensor,
+    pub(crate) width: Tensor,
+    pub(crate) objectness: Tensor,
+    pub(crate) classification: Tensor,
 }
 
 impl YoloOutput {
-    pub fn get(&self, index: &InstanceIndex) -> Option<Instance> {
+    pub fn to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
         let InstanceIndex {
             batch_index,
             layer_index,
             anchor_index,
             grid_row,
             grid_col,
-        } = *index;
-        let batch_index = batch_index as i64;
+        } = *instance_index;
 
-        let layer = self.outputs.get(layer_index)?;
-        let cy = layer
-            .cy
-            .i((batch_index, anchor_index, grid_row, grid_col, ..));
-        let cx = layer
-            .cx
-            .i((batch_index, anchor_index, grid_row, grid_col, ..));
-        let height = layer
-            .height
-            .i((batch_index, anchor_index, grid_row, grid_col, ..));
-        let width = layer
-            .width
-            .i((batch_index, anchor_index, grid_row, grid_col, ..));
-        let objectness = layer
-            .objectness
-            .i((batch_index, anchor_index, grid_row, grid_col, ..));
-        let classification =
-            layer
-                .classification
-                .i((batch_index, anchor_index, grid_row, grid_col, ..));
+        let LayerMeta {
+            begin_flat_index,
+            feature_size: GridSize { height, width, .. },
+            ..
+        } = self.layer_meta[layer_index];
+        let grids_per_batch = self.layer_meta.last().unwrap().end_flat_index;
 
-        Some(Instance {
-            cy,
-            cx,
-            height,
-            width,
-            objectness,
-            classification,
-        })
+        // batch last
+        let flat_index = (begin_flat_index + grid_col + width * (grid_row + height * anchor_index))
+            * self.batch_size
+            + batch_index as i64;
+
+        // batch first
+        // let flat_index = batch_index as i64 * grids_per_batch
+        //     + begin_flat_index
+        //     + grid_col
+        //     + width * (grid_row + height * anchor_index);
+
+        flat_index
     }
 }
 
 #[derive(Debug, TensorLike)]
-pub struct FeatureInfo {
+pub struct LayerMeta {
     /// feature map size in grid units
     pub feature_size: GridSize<i64>,
     /// per grid size in pixel units
     pub grid_size: PixelSize<f64>,
     /// Anchros (height, width) in grid units
     pub anchors: Vec<GridSize<f64>>,
+    pub begin_flat_index: i64,
+    pub end_flat_index: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
@@ -132,22 +132,6 @@ pub struct Detection {
     pub classification: Tensor,
 }
 
-#[derive(Debug, TensorLike)]
-pub struct LayerOutput {
-    pub cy: Tensor,
-    pub cx: Tensor,
-    pub height: Tensor,
-    pub width: Tensor,
-    pub objectness: Tensor,
-    pub classification: Tensor,
-    /// feature map size in grid units
-    pub feature_size: GridSize<i64>,
-    /// per grid size in pixel units
-    pub grid_size: PixelSize<f64>,
-    /// Anchros (height, width) in grid units
-    pub anchors: Vec<GridSize<f64>>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
 pub struct InstanceIndex {
     pub batch_index: usize,
@@ -155,52 +139,4 @@ pub struct InstanceIndex {
     pub anchor_index: i64,
     pub grid_row: i64,
     pub grid_col: i64,
-}
-
-#[derive(Debug, TensorLike)]
-pub struct MultiInstance {
-    pub cys: Tensor,
-    pub cxs: Tensor,
-    pub heights: Tensor,
-    pub widths: Tensor,
-    pub objectnesses: Tensor,
-    pub classifications: Tensor,
-}
-
-impl MultiInstance {
-    pub fn new(instances: &[Instance]) -> MultiInstance {
-        let (cys, cxs, heights, widths, objectnesses, classifications) = instances
-            .iter()
-            .map(|instance| {
-                let Instance {
-                    cy,
-                    cx,
-                    height,
-                    width,
-                    objectness,
-                    classification,
-                } = instance;
-                (cy, cx, height, width, objectness, classification)
-            })
-            .unzip_n_vec();
-
-        MultiInstance {
-            cys: Tensor::stack(&cys, 0),
-            cxs: Tensor::stack(&cxs, 0),
-            heights: Tensor::stack(&heights, 0),
-            widths: Tensor::stack(&widths, 0),
-            objectnesses: Tensor::stack(&objectnesses, 0),
-            classifications: Tensor::stack(&classifications, 0),
-        }
-    }
-}
-
-#[derive(Debug, TensorLike)]
-pub struct Instance {
-    pub cy: Tensor,
-    pub cx: Tensor,
-    pub height: Tensor,
-    pub width: Tensor,
-    pub objectness: Tensor,
-    pub classification: Tensor,
 }

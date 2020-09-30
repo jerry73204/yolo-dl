@@ -112,12 +112,12 @@ fn train_worker(
         // print message
         rate_counter.add(1.0);
         if let Some(rate) = rate_counter.rate() {
-            info!("epoch: {}\tstep: {}\trate: {} msg/s", epoch, step, rate);
+            info!("epoch: {}\tstep: {}\trate: {:.2} msg/s", epoch, step, rate);
         } else {
             info!("epoch: {}\tstep: {}", epoch, step);
         }
 
-        // dbg!(timing.records());
+        // info!("{:#?}", timing.records());
         timing = Timing::new();
     }
 
