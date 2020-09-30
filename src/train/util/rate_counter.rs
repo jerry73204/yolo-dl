@@ -29,6 +29,7 @@ impl RateCounter {
         if elapsed >= self.interval {
             let rate = self.count / elapsed.as_secs() as f64;
             self.count = 0.0;
+            self.instant = Instant::now();
             Some(rate)
         } else {
             None
