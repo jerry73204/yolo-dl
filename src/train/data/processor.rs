@@ -2,33 +2,6 @@ use crate::{common::*, config::Config, message::LoggingMessage};
 
 // utility funcions
 
-pub fn load_image<P>(path: P) -> Result<DynamicImage>
-where
-    P: AsRef<Path>,
-{
-    use image::io::Reader;
-
-    let path = path.as_ref();
-
-    // guess file type by content
-    // We do not use image::open() because it guesses file type by filename extensions.
-    let image = match tree_magic::from_filepath(path).as_str() {
-        "image/jpeg" => {
-            let mut reader = Reader::open(path)?;
-            reader.set_format(ImageFormat::Jpeg);
-            reader.decode()?
-        }
-        "image/png" => {
-            let mut reader = Reader::open(path)?;
-            reader.set_format(ImageFormat::Png);
-            reader.decode()?
-        }
-        _ => bail!("unsupported file type: {}", path.display()),
-    };
-
-    Ok(image)
-}
-
 pub fn crop_image(image: &Tensor, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Tensor {
     assert!(left < right);
     assert!(top < bottom);
@@ -408,8 +381,19 @@ impl CacheLoader {
 
             // load and resize image
             let array = async_std::task::spawn_blocking(move || -> Result<_> {
-                let image = load_image(&image_path)
-                    .with_context(|| format!("failed to open {}", image_path.display()))?;
+                let image = image::io::Reader::open(&image_path)
+                    .with_context(|| format!("failed to open {}", image_path.display()))?
+                    .with_guessed_format()
+                    .with_context(|| {
+                        format!(
+                            "failed to determine the image file format: {}",
+                            image_path.display()
+                        )
+                    })?
+                    .decode()
+                    .with_context(|| {
+                        format!("failed to decode image file: {}", image_path.display())
+                    })?;
                 let image = image
                     .resize_exact(
                         resize_width as u32,
