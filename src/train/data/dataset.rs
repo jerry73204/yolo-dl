@@ -1,5 +1,5 @@
 use super::*;
-use crate::{common::*, config::Config, message::LoggingMessage};
+use crate::{common::*, config::Config, message::LoggingMessage, util::Timing};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Record {
@@ -34,6 +34,8 @@ impl DataSet {
             ..
         } = &*config;
         let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
+
+        // build file cache
 
         Ok(Self { config, dataset })
     }
@@ -121,32 +123,34 @@ impl DataSet {
             let mut rng = rand::thread_rng();
             let num_records = records.len();
 
-            let mut index_iters: Vec<_> = (0..4)
+            let mut index_iters = (0..4)
                 .map(|_| {
-                    let mut indexes: Vec<_> = (0..num_records).collect();
+                    let mut indexes = (0..num_records).collect_vec();
                     indexes.shuffle(&mut rng);
                     indexes.into_iter()
                 })
-                .collect();
+                .collect_vec();
 
-            let record_vec_iter = (0..num_records)
+            let record_vec = (0..num_records)
                 .map(|_| {
-                    let record_vec: Vec<Arc<Record>> = index_iters
+                    let mut timing = Timing::new();
+                    let record_vec = index_iters
                         .iter_mut()
                         .map(|iter| iter.next().unwrap())
                         .map(|index| records[index].clone())
-                        .collect();
-                    (epoch, record_vec)
+                        .collect_vec();
+                    timing.set_record("load record");
+                    (epoch, record_vec, timing)
                 })
-                .collect::<Vec<_>>();
+                .collect_vec();
 
-            futures::stream::iter(record_vec_iter)
+            futures::stream::iter(record_vec)
         });
 
         // add step count
         let stream = stream
             .enumerate()
-            .map(|(step, (epoch, record_vec))| Ok((step, epoch, record_vec)));
+            .map(|(step, (epoch, record_vec, timing))| Ok((step, epoch, record_vec, timing)));
 
         // load and cache images
         let stream = {
@@ -155,9 +159,10 @@ impl DataSet {
             let logging_tx = logging_tx.clone();
 
             stream.and_then(move |args| {
-                let (step, epoch, record_vec) = args;
+                let (step, epoch, record_vec, mut timing) = args;
                 let cache_loader = cache_loader.clone();
                 let logging_tx = logging_tx.clone();
+                timing.set_record("wait for cache loader");
 
                 async move {
                     let load_cache_futs = record_vec
@@ -201,7 +206,8 @@ impl DataSet {
                         let _ = logging_tx.send(msg);
                     }
 
-                    Fallible::Ok((step, epoch, bbox_image_vec))
+                    timing.set_record("cache loader");
+                    Fallible::Ok((step, epoch, bbox_image_vec, timing))
                 }
             })
         };
@@ -213,13 +219,13 @@ impl DataSet {
         let stream = {
             let mosaic_processor = Arc::new(MosaicProcessor::new(image_size, mosaic_margin));
 
-            stream.try_par_then_unordered(None, move |(index, args)| {
+            stream.and_then(move |(index, args)| {
                 let mosaic_processor = mosaic_processor.clone();
                 let mut rng = StdRng::from_entropy();
                 let logging_tx = logging_tx.clone();
 
                 async move {
-                    let (step, epoch, bbox_image_vec) = args;
+                    let (step, epoch, bbox_image_vec, mut timing) = args;
 
                     // randomly create mosaic image
                     let (merged_bboxes, merged_image) =
@@ -239,16 +245,18 @@ impl DataSet {
                         let _ = logging_tx.send(msg);
                     }
 
-                    Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image)))
+                    timing.set_record("mosaic processor");
+                    Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image, timing)))
                 }
             })
         };
 
         // add batch dimension
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
-            let (step, epoch, bboxes, image) = args;
+        let stream = stream.and_then(move |(index, args)| async move {
+            let (step, epoch, bboxes, image, mut timing) = args;
             let new_image = image.unsqueeze(0);
-            Fallible::Ok((index, (step, epoch, bboxes, new_image)))
+            timing.set_record("batch dimensions");
+            Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
         });
 
         // apply random affine
@@ -262,12 +270,12 @@ impl DataSet {
         ));
 
         warn!("TODO: random affine on bboxes is not implemented");
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| {
+        let stream = stream.and_then(move |(index, args)| {
             let random_affine = random_affine.clone();
             let mut rng = StdRng::from_entropy();
 
             async move {
-                let (step, epoch, bboxes, image) = args;
+                let (step, epoch, bboxes, image, mut timing) = args;
 
                 // randomly create mosaic image
                 let (new_bboxes, new_image) = if rng.gen_range(0.0, 1.0) <= affine_prob.raw() {
@@ -284,47 +292,52 @@ impl DataSet {
                     (bboxes, image)
                 };
 
-                Fallible::Ok((index, (step, epoch, new_bboxes, new_image)))
+                timing.set_record("random affine");
+                Fallible::Ok((index, (step, epoch, new_bboxes, new_image, timing)))
             }
         });
 
         // reorder items
-        let stream = Box::pin(stream).try_reorder_enumerated();
+        // let stream = Box::pin(stream).try_reorder_enumerated();
+        let stream = stream.and_then(|(index, args)| async move { Ok(args) });
+        let stream = Box::pin(stream);
 
         // group into chunks
-        let stream = stream
-            .chunks(mini_batch_size)
-            .overflowing_enumerate()
-            .par_then_unordered(None, |(index, results)| async move {
+        let stream = stream.chunks(mini_batch_size).overflowing_enumerate().then(
+            |(index, results)| async move {
                 let chunk = results.into_iter().collect::<Fallible<Vec<_>>>()?;
                 Fallible::Ok((index, chunk))
-            });
+            },
+        );
 
         // convert to batched type
-        let stream = stream.try_par_then_unordered(None, |(index, chunk)| {
+        let stream = stream.and_then(|(index, chunk)| {
             // summerizable type
             struct State {
                 pub step: usize,
                 pub epoch: usize,
                 pub bboxes_vec: Vec<Vec<LabeledRatioBBox>>,
                 pub image_vec: Vec<Tensor>,
+                pub timing_vec: Vec<Timing>,
             }
 
-            impl Sum<(usize, usize, Vec<LabeledRatioBBox>, Tensor)> for State {
+            impl Sum<(usize, usize, Vec<LabeledRatioBBox>, Tensor, Timing)> for State {
                 fn sum<I>(mut iter: I) -> Self
                 where
-                    I: Iterator<Item = (usize, usize, Vec<LabeledRatioBBox>, Tensor)>,
+                    I: Iterator<Item = (usize, usize, Vec<LabeledRatioBBox>, Tensor, Timing)>,
                 {
-                    let (mut min_step, mut min_epoch, bboxes, image) =
+                    let (mut min_step, mut min_epoch, bboxes, image, timing) =
                         iter.next().expect("the iterator canont be empty");
                     let mut bboxes_vec = vec![bboxes];
                     let mut image_vec = vec![image];
+                    let mut timing_vec = vec![timing];
 
-                    while let Some((step, epoch, bboxes, image)) = iter.next() {
+                    while let Some((step, epoch, bboxes, image, timing)) = iter.next() {
                         min_step = min_step.min(step);
                         min_epoch = min_epoch.min(epoch);
                         bboxes_vec.push(bboxes);
                         image_vec.push(image);
+                        timing_vec.push(timing);
                     }
 
                     Self {
@@ -332,6 +345,7 @@ impl DataSet {
                         epoch: min_epoch,
                         bboxes_vec,
                         image_vec,
+                        timing_vec,
                     }
                 }
             }
@@ -342,17 +356,20 @@ impl DataSet {
                     epoch,
                     bboxes_vec,
                     image_vec,
+                    timing_vec,
                 } = chunk.into_iter().sum();
 
                 let image_batch = Tensor::cat(&image_vec, 0);
 
-                Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch)))
+                Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch, timing_vec)))
             }
         });
 
         // map to output type
-        let stream = stream.try_par_then_unordered(None, move |(index, args)| async move {
-            let (step, epoch, bboxes, image) = args;
+        let stream = stream.and_then(move |(index, args)| async move {
+            let (step, epoch, bboxes, image, timing_vec) = args;
+
+            // dbg!(timing_vec);
 
             let record = TrainingRecord {
                 epoch,
@@ -365,7 +382,8 @@ impl DataSet {
         });
 
         // reorder back
-        let stream = stream.try_reorder_enumerated();
+        // let stream = Box::pin(stream).try_reorder_enumerated();
+        let stream = stream.and_then(|(inedx, args)| async move { Ok(args) });
 
         let stream = Box::pin(stream);
         Ok(stream)

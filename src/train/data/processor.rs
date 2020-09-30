@@ -377,8 +377,6 @@ impl CacheLoader {
 
         // write cache if the cache is not valid
         if !is_valid {
-            warn!("cache miss, load {}", image_path.display());
-
             // load and resize image
             let array = async_std::task::spawn_blocking(move || -> Result<_> {
                 let image = image::io::Reader::open(&image_path)

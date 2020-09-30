@@ -5,7 +5,13 @@ mod logging;
 mod message;
 mod util;
 
-use crate::{common::*, config::Config, data::DataSet, data::TrainingRecord, util::RateCounter};
+use crate::{
+    common::*,
+    config::Config,
+    data::DataSet,
+    data::TrainingRecord,
+    util::{RateCounter, Timing},
+};
 
 #[derive(Debug, Clone, FromArgs)]
 /// Train YOLO model
@@ -47,6 +53,7 @@ pub async fn main() -> Result<()> {
         Fallible::Ok(())
     });
 
+    // training worker
     let training_worker_future = {
         let config = config.clone();
 
@@ -73,33 +80,45 @@ fn train_worker(
     let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit::default().build();
     let mut optimizer = nn::Adam::default().build(&vs, 0.01)?;
-    let mut rate = 0.0;
+    let mut rate_counter = RateCounter::with_second_intertal();
+    let mut timing = Timing::new();
 
     // training
     info!("start training");
-    // let mut rate_counter = RateCounter::new(0.9);
 
     while let Ok(record) = async_std::task::block_on(training_rx.recv()) {
+        timing.set_record("next record");
+
         let TrainingRecord {
             epoch,
             step,
             image,
             bboxes,
         } = record.to_device(config.device);
+        timing.set_record("to device");
 
         // forward pass
         let output = model.forward_t(&image, true);
+        timing.set_record("forward");
 
         // compute loss
         let loss = yolo_loss.forward(&output, &bboxes);
+        timing.set_record("loss");
 
         // optimizer
         optimizer.backward_step(&loss);
+        timing.set_record("backward");
 
         // print message
-        // rate_counter.add(1.0).await;
-        // rate = rate_counter.rate().await.unwrap_or(rate);
-        info!("epoch: {}\tstep: {}", epoch, step);
+        rate_counter.add(1.0);
+        if let Some(rate) = rate_counter.rate() {
+            info!("epoch: {}\tstep: {}\trate: {} msg/s", epoch, step, rate);
+        } else {
+            info!("epoch: {}\tstep: {}", epoch, step);
+        }
+
+        // dbg!(timing.records());
+        timing = Timing::new();
     }
 
     Fallible::Ok(())

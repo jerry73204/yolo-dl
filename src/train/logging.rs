@@ -22,7 +22,7 @@ pub async fn logging_worker(
         let mut event_writer = EventWriterInit::default()
             .from_prefix_async(event_path_prefix, None)
             .await?;
-        let mut rate_counter = RateCounter::new(0.9);
+        let mut rate_counter = RateCounter::with_second_intertal();
 
         loop {
             let msg = match rx.recv().await {
@@ -50,8 +50,8 @@ pub async fn logging_worker(
                 }
             }
 
-            rate_counter.add(1.0).await;
-            if let Some(rate) = rate_counter.rate().await {
+            rate_counter.add(1.0);
+            if let Some(rate) = rate_counter.rate() {
                 info!("rate {:.2} msg/s", rate);
             }
         }

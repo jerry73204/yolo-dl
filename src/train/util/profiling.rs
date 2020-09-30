@@ -1,37 +1,26 @@
 use crate::common::*;
 
-pub fn timed<F, T>(mut f: F) -> (T, Instant)
-where
-    F: FnMut() -> T,
-{
-    let instant = Instant::now();
-    let ret = f();
-    (ret, instant)
+#[derive(Debug, Clone)]
+pub struct Timing {
+    instant: Instant,
+    elapsed: Vec<(String, Duration)>,
 }
 
-pub fn try_timed<F, T, E>(mut f: F) -> Result<(T, Instant), E>
-where
-    F: FnMut() -> Result<T, E>,
-{
-    let instant = Instant::now();
-    let ret = f()?;
-    Ok((ret, instant))
-}
+impl Timing {
+    pub fn new() -> Self {
+        Self {
+            instant: Instant::now(),
+            elapsed: vec![],
+        }
+    }
 
-pub async fn timed_async<Fut, T>(f: Fut) -> (T, Instant)
-where
-    Fut: Future<Output = T>,
-{
-    let instant = Instant::now();
-    let ret = f.await;
-    (ret, instant)
-}
+    pub fn set_record<'a>(&mut self, name: impl Into<Cow<'a, str>>) {
+        self.elapsed
+            .push((name.into().into_owned(), self.instant.elapsed()));
+        self.instant = Instant::now();
+    }
 
-pub async fn try_timed_async<Fut, T, E>(f: Fut) -> Result<(T, Instant), E>
-where
-    Fut: Future<Output = Result<T, E>>,
-{
-    let instant = Instant::now();
-    let ret = f.await?;
-    Ok((ret, instant))
+    pub fn records(&self) -> &[(String, Duration)] {
+        &self.elapsed
+    }
 }
