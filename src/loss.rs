@@ -103,13 +103,13 @@ impl Default for YoloLossInit {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum MatchGrid {
     Rect2,
     Rect4,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum IoUKind {
     IoU,
     GIoU,

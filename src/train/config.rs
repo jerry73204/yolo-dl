@@ -1,5 +1,8 @@
 use crate::common::*;
-use yolo_dl::utils::Ratio;
+use yolo_dl::{
+    loss::{IoUKind, MatchGrid},
+    utils::Ratio,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -18,6 +21,8 @@ pub struct Config {
     pub shear: Option<R64>,
     pub horizontal_flip: bool,
     pub vertical_flip: bool,
+    pub match_grid_method: MatchGrid,
+    pub iou_kind: IoUKind,
     #[serde(with = "tch_serde::serde_device")]
     pub device: Device,
 }
