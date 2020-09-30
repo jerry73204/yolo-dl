@@ -37,3 +37,7 @@ tch-serde = "0.2"
 debug = true
 debug-assertions = true
 overflow-checks = true
+
+[[bin]]
+name = "train"
+path = "src/train/main.rs"
