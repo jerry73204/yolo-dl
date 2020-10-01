@@ -27,7 +27,7 @@ impl RateCounter {
     pub fn rate(&mut self) -> Option<f64> {
         let elapsed = self.instant.elapsed();
         if elapsed >= self.interval {
-            let rate = self.count / elapsed.as_secs() as f64;
+            let rate = self.count / elapsed.as_nanos() as f64 * 1_000_000_000.0;
             self.count = 0.0;
             self.instant = Instant::now();
             Some(rate)

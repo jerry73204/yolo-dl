@@ -7,7 +7,7 @@
     "mosaic_margin": 0.4,
     "affine_prob": 0.3,
     "logging_dir": "logs",
-    "mini_batch_size": 64,
+    "mini_batch_size": 84,
     "rotate_degrees": 10,
     "translation": 0.1,
     "scale": [0.9, 1.1],
