@@ -32,6 +32,11 @@ pub async fn logging_worker(
             };
 
             match msg {
+                LoggingMessage::TrainingStep { tag, step, loss } => {
+                    event_writer
+                        .write_scalar_async(tag, step as i64, loss)
+                        .await?;
+                }
                 LoggingMessage::Images { tag, images } => {
                     for (index, image) in images.into_iter().enumerate() {
                         event_writer

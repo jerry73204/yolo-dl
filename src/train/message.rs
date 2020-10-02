@@ -2,6 +2,12 @@ use crate::common::*;
 
 #[derive(Debug, TensorLike)]
 pub enum LoggingMessage {
+    TrainingStep {
+        #[tensor_like(clone)]
+        tag: String,
+        step: usize,
+        loss: f32,
+    },
     Images {
         #[tensor_like(clone)]
         tag: String,

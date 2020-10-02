@@ -8,8 +8,8 @@ mod util;
 use crate::{
     common::*,
     config::Config,
-    data::DataSet,
-    data::TrainingRecord,
+    data::{DataSet, TrainingRecord},
+    message::LoggingMessage,
     util::{RateCounter, Timing},
 };
 
@@ -42,23 +42,27 @@ pub async fn main() -> Result<()> {
     let logging_future = logging::logging_worker(config.clone(), logging_rx).await?;
 
     // feeding worker
-    let training_data_future = async_std::task::spawn(async move {
-        let mut train_stream = dataset.train_stream(logging_tx.clone()).await?;
+    let training_data_future = {
+        let logging_tx = logging_tx.clone();
+        async_std::task::spawn(async move {
+            let mut train_stream = dataset.train_stream(logging_tx).await?;
 
-        while let Some(result) = train_stream.next().await {
-            let record = result?;
-            training_tx.send(record).await;
-        }
+            while let Some(result) = train_stream.next().await {
+                let record = result?;
+                training_tx.send(record).await;
+            }
 
-        Fallible::Ok(())
-    });
+            Fallible::Ok(())
+        })
+    };
 
     // training worker
     let training_worker_future = {
         let config = config.clone();
+        let logging_tx = logging_tx.clone();
 
         async_std::task::spawn_blocking(move || {
-            train_worker(config, input_channels, num_classes, training_rx)
+            train_worker(config, input_channels, num_classes, training_rx, logging_tx)
         })
     };
 
@@ -72,6 +76,7 @@ fn train_worker(
     input_channels: usize,
     num_classes: usize,
     training_rx: async_std::sync::Receiver<TrainingRecord>,
+    logging_tx: broadcast::Sender<LoggingMessage>,
 ) -> Fallible<()> {
     // init model
     info!("initializing model");
@@ -124,6 +129,18 @@ fn train_worker(
             );
         } else {
             info!("epoch: {}\tstep: {}", epoch, step);
+        }
+
+        // send to logger
+        {
+            let msg = LoggingMessage::TrainingStep {
+                tag: "loss".into(),
+                step,
+                loss: loss.into(),
+            };
+            logging_tx
+                .send(msg)
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
 
         // info!("{:#?}", timing.records());

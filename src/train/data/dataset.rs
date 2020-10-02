@@ -33,8 +33,6 @@ impl DataSet {
         } = &*config;
         let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
 
-        // build file cache
-
         Ok(Self { config, dataset })
     }
 
