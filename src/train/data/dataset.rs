@@ -2,7 +2,7 @@ use super::*;
 use crate::{common::*, config::Config, message::LoggingMessage, util::Timing};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Record {
+pub struct CocoRecord {
     pub path: PathBuf,
     pub size: PixelSize<usize>,
     /// Bounding box in pixel units.
@@ -93,22 +93,22 @@ impl DataSet {
                     let bboxes = anns
                         .into_iter()
                         .map(|ann| {
-                            let [x, y, w, h] = ann.bbox.clone();
+                            let [l, t, w, h] = ann.bbox.clone();
                             let category_id = ann.category_id;
                             let bbox =
-                                PixelBBox::from_tlhw([y.into(), x.into(), h.into(), w.into()]);
+                                PixelBBox::from_tlhw([t.into(), l.into(), h.into(), w.into()]);
                             LabeledPixelBBox { bbox, category_id }
                         })
-                        .collect::<Vec<_>>();
+                        .collect_vec();
 
-                    Record {
+                    CocoRecord {
                         path: image_dir.join(&image.file_name),
                         size: PixelSize::new(image.height, image.width),
                         bboxes,
                     }
                 })
                 .map(Arc::new)
-                .collect::<Vec<_>>(),
+                .collect_vec(),
         );
 
         // repeat records
@@ -169,26 +169,9 @@ impl DataSet {
                             let cache_loader = cache_loader.clone();
 
                             async move {
-                                let Record {
-                                    ref path,
-                                    size: PixelSize { height, width, .. },
-                                    ..
-                                } = *record;
-
                                 // load cache
-                                let image = cache_loader.load_cache(path, height, width).await?;
-
-                                // extend to specified size
-                                let resized = resize_image(&image, image_size, image_size)?;
-
-                                // convert to ratio bbox
-                                let bboxes: Vec<_> = record
-                                    .bboxes
-                                    .iter()
-                                    .map(|bbox| bbox.to_ratio_bbox(height, width))
-                                    .collect();
-
-                                Fallible::Ok((resized, bboxes))
+                                let (image, bboxes) = cache_loader.load_cache(&record).await?;
+                                Fallible::Ok((image, bboxes))
                             }
                         })
                         .map(async_std::task::spawn);
@@ -258,42 +241,42 @@ impl DataSet {
         });
 
         // apply random affine
-        let random_affine = Arc::new(RandomAffine::new(
-            rotate_degrees,
-            translation,
-            scale,
-            shear,
-            horizontal_flip,
-            vertical_flip,
-        ));
+        // let random_affine = Arc::new(RandomAffine::new(
+        //     rotate_degrees,
+        //     translation,
+        //     scale,
+        //     shear,
+        //     horizontal_flip,
+        //     vertical_flip,
+        // ));
 
-        warn!("TODO: random affine on bboxes is not implemented");
-        let stream = stream.try_par_then(None, move |(index, args)| {
-            let random_affine = random_affine.clone();
-            let mut rng = StdRng::from_entropy();
+        // warn!("TODO: random affine on bboxes is not implemented");
+        // let stream = stream.try_par_then(None, move |(index, args)| {
+        //     let random_affine = random_affine.clone();
+        //     let mut rng = StdRng::from_entropy();
 
-            async move {
-                let (step, epoch, bboxes, image, mut timing) = args;
+        //     async move {
+        //         let (step, epoch, bboxes, image, mut timing) = args;
 
-                // randomly create mosaic image
-                let (new_bboxes, new_image) = if rng.gen_range(0.0, 1.0) <= affine_prob.raw() {
-                    let new_image = async_std::task::spawn_blocking(move || {
-                        random_affine.batch_random_affine(&image)
-                    })
-                    .await;
+        //         // randomly create mosaic image
+        //         let (new_bboxes, new_image) = if rng.gen_range(0.0, 1.0) <= affine_prob.raw() {
+        //             let new_image = async_std::task::spawn_blocking(move || {
+        //                 random_affine.batch_random_affine(&image)
+        //             })
+        //             .await;
 
-                    // TODO: random affine on bboxes
-                    let new_bboxes = bboxes;
+        //             // TODO: random affine on bboxes
+        //             let new_bboxes = bboxes;
 
-                    (new_bboxes, new_image)
-                } else {
-                    (bboxes, image)
-                };
+        //             (new_bboxes, new_image)
+        //         } else {
+        //             (bboxes, image)
+        //         };
 
-                timing.set_record("random affine");
-                Fallible::Ok((index, (step, epoch, new_bboxes, new_image, timing)))
-            }
-        });
+        //         timing.set_record("random affine");
+        //         Fallible::Ok((index, (step, epoch, new_bboxes, new_image, timing)))
+        //     }
+        // });
 
         // reorder items
         let stream = stream.try_reorder_enumerated();

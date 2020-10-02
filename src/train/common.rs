@@ -6,7 +6,7 @@ pub use futures::{
     stream::{Stream, StreamExt, TryStreamExt},
     AsyncWriteExt,
 };
-pub use image::{imageops::FilterType, DynamicImage, ImageFormat, Pixel};
+pub use image::{imageops::FilterType, DynamicImage, FlatSamples, ImageFormat, Pixel};
 pub use itertools::{izip, Itertools};
 pub use log::{info, warn};
 pub use ndarray::{Array, Array2, Array3, ArrayD};
