@@ -12,6 +12,10 @@ pub enum LoggingMessageKind {
         step: usize,
         loss: f32,
     },
+    TrainingOutput {
+        prediction: Tensor,
+        target: Vec<LabeledRatioBBox>,
+    },
     Images {
         images: Vec<Tensor>,
     },
@@ -28,6 +32,16 @@ impl LoggingMessage {
         Self {
             tag: tag.into(),
             kind: LoggingMessageKind::TrainingStep { step, loss },
+        }
+    }
+
+    pub fn new_training_output<S>(tag: S, prediction: Tensor, target: Vec<LabeledRatioBBox>) -> Self
+    where
+        S: Into<Cow<'static, str>>,
+    {
+        Self {
+            tag: tag.into(),
+            kind: LoggingMessageKind::TrainingOutput { prediction, target },
         }
     }
 
@@ -80,6 +94,13 @@ impl Clone for LoggingMessageKind {
     fn clone(&self) -> Self {
         match *self {
             Self::TrainingStep { step, loss } => Self::TrainingStep { step, loss },
+            Self::TrainingOutput {
+                ref prediction,
+                ref target,
+            } => Self::TrainingOutput {
+                prediction: prediction.shallow_clone(),
+                target: target.clone(),
+            },
             Self::Images { ref images } => Self::Images {
                 images: images
                     .iter()

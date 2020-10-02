@@ -53,6 +53,9 @@ pub async fn logging_worker(
                         .write_scalar_async(tag, step as i64, loss)
                         .await?;
                 }
+                LoggingMessageKind::TrainingOutput { prediction, target } => {
+                    todo!();
+                }
                 LoggingMessageKind::Images { images } => {
                     if log_images {
                         for (index, image) in images.into_iter().enumerate() {
