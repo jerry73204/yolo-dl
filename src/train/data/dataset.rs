@@ -50,6 +50,7 @@ impl DataSet {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         let Config {
             ref cache_dir,
+            ref whitelist_classes,
             image_size,
             mosaic_prob,
             mosaic_margin,
@@ -71,16 +72,36 @@ impl DataSet {
             ..
         } = &self.dataset;
 
-        let annotations = instances
+        let annotations: HashMap<_, _> = instances
             .annotations
             .iter()
             .map(|ann| (ann.id, ann))
-            .collect::<HashMap<_, _>>();
-        let images = instances
-            .images
-            .iter()
-            .map(|img| (img.id, img))
-            .collect::<HashMap<_, _>>();
+            .collect();
+        let images: HashMap<_, _> = instances.images.iter().map(|img| (img.id, img)).collect();
+        let categories: HashMap<_, _> = match whitelist_classes {
+            Some(whitelist_classes) => instances
+                .categories
+                .iter()
+                .filter_map(|cat| {
+                    let Category { id, ref name, .. } = *cat;
+
+                    // filter by whitelist
+                    if whitelist_classes.contains(name) {
+                        Some((id, name.to_owned()))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            None => instances
+                .categories
+                .iter()
+                .map(|cat| {
+                    let Category { id, ref name, .. } = *cat;
+                    (id, name.to_owned())
+                })
+                .collect(),
+        };
 
         let records = Arc::new(
             annotations
@@ -92,12 +113,18 @@ impl DataSet {
                     let image = &images[&image_id];
                     let bboxes = anns
                         .into_iter()
-                        .map(|ann| {
+                        .filter_map(|ann| {
                             let [l, t, w, h] = ann.bbox.clone();
                             let category_id = ann.category_id;
-                            let bbox =
-                                PixelBBox::from_tlhw([t.into(), l.into(), h.into(), w.into()]);
-                            LabeledPixelBBox { bbox, category_id }
+
+                            // filter by whiltelist
+                            if categories.contains_key(&category_id) {
+                                let bbox =
+                                    PixelBBox::from_tlhw([t.into(), l.into(), h.into(), w.into()]);
+                                Some(LabeledPixelBBox { bbox, category_id })
+                            } else {
+                                None
+                            }
                         })
                         .collect_vec();
 

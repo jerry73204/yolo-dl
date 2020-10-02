@@ -8,6 +8,7 @@ use yolo_dl::{
 pub struct Config {
     pub dataset_dir: PathBuf,
     pub dataset_name: String,
+    pub whitelist_classes: Option<Vec<String>>,
     pub cache_dir: PathBuf,
     pub image_size: NonZeroUsize,
     pub mosaic_prob: Ratio,
