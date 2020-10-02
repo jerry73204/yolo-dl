@@ -1,24 +1,10 @@
 use super::CocoRecord;
-use crate::{common::*, util::Timing};
+use crate::{
+    common::*,
+    util::{TensorEx, Timing},
+};
 
 // utility funcions
-
-pub fn crop_image(image: &Tensor, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio) -> Tensor {
-    assert!(left < right);
-    assert!(top < bottom);
-
-    let (_channels, height, width) = image.size3().unwrap();
-    let height = height as f64;
-    let width = width as f64;
-
-    let top = (f64::from(top) * height) as i64;
-    let bottom = (f64::from(bottom) * height) as i64;
-    let left = (f64::from(left) * width) as i64;
-    let right = (f64::from(right) * width) as i64;
-
-    let cropped = image.i((.., top..bottom, left..right));
-    cropped
-}
 
 pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
     match input.size().as_slice() {
@@ -561,31 +547,31 @@ impl MosaicProcessor {
             (pivot_row, 1.0.into(), pivot_col, 1.0.into()),
         ];
 
-        let mut crop_iter = futures::stream::iter(
-            bbox_image_vec.into_iter().zip_eq(ranges.into_iter()),
-        )
-        .map(move |((image, bboxes), (top, bottom, left, right))| {
-            // sanity check
-            {
-                let (_c, h, w) = image.size3().unwrap();
-                debug_assert_eq!(h, image_size);
-                debug_assert_eq!(w, image_size);
-            }
+        let mut crop_iter =
+            futures::stream::iter(bbox_image_vec.into_iter().zip_eq(ranges.into_iter())).map(
+                move |((image, bboxes), (top, bottom, left, right))| -> Result<_> {
+                    // sanity check
+                    {
+                        let (_c, h, w) = image.size3().unwrap();
+                        debug_assert_eq!(h, image_size);
+                        debug_assert_eq!(w, image_size);
+                    }
 
-            let cropped_image = crop_image(&image, top, bottom, left, right);
-            let cropped_bboxes: Vec<_> = bboxes
-                .into_iter()
-                .filter_map(|bbox| bbox.crop(top, bottom, left, right))
-                .collect();
+                    let cropped_image = image.crop_by_ratio(top, bottom, left, right)?;
+                    let cropped_bboxes = bboxes
+                        .into_iter()
+                        .filter_map(|bbox| bbox.crop(top, bottom, left, right))
+                        .collect_vec();
 
-            (cropped_image, cropped_bboxes)
-        });
+                    Ok((cropped_image, cropped_bboxes))
+                },
+            );
 
-        let (cropped_tl, bboxes_tl) = crop_iter.next().await.unwrap();
-        let (cropped_tr, bboxes_tr) = crop_iter.next().await.unwrap();
-        let (cropped_bl, bboxes_bl) = crop_iter.next().await.unwrap();
-        let (cropped_br, bboxes_br) = crop_iter.next().await.unwrap();
-        debug_assert_eq!(crop_iter.next().await, None);
+        let (cropped_tl, bboxes_tl) = crop_iter.next().await.unwrap()?;
+        let (cropped_tr, bboxes_tr) = crop_iter.next().await.unwrap()?;
+        let (cropped_bl, bboxes_bl) = crop_iter.next().await.unwrap()?;
+        let (cropped_br, bboxes_br) = crop_iter.next().await.unwrap()?;
+        debug_assert!(crop_iter.next().await.is_none());
 
         // merge cropped images
         let (merged_image, merged_bboxes) = async_std::task::spawn_blocking(move || {

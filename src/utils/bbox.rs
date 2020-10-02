@@ -187,14 +187,16 @@ impl BBox<Ratio, RatioUnit> {
         let orig_b = orig_cy + orig_h / 2.0;
         let orig_r = orig_cx + orig_w / 2.0;
 
-        let crop_t = orig_t.max(top);
-        let crop_b = orig_b.max(bottom);
-        let crop_l = orig_l.max(left);
-        let crop_r = orig_r.max(right);
+        let crop_t = orig_t.max(top).min(bottom);
+        let crop_b = orig_b.max(top).min(bottom);
+        let crop_l = orig_l.max(left).min(right);
+        let crop_r = orig_r.max(left).min(right);
 
-        if crop_l < crop_r && crop_t < crop_b {
-            let crop_w = crop_r - crop_l;
+        if abs_diff_eq!(crop_t.raw(), crop_b.raw()) || abs_diff_eq!(crop_l.raw(), crop_r.raw()) {
+            None
+        } else {
             let crop_h = crop_b - crop_t;
+            let crop_w = crop_r - crop_l;
             let crop_cy = crop_t + crop_h / 2.0;
             let crop_cx = crop_l + crop_w / 2.0;
 
@@ -202,8 +204,6 @@ impl BBox<Ratio, RatioUnit> {
                 cycxhw: [crop_cy, crop_cx, crop_h, crop_w],
                 _phantom: PhantomData,
             })
-        } else {
-            None
         }
     }
 

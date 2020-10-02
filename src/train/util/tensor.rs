@@ -47,6 +47,9 @@ pub trait TensorEx {
         stroke: usize,
         color: &Tensor,
     ) -> Result<Tensor>;
+
+    fn crop_by_ratio(&self, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio)
+        -> Result<Tensor>;
 }
 
 impl TensorEx for Tensor {
@@ -124,5 +127,29 @@ impl TensorEx for Tensor {
         let _ = self.fill_rect_(outer_top, inner_right, outer_bottom, outer_right, color)?;
 
         Ok(self.shallow_clone())
+    }
+
+    fn crop_by_ratio(
+        &self,
+        top: Ratio,
+        bottom: Ratio,
+        left: Ratio,
+        right: Ratio,
+    ) -> Result<Tensor> {
+        ensure!(left < right, "invalid range");
+        ensure!(top < bottom, "invalid range");
+
+        let (_channels, height, width) = self.size3()?;
+        let height = height as f64;
+        let width = width as f64;
+
+        let top = (f64::from(top) * height) as i64;
+        let bottom = (f64::from(bottom) * height) as i64;
+        let left = (f64::from(left) * width) as i64;
+        let right = (f64::from(right) * width) as i64;
+
+        let cropped = self.i((.., top..bottom, left..right));
+
+        Ok(cropped)
     }
 }
