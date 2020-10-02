@@ -32,11 +32,18 @@ pub async fn logging_worker(
             .from_prefix_async(event_path_prefix, None)
             .await?;
         let mut rate_counter = RateCounter::with_second_intertal();
+        let mut lagging_counter = RateCounter::with_second_intertal();
 
         loop {
             let LoggingMessage { tag, kind } = match rx.recv().await {
-                Ok(msg) => msg,
-                Err(broadcast::RecvError::Lagged(_)) => continue,
+                Ok(msg) => {
+                    rate_counter.add(1.0);
+                    msg
+                }
+                Err(broadcast::RecvError::Lagged(_)) => {
+                    lagging_counter.add(1.0);
+                    continue;
+                }
                 Err(broadcast::RecvError::Closed) => break,
             };
 
@@ -113,9 +120,12 @@ pub async fn logging_worker(
                 }
             }
 
-            rate_counter.add(1.0);
             if let Some(rate) = rate_counter.rate() {
-                info!("rate {:.2} msg/s", rate);
+                info!("processed {:.2} events/s", rate);
+            }
+
+            if let Some(rate) = lagging_counter.rate() {
+                info!("missed {:.2} events/s", rate);
             }
         }
 
