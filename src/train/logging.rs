@@ -1,4 +1,9 @@
-use crate::{common::*, config::Config, message::LoggingMessage, util::RateCounter};
+use crate::{
+    common::*,
+    config::Config,
+    message::LoggingMessage,
+    util::{RateCounter, TensorEx},
+};
 
 pub async fn logging_worker(
     config: Arc<Config>,
@@ -47,8 +52,43 @@ pub async fn logging_worker(
                     debug_step += 1;
                 }
                 LoggingMessage::ImageWithBBox { tag, image, bboxes } => {
+                    let (_n_channels, height, width) = match image.size().as_slice() {
+                        &[_bsize, n_channels, _height, _width] => (n_channels, _height, _width),
+                        &[n_channels, _height, _width] => (n_channels, _height, _width),
+                        _ => bail!("invalid shape: expec three or four dims"),
+                    };
+                    let color = Tensor::of_slice(&[1.0, 1.0, 1.0]);
+
+                    let mut canvas = image.copy();
+                    for labeled_bbox in bboxes {
+                        let LabeledRatioBBox {
+                            bbox:
+                                RatioBBox {
+                                    cycxhw: [cy, cx, h, w],
+                                    ..
+                                },
+                            ..
+                        } = labeled_bbox;
+                        let cy = cy.raw();
+                        let cx = cx.raw();
+                        let h = h.raw();
+                        let w = w.raw();
+
+                        let top = cy - h / 2.0;
+                        let left = cx - w / 2.0;
+                        let bottom = top + h;
+                        let right = left + w;
+
+                        let top = (top * height as f64) as i64;
+                        let left = (left * width as f64) as i64;
+                        let bottom = (bottom * height as f64) as i64;
+                        let right = (right * width as f64) as i64;
+
+                        let _ = canvas.draw_rect_(top, left, bottom, right, 1, &color)?;
+                    }
+
                     event_writer
-                        .write_image_async(tag, debug_step, image)
+                        .write_image_async(tag, debug_step, canvas)
                         .await?;
 
                     debug_step += 1;
