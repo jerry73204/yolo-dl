@@ -20,37 +20,37 @@ pub fn crop_image(image: &Tensor, top: Ratio, bottom: Ratio, left: Ratio, right:
 }
 
 pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
-    let (_channels, _height, _width) = input.size3().unwrap();
-
-    let resized = vision::image::resize_preserve_aspect_ratio(
-        &(input * 255.0).to_kind(Kind::Uint8),
-        out_w,
-        out_h,
-    )?
-    .to_kind(Kind::Float)
-        / 255.0;
-
-    Ok(resized)
-}
-
-pub fn batch_resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
-    let (bsize, _channels, _height, _width) = input.size4().unwrap();
-
-    let input_scaled = (input * 255.0).to_kind(Kind::Uint8);
-    let resized_vec = (0..bsize)
-        .map(|index| {
+    match input.size().as_slice() {
+        &[_n_channels, _height, _width] => {
             let resized = vision::image::resize_preserve_aspect_ratio(
-                &input_scaled.select(0, index),
+                &(input * 255.0).to_kind(Kind::Uint8),
                 out_w,
                 out_h,
-            )?;
-            Ok(resized)
-        })
-        .collect::<Fallible<Vec<_>>>()?;
-    let resized = Tensor::stack(resized_vec.as_slice(), 0);
-    let resized_scaled = resized.to_kind(Kind::Float) / 255.0;
+            )?
+            .to_kind(Kind::Float)
+                / 255.0;
 
-    Ok(resized_scaled)
+            Ok(resized)
+        }
+        &[batch_size, _n_channels, _height, _width] => {
+            let input_scaled = (input * 255.0).to_kind(Kind::Uint8);
+            let resized_vec = (0..batch_size)
+                .map(|index| {
+                    let resized = vision::image::resize_preserve_aspect_ratio(
+                        &input_scaled.select(0, index),
+                        out_w,
+                        out_h,
+                    )?;
+                    Ok(resized)
+                })
+                .collect::<Fallible<Vec<_>>>()?;
+            let resized = Tensor::stack(resized_vec.as_slice(), 0);
+            let resized_scaled = resized.to_kind(Kind::Float) / 255.0;
+
+            Ok(resized_scaled)
+        }
+        _ => bail!("invalid shape: expect three or four dimensions"),
+    }
 }
 
 // random affine
@@ -461,8 +461,8 @@ impl MosaicProcessor {
 
     pub async fn make_mosaic(
         &self,
-        bbox_image_vec: Vec<(Vec<LabeledRatioBBox>, Tensor)>,
-    ) -> Fallible<(Vec<LabeledRatioBBox>, Tensor)> {
+        bbox_image_vec: Vec<(Tensor, Vec<LabeledRatioBBox>)>,
+    ) -> Fallible<(Tensor, Vec<LabeledRatioBBox>)> {
         let Self {
             image_size,
             mosaic_margin,
@@ -487,7 +487,7 @@ impl MosaicProcessor {
         let mut crop_iter = futures::stream::iter(
             bbox_image_vec.into_iter().zip_eq(ranges.into_iter()),
         )
-        .map(move |((bboxes, image), (top, bottom, left, right))| {
+        .map(move |((image, bboxes), (top, bottom, left, right))| {
             // sanity check
             {
                 let (_c, h, w) = image.size3().unwrap();
@@ -501,17 +501,17 @@ impl MosaicProcessor {
                 .filter_map(|bbox| bbox.crop(top, bottom, left, right))
                 .collect();
 
-            (cropped_bboxes, cropped_image)
+            (cropped_image, cropped_bboxes)
         });
 
-        let (bboxes_tl, cropped_tl) = crop_iter.next().await.unwrap();
-        let (bboxes_tr, cropped_tr) = crop_iter.next().await.unwrap();
-        let (bboxes_bl, cropped_bl) = crop_iter.next().await.unwrap();
-        let (bboxes_br, cropped_br) = crop_iter.next().await.unwrap();
+        let (cropped_tl, bboxes_tl) = crop_iter.next().await.unwrap();
+        let (cropped_tr, bboxes_tr) = crop_iter.next().await.unwrap();
+        let (cropped_bl, bboxes_bl) = crop_iter.next().await.unwrap();
+        let (cropped_br, bboxes_br) = crop_iter.next().await.unwrap();
         debug_assert_eq!(crop_iter.next().await, None);
 
         // merge cropped images
-        let (merged_bboxes, merged_image) = async_std::task::spawn_blocking(move || {
+        let (merged_image, merged_bboxes) = async_std::task::spawn_blocking(move || {
             let merged_top = Tensor::cat(&[cropped_tl, cropped_tr], 2);
 
             let merged_bottom = Tensor::cat(&[cropped_bl, cropped_br], 2);
@@ -527,10 +527,10 @@ impl MosaicProcessor {
                 .chain(bboxes_br.into_iter())
                 .collect();
 
-            (merged_bboxes, merged_image)
+            (merged_image, merged_bboxes)
         })
         .await;
 
-        Ok((merged_bboxes, merged_image))
+        Ok((merged_image, merged_bboxes))
     }
 }

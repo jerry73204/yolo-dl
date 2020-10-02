@@ -188,24 +188,28 @@ impl DataSet {
                                     .map(|bbox| bbox.to_ratio_bbox(height, width))
                                     .collect();
 
-                                Fallible::Ok((bboxes, resized))
+                                Fallible::Ok((resized, bboxes))
                             }
                         })
                         .map(async_std::task::spawn);
 
-                    let bbox_image_vec: Vec<(_, _)> =
+                    let image_bbox_vec: Vec<(_, _)> =
                         futures::future::try_join_all(load_cache_futs).await?;
 
                     // send to logger
                     {
-                        let images: Vec<_> =
-                            bbox_image_vec.iter().map(|(_, image)| image).collect();
-                        let msg = LoggingMessage::new_images("cache-loader", &images);
+                        let msg = LoggingMessage::new_images_with_bboxes(
+                            "cache-loader",
+                            image_bbox_vec
+                                .iter()
+                                .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
+                                .collect_vec(),
+                        );
                         let _ = logging_tx.send(msg);
                     }
 
                     timing.set_record("cache loader");
-                    Fallible::Ok((index, (step, epoch, bbox_image_vec, timing)))
+                    Fallible::Ok((index, (step, epoch, image_bbox_vec, timing)))
                 }
             })
         };
@@ -220,22 +224,21 @@ impl DataSet {
                 let logging_tx = logging_tx.clone();
 
                 async move {
-                    let (step, epoch, bbox_image_vec, mut timing) = args;
+                    let (step, epoch, image_bbox_vec, mut timing) = args;
 
                     // randomly create mosaic image
-                    let (merged_bboxes, merged_image) =
+                    let (merged_image, merged_bboxes) =
                         if rng.gen_range(0.0, 1.0) <= mosaic_prob.raw() {
-                            mosaic_processor.make_mosaic(bbox_image_vec).await?
+                            mosaic_processor.make_mosaic(image_bbox_vec).await?
                         } else {
-                            bbox_image_vec.into_iter().next().unwrap()
+                            image_bbox_vec.into_iter().next().unwrap()
                         };
 
                     // send to logger
                     {
-                        let msg = LoggingMessage::new_image_with_bboxes(
+                        let msg = LoggingMessage::new_images_with_bboxes(
                             "mosaicache-processor",
-                            &merged_image,
-                            &merged_bboxes,
+                            vec![(&merged_image, &merged_bboxes)],
                         );
                         let _ = logging_tx.send(msg);
                     }

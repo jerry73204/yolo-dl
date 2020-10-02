@@ -133,11 +133,7 @@ fn train_worker(
 
         // send to logger
         {
-            let msg = LoggingMessage::TrainingStep {
-                tag: "loss".into(),
-                step,
-                loss: loss.into(),
-            };
+            let msg = LoggingMessage::new_training_step("loss", step, loss.into());
             logging_tx
                 .send(msg)
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
