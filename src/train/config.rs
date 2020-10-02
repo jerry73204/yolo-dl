@@ -14,6 +14,7 @@ pub struct Config {
     pub mosaic_margin: Ratio,
     pub affine_prob: Ratio,
     pub logging_dir: PathBuf,
+    pub log_images: bool,
     pub mini_batch_size: usize,
     pub rotate_degrees: Option<R64>,
     pub translation: Option<R64>,

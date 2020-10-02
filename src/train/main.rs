@@ -121,11 +121,11 @@ fn train_worker(
 
         // print message
         rate_counter.add(1.0);
-        if let Some(msg_rate) = rate_counter.rate() {
-            let record_rate = msg_rate * config.mini_batch_size as f64;
+        if let Some(batch_rate) = rate_counter.rate() {
+            let record_rate = batch_rate * config.mini_batch_size as f64;
             info!(
-                "epoch: {}\tstep: {}\trate: {:.2} record/s",
-                epoch, step, record_rate
+                "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
+                epoch, step, batch_rate, record_rate
             );
         } else {
             info!("epoch: {}\tstep: {}", epoch, step);
