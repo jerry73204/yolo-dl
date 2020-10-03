@@ -116,7 +116,7 @@ fn train_worker(
         timing.set_record("loss");
 
         // optimizer
-        optimizer.backward_step(&loss);
+        optimizer.backward_step(&loss.loss);
         timing.set_record("backward");
 
         // print message
@@ -133,7 +133,13 @@ fn train_worker(
 
         // send to logger
         {
-            let msg = LoggingMessage::new_training_step("loss", step, loss.into());
+            let msg = LoggingMessage::new_training_step("loss", step, (&loss.loss).into());
+            logging_tx
+                .send(msg)
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
+        }
+        {
+            let msg = LoggingMessage::new_training_output("output", &image, &output, &loss);
             logging_tx
                 .send(msg)
                 .map_err(|_err| format_err!("cannot send message to logger"))?;

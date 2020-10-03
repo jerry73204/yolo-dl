@@ -79,6 +79,16 @@ where
         }
     }
 
+    pub fn tlbr(&self) -> [R64; 4] {
+        let [cy, cx, h, w] = self.cycxhw;
+        let t = cy - h / 2.0;
+        let l = cx - w / 2.0;
+        let b = cy + h / 2.0;
+        let r = cx + w / 2.0;
+
+        [t, l, b, r]
+    }
+
     pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> RatioBBox {
         let Self {
             cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
@@ -207,7 +217,7 @@ impl BBox<Ratio, RatioUnit> {
         }
     }
 
-    pub fn to_bbox<U>(&self, height: R64, width: R64) -> BBox<R64, U>
+    pub fn to_r64_bbox<U>(&self, height: R64, width: R64) -> BBox<R64, U>
     where
         U: Unit,
     {

@@ -73,6 +73,34 @@ pub struct YoloOutput {
 }
 
 impl YoloOutput {
+    pub fn layer_meta(&self) -> &[LayerMeta] {
+        &self.layer_meta
+    }
+
+    pub fn cy(&self) -> &Tensor {
+        &self.cy
+    }
+
+    pub fn cx(&self) -> &Tensor {
+        &self.cx
+    }
+
+    pub fn height(&self) -> &Tensor {
+        &self.height
+    }
+
+    pub fn width(&self) -> &Tensor {
+        &self.width
+    }
+
+    pub fn classification(&self) -> &Tensor {
+        &self.classification
+    }
+
+    pub fn objectness(&self) -> &Tensor {
+        &self.objectness
+    }
+
     pub fn to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
         let InstanceIndex {
             batch_index,
@@ -107,22 +135,6 @@ pub struct LayerMeta {
     pub anchors: Vec<GridSize<f64>>,
     pub begin_flat_index: i64,
     pub end_flat_index: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
-pub struct DetectionIndex {
-    pub layer_index: usize,
-    pub anchor_index: i64,
-    pub grid_row: i64,
-    pub grid_col: i64,
-}
-
-#[derive(Debug, TensorLike)]
-pub struct Detection {
-    pub index: DetectionIndex,
-    pub cycxhw: Tensor,
-    pub objectness: Tensor,
-    pub classification: Tensor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]

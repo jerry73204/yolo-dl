@@ -48,6 +48,25 @@ pub trait TensorEx {
         color: &Tensor,
     ) -> Result<Tensor>;
 
+    fn batch_fill_rect_(
+        &mut self,
+        top: &Tensor,
+        left: &Tensor,
+        bottom: &Tensor,
+        right: &Tensor,
+        color: &Tensor,
+    ) -> Result<Tensor>;
+
+    fn batch_draw_rect_(
+        &mut self,
+        top: &Tensor,
+        left: &Tensor,
+        bottom: &Tensor,
+        right: &Tensor,
+        stroke: usize,
+        color: &Tensor,
+    ) -> Result<Tensor>;
+
     fn crop_by_ratio(&self, top: Ratio, bottom: Ratio, left: Ratio, right: Ratio)
         -> Result<Tensor>;
 }
@@ -125,6 +144,71 @@ impl TensorEx for Tensor {
 
         // draw right edge
         let _ = self.fill_rect_(outer_top, inner_right, outer_bottom, outer_right, color)?;
+
+        Ok(self.shallow_clone())
+    }
+
+    fn batch_fill_rect_(
+        &mut self,
+        top: &Tensor,
+        left: &Tensor,
+        bottom: &Tensor,
+        right: &Tensor,
+        color: &Tensor,
+    ) -> Result<Tensor> {
+        let (batch_size, n_channels, height, width) = self.size4()?;
+        warn!("batch_fill_rect_ is not yet implemented");
+
+        Ok(self.shallow_clone())
+    }
+
+    fn batch_draw_rect_(
+        &mut self,
+        top: &Tensor,
+        left: &Tensor,
+        bottom: &Tensor,
+        right: &Tensor,
+        stroke: usize,
+        color: &Tensor,
+    ) -> Result<Tensor> {
+        let (outer_top, outer_left, outer_bottom, outer_right) = {
+            let half_stroke = stroke as f64 / 2.0;
+            (
+                top - half_stroke,
+                left - half_stroke,
+                bottom + half_stroke,
+                right + half_stroke,
+            )
+        };
+        let (inner_top, inner_left, inner_bottom, inner_right) = {
+            let stroke = stroke as i64;
+            (
+                &outer_top + stroke,
+                &outer_left + stroke,
+                &outer_bottom - stroke,
+                &outer_right - stroke,
+            )
+        };
+
+        // draw top edge
+        let _ = self.batch_fill_rect_(&outer_top, &outer_left, &inner_top, &outer_right, color)?;
+
+        // draw left edge
+        let _ =
+            self.batch_fill_rect_(&outer_top, &outer_left, &outer_bottom, &inner_left, color)?;
+
+        // draw bottom edge
+        let _ = self.batch_fill_rect_(
+            &inner_bottom,
+            &outer_left,
+            &outer_bottom,
+            &outer_right,
+            color,
+        )?;
+
+        // draw right edge
+        let _ =
+            self.batch_fill_rect_(&outer_top, &inner_right, &outer_bottom, &outer_right, color)?;
 
         Ok(self.shallow_clone())
     }

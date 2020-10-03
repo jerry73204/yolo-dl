@@ -4,6 +4,30 @@ use crate::{
     utils::{GridSize, LabeledGridBBox, LabeledRatioBBox, Unzip5},
 };
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum MatchGrid {
+    Rect2,
+    Rect4,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum IoUKind {
+    IoU,
+    GIoU,
+    DIoU,
+    CIoU,
+}
+
+#[derive(Debug, TensorLike)]
+pub struct YoloLossOutput {
+    pub loss: Tensor,
+    pub iou_loss: Tensor,
+    pub classification_loss: Tensor,
+    pub objectness_loss: Tensor,
+    #[tensor_like(clone)]
+    pub target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
+}
+
 #[derive(Debug)]
 pub struct YoloLossInit {
     pub pos_weight: Option<Tensor>,
@@ -103,20 +127,6 @@ impl Default for YoloLossInit {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum MatchGrid {
-    Rect2,
-    Rect4,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum IoUKind {
-    IoU,
-    GIoU,
-    DIoU,
-    CIoU,
-}
-
 #[derive(Debug)]
 pub struct YoloLoss {
     reduction: Reduction,
@@ -133,7 +143,11 @@ pub struct YoloLoss {
 }
 
 impl YoloLoss {
-    pub fn forward(&self, prediction: &YoloOutput, target: &Vec<Vec<LabeledRatioBBox>>) -> Tensor {
+    pub fn forward(
+        &self,
+        prediction: &YoloOutput,
+        target: &Vec<Vec<LabeledRatioBBox>>,
+    ) -> YoloLossOutput {
         // match target bboxes and grids, and group them by detector cells
         // indexed by grid positions
         let target_bboxes = self.match_target_bboxes(&prediction, target);
@@ -157,11 +171,13 @@ impl YoloLoss {
             + self.classification_loss_weight * &classification_loss
             + self.objectness_loss_weight * &objectness_loss;
 
-        // let loss = self.iou_loss_weight * &iou_loss;
-        // let loss = self.classification_loss_weight * &classification_loss;
-        // let loss = self.objectness_loss_weight * &objectness_loss;
-
-        loss
+        YoloLossOutput {
+            loss,
+            iou_loss,
+            classification_loss,
+            objectness_loss,
+            target_bboxes,
+        }
     }
 
     fn iou_loss(
@@ -294,7 +310,7 @@ impl YoloLoss {
     fn objectness_loss(
         &self,
         prediction: &YoloOutput,
-        target_bboxes: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
+        target_bboxes: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
         non_reduced_iou_loss: &Tensor,
     ) -> Tensor {
         let device = prediction.device;
@@ -328,7 +344,7 @@ impl YoloLoss {
         &self,
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
-    ) -> HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>> {
+    ) -> Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>> {
         let bbox_iter = target
             .iter()
             .enumerate()
@@ -354,8 +370,8 @@ impl YoloLoss {
                 let grid_bbox = {
                     let height = R64::new(feature_height as f64);
                     let width = R64::new(feature_width as f64);
-                    Rc::new(LabeledGridBBox {
-                        bbox: ratio_bbox.bbox.to_bbox(height, width),
+                    Arc::new(LabeledGridBBox {
+                        bbox: ratio_bbox.bbox.to_r64_bbox(height, width),
                         category_id: ratio_bbox.category_id,
                     })
                 };
@@ -455,13 +471,13 @@ impl YoloLoss {
                             .iter()
                             .cloned()
                             .map(move |(grid_row, grid_col)| {
-                                let index = InstanceIndex {
+                                let index = Arc::new(InstanceIndex {
                                     batch_index,
                                     layer_index,
                                     anchor_index: anchor_index as i64,
                                     grid_row,
                                     grid_col,
-                                };
+                                });
 
                                 (index, grid_bbox.clone())
                             })
@@ -472,13 +488,13 @@ impl YoloLoss {
             })
             .collect();
 
-        targets
+        Arc::new(targets)
     }
 
     /// Build HashSet of predictions indexed by per-grid position
     fn collect_instances(
         prediction: &YoloOutput,
-        target: &HashMap<InstanceIndex, Rc<LabeledGridBBox<R64>>>,
+        target: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
     ) -> (PredInstances, TargetInstances) {
         let device = prediction.device;
         let pred_instances = {

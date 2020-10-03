@@ -47,8 +47,12 @@ pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, RwLock};
 pub use yolo_dl::{
-    loss::YoloLossInit,
-    utils::{BBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox, PixelSize, Ratio, RatioBBox},
+    loss::{YoloLossInit, YoloLossOutput},
+    model::{InstanceIndex, LayerMeta, YoloOutput},
+    utils::{
+        BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
+        PixelSize, Ratio, RatioBBox,
+    },
 };
 
 pub type Fallible<T> = Result<T, Error>;

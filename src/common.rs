@@ -14,6 +14,7 @@ pub use std::{
     num::NonZeroUsize,
     ops::{Add, Deref, DerefMut, Div, Mul, Rem, Sub},
     rc::Rc,
+    sync::Arc,
     time::{Duration, Instant},
 };
 pub use tch::{kind::INT64_CPU, nn, Device, IndexOp, Kind, Reduction, Tensor};

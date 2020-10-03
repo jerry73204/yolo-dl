@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::Config,
     message::{LoggingMessage, LoggingMessageKind},
-    util::{RateCounter, TensorEx},
+    util::{RateCounter, TensorEx, Timing},
 };
 
 pub async fn logging_worker(
@@ -53,8 +53,96 @@ pub async fn logging_worker(
                         .write_scalar_async(tag, step as i64, loss)
                         .await?;
                 }
-                LoggingMessageKind::TrainingOutput { prediction, target } => {
-                    todo!();
+                LoggingMessageKind::TrainingOutput {
+                    input,
+                    output,
+                    losses,
+                } => {
+                    if log_images {
+                        let mut timing = Timing::new();
+                        let mut canvas = input.copy();
+
+                        let (mut canvas, mut timing) =
+                            async_std::task::spawn_blocking(move || -> Result<_> {
+                                let input = input.to_device(Device::Cpu);
+                                let output = output.to_device(Device::Cpu);
+                                let losses = losses.to_device(Device::Cpu);
+
+                                timing.set_record("to cpu");
+
+                                let YoloLossOutput { target_bboxes, .. } = &losses;
+
+                                // let layer_meta = output.layer_meta();
+                                let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
+
+                                // draw target bboxes
+                                let flat_indexes: Vec<_> = target_bboxes
+                                    .iter()
+                                    .map(|(pred_index, target)| -> Result<_> {
+                                        let InstanceIndex { batch_index, .. } =
+                                            *pred_index.as_ref();
+                                        let LabeledGridBBox {
+                                            bbox: target_bbox,
+                                            category_id,
+                                        } = target.as_ref();
+                                        let flat_index = output.to_flat_index(pred_index.as_ref());
+                                        let [target_t, target_l, target_b, target_r] =
+                                            target_bbox.tlbr();
+
+                                        tch::no_grad(|| -> Result<_> {
+                                            // TODO: select color according to category_id
+                                            let _ =
+                                                canvas.select(0, batch_index as i64).draw_rect_(
+                                                    target_t.raw() as i64,
+                                                    target_l.raw() as i64,
+                                                    target_b.raw() as i64,
+                                                    target_r.raw() as i64,
+                                                    1,
+                                                    &color,
+                                                );
+                                            Ok(())
+                                        })?;
+
+                                        Ok(flat_index)
+                                    })
+                                    .try_collect()?;
+
+                                // draw predicted bboxes
+                                {
+                                    let flat_indexes = Tensor::of_slice(&flat_indexes);
+                                    let pred_cy = output.cy().index_select(0, &flat_indexes);
+                                    let pred_cx = output.cx().index_select(0, &flat_indexes);
+                                    let pred_h = output.height().index_select(0, &flat_indexes);
+                                    let pred_w = output.width().index_select(0, &flat_indexes);
+                                    let pred_t = &pred_cy - &pred_h / 2.0;
+                                    let pred_b = &pred_cy + &pred_h / 2.0;
+                                    let pred_l = &pred_cx - &pred_w / 2.0;
+                                    let pred_r = &pred_cx + &pred_w / 2.0;
+
+                                    // TODO: select color according to classification
+                                    // let pred_classification =
+                                    //     output.classification().index_select(0, &flat_indexes);
+                                    // let pred_objectness =
+                                    //     output.objectness().index_select(0, &flat_indexes);
+
+                                    let _ = canvas.batch_draw_rect_(
+                                        &pred_t, &pred_l, &pred_b, &pred_r, 2, &color,
+                                    )?;
+                                }
+
+                                timing.set_record("draw");
+                                Ok((canvas, timing))
+                            })
+                            .await?;
+
+                        event_writer
+                            .write_image_list_async(tag, debug_step, canvas)
+                            .await?;
+                        debug_step += 1;
+
+                        timing.set_record("write");
+                        // info!("{:#?}", timing.records());
+                    }
                 }
                 LoggingMessageKind::Images { images } => {
                     if log_images {
@@ -105,8 +193,11 @@ pub async fn logging_worker(
                                     let bottom = (bottom * height as f64) as i64;
                                     let right = (right * width as f64) as i64;
 
-                                    let _ =
-                                        canvas.draw_rect_(top, left, bottom, right, 1, &color)?;
+                                    tch::no_grad(|| -> Result<_> {
+                                        let _ = canvas
+                                            .draw_rect_(top, left, bottom, right, 1, &color)?;
+                                        Ok(())
+                                    })?;
                                 }
 
                                 Ok(canvas)
