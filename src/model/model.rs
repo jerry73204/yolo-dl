@@ -73,6 +73,10 @@ pub struct YoloOutput {
 }
 
 impl YoloOutput {
+    pub fn image_size(&self) -> &PixelSize<i64> {
+        &self.image_size
+    }
+
     pub fn layer_meta(&self) -> &[LayerMeta] {
         &self.layer_meta
     }

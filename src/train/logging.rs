@@ -60,78 +60,140 @@ pub async fn logging_worker(
                 } => {
                     if log_images {
                         let mut timing = Timing::new();
-                        let mut canvas = input.copy();
 
                         let (mut canvas, mut timing) =
                             async_std::task::spawn_blocking(move || -> Result<_> {
-                                let input = input.to_device(Device::Cpu);
-                                let output = output.to_device(Device::Cpu);
-                                let losses = losses.to_device(Device::Cpu);
+                                tch::no_grad(|| -> Result<_> {
+                                    let input = input.to_device(Device::Cpu);
+                                    let output = output.to_device(Device::Cpu);
+                                    let losses = losses.to_device(Device::Cpu);
 
-                                timing.set_record("to cpu");
+                                    timing.set_record("to cpu");
 
-                                let YoloLossOutput { target_bboxes, .. } = &losses;
+                                    let mut canvas = input.copy();
+                                    let YoloLossOutput { target_bboxes, .. } = &losses;
+                                    let layer_meta = output.layer_meta();
+                                    let PixelSize {
+                                        height: image_height,
+                                        width: image_width,
+                                        ..
+                                    } = *output.image_size();
+                                    let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
+                                    let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
-                                // let layer_meta = output.layer_meta();
-                                let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
+                                    // gather data from each bbox
+                                    let (pred_info, flat_indexes, target_btlbrs) = target_bboxes
+                                        .iter()
+                                        .map(|(pred_index, target)| -> Result<_> {
+                                            let InstanceIndex {
+                                                batch_index,
+                                                layer_index,
+                                                ..
+                                            } = *pred_index.as_ref();
+                                            let LabeledGridBBox {
+                                                bbox: target_bbox, ..
+                                            } = target.as_ref();
+                                            let flat_index =
+                                                output.to_flat_index(pred_index.as_ref());
+                                            let [target_t, target_l, target_b, target_r] =
+                                                target_bbox.tlbr();
+                                            let LayerMeta {
+                                                grid_size:
+                                                    PixelSize {
+                                                        height: grid_height,
+                                                        width: grid_width,
+                                                        ..
+                                                    },
+                                                ..
+                                            } = layer_meta[layer_index];
 
-                                // draw target bboxes
-                                let flat_indexes: Vec<_> = target_bboxes
-                                    .iter()
-                                    .map(|(pred_index, target)| -> Result<_> {
-                                        let InstanceIndex { batch_index, .. } =
-                                            *pred_index.as_ref();
-                                        let LabeledGridBBox {
-                                            bbox: target_bbox,
-                                            category_id,
-                                        } = target.as_ref();
-                                        let flat_index = output.to_flat_index(pred_index.as_ref());
-                                        let [target_t, target_l, target_b, target_r] =
-                                            target_bbox.tlbr();
+                                            let target_t = ((target_t.raw() * grid_height) as i64)
+                                                .max(0)
+                                                .min(image_height - 1);
+                                            let target_b = ((target_b.raw() * grid_height) as i64)
+                                                .max(0)
+                                                .min(image_height - 1);
+                                            let target_l = ((target_l.raw() * grid_width) as i64)
+                                                .max(0)
+                                                .min(image_width - 1);
+                                            let target_r = ((target_r.raw() * grid_width) as i64)
+                                                .max(0)
+                                                .min(image_width - 1);
 
-                                        tch::no_grad(|| -> Result<_> {
-                                            // TODO: select color according to category_id
-                                            let _ =
-                                                canvas.select(0, batch_index as i64).draw_rect_(
-                                                    target_t.raw() as i64,
-                                                    target_l.raw() as i64,
-                                                    target_b.raw() as i64,
-                                                    target_r.raw() as i64,
-                                                    1,
-                                                    &color,
-                                                );
-                                            Ok(())
-                                        })?;
+                                            let target_btlbr = [
+                                                batch_index as i64,
+                                                target_t,
+                                                target_l,
+                                                target_b,
+                                                target_r,
+                                            ];
 
-                                        Ok(flat_index)
-                                    })
-                                    .try_collect()?;
+                                            Ok((
+                                                (batch_index, grid_height, grid_width),
+                                                flat_index,
+                                                target_btlbr,
+                                            ))
+                                        })
+                                        .collect::<Fallible<Vec<_>>>()?
+                                        .into_iter()
+                                        .unzip_n_vec();
 
-                                // draw predicted bboxes
-                                {
-                                    let flat_indexes = Tensor::of_slice(&flat_indexes);
-                                    let pred_cy = output.cy().index_select(0, &flat_indexes);
-                                    let pred_cx = output.cx().index_select(0, &flat_indexes);
-                                    let pred_h = output.height().index_select(0, &flat_indexes);
-                                    let pred_w = output.width().index_select(0, &flat_indexes);
-                                    let pred_t = &pred_cy - &pred_h / 2.0;
-                                    let pred_b = &pred_cy + &pred_h / 2.0;
-                                    let pred_l = &pred_cx - &pred_w / 2.0;
-                                    let pred_r = &pred_cx + &pred_w / 2.0;
+                                    // draw target bboxes
+                                    let _ =
+                                        canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
 
-                                    // TODO: select color according to classification
-                                    // let pred_classification =
-                                    //     output.classification().index_select(0, &flat_indexes);
-                                    // let pred_objectness =
-                                    //     output.objectness().index_select(0, &flat_indexes);
+                                    // draw predicted bboxes
+                                    {
+                                        let flat_indexes = Tensor::of_slice(&flat_indexes);
+                                        let pred_cy = output.cy().index_select(0, &flat_indexes);
+                                        let pred_cx = output.cx().index_select(0, &flat_indexes);
+                                        let pred_h = output.height().index_select(0, &flat_indexes);
+                                        let pred_w = output.width().index_select(0, &flat_indexes);
 
-                                    let _ = canvas.batch_draw_rect_(
-                                        &pred_t, &pred_l, &pred_b, &pred_r, 2, &color,
-                                    )?;
-                                }
+                                        let pred_t: Vec<f64> = (&pred_cy - &pred_h / 2.0).into();
+                                        let pred_b: Vec<f64> = (&pred_cy + &pred_h / 2.0).into();
+                                        let pred_l: Vec<f64> = (&pred_cx - &pred_w / 2.0).into();
+                                        let pred_r: Vec<f64> = (&pred_cx + &pred_w / 2.0).into();
 
-                                timing.set_record("draw");
-                                Ok((canvas, timing))
+                                        let pred_btlbrs =
+                                            izip!(pred_info, pred_t, pred_l, pred_b, pred_r)
+                                                .map(|args| {
+                                                    let (
+                                                        (batch_index, grid_height, grid_width),
+                                                        t,
+                                                        l,
+                                                        b,
+                                                        r,
+                                                    ) = args;
+                                                    let t = ((t * grid_height) as i64)
+                                                        .max(0)
+                                                        .min(image_height - 1);
+                                                    let b = ((b * grid_height) as i64)
+                                                        .max(0)
+                                                        .min(image_height - 1);
+                                                    let l = ((l * grid_width) as i64)
+                                                        .max(0)
+                                                        .min(image_width - 1);
+                                                    let r = ((r * grid_width) as i64)
+                                                        .max(0)
+                                                        .min(image_width - 1);
+                                                    [batch_index as i64, t, l, b, r]
+                                                })
+                                                .collect_vec();
+
+                                        // TODO: select color according to classification
+                                        // let pred_classification =
+                                        //     output.classification().index_select(0, &flat_indexes);
+                                        // let pred_objectness =
+                                        //     output.objectness().index_select(0, &flat_indexes);
+
+                                        let _ =
+                                            canvas.batch_draw_rect_(&pred_btlbrs, 2, &pred_color);
+                                    }
+
+                                    timing.set_record("draw");
+                                    Ok((canvas, timing))
+                                })
                             })
                             .await?;
 
@@ -193,11 +255,10 @@ pub async fn logging_worker(
                                     let bottom = (bottom * height as f64) as i64;
                                     let right = (right * width as f64) as i64;
 
-                                    tch::no_grad(|| -> Result<_> {
-                                        let _ = canvas
-                                            .draw_rect_(top, left, bottom, right, 1, &color)?;
-                                        Ok(())
-                                    })?;
+                                    tch::no_grad(|| {
+                                        let _ =
+                                            canvas.draw_rect_(top, left, bottom, right, 1, &color);
+                                    });
                                 }
 
                                 Ok(canvas)
