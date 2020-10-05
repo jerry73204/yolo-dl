@@ -58,4 +58,15 @@ pub struct TrainingConfig {
     pub iou_kind: IoUKind,
     #[serde(with = "tch_serde::serde_device")]
     pub device: Device,
+    pub save_checkpoint_steps: Option<NonZeroUsize>,
+    pub load_checkpoint: LoadCheckpoint,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LoadCheckpoint {
+    Disabled,
+    FromRecent,
+    FromSession { session_id: String },
+    FromFile { file: PathBuf },
 }

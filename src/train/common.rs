@@ -1,6 +1,7 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::abs_diff_eq;
 pub use argh::FromArgs;
+pub use chrono::{DateTime, Local};
 pub use coco::Category;
 pub use futures::{
     stream::{Stream, StreamExt, TryStreamExt},
@@ -14,6 +15,7 @@ pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use rand::{prelude::*, rngs::StdRng};
+pub use regex::Regex;
 pub use serde::{
     de::Error as DeserializeError, ser::Error as SerializeError, Deserialize, Deserializer,
     Serialize, Serializer,
@@ -46,6 +48,7 @@ pub use tch::{
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, RwLock};
+pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLossInit, YoloLossOutput},
     model::{InstanceIndex, LayerMeta, YoloOutput},

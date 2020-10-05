@@ -26,5 +26,9 @@
         "match_grid_method": "Rect4",
         "iou_kind": "GIoU",
         "device": "cuda(0)",
+        "save_checkpoint_steps": 1,
+        "load_checkpoint": {
+            "type": "Disabled",
+        },
     },
 }
