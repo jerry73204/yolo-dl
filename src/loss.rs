@@ -80,7 +80,7 @@ impl YoloLossInit {
         let bce_class = FocalLossInit {
             pos_weight: pos_weight.as_ref().map(|weight| weight.shallow_clone()),
             gamma: focal_loss_gamma,
-            reduction: Reduction::Sum,
+            reduction,
             ..Default::default()
         }
         .build();
