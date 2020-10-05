@@ -82,7 +82,7 @@ fn train_worker(
     info!("initializing model");
     let vs = nn::VarStore::new(config.device);
     let root = vs.root();
-    let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+    let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
         match_grid_method: Some(config.match_grid_method),
         iou_kind: Some(config.iou_kind),

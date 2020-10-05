@@ -11,8 +11,9 @@ pub struct YoloModel {
 }
 
 impl YoloModel {
-    pub fn forward_t(&self, xs: &Tensor, train: bool) -> YoloOutput {
+    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> YoloOutput {
         let (_batch_size, _channels, height, width) = xs.size4().unwrap();
+        let image_size = PixelSize::new(height, width);
         let mut tmp_tensors: HashMap<usize, Tensor> = iter::once((0, xs.shallow_clone())).collect();
         let mut exported_tensors = vec![];
 
@@ -41,7 +42,7 @@ impl YoloModel {
         // run detection module
         let exported_tensors: Vec<_> = exported_tensors.iter().collect();
         self.detection_module
-            .forward_t(exported_tensors.as_slice(), train, height, width)
+            .forward_t(exported_tensors.as_slice(), train, &image_size)
     }
 }
 
