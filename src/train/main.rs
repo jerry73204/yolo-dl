@@ -101,7 +101,7 @@ fn train_worker(
 
         let TrainingRecord {
             epoch,
-            step,
+            step: record_step,
             image,
             bboxes,
         } = record.to_device(config.training.device);
@@ -112,11 +112,11 @@ fn train_worker(
         timing.set_record("forward");
 
         // compute loss
-        let loss = yolo_loss.forward(&output, &bboxes);
+        let losses = yolo_loss.forward(&output, &bboxes);
         timing.set_record("loss");
 
         // optimizer
-        optimizer.backward_step(&loss.loss);
+        optimizer.backward_step(&losses.loss);
         timing.set_record("backward");
 
         // print message
@@ -125,21 +125,27 @@ fn train_worker(
             let record_rate = batch_rate * config.training.mini_batch_size as f64;
             info!(
                 "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
-                epoch, step, batch_rate, record_rate
+                epoch, training_step, batch_rate, record_rate
             );
         } else {
-            info!("epoch: {}\tstep: {}", epoch, step);
+            info!("epoch: {}\tstep: {}", epoch, training_step);
         }
 
         // send to logger
         {
-            let msg = LoggingMessage::new_training_step("loss", step, (&loss.loss).into());
+            let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
             logging_tx
                 .send(msg)
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
         {
-            let msg = LoggingMessage::new_training_output("output", &image, &output, &loss);
+            let msg = LoggingMessage::new_training_output(
+                "output",
+                training_step,
+                &image,
+                &output,
+                &losses,
+            );
             logging_tx
                 .send(msg)
                 .map_err(|_err| format_err!("cannot send message to logger"))?;

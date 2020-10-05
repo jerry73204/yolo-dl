@@ -48,12 +48,35 @@ pub async fn logging_worker(
             };
 
             match kind {
-                LoggingMessageKind::TrainingStep { step, loss } => {
+                LoggingMessageKind::TrainingStep { step, losses } => {
+                    let step = step as i64;
                     event_writer
-                        .write_scalar_async(tag, step as i64, loss)
+                        .write_scalar_async(format!("{}-loss", tag), step, losses.loss.into())
+                        .await?;
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}-iou_loss", tag),
+                            step,
+                            losses.iou_loss.into(),
+                        )
+                        .await?;
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}-classification_loss", tag),
+                            step,
+                            losses.classification_loss.into(),
+                        )
+                        .await?;
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}-objectness_loss", tag),
+                            step,
+                            losses.objectness_loss.into(),
+                        )
                         .await?;
                 }
                 LoggingMessageKind::TrainingOutput {
+                    step,
                     input,
                     output,
                     losses,
@@ -61,7 +84,7 @@ pub async fn logging_worker(
                     if save_images {
                         let mut timing = Timing::new();
 
-                        let (mut canvas, mut timing) =
+                        let (canvas, mut timing) =
                             async_std::task::spawn_blocking(move || -> Result<_> {
                                 tch::no_grad(|| -> Result<_> {
                                     let input = input.to_device(Device::Cpu);
@@ -198,9 +221,8 @@ pub async fn logging_worker(
                             .await?;
 
                         event_writer
-                            .write_image_list_async(tag, debug_step, canvas)
+                            .write_image_list_async(tag, step as i64, canvas)
                             .await?;
-                        debug_step += 1;
 
                         timing.set_record("write");
                         // info!("{:#?}", timing.records());

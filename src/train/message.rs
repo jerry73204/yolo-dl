@@ -10,9 +10,10 @@ pub struct LoggingMessage {
 pub enum LoggingMessageKind {
     TrainingStep {
         step: usize,
-        loss: f32,
+        losses: YoloLossOutput,
     },
     TrainingOutput {
+        step: usize,
         input: Tensor,
         output: YoloOutput,
         losses: YoloLossOutput,
@@ -26,18 +27,22 @@ pub enum LoggingMessageKind {
 }
 
 impl LoggingMessage {
-    pub fn new_training_step<S>(tag: S, step: usize, loss: f32) -> Self
+    pub fn new_training_step<S>(tag: S, step: usize, losses: &YoloLossOutput) -> Self
     where
         S: Into<Cow<'static, str>>,
     {
         Self {
             tag: tag.into(),
-            kind: LoggingMessageKind::TrainingStep { step, loss },
+            kind: LoggingMessageKind::TrainingStep {
+                step,
+                losses: losses.shallow_clone(),
+            },
         }
     }
 
     pub fn new_training_output<S>(
         tag: S,
+        step: usize,
         input: &Tensor,
         output: &YoloOutput,
         losses: &YoloLossOutput,
@@ -48,6 +53,7 @@ impl LoggingMessage {
         Self {
             tag: tag.into(),
             kind: LoggingMessageKind::TrainingOutput {
+                step,
                 input: input.shallow_clone(),
                 output: output.shallow_clone(),
                 losses: losses.shallow_clone(),
@@ -103,12 +109,17 @@ impl LoggingMessage {
 impl Clone for LoggingMessageKind {
     fn clone(&self) -> Self {
         match *self {
-            Self::TrainingStep { step, loss } => Self::TrainingStep { step, loss },
+            Self::TrainingStep { step, ref losses } => Self::TrainingStep {
+                step,
+                losses: losses.shallow_clone(),
+            },
             Self::TrainingOutput {
+                step,
                 ref input,
                 ref output,
                 ref losses,
             } => Self::TrainingOutput {
+                step,
                 input: input.shallow_clone(),
                 output: output.shallow_clone(),
                 losses: losses.shallow_clone(),
