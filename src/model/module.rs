@@ -465,7 +465,6 @@ impl DetectModule {
         debug_assert_eq!(tensors.len(), self.anchors_list.len());
         let num_outputs_per_anchor = self.num_classes + 5;
         let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
-        let device = self.device;
 
         // load cached data
         let DetectModuleCache {
@@ -595,26 +594,27 @@ impl DetectModule {
                         .map(|xs| {
                             let (_bsize, _channels, feature_height, feature_width) =
                                 xs.size4().unwrap();
-                            let grid = {
-                                let grids = Tensor::meshgrid(&[
-                                    Tensor::arange(feature_height, (Kind::Float, device)),
-                                    Tensor::arange(feature_width, (Kind::Float, device)),
-                                ]);
-                                Tensor::stack(&[&grids[0], &grids[1]], 2).view(&[
-                                    1,
-                                    feature_height,
-                                    feature_width,
-                                    1,
-                                    2,
-                                ]
-                                    as &[_])
-                            };
-                            grid
+                            tch::no_grad(|| {
+                                let grid = {
+                                    let grids = Tensor::meshgrid(&[
+                                        Tensor::arange(feature_height, (Kind::Float, device)),
+                                        Tensor::arange(feature_width, (Kind::Float, device)),
+                                    ]);
+                                    Tensor::stack(&[&grids[0], &grids[1]], 2).view(&[
+                                        1,
+                                        feature_height,
+                                        feature_width,
+                                        1,
+                                        2,
+                                    ]
+                                        as &[_])
+                                };
+                                grid.set_requires_grad(false)
+                            })
                         })
                         .collect_vec()
                 };
 
-                // let anchors_list = self.anchors_list.clone();
                 let anchor_sizes_list = {
                     anchors_list
                         .iter()
@@ -664,13 +664,10 @@ impl DetectModule {
                                 })
                                 .collect_vec();
 
-                            Tensor::of_slice(&components).to_device(device).view([
-                                num_anchors as i64,
-                                1,
-                                1,
-                                1,
-                                2,
-                            ])
+                            Tensor::of_slice(&components)
+                                .to_device(device)
+                                .view([num_anchors as i64, 1, 1, 1, 2])
+                                .set_requires_grad(false)
                         })
                         .collect_vec()
                 };

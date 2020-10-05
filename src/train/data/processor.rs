@@ -427,6 +427,7 @@ impl CacheLoader {
                                 image_channels as i64,
                             ])
                             .permute(&[2, 0, 1])
+                            .set_requires_grad(false)
                     });
 
                     let mut buffer = vec![0; cache_bytes];
