@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    config::Config,
+    config::{Config, LoggingConfig},
     message::{LoggingMessage, LoggingMessageKind},
     util::{RateCounter, TensorEx, Timing},
 };
@@ -10,13 +10,17 @@ pub async fn logging_worker(
     mut rx: broadcast::Receiver<LoggingMessage>,
 ) -> Result<impl Future<Output = Result<()>> + Send> {
     let Config {
-        ref logging_dir,
-        log_images,
+        logging:
+            LoggingConfig {
+                ref dir,
+                save_images,
+                ..
+            },
         ..
     } = *config;
 
     // prepare dirs
-    let event_dir = logging_dir.join("events");
+    let event_dir = dir.join("events");
     let event_path_prefix = event_dir
         .join("yolo-dl-")
         .into_os_string()
@@ -54,7 +58,7 @@ pub async fn logging_worker(
                     output,
                     losses,
                 } => {
-                    if log_images {
+                    if save_images {
                         let mut timing = Timing::new();
 
                         let (mut canvas, mut timing) =
@@ -203,7 +207,7 @@ pub async fn logging_worker(
                     }
                 }
                 LoggingMessageKind::Images { images } => {
-                    if log_images {
+                    if save_images {
                         for (index, image) in images.into_iter().enumerate() {
                             event_writer
                                 .write_image_async(format!("{}/{}", tag, index), debug_step, image)
@@ -213,7 +217,7 @@ pub async fn logging_worker(
                     }
                 }
                 LoggingMessageKind::ImagesWithBBoxes { tuples } => {
-                    if log_images {
+                    if save_images {
                         let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
 
                         let image_vec: Vec<_> = tuples

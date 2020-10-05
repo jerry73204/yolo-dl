@@ -1,5 +1,10 @@
 use super::*;
-use crate::{common::*, config::Config, message::LoggingMessage, util::Timing};
+use crate::{
+    common::*,
+    config::{Config, DatasetConfig, PreprocessorConfig, TrainingConfig},
+    message::LoggingMessage,
+    util::Timing,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CocoRecord {
@@ -27,8 +32,12 @@ pub struct DataSet {
 impl DataSet {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
         let Config {
-            dataset_dir,
-            dataset_name,
+            dataset:
+                DatasetConfig {
+                    dataset_dir,
+                    dataset_name,
+                    ..
+                },
             ..
         } = &*config;
         let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
@@ -49,19 +58,29 @@ impl DataSet {
         logging_tx: broadcast::Sender<LoggingMessage>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         let Config {
-            ref cache_dir,
-            ref whitelist_classes,
-            image_size,
-            mosaic_prob,
-            mosaic_margin,
-            affine_prob,
-            mini_batch_size,
-            rotate_degrees,
-            translation,
-            scale,
-            shear,
-            horizontal_flip,
-            vertical_flip,
+            dataset:
+                DatasetConfig {
+                    ref whitelist_classes,
+                    image_size,
+                    ..
+                },
+            preprocessor:
+                PreprocessorConfig {
+                    ref cache_dir,
+                    mosaic_prob,
+                    mosaic_margin,
+                    affine_prob,
+                    rotate_degrees,
+                    translation,
+                    scale,
+                    shear,
+                    horizontal_flip,
+                    vertical_flip,
+                    ..
+                },
+            training: TrainingConfig {
+                mini_batch_size, ..
+            },
             ..
         } = *self.config;
         let image_size = image_size.get() as i64;

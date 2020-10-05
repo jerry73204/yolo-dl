@@ -80,12 +80,12 @@ fn train_worker(
 ) -> Fallible<()> {
     // init model
     info!("initializing model");
-    let vs = nn::VarStore::new(config.device);
+    let vs = nn::VarStore::new(config.training.device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
-        match_grid_method: Some(config.match_grid_method),
-        iou_kind: Some(config.iou_kind),
+        match_grid_method: Some(config.training.match_grid_method),
+        iou_kind: Some(config.training.iou_kind),
         ..Default::default()
     }
     .build();
@@ -104,7 +104,7 @@ fn train_worker(
             step,
             image,
             bboxes,
-        } = record.to_device(config.device);
+        } = record.to_device(config.training.device);
         timing.set_record("to device");
 
         // forward pass
@@ -122,7 +122,7 @@ fn train_worker(
         // print message
         rate_counter.add(1.0);
         if let Some(batch_rate) = rate_counter.rate() {
-            let record_rate = batch_rate * config.mini_batch_size as f64;
+            let record_rate = batch_rate * config.training.mini_batch_size as f64;
             info!(
                 "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
                 epoch, step, batch_rate, record_rate
