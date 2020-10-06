@@ -264,25 +264,40 @@ async fn multi_gpu_training_worker(
         {
             let sum_gradients = async_std::task::spawn_blocking(move || {
                 tch::no_grad(|| {
-                    let mut gradients_iter = outputs
-                        .iter()
-                        .map(|(_job_index, _output, _losses, grad)| grad);
+                    // aggregate gradients
+                    let sum_gradients = {
+                        let mut gradients_iter = outputs
+                            .iter()
+                            .map(|(_job_index, _output, _losses, grad)| grad);
 
-                    let init = gradients_iter
-                        .next()
-                        .unwrap()
-                        .iter()
-                        .map(|grad| grad.to_device(master_device))
+                        let init = gradients_iter
+                            .next()
+                            .unwrap()
+                            .iter()
+                            .map(|grad| grad.to_device(master_device))
+                            .collect_vec();
+
+                        let sum_gradients = gradients_iter.fold(init, |lhs, rhs| {
+                            lhs.into_iter()
+                                .zip_eq(rhs.iter())
+                                .map(|(lhs, rhs)| lhs + rhs.to_device(master_device))
+                                .collect_vec()
+                        });
+
+                        sum_gradients
+                    };
+                    let mean_gradients = sum_gradients
+                        .into_iter()
+                        .map(|grad| grad.g_div_1(batch_size as f64))
                         .collect_vec();
 
-                    let sum_gradients = gradients_iter.fold(init, |lhs, rhs| {
-                        lhs.into_iter()
-                            .zip_eq(rhs.iter())
-                            .map(|(lhs, rhs)| lhs + rhs.to_device(master_device))
-                            .collect_vec()
-                    });
-
-                    sum_gradients
+                    // optimize
+                    // worker_contexts[0]
+                    //     .vs
+                    //     .trainable_variables()
+                    //     .into_iter()
+                    //     .zip_eq(mean_gradients)
+                    //     .map(|(var, grad)| var.grad().g_add_(&grad));
                 })
             })
             .await;
