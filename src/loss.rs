@@ -275,6 +275,7 @@ impl YoloLoss {
         let reduced_iou_loss = match self.reduction {
             Reduction::Mean => iou_loss.mean(Kind::Float),
             Reduction::Sum => iou_loss.sum(Kind::Float),
+            Reduction::None => iou_loss.shallow_clone(),
             _ => panic!("reduction {:?} is not supported", self.reduction),
         };
 
