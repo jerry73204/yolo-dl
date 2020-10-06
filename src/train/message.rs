@@ -1,26 +1,62 @@
 use crate::{common::*, util::CowTensor};
 
 #[derive(Debug, TensorLike)]
-pub struct TrainingRequest {
-    #[tensor_like(clone)]
-    pub job_index: usize,
-    #[tensor_like(clone)]
-    pub epoch: usize,
-    #[tensor_like(clone)]
-    pub record_step: usize,
-    #[tensor_like(clone)]
-    pub training_step: usize,
-    pub image: Tensor,
-    #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<LabeledRatioBBox>>,
+pub enum TrainingRequest {
+    SyncWeights,
+    ForwardStep {
+        #[tensor_like(clone)]
+        job_index: usize,
+        #[tensor_like(clone)]
+        epoch: usize,
+        #[tensor_like(clone)]
+        record_step: usize,
+        #[tensor_like(clone)]
+        training_step: usize,
+        image: Tensor,
+        #[tensor_like(clone)]
+        bboxes: Vec<Vec<LabeledRatioBBox>>,
+    },
+    BackwardStep {
+        #[tensor_like(clone)]
+        job_index: usize,
+        loss: Tensor,
+    },
 }
 
 #[derive(Debug, TensorLike)]
-pub struct TrainingResponse {
+pub enum TrainingResponse {
+    ForwardStep(ForwardStepResponse),
+    BackwardStep(BackwardStepResponse),
+}
+
+impl TrainingResponse {
+    pub fn unwrap_forward_step(self) -> ForwardStepResponse {
+        match self {
+            TrainingResponse::ForwardStep(resp) => resp,
+            _ => panic!("please report bug"),
+        }
+    }
+
+    pub fn unwrap_backward_step(self) -> BackwardStepResponse {
+        match self {
+            TrainingResponse::BackwardStep(resp) => resp,
+            _ => panic!("please report bug"),
+        }
+    }
+}
+
+#[derive(Debug, TensorLike)]
+pub struct ForwardStepResponse {
     #[tensor_like(clone)]
     pub job_index: usize,
     pub output: YoloOutput,
     pub losses: YoloLossOutput,
+}
+
+#[derive(Debug, TensorLike)]
+pub struct BackwardStepResponse {
+    #[tensor_like(clone)]
+    pub job_index: usize,
 }
 
 #[derive(Debug, Clone)]

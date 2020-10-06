@@ -117,7 +117,12 @@ async fn master_worker(
             bboxes,
         } = record.to_device(config.training.master_device);
 
-        // split into minibatches and distribute to workers
+        // sync weights among workers
+        for (tx, _minibatch_size) in worker_tuples.iter() {
+            tx.send(TrainingRequest::SyncWeights).await;
+        }
+
+        // split batch into minibatches and distribute to workers
         let num_jobs = {
             let mut batch_index = 0;
             let mut num_jobs = 0;
@@ -131,7 +136,7 @@ async fn master_worker(
                 let mini_image = image.narrow(0, batch_begin as i64, batch_end as i64);
                 let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
 
-                tx.send(TrainingRequest {
+                tx.send(TrainingRequest::ForwardStep {
                     job_index,
                     epoch,
                     record_step,
@@ -151,9 +156,44 @@ async fn master_worker(
             num_jobs
         };
 
-        // gather responses from workers
+        // gather training results from workers
+        let loss = {
+            let mut responses: Vec<_> = worker_rx
+                .clone()
+                .take(num_jobs)
+                .map(|resp| resp.unwrap_forward_step())
+                .collect()
+                .await;
+            responses.sort_by_cached_key(|resp| resp.job_index);
+
+            // concat and reduce loss tensors to a scalar loss
+            let loss = Tensor::cat(
+                &responses.iter().map(|resp| &resp.losses.loss).collect_vec(),
+                0,
+            )
+            .mean(Kind::Float);
+
+            loss
+        };
+
+        // backward step
         {
-            let mut responses: Vec<_> = worker_rx.clone().take(num_jobs).collect().await;
+            // distribute losses
+            for (job_index, (tx, _)) in worker_tuples.iter().enumerate() {
+                tx.send(TrainingRequest::BackwardStep {
+                    job_index,
+                    loss: loss.shallow_clone(),
+                })
+                .await;
+            }
+
+            // gather gradients
+            let mut responses: Vec<_> = worker_rx
+                .clone()
+                .take(num_jobs)
+                .map(|resp| resp.unwrap_backward_step())
+                .collect()
+                .await;
             responses.sort_by_cached_key(|resp| resp.job_index);
         }
 
