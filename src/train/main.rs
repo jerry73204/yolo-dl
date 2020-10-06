@@ -189,8 +189,9 @@ async fn multi_gpu_training_worker(
                 let batch_begin = batch_index;
                 let batch_end = (batch_begin + context.minibatch_size).min(batch_size);
                 let minibatch_size = batch_end - batch_begin;
+                debug_assert!(minibatch_size > 0);
 
-                let mini_image = image.narrow(0, batch_begin as i64, batch_end as i64);
+                let mini_image = image.narrow(0, batch_begin as i64, minibatch_size as i64);
                 let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
 
                 jobs[worker_index].push((job_index, mini_image, mini_bboxes));
