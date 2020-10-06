@@ -440,7 +440,7 @@ impl DetectInit {
 
         DetectModule {
             num_classes: num_classes as i64,
-            anchors_list: Arc::new(anchors_list),
+            anchors_list: anchors_list,
             device,
             cache: HashMap::new(),
         }
@@ -450,9 +450,9 @@ impl DetectInit {
 #[derive(Debug)]
 pub struct DetectModule {
     num_classes: i64,
-    anchors_list: Arc<Vec<Vec<PixelSize<i64>>>>,
+    anchors_list: Vec<Vec<PixelSize<i64>>>,
     device: Device,
-    cache: HashMap<PixelSize<i64>, Arc<DetectModuleCache>>,
+    cache: HashMap<PixelSize<i64>, DetectModuleCache>,
 }
 
 impl DetectModule {
@@ -463,7 +463,9 @@ impl DetectModule {
         image_size: &PixelSize<i64>,
     ) -> YoloOutput {
         debug_assert_eq!(tensors.len(), self.anchors_list.len());
-        let num_outputs_per_anchor = self.num_classes + 5;
+        let num_classes = self.num_classes;
+        let device = self.device;
+        let num_outputs_per_anchor = num_classes + 5;
         let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
         // load cached data
@@ -545,7 +547,7 @@ impl DetectModule {
                     let h = h.view([-1, batch_size, 1]);
                     let w = w.view([-1, batch_size, 1]);
                     let objectness = objectness.view([-1, batch_size, 1]);
-                    let classification = classification.view([-1, batch_size, self.num_classes]);
+                    let classification = classification.view([-1, batch_size, num_classes]);
 
                     (cy, cx, h, w, objectness, classification)
                 };
@@ -560,13 +562,13 @@ impl DetectModule {
         let h = Tensor::cat(&h_vec, 0).view([-1, 1]);
         let w = Tensor::cat(&w_vec, 0).view([-1, 1]);
         let objectness = Tensor::cat(&objectness_vec, 0).view([-1, 1]);
-        let classification = Tensor::cat(&classification_vec, 0).view([-1, self.num_classes]);
+        let classification = Tensor::cat(&classification_vec, 0).view([-1, num_classes]);
 
         YoloOutput {
             image_size: image_size.to_owned(),
             batch_size,
-            num_classes: self.num_classes,
-            device: self.device,
+            num_classes,
+            device,
             cy,
             cx,
             height: h,
@@ -581,104 +583,101 @@ impl DetectModule {
         &mut self,
         tensors: &[&Tensor],
         image_size: &PixelSize<i64>,
-    ) -> Arc<DetectModuleCache> {
+    ) -> &DetectModuleCache {
         let device = self.device;
         let anchors_list = self.anchors_list.clone();
 
-        self.cache
-            .entry(image_size.to_owned())
-            .or_insert_with(|| {
-                let positions_grids = {
-                    tensors
-                        .iter()
-                        .map(|xs| {
-                            let (_bsize, _channels, feature_height, feature_width) =
-                                xs.size4().unwrap();
-                            tch::no_grad(|| {
-                                let grid = {
-                                    let grids = Tensor::meshgrid(&[
-                                        Tensor::arange(feature_height, (Kind::Float, device)),
-                                        Tensor::arange(feature_width, (Kind::Float, device)),
-                                    ]);
-                                    Tensor::stack(&[&grids[0], &grids[1]], 2).view(&[
-                                        1,
-                                        feature_height,
-                                        feature_width,
-                                        1,
-                                        2,
-                                    ]
-                                        as &[_])
-                                };
-                                grid.set_requires_grad(false)
+        self.cache.entry(image_size.to_owned()).or_insert_with(|| {
+            let positions_grids = {
+                tensors
+                    .iter()
+                    .map(|xs| {
+                        let (_bsize, _channels, feature_height, feature_width) =
+                            xs.size4().unwrap();
+                        tch::no_grad(|| {
+                            let grid = {
+                                let grids = Tensor::meshgrid(&[
+                                    Tensor::arange(feature_height, (Kind::Float, device)),
+                                    Tensor::arange(feature_width, (Kind::Float, device)),
+                                ]);
+                                Tensor::stack(&[&grids[0], &grids[1]], 2).view(&[
+                                    1,
+                                    feature_height,
+                                    feature_width,
+                                    1,
+                                    2,
+                                ]
+                                    as &[_])
+                            };
+                            grid.set_requires_grad(false)
+                        })
+                    })
+                    .collect_vec()
+            };
+
+            let anchor_sizes_list = {
+                anchors_list
+                    .iter()
+                    .zip_eq(tensors.iter().cloned())
+                    .map(|(anchors, xs)| {
+                        let (_bsize, _channels, feature_height, feature_width) =
+                            xs.size4().unwrap();
+
+                        // gride size in pixels
+                        let grid_height = image_size.height as f64 / feature_height as f64;
+                        let grid_width = image_size.width as f64 / feature_width as f64;
+
+                        anchors
+                            .iter()
+                            .cloned()
+                            .map(|pixel_size| {
+                                let PixelSize {
+                                    height: pixel_height,
+                                    width: pixel_width,
+                                    ..
+                                } = pixel_size;
+                                GridSize::new(
+                                    pixel_height as f64 / grid_height,
+                                    pixel_width as f64 / grid_width,
+                                )
                             })
-                        })
-                        .collect_vec()
-                };
+                            .collect_vec()
+                    })
+                    .collect_vec()
+            };
 
-                let anchor_sizes_list = {
-                    anchors_list
-                        .iter()
-                        .zip_eq(tensors.iter().cloned())
-                        .map(|(anchors, xs)| {
-                            let (_bsize, _channels, feature_height, feature_width) =
-                                xs.size4().unwrap();
+            let anchor_sizes_grids = {
+                anchor_sizes_list
+                    .iter()
+                    .map(|anchor_sizes| {
+                        let num_anchors = anchor_sizes.len();
+                        let components = anchor_sizes
+                            .iter()
+                            .cloned()
+                            .flat_map(|anchor_size| {
+                                let GridSize {
+                                    height: anchor_height,
+                                    width: anchor_width,
+                                    ..
+                                } = anchor_size;
+                                vec![anchor_height as f32, anchor_width as f32]
+                            })
+                            .collect_vec();
 
-                            // gride size in pixels
-                            let grid_height = image_size.height as f64 / feature_height as f64;
-                            let grid_width = image_size.width as f64 / feature_width as f64;
+                        Tensor::of_slice(&components)
+                            .to_device(device)
+                            .view([num_anchors as i64, 1, 1, 1, 2])
+                            .set_requires_grad(false)
+                    })
+                    .collect_vec()
+            };
 
-                            anchors
-                                .iter()
-                                .cloned()
-                                .map(|pixel_size| {
-                                    let PixelSize {
-                                        height: pixel_height,
-                                        width: pixel_width,
-                                        ..
-                                    } = pixel_size;
-                                    GridSize::new(
-                                        pixel_height as f64 / grid_height,
-                                        pixel_width as f64 / grid_width,
-                                    )
-                                })
-                                .collect_vec()
-                        })
-                        .collect_vec()
-                };
-
-                let anchor_sizes_grids = {
-                    anchor_sizes_list
-                        .iter()
-                        .map(|anchor_sizes| {
-                            let num_anchors = anchor_sizes.len();
-                            let components = anchor_sizes
-                                .iter()
-                                .cloned()
-                                .flat_map(|anchor_size| {
-                                    let GridSize {
-                                        height: anchor_height,
-                                        width: anchor_width,
-                                        ..
-                                    } = anchor_size;
-                                    vec![anchor_height as f32, anchor_width as f32]
-                                })
-                                .collect_vec();
-
-                            Tensor::of_slice(&components)
-                                .to_device(device)
-                                .view([num_anchors as i64, 1, 1, 1, 2])
-                                .set_requires_grad(false)
-                        })
-                        .collect_vec()
-                };
-
-                Arc::new(DetectModuleCache {
-                    positions_grids,
-                    anchor_sizes_list,
-                    anchor_sizes_grids,
-                })
-            })
-            .clone()
+            DetectModuleCache {
+                positions_grids,
+                anchor_sizes_list,
+                anchor_sizes_grids,
+            }
+        })
     }
 }
 
