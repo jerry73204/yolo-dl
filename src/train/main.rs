@@ -9,7 +9,7 @@ use crate::{
     common::*,
     config::{Config, LoadCheckpoint},
     data::{DataSet, TrainingRecord},
-    message::{LoggingMessage, TrainingRequest, TrainingResponse},
+    message::LoggingMessage,
     util::{RateCounter, Timing},
 };
 
@@ -64,16 +64,27 @@ pub async fn main() -> Result<()> {
         let config = config.clone();
         let logging_tx = logging_tx.clone();
 
-        async_std::task::spawn_blocking(move || {
-            training_worker(
+        if config.training.enable_multi_gpu {
+            async_std::task::spawn(multi_gpu_training_worker(
                 config,
                 session_id,
                 input_channels,
                 num_classes,
                 training_rx,
                 logging_tx,
-            )
-        })
+            ))
+        } else {
+            async_std::task::spawn_blocking(move || {
+                training_worker(
+                    config,
+                    session_id,
+                    input_channels,
+                    num_classes,
+                    training_rx,
+                    logging_tx,
+                )
+            })
+        }
     };
 
     futures::try_join!(training_data_future, training_worker_future, logging_future)?;
@@ -81,32 +92,59 @@ pub async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn master_worker(
+async fn multi_gpu_training_worker(
     config: Arc<Config>,
     session_id: Arc<String>,
     input_channels: usize,
     num_classes: usize,
     data_rx: async_std::sync::Receiver<TrainingRecord>,
-    mut worker_txs: Vec<async_std::sync::Sender<TrainingRequest>>,
-    worker_rx: async_std::sync::Receiver<TrainingResponse>,
     logging_tx: broadcast::Sender<LoggingMessage>,
-    device: Device,
 ) -> Result<()> {
-    debug_assert_eq!(worker_txs.len(), config.training.workers.len());
+    struct WorkerContext {
+        device: Device,
+        minibatch_size: usize,
+        vs: nn::VarStore,
+        model: YoloModel,
+        yolo_loss: YoloLoss,
+        optimizer: nn::Optimizer<nn::Adam>,
+    }
+
+    let mut rate_counter = RateCounter::with_second_intertal();
+    let master_device = config.training.master_device;
     let batch_size = config.training.batch_size.get();
     let default_minibatch_size = config.training.default_minibatch_size.get();
-    let mut worker_tuples = worker_txs
-        .into_iter()
-        .zip_eq(config.training.workers.iter())
-        .map(|(tx, worker_config)| {
+    let mut worker_contexts: Vec<_> = config
+        .training
+        .workers
+        .iter()
+        .map(|worker_config| -> Result<_> {
             let device = worker_config.device;
             let minibatch_size = worker_config
                 .minibatch_size
                 .map(|size| size.get())
                 .unwrap_or(default_minibatch_size);
-            (tx, minibatch_size)
+            let vs = nn::VarStore::new(device);
+            let root = vs.root();
+            let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+            let yolo_loss = YoloLossInit {
+                reduction: Reduction::Sum,
+                match_grid_method: Some(config.training.match_grid_method),
+                iou_kind: Some(config.training.iou_kind),
+                ..Default::default()
+            }
+            .build();
+            let optimizer = nn::Adam::default().build(&vs, 0.01)?;
+
+            Ok(WorkerContext {
+                device,
+                minibatch_size,
+                vs,
+                model,
+                yolo_loss,
+                optimizer,
+            })
         })
-        .collect_vec();
+        .try_collect()?;
     let mut training_step = 0;
 
     while let Ok(record) = data_rx.recv().await {
@@ -115,86 +153,116 @@ async fn master_worker(
             step: record_step,
             image,
             bboxes,
-        } = record.to_device(config.training.master_device);
+        } = record.to_device(master_device);
 
         // sync weights among workers
-        for (tx, _minibatch_size) in worker_tuples.iter() {
-            tx.send(TrainingRequest::SyncWeights).await;
+        {
+            let mut iter = worker_contexts.into_iter();
+            let first_context = iter.next().unwrap();
+            let first_vs = Arc::new(first_context.vs);
+            let other_contexts = future::try_join_all(iter.map(|mut context| {
+                let first_vs = first_vs.clone();
+                async_std::task::spawn_blocking(move || -> Result<_> {
+                    context.vs.copy(&*first_vs)?;
+                    Ok(context)
+                })
+            }))
+            .await?;
+
+            let first_context = WorkerContext {
+                vs: Arc::try_unwrap(first_vs).unwrap(),
+                ..first_context
+            };
+
+            worker_contexts = iter::once(first_context).chain(other_contexts).collect();
         }
 
-        // split batch into minibatches and distribute to workers
-        let num_jobs = {
+        // forward step
+        let outputs = {
+            // distribute tasks to each worker
+            let num_workers = worker_contexts.len();
             let mut batch_index = 0;
-            let mut num_jobs = 0;
+            let mut jobs = (0..num_workers).map(|_| vec![]).collect_vec();
 
-            for (job_index, tuple) in worker_tuples.iter().cycle().enumerate() {
-                let (ref tx, max_minibatch_size) = *tuple;
+            for (job_index, context) in worker_contexts.iter().cycle().enumerate() {
+                let worker_index = job_index % num_workers;
                 let batch_begin = batch_index;
-                let batch_end = (batch_begin + max_minibatch_size).min(batch_size);
+                let batch_end = (batch_begin + context.minibatch_size).min(batch_size);
                 let minibatch_size = batch_end - batch_begin;
 
                 let mini_image = image.narrow(0, batch_begin as i64, batch_end as i64);
                 let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
 
-                tx.send(TrainingRequest::ForwardStep {
-                    job_index,
-                    epoch,
-                    record_step,
-                    training_step,
-                    image: mini_image,
-                    bboxes: mini_bboxes,
-                })
-                .await;
+                jobs[worker_index].push((job_index, mini_image, mini_bboxes));
 
                 batch_index = batch_end;
                 if batch_index == batch_size {
-                    num_jobs = job_index + 1;
                     break;
                 }
             }
 
-            num_jobs
+            // run tasks
+            let (worker_contexts_, outputs_per_worker) =
+                future::join_all(worker_contexts.into_iter().zip_eq(jobs).map(
+                    |(mut context, jobs)| {
+                        async_std::task::spawn_blocking(move || {
+                            let outputs = jobs
+                                .into_iter()
+                                .map(|(job_index, image, bboxes)| {
+                                    let WorkerContext {
+                                        device,
+                                        ref vs,
+                                        ref mut model,
+                                        ref yolo_loss,
+                                        ref mut optimizer,
+                                        ..
+                                    } = context;
+
+                                    let image = image.to_device(device);
+
+                                    // forward pass
+                                    let output = model.forward_t(&image, true);
+
+                                    // compute loss
+                                    let losses = yolo_loss.forward(&output, &bboxes);
+
+                                    // compute gradients
+                                    let gradients = Tensor::run_backward(
+                                        &[&losses.loss],
+                                        &vs.trainable_variables(),
+                                        false,
+                                        false,
+                                    );
+
+                                    (job_index, output, losses, gradients)
+                                })
+                                .collect_vec();
+
+                            (context, outputs)
+                        })
+                    },
+                ))
+                .await
+                .into_iter()
+                .unzip_n_vec();
+
+            worker_contexts = worker_contexts_;
+
+            let mut outputs = outputs_per_worker.into_iter().flatten().collect_vec();
+            outputs.sort_by_cached_key(|(job_index, _output, _losses, _grad)| *job_index);
+            outputs
         };
 
-        // gather training results from workers
-        let loss = {
-            let mut responses: Vec<_> = worker_rx
-                .clone()
-                .take(num_jobs)
-                .map(|resp| resp.unwrap_forward_step())
-                .collect()
-                .await;
-            responses.sort_by_cached_key(|resp| resp.job_index);
-
-            // concat and reduce loss tensors to a scalar loss
-            let loss = Tensor::cat(
-                &responses.iter().map(|resp| &resp.losses.loss).collect_vec(),
-                0,
-            )
-            .mean(Kind::Float);
-
-            loss
-        };
-
-        // backward step
-        {
-            // distribute losses
-            for (job_index, (tx, _)) in worker_tuples.iter().enumerate() {
-                tx.send(TrainingRequest::BackwardStep {
-                    job_index,
-                    loss: loss.shallow_clone(),
-                })
-                .await;
-            }
-
-            // gather gradients
-            let mut responses: Vec<_> = worker_rx
-                .clone()
-                .take(num_jobs)
-                .map(|resp| resp.unwrap_backward_step())
-                .collect()
-                .await;
-            responses.sort_by_cached_key(|resp| resp.job_index);
+        // print message
+        rate_counter.add(1.0);
+        if let Some(batch_rate) = rate_counter.rate() {
+            let record_rate = batch_rate * config.training.batch_size.get() as f64;
+            info!(
+                "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
+                epoch, training_step, batch_rate, record_rate
+            );
+        } else {
+            info!("epoch: {}\tstep: {}", epoch, training_step);
         }
 
         training_step += 1;
@@ -209,10 +277,13 @@ fn training_worker(
     num_classes: usize,
     training_rx: async_std::sync::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
-) -> Fallible<()> {
+) -> Result<()> {
+    warn!(r#"multi-gpu feature is disabled, use "master_device" as default device"#);
+
     // init model
     info!("initializing model");
-    let mut vs = nn::VarStore::new(config.training.master_device);
+    let device = config.training.master_device;
+    let mut vs = nn::VarStore::new(device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
@@ -256,7 +327,7 @@ fn training_worker(
             step: record_step,
             image,
             bboxes,
-        } = record.to_device(config.training.master_device);
+        } = record.to_device(device);
         timing.set_record("to device");
 
         // forward pass

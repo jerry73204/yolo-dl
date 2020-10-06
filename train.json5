@@ -26,11 +26,12 @@
         "default_minibatch_size": 84,
         "match_grid_method": "Rect4",
         "iou_kind": "GIoU",
-        "master_device": "cuda(0)",
         "save_checkpoint_steps": 1,
         "load_checkpoint": {
             "type": "Disabled",
         },
+        "enable_multi_gpu": false,
+        "master_device": "cuda(0)",
         "workers": [
             {
                 "device": "cuda(0)"

@@ -1,9 +1,11 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::abs_diff_eq;
 pub use argh::FromArgs;
+pub use async_std::sync::RwLock;
 pub use chrono::{DateTime, Local};
 pub use coco::Category;
 pub use futures::{
+    future,
     stream::{Stream, StreamExt, TryStreamExt},
     AsyncWriteExt,
 };
@@ -44,15 +46,15 @@ pub use std::{
 pub use tch::{
     kind::FLOAT_CPU,
     nn::{self, OptimizerConfig},
-    vision, Device, IndexOp, Kind, Tensor,
+    vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
-pub use tokio::sync::{broadcast, mpsc, RwLock};
+pub use tokio::sync::{broadcast, mpsc};
 pub use uuid::Uuid;
 pub use yolo_dl::{
-    loss::{YoloLossInit, YoloLossOutput},
-    model::{InstanceIndex, LayerMeta, YoloOutput},
+    loss::{YoloLoss, YoloLossInit, YoloLossOutput},
+    model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
     utils::{
         BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
         PixelSize, Ratio, RatioBBox, Unzip2, Unzip3, Unzip4,

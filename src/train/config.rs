@@ -59,6 +59,7 @@ pub struct TrainingConfig {
     pub iou_kind: IoUKind,
     pub save_checkpoint_steps: Option<NonZeroUsize>,
     pub load_checkpoint: LoadCheckpoint,
+    pub enable_multi_gpu: bool,
     #[serde(with = "tch_serde::serde_device")]
     pub master_device: Device,
     pub workers: Vec<WorkerConfig>,
