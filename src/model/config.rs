@@ -39,7 +39,7 @@ impl YoloInit {
 
         // annotate each layer with layer index
         // layer_index -> layer_config
-        let index_to_config: HashMap<usize, _> = layers
+        let index_to_config: IndexMap<usize, _> = layers
             .into_iter()
             .enumerate()
             .map(|(index, layer)| {
@@ -50,7 +50,7 @@ impl YoloInit {
 
         // compute layer name to index correspondence
         // name -> layer_index
-        let name_to_index: HashMap<&str, usize> = index_to_config
+        let name_to_index: IndexMap<&str, usize> = index_to_config
             .iter()
             .filter_map(|(layer_index, layer)| {
                 layer
@@ -62,7 +62,7 @@ impl YoloInit {
 
         // compute input indexes per layer
         // layer_index -> (from_indexes)
-        let mut index_to_inputs: HashMap<usize, Vec<usize>> = index_to_config
+        let mut index_to_inputs: IndexMap<usize, Vec<usize>> = index_to_config
             .iter()
             .map(|(layer_index, layer)| {
                 let kind = &layer.kind;
@@ -85,7 +85,7 @@ impl YoloInit {
                                 .get(name.as_str())
                                 .expect(&format!(r#"undefined layer name "{}""#, name))
                         })
-                        .collect::<Vec<_>>(),
+                        .collect_vec(),
                     _ => unreachable!("please report bug"),
                 };
 
@@ -106,13 +106,13 @@ impl YoloInit {
 
             #[derive(Debug, Clone)]
             struct State {
-                marks: HashMap<usize, Mark>,
-                topo_indexes: HashMap<usize, usize>,
+                marks: IndexMap<usize, Mark>,
+                topo_indexes: IndexMap<usize, usize>,
             }
 
             // list directed edges among nodes
             // layer_index -> [output_indexes]
-            let output_indexes = index_to_inputs
+            let output_indexes: IndexMap<_, _> = index_to_inputs
                 .iter()
                 .flat_map(|(layer_index, from_indexes)| {
                     from_indexes
@@ -120,15 +120,21 @@ impl YoloInit {
                         .cloned()
                         .map(move |from_index| (from_index, *layer_index))
                 })
-                .into_group_map();
+                .into_group_map()
+                .into_iter()
+                .map(|(from_index, mut layer_indexes)| {
+                    layer_indexes.sort_by_cached_key(|index| *index);
+                    (from_index, layer_indexes)
+                })
+                .collect();
 
             // recursive visiting funciton
             fn visit_fn(
                 visit_index: usize,
                 layer_index: usize,
                 mut state: State,
-                index_to_inputs: &HashMap<usize, Vec<usize>>,
-                output_indexes: &HashMap<usize, Vec<usize>>,
+                index_to_inputs: &IndexMap<usize, Vec<usize>>,
+                output_indexes: &IndexMap<usize, Vec<usize>>,
             ) -> (usize, State) {
                 debug_assert_eq!(state.marks.get(&layer_index), None);
 
@@ -175,8 +181,8 @@ impl YoloInit {
             };
 
             let mut state = State {
-                marks: HashMap::<usize, Mark>::new(),
-                topo_indexes: HashMap::<usize, usize>::new(),
+                marks: IndexMap::<usize, Mark>::new(),
+                topo_indexes: IndexMap::<usize, usize>::new(),
             };
             let (end_visit_index, new_state) =
                 visit_fn(0, 0, state, &index_to_inputs, &output_indexes);
@@ -196,9 +202,9 @@ impl YoloInit {
 
         // compute output channels per layer
         // layer_index -> (in_c?, out_c)
-        let index_to_channels: HashMap<usize, (Option<usize>, usize)> = {
-            let init_state: HashMap<_, _> = {
-                let mut state = HashMap::new();
+        let index_to_channels: IndexMap<usize, (Option<usize>, usize)> = {
+            let init_state: IndexMap<_, _> = {
+                let mut state = IndexMap::new();
                 state.insert(0, (None, input_channels));
                 state
             };
@@ -275,7 +281,7 @@ impl YoloInit {
         };
 
         // list of exported layer indexes and anchors
-        let mut index_to_anchors: HashMap<usize, Vec<(usize, usize)>> = index_to_config.iter()
+        let mut index_to_anchors: IndexMap<usize, Vec<(usize, usize)>> = index_to_config.iter()
             .filter_map(|(layer_index, layer)| {
                 match layer.kind {
                     LayerKind::HeadConv2d {ref anchors, ..} => Some((layer_index, anchors.clone())),
@@ -283,14 +289,14 @@ impl YoloInit {
                 }
             })
             .map(|(layer_index, anchors)| {
-                let out_c = index_to_channels[&layer_index].1;
+                let out_c = index_to_channels[layer_index].1;
                 debug_assert_eq!(out_c, anchors.len() * num_outputs_per_anchor, "the exported layer must have exactly (n_anchors * (n_classes + 5)) output channels");
                 (*layer_index, anchors)
             }).collect();
 
         // build modules for each layer
         // layer_index -> module
-        let mut index_to_module: HashMap<usize, YoloModule> = index_to_config
+        let mut index_to_module: IndexMap<usize, YoloModule> = index_to_config
             .iter()
             .map(|(layer_index, layer_init)| {
                 // locals
