@@ -78,11 +78,10 @@ impl DataSet {
                     vertical_flip,
                     ..
                 },
-            training: TrainingConfig {
-                mini_batch_size, ..
-            },
+            training: TrainingConfig { batch_size, .. },
             ..
         } = *self.config;
+        let batch_size = batch_size.get();
         let image_size = image_size.get() as i64;
 
         let coco::DataSet {
@@ -328,13 +327,13 @@ impl DataSet {
         let stream = stream.try_reorder_enumerated();
 
         // group into chunks
-        let stream = stream
-            .chunks(mini_batch_size)
-            .overflowing_enumerate()
-            .par_then(None, |(index, results)| async move {
+        let stream = stream.chunks(batch_size).overflowing_enumerate().par_then(
+            None,
+            |(index, results)| async move {
                 let chunk: Vec<_> = results.into_iter().try_collect()?;
                 Fallible::Ok((index, chunk))
-            });
+            },
+        );
 
         // convert to batched type
         let stream = stream.try_par_then(None, |(index, chunk)| {

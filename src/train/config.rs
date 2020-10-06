@@ -53,13 +53,15 @@ pub struct PreprocessorConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingConfig {
-    pub mini_batch_size: usize,
+    pub batch_size: NonZeroUsize,
+    pub default_minibatch_size: NonZeroUsize,
     pub match_grid_method: MatchGrid,
     pub iou_kind: IoUKind,
-    #[serde(with = "tch_serde::serde_device")]
-    pub device: Device,
     pub save_checkpoint_steps: Option<NonZeroUsize>,
     pub load_checkpoint: LoadCheckpoint,
+    #[serde(with = "tch_serde::serde_device")]
+    pub master_device: Device,
+    pub workers: Vec<WorkerConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,4 +71,11 @@ pub enum LoadCheckpoint {
     FromRecent,
     FromSession { session_id: String },
     FromFile { file: PathBuf },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkerConfig {
+    #[serde(with = "tch_serde::serde_device")]
+    pub device: Device,
+    pub minibatch_size: Option<NonZeroUsize>,
 }

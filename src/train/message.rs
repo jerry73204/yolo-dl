@@ -1,5 +1,28 @@
 use crate::{common::*, util::CowTensor};
 
+#[derive(Debug, TensorLike)]
+pub struct TrainingRequest {
+    #[tensor_like(clone)]
+    pub job_index: usize,
+    #[tensor_like(clone)]
+    pub epoch: usize,
+    #[tensor_like(clone)]
+    pub record_step: usize,
+    #[tensor_like(clone)]
+    pub training_step: usize,
+    pub image: Tensor,
+    #[tensor_like(clone)]
+    pub bboxes: Vec<Vec<LabeledRatioBBox>>,
+}
+
+#[derive(Debug, TensorLike)]
+pub struct TrainingResponse {
+    #[tensor_like(clone)]
+    pub job_index: usize,
+    pub output: YoloOutput,
+    pub losses: YoloLossOutput,
+}
+
 #[derive(Debug, Clone)]
 pub struct LoggingMessage {
     pub tag: Cow<'static, str>,

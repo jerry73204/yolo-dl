@@ -1,16 +1,16 @@
 {
     "dataset": {
-        "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
+        "dataset_dir": "/mnt/client/aeon/coco-2017",
         "dataset_name": "train2017",
         "whitelist_classes": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "image_size": 256,
     },
     "logging": {
-        "dir": "logs",
+        "dir": "/mnt/client/aeon/yolo-dl-logs",
         "save_images": false,
     },
     "preprocessor": {
-        "cache_dir": "/home/aeon/tmp/yolo-dl-cache",
+        "cache_dir": "/home/centos/tmp/yolo-dl-cache",
         "mosaic_prob": 0.3,
         "mosaic_margin": 0.4,
         "affine_prob": 0.3,
@@ -22,13 +22,20 @@
         "vertical_flip": true,
     },
     "training": {
-        "mini_batch_size": 84,
+        "batch_size": 84,
+        "default_minibatch_size": 84,
         "match_grid_method": "Rect4",
         "iou_kind": "GIoU",
-        "device": "cuda(0)",
+        "master_device": "cuda(0)",
         "save_checkpoint_steps": 1,
         "load_checkpoint": {
             "type": "Disabled",
         },
+        "workers": [
+            {
+                "device": "cuda(0)"
+            }
+        ]
     },
+
 }

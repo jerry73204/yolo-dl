@@ -9,7 +9,7 @@ use crate::{
     common::*,
     config::{Config, LoadCheckpoint},
     data::{DataSet, TrainingRecord},
-    message::LoggingMessage,
+    message::{LoggingMessage, TrainingRequest, TrainingResponse},
     util::{RateCounter, Timing},
 };
 
@@ -65,7 +65,7 @@ pub async fn main() -> Result<()> {
         let logging_tx = logging_tx.clone();
 
         async_std::task::spawn_blocking(move || {
-            train_worker(
+            training_worker(
                 config,
                 session_id,
                 input_channels,
@@ -81,7 +81,88 @@ pub async fn main() -> Result<()> {
     Ok(())
 }
 
-fn train_worker(
+async fn master_worker(
+    config: Arc<Config>,
+    session_id: Arc<String>,
+    input_channels: usize,
+    num_classes: usize,
+    data_rx: async_std::sync::Receiver<TrainingRecord>,
+    mut worker_txs: Vec<async_std::sync::Sender<TrainingRequest>>,
+    worker_rx: async_std::sync::Receiver<TrainingResponse>,
+    logging_tx: broadcast::Sender<LoggingMessage>,
+    device: Device,
+) -> Result<()> {
+    debug_assert_eq!(worker_txs.len(), config.training.workers.len());
+    let batch_size = config.training.batch_size.get();
+    let default_minibatch_size = config.training.default_minibatch_size.get();
+    let mut worker_tuples = worker_txs
+        .into_iter()
+        .zip_eq(config.training.workers.iter())
+        .map(|(tx, worker_config)| {
+            let device = worker_config.device;
+            let minibatch_size = worker_config
+                .minibatch_size
+                .map(|size| size.get())
+                .unwrap_or(default_minibatch_size);
+            (tx, minibatch_size)
+        })
+        .collect_vec();
+    let mut training_step = 0;
+
+    while let Ok(record) = data_rx.recv().await {
+        let TrainingRecord {
+            epoch,
+            step: record_step,
+            image,
+            bboxes,
+        } = record.to_device(config.training.master_device);
+
+        // split into minibatches and distribute to workers
+        let num_jobs = {
+            let mut batch_index = 0;
+            let mut num_jobs = 0;
+
+            for (job_index, tuple) in worker_tuples.iter().cycle().enumerate() {
+                let (ref tx, max_minibatch_size) = *tuple;
+                let batch_begin = batch_index;
+                let batch_end = (batch_begin + max_minibatch_size).min(batch_size);
+                let minibatch_size = batch_end - batch_begin;
+
+                let mini_image = image.narrow(0, batch_begin as i64, batch_end as i64);
+                let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
+
+                tx.send(TrainingRequest {
+                    job_index,
+                    epoch,
+                    record_step,
+                    training_step,
+                    image: mini_image,
+                    bboxes: mini_bboxes,
+                })
+                .await;
+
+                batch_index = batch_end;
+                if batch_index == batch_size {
+                    num_jobs = job_index + 1;
+                    break;
+                }
+            }
+
+            num_jobs
+        };
+
+        // gather responses from workers
+        {
+            let mut responses: Vec<_> = worker_rx.clone().take(num_jobs).collect().await;
+            responses.sort_by_cached_key(|resp| resp.job_index);
+        }
+
+        training_step += 1;
+    }
+    Ok(())
+}
+
+fn training_worker(
     config: Arc<Config>,
     session_id: Arc<String>,
     input_channels: usize,
@@ -91,7 +172,7 @@ fn train_worker(
 ) -> Fallible<()> {
     // init model
     info!("initializing model");
-    let mut vs = nn::VarStore::new(config.training.device);
+    let mut vs = nn::VarStore::new(config.training.master_device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
@@ -135,7 +216,7 @@ fn train_worker(
             step: record_step,
             image,
             bboxes,
-        } = record.to_device(config.training.device);
+        } = record.to_device(config.training.master_device);
         timing.set_record("to device");
 
         // forward pass
@@ -153,7 +234,7 @@ fn train_worker(
         // print message
         rate_counter.add(1.0);
         if let Some(batch_rate) = rate_counter.rate() {
-            let record_rate = batch_rate * config.training.mini_batch_size as f64;
+            let record_rate = batch_rate * config.training.batch_size.get() as f64;
             info!(
                 "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
                 epoch, training_step, batch_rate, record_rate
