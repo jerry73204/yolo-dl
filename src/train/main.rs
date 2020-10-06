@@ -210,6 +210,8 @@ async fn multi_gpu_training_worker(
                             let outputs = jobs
                                 .into_iter()
                                 .map(|(job_index, image, bboxes)| {
+                                    let mut timing = Timing::new();
+
                                     let WorkerContext {
                                         device,
                                         ref vs,
@@ -220,12 +222,15 @@ async fn multi_gpu_training_worker(
                                     } = context;
 
                                     let image = image.to_device(device);
+                                    timing.set_record("to device");
 
                                     // forward pass
                                     let output = model.forward_t(&image, true);
+                                    timing.set_record("forward");
 
                                     // compute loss
                                     let losses = yolo_loss.forward(&output, &bboxes);
+                                    timing.set_record("loss");
 
                                     // compute gradients
                                     let gradients = Tensor::run_backward(
@@ -234,6 +239,7 @@ async fn multi_gpu_training_worker(
                                         false,
                                         false,
                                     );
+                                    timing.set_record("run_backward");
 
                                     (job_index, output, losses, gradients)
                                 })
@@ -252,6 +258,34 @@ async fn multi_gpu_training_worker(
             let mut outputs = outputs_per_worker.into_iter().flatten().collect_vec();
             outputs.sort_by_cached_key(|(job_index, _output, _losses, _grad)| *job_index);
             outputs
+        };
+
+        // backward step
+        {
+            let sum_gradients = async_std::task::spawn_blocking(move || {
+                tch::no_grad(|| {
+                    let mut gradients_iter = outputs
+                        .iter()
+                        .map(|(_job_index, _output, _losses, grad)| grad);
+
+                    let init = gradients_iter
+                        .next()
+                        .unwrap()
+                        .iter()
+                        .map(|grad| grad.to_device(master_device))
+                        .collect_vec();
+
+                    let sum_gradients = gradients_iter.fold(init, |lhs, rhs| {
+                        lhs.into_iter()
+                            .zip_eq(rhs.iter())
+                            .map(|(lhs, rhs)| lhs + rhs.to_device(master_device))
+                            .collect_vec()
+                    });
+
+                    sum_gradients
+                })
+            })
+            .await;
         };
 
         // print message
