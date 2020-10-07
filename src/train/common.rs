@@ -57,7 +57,7 @@ pub use yolo_dl::{
     model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
     utils::{
         BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
-        PixelSize, Ratio, RatioBBox, Unzip2, Unzip3, Unzip4,
+        PixelSize, Ratio, RatioBBox, Unzip2, Unzip3, Unzip4, Unzip5,
     },
 };
 

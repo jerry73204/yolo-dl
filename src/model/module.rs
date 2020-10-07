@@ -524,30 +524,35 @@ impl DetectModule {
                         ])
                         .permute(&[1, 3, 4, 0, 2]);
 
-                    let sigmoid = outputs.sigmoid();
-
                     // positions in grid units
-                    let position = sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + positions_grid;
-                    let cy = position.i((.., .., .., .., 0..1));
-                    let cx = position.i((.., .., .., .., 1..2));
+                    let (cy, cx, h, w) = {
+                        let sigmoid = outputs.i((.., .., .., .., 0..4)).sigmoid();
 
-                    // bbox sizes in grid units
-                    let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * anchor_sizes_grid;
-                    let h = size.i((.., .., .., .., 0..1));
-                    let w = size.i((.., .., .., .., 1..2));
+                        let position =
+                            sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + positions_grid;
+                        let cy = position.i((.., .., .., .., 0..1));
+                        let cx = position.i((.., .., .., .., 1..2));
+
+                        // bbox sizes in grid units
+                        let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * anchor_sizes_grid;
+                        let h = size.i((.., .., .., .., 0..1));
+                        let w = size.i((.., .., .., .., 1..2));
+
+                        (cy, cx, h, w)
+                    };
 
                     // objectness
-                    let objectness = sigmoid.i((.., .., .., .., 4..5));
+                    let objectness = outputs.i((.., .., .., .., 4..5));
 
                     // sparse classification
-                    let classification = sigmoid.i((.., .., .., .., 5..));
+                    let classification = outputs.i((.., .., .., .., 5..));
 
                     let cy = cy.view([-1, batch_size, 1]);
                     let cx = cx.view([-1, batch_size, 1]);
                     let h = h.view([-1, batch_size, 1]);
                     let w = w.view([-1, batch_size, 1]);
-                    let objectness = objectness.view([-1, batch_size, 1]);
-                    let classification = classification.view([-1, batch_size, num_classes]);
+                    let objectness = objectness.reshape(&[-1, batch_size, 1]);
+                    let classification = classification.reshape(&[-1, batch_size, num_classes]);
 
                     (cy, cx, h, w, objectness, classification)
                 };

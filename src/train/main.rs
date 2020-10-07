@@ -109,10 +109,35 @@ async fn multi_gpu_training_worker(
         optimizer: nn::Optimizer<nn::Adam>,
     }
 
+    struct WorkerJob {
+        job_index: usize,
+        minibatch_size: usize,
+        image: Tensor,
+        bboxes: Vec<Vec<LabeledRatioBBox>>,
+    }
+
+    struct WorkerOutput {
+        job_index: usize,
+        worker_index: usize,
+        minibatch_size: usize,
+        output: YoloOutput,
+        losses: YoloLossOutput,
+        gradients: Vec<Tensor>,
+    }
+
     let mut rate_counter = RateCounter::with_second_intertal();
     let master_device = config.training.master_device;
     let batch_size = config.training.batch_size.get();
     let default_minibatch_size = config.training.default_minibatch_size.get();
+    let save_checkpoint_steps = config
+        .training
+        .save_checkpoint_steps
+        .map(|steps| steps.get());
+    // let mut checkpoint_step_counter = 0;
+    let checkpoint_dir = config.logging.dir.join("checkpoints");
+    let saved_config_path = checkpoint_dir.join(format!("{}.json5", session_id));
+
+    // initialize workers
     let mut worker_contexts: Vec<_> = config
         .training
         .workers
@@ -127,7 +152,7 @@ async fn multi_gpu_training_worker(
             let root = vs.root();
             let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
             let yolo_loss = YoloLossInit {
-                reduction: Reduction::Sum,
+                reduction: Reduction::Mean,
                 match_grid_method: Some(config.training.match_grid_method),
                 iou_kind: Some(config.training.iou_kind),
                 ..Default::default()
@@ -145,6 +170,24 @@ async fn multi_gpu_training_worker(
             })
         })
         .try_collect()?;
+
+    // create checkpoint dir
+    std::fs::create_dir_all(&checkpoint_dir)?;
+
+    // save config
+    {
+        let text = serde_json::to_string_pretty(&*config)?;
+        std::fs::write(&saved_config_path, text)?;
+    }
+
+    // load checkpoint
+    try_load_checkpoint(
+        &mut worker_contexts[0].vs,
+        &checkpoint_dir,
+        &config.training.load_checkpoint,
+    )?;
+
+    // training loop
     let mut training_step = 0;
 
     while let Ok(record) = data_rx.recv().await {
@@ -194,7 +237,12 @@ async fn multi_gpu_training_worker(
                 let mini_image = image.narrow(0, batch_begin as i64, minibatch_size as i64);
                 let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
 
-                jobs[worker_index].push((job_index, mini_image, mini_bboxes));
+                jobs[worker_index].push(WorkerJob {
+                    job_index,
+                    minibatch_size,
+                    image: mini_image,
+                    bboxes: mini_bboxes,
+                });
 
                 batch_index = batch_end;
                 if batch_index == batch_size {
@@ -204,12 +252,12 @@ async fn multi_gpu_training_worker(
 
             // run tasks
             let (worker_contexts_, outputs_per_worker) =
-                future::join_all(worker_contexts.into_iter().zip_eq(jobs).map(
-                    |(mut context, jobs)| {
+                future::join_all(worker_contexts.into_iter().zip_eq(jobs).enumerate().map(
+                    |(worker_index, (mut context, jobs))| {
                         async_std::task::spawn_blocking(move || {
                             let outputs = jobs
                                 .into_iter()
-                                .map(|(job_index, image, bboxes)| {
+                                .map(|job| {
                                     let mut timing = Timing::new();
 
                                     let WorkerContext {
@@ -220,6 +268,12 @@ async fn multi_gpu_training_worker(
                                         ref mut optimizer,
                                         ..
                                     } = context;
+                                    let WorkerJob {
+                                        job_index,
+                                        minibatch_size,
+                                        image,
+                                        bboxes,
+                                    } = job;
 
                                     let image = image.to_device(device);
                                     timing.set_record("to device");
@@ -233,15 +287,24 @@ async fn multi_gpu_training_worker(
                                     timing.set_record("loss");
 
                                     // compute gradients
-                                    let gradients = Tensor::run_backward(
-                                        &[&losses.loss],
-                                        &vs.trainable_variables(),
-                                        false,
-                                        false,
-                                    );
+                                    optimizer.zero_grad();
+                                    losses.loss.backward();
                                     timing.set_record("run_backward");
 
-                                    (job_index, output, losses, gradients)
+                                    let gradients = vs
+                                        .trainable_variables()
+                                        .iter()
+                                        .map(|tensor| tensor.grad() * minibatch_size as f64)
+                                        .collect_vec();
+
+                                    WorkerOutput {
+                                        job_index,
+                                        worker_index,
+                                        minibatch_size,
+                                        output,
+                                        losses,
+                                        gradients,
+                                    }
                                 })
                                 .collect_vec();
 
@@ -256,25 +319,23 @@ async fn multi_gpu_training_worker(
             worker_contexts = worker_contexts_;
 
             let mut outputs = outputs_per_worker.into_iter().flatten().collect_vec();
-            outputs.sort_by_cached_key(|(job_index, _output, _losses, _grad)| *job_index);
+            outputs.sort_by_cached_key(|output| output.job_index);
             outputs
         };
 
         // backward step
-        {
-            let sum_gradients = async_std::task::spawn_blocking(move || {
+        let outputs = {
+            let (worker_contexts_, outputs) = async_std::task::spawn_blocking(move || {
                 tch::no_grad(|| {
                     // aggregate gradients
                     let sum_gradients = {
-                        let mut gradients_iter = outputs
-                            .iter()
-                            .map(|(_job_index, _output, _losses, grad)| grad);
+                        let mut gradients_iter = outputs.iter().map(|output| &output.gradients);
 
                         let init = gradients_iter
                             .next()
                             .unwrap()
                             .iter()
-                            .map(|grad| grad.to_device(master_device))
+                            .map(|gradients| gradients.to_device(master_device))
                             .collect_vec();
 
                         let sum_gradients = gradients_iter.fold(init, |lhs, rhs| {
@@ -288,20 +349,104 @@ async fn multi_gpu_training_worker(
                     };
                     let mean_gradients = sum_gradients
                         .into_iter()
-                        .map(|grad| grad.g_div_1(batch_size as f64))
+                        .map(|mut grad| grad.g_div_1(batch_size as f64))
                         .collect_vec();
 
                     // optimize
-                    // worker_contexts[0]
-                    //     .vs
-                    //     .trainable_variables()
-                    //     .into_iter()
-                    //     .zip_eq(mean_gradients)
-                    //     .map(|(var, grad)| var.grad().g_add_(&grad));
+                    {
+                        let WorkerContext { vs, optimizer, .. } = &mut worker_contexts[0];
+                        vs.trainable_variables()
+                            .into_iter()
+                            .zip_eq(mean_gradients)
+                            .for_each(|(var, grad)| {
+                                let _ = var.grad().copy_(&grad);
+                            });
+                        optimizer.step();
+                    }
+                    (worker_contexts, outputs)
                 })
             })
             .await;
+
+            worker_contexts = worker_contexts_;
+            outputs
         };
+
+        // send to logger
+        {
+            let (
+                loss_vec,
+                iou_loss_vec,
+                classification_loss_vec,
+                objectness_loss_vec,
+                target_bboxes_vec,
+            ) = outputs
+                .iter()
+                .map(|output| {
+                    let YoloLossOutput {
+                        loss,
+                        iou_loss,
+                        classification_loss,
+                        objectness_loss,
+                        target_bboxes,
+                    } = &output.losses;
+                    let minibatch_size = output.minibatch_size as f64;
+                    (
+                        loss * minibatch_size,
+                        iou_loss * minibatch_size,
+                        classification_loss * minibatch_size,
+                        objectness_loss * minibatch_size,
+                        target_bboxes,
+                    )
+                })
+                .unzip_n_vec();
+
+            let mean_tensors = |tensors: &[Tensor]| -> Tensor {
+                let mut iter = tensors.iter();
+                let first = iter.next().unwrap().to_device(master_device);
+                iter.fold(first, |lhs, rhs| lhs + rhs.to_device(master_device)) / batch_size as f64
+            };
+
+            let loss = mean_tensors(&loss_vec);
+            let iou_loss = mean_tensors(&iou_loss_vec);
+            let classification_loss = mean_tensors(&classification_loss_vec);
+            let objectness_loss = mean_tensors(&objectness_loss_vec);
+
+            // WARNING: it is incorrect but compiles
+            let target_bboxes: HashMap<_, _> = target_bboxes_vec
+                .into_iter()
+                .flat_map(|bboxes| {
+                    bboxes
+                        .iter()
+                        .map(|(instance_index, bbox)| (instance_index.clone(), bbox.clone()))
+                })
+                .collect();
+
+            let losses = YoloLossOutput {
+                loss,
+                iou_loss,
+                classification_loss,
+                objectness_loss,
+                target_bboxes: Arc::new(target_bboxes),
+            };
+
+            let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
+            logging_tx
+                .send(msg)
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
+        }
+        // {
+        //     let msg = LoggingMessage::new_training_output(
+        //         "output",
+        //         training_step,
+        //         &image,
+        //         &output,
+        //         &losses,
+        //     );
+        //     logging_tx
+        //         .send(msg)
+        //         .map_err(|_err| format_err!("cannot send message to logger"))?;
+        // }
 
         // print message
         rate_counter.add(1.0);

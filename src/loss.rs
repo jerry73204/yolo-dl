@@ -273,9 +273,9 @@ impl YoloLoss {
         // IoU loss
         let iou_loss: Tensor = { 1.0 - xiou };
         let reduced_iou_loss = match self.reduction {
+            Reduction::None => iou_loss.shallow_clone(),
             Reduction::Mean => iou_loss.mean(Kind::Float),
             Reduction::Sum => iou_loss.sum(Kind::Float),
-            Reduction::None => iou_loss.shallow_clone(),
             _ => panic!("reduction {:?} is not supported", self.reduction),
         };
 
@@ -563,21 +563,21 @@ impl YoloLoss {
 }
 
 #[derive(Debug)]
-pub struct BceWithLogitsLossInit {
+pub struct MultiBceWithLogitsLossInit {
     pub weight: Option<Tensor>,
     pub pos_weight: Option<Tensor>,
     pub reduction: Reduction,
 }
 
-impl BceWithLogitsLossInit {
-    pub fn build(self) -> BceWithLogitsLoss {
+impl MultiBceWithLogitsLossInit {
+    pub fn build(self) -> MultiBceWithLogitsLoss {
         let Self {
             weight,
             pos_weight,
             reduction,
         } = self;
 
-        BceWithLogitsLoss {
+        MultiBceWithLogitsLoss {
             weight,
             pos_weight,
             reduction,
@@ -585,7 +585,7 @@ impl BceWithLogitsLossInit {
     }
 }
 
-impl Default for BceWithLogitsLossInit {
+impl Default for MultiBceWithLogitsLossInit {
     fn default() -> Self {
         Self {
             weight: None,
@@ -596,20 +596,32 @@ impl Default for BceWithLogitsLossInit {
 }
 
 #[derive(Debug)]
-pub struct BceWithLogitsLoss {
+pub struct MultiBceWithLogitsLoss {
     weight: Option<Tensor>,
     pos_weight: Option<Tensor>,
     reduction: Reduction,
 }
 
-impl BceWithLogitsLoss {
+impl MultiBceWithLogitsLoss {
     pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
-        input.binary_cross_entropy_with_logits(
-            target,
-            self.weight.as_ref(),
-            self.pos_weight.as_ref(),
-            self.reduction,
-        )
+        // assume [batch_size, n_classes] shape
+        debug_assert_eq!(input.size2().unwrap(), target.size2().unwrap());
+
+        let mean_bce = input
+            .binary_cross_entropy_with_logits(
+                target,
+                self.weight.as_ref(),
+                self.pos_weight.as_ref(),
+                Reduction::None,
+            )
+            .mean1(&[1], true, Kind::Float);
+
+        match self.reduction {
+            Reduction::None => mean_bce,
+            Reduction::Sum => mean_bce.sum(Kind::Float),
+            Reduction::Mean => mean_bce.mean(Kind::Float),
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -632,7 +644,7 @@ impl FocalLossInit {
             reduction,
         } = self;
 
-        let bce = BceWithLogitsLossInit {
+        let bce = MultiBceWithLogitsLossInit {
             weight,
             pos_weight,
             reduction: Reduction::None,
@@ -662,7 +674,7 @@ impl Default for FocalLossInit {
 
 #[derive(Debug)]
 pub struct FocalLoss {
-    bce: BceWithLogitsLoss,
+    bce: MultiBceWithLogitsLoss,
     gamma: f64,
     alpha: f64,
     reduction: Reduction,
@@ -682,13 +694,13 @@ impl FocalLoss {
         let p_t: Tensor = target * &input_prob + (1.0 - target) * (1.0 - &input_prob);
         let alpha_factor = target * alpha + (1.0 - target) * (1.0 - alpha);
         let modulating_factor = (-&p_t + 1.0).pow(gamma);
-        let loss: Tensor = bce_loss * alpha_factor * modulating_factor;
+        let loss: Tensor = &bce_loss * &alpha_factor * &modulating_factor;
 
         match reduction {
+            Reduction::None => loss,
             Reduction::Mean => loss.mean(Kind::Float),
             Reduction::Sum => loss.sum(Kind::Float),
-            Reduction::None => loss,
-            Reduction::Other(_) => unreachable!(),
+            Reduction::Other(_) => unimplemented!(),
         }
     }
 }
