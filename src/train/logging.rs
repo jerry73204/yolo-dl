@@ -7,22 +7,18 @@ use crate::{
 
 pub async fn logging_worker(
     config: Arc<Config>,
+    logging_dir: Arc<PathBuf>,
     mut rx: broadcast::Receiver<LoggingMessage>,
 ) -> Result<impl Future<Output = Result<()>> + Send> {
     let Config {
-        logging:
-            LoggingConfig {
-                ref dir,
-                save_images,
-                ..
-            },
+        logging: LoggingConfig { save_images, .. },
         ..
     } = *config;
 
     // prepare dirs
-    let event_dir = dir.join("events");
+    let event_dir = logging_dir.join("events");
     let event_path_prefix = event_dir
-        .join("yolo-dl-")
+        .join("yolo-dl")
         .into_os_string()
         .into_string()
         .unwrap();

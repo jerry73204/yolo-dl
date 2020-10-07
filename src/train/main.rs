@@ -13,7 +13,7 @@ use crate::{
     util::{RateCounter, Timing},
 };
 
-const CHECKPOINT_STRFTIME: &str = "%Y-%m-%d-%H-%M-%S-%3f";
+const FILE_STRFTIME: &str = "%Y-%m-%d-%H-%M-%S.%3f%z";
 
 #[derive(Debug, Clone, FromArgs)]
 /// Train YOLO model
@@ -29,7 +29,23 @@ pub async fn main() -> Result<()> {
 
     let Args { config_file } = argh::from_env();
     let config = Arc::new(Config::open(&config_file)?);
-    let session_id = Arc::new(Uuid::new_v4().to_string());
+    let start_time = Local::now();
+    let logging_dir = Arc::new(
+        config
+            .logging
+            .dir
+            .join(format!("{}", start_time.format(FILE_STRFTIME))),
+    );
+    let checkpoint_dir = Arc::new(logging_dir.join("checkpoints"));
+
+    // create dirs and save config
+    {
+        async_std::fs::create_dir_all(&*logging_dir).await?;
+        async_std::fs::create_dir_all(&*checkpoint_dir).await?;
+        let path = logging_dir.join("config.json5");
+        let text = serde_json::to_string_pretty(&*config)?;
+        std::fs::write(&path, text)?;
+    }
 
     // load dataset
     info!("loading dataset");
@@ -42,7 +58,8 @@ pub async fn main() -> Result<()> {
     let (training_tx, training_rx) = async_std::sync::channel(2);
 
     // start logger
-    let logging_future = logging::logging_worker(config.clone(), logging_rx).await?;
+    let logging_future =
+        logging::logging_worker(config.clone(), logging_dir.clone(), logging_rx).await?;
 
     // feeding worker
     let training_data_future = {
@@ -63,11 +80,14 @@ pub async fn main() -> Result<()> {
     let training_worker_future = {
         let config = config.clone();
         let logging_tx = logging_tx.clone();
+        let logging_dir = logging_dir.clone();
+        let checkpoint_dir = checkpoint_dir.clone();
 
         if config.training.enable_multi_gpu {
             async_std::task::spawn(multi_gpu_training_worker(
                 config,
-                session_id,
+                logging_dir,
+                checkpoint_dir,
                 input_channels,
                 num_classes,
                 training_rx,
@@ -75,9 +95,10 @@ pub async fn main() -> Result<()> {
             ))
         } else {
             async_std::task::spawn_blocking(move || {
-                training_worker(
+                single_gpu_training_worker(
                     config,
-                    session_id,
+                    logging_dir,
+                    checkpoint_dir,
                     input_channels,
                     num_classes,
                     training_rx,
@@ -94,7 +115,8 @@ pub async fn main() -> Result<()> {
 
 async fn multi_gpu_training_worker(
     config: Arc<Config>,
-    session_id: Arc<String>,
+    logging_dir: Arc<PathBuf>,
+    checkpoint_dir: Arc<PathBuf>,
     input_channels: usize,
     num_classes: usize,
     data_rx: async_std::sync::Receiver<TrainingRecord>,
@@ -133,9 +155,6 @@ async fn multi_gpu_training_worker(
         .training
         .save_checkpoint_steps
         .map(|steps| steps.get());
-    // let mut checkpoint_step_counter = 0;
-    let checkpoint_dir = config.logging.dir.join("checkpoints");
-    let saved_config_path = checkpoint_dir.join(format!("{}.json5", session_id));
 
     // initialize workers
     let mut worker_contexts: Vec<_> = config
@@ -171,19 +190,10 @@ async fn multi_gpu_training_worker(
         })
         .try_collect()?;
 
-    // create checkpoint dir
-    std::fs::create_dir_all(&checkpoint_dir)?;
-
-    // save config
-    {
-        let text = serde_json::to_string_pretty(&*config)?;
-        std::fs::write(&saved_config_path, text)?;
-    }
-
     // load checkpoint
     try_load_checkpoint(
         &mut worker_contexts[0].vs,
-        &checkpoint_dir,
+        &config.logging.dir,
         &config.training.load_checkpoint,
     )?;
 
@@ -372,8 +382,8 @@ async fn multi_gpu_training_worker(
             outputs
         };
 
-        // send to logger
-        {
+        // compute losses from each job
+        let losses = {
             let (
                 loss_vec,
                 iou_loss_vec,
@@ -430,11 +440,27 @@ async fn multi_gpu_training_worker(
                 target_bboxes: Arc::new(target_bboxes),
             };
 
+            losses
+        };
+
+        // save checkpoint
+        if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
+            save_checkpoint(
+                &worker_contexts[0].vs,
+                &checkpoint_dir,
+                training_step,
+                f64::from(&losses.loss),
+            )?;
+        }
+
+        // send to logger
+        {
             let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
             logging_tx
                 .send(msg)
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
+
         // {
         //     let msg = LoggingMessage::new_training_output(
         //         "output",
@@ -465,9 +491,10 @@ async fn multi_gpu_training_worker(
     Ok(())
 }
 
-fn training_worker(
+fn single_gpu_training_worker(
     config: Arc<Config>,
-    session_id: Arc<String>,
+    logging_dir: Arc<PathBuf>,
+    checkpoint_dir: Arc<PathBuf>,
     input_channels: usize,
     num_classes: usize,
     training_rx: async_std::sync::Receiver<TrainingRecord>,
@@ -495,21 +522,13 @@ fn training_worker(
         .training
         .save_checkpoint_steps
         .map(|steps| steps.get());
-    let mut checkpoint_step_counter = 0;
-    let checkpoint_dir = config.logging.dir.join("checkpoints");
-    let saved_config_path = checkpoint_dir.join(format!("{}.json5", session_id));
-
-    // create checkpoint dir
-    std::fs::create_dir_all(&checkpoint_dir)?;
-
-    // save config
-    {
-        let text = serde_json::to_string_pretty(&*config)?;
-        std::fs::write(&saved_config_path, text)?;
-    }
 
     // load checkpoint
-    try_load_checkpoint(&mut vs, &checkpoint_dir, &config.training.load_checkpoint)?;
+    try_load_checkpoint(
+        &mut vs,
+        &config.logging.dir,
+        &config.training.load_checkpoint,
+    )?;
 
     // training
     info!("start training");
@@ -550,25 +569,8 @@ fn training_worker(
         }
 
         // save checkpoint
-        if let Some(max_steps) = save_checkpoint_steps {
-            checkpoint_step_counter += 1;
-            if max_steps == checkpoint_step_counter {
-                // reset counter
-                checkpoint_step_counter = 0;
-
-                // save model weights
-                {
-                    let filename = format!(
-                        "{}_{}_{:06}_{:08.5}.ckpt",
-                        session_id,
-                        Local::now().format(CHECKPOINT_STRFTIME),
-                        training_step,
-                        f64::from(&losses.loss)
-                    );
-                    let path = checkpoint_dir.join(filename);
-                    vs.save(&path)?;
-                }
-            }
+        if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
+            save_checkpoint(&vs, &checkpoint_dir, training_step, f64::from(&losses.loss))?;
         }
 
         // send to logger
@@ -599,13 +601,31 @@ fn training_worker(
     Fallible::Ok(())
 }
 
+fn save_checkpoint(
+    vs: &nn::VarStore,
+    checkpoint_dir: &Path,
+    training_step: usize,
+    loss: f64,
+) -> Result<()> {
+    let filename = format!(
+        "{}_{:06}_{:08.5}.ckpt",
+        Local::now().format(FILE_STRFTIME),
+        training_step,
+        loss
+    );
+    let path = checkpoint_dir.join(filename);
+    vs.save(&path)?;
+    Ok(())
+}
+
 fn try_load_checkpoint(
     vs: &mut nn::VarStore,
-    checkpoint_dir: &Path,
+    logging_dir: &Path,
     load_checkpoint: &LoadCheckpoint,
 ) -> Result<()> {
     let checkpoint_filename_regex =
-        Regex::new(r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d{3}_(\d{6})_\d+.\d+.ckpt$").unwrap();
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.\d{3}\+\d{4})_\d{6}_\d+\.\d+\.ckpt$")
+            .unwrap();
 
     let path = match load_checkpoint {
         LoadCheckpoint::Disabled => {
@@ -613,108 +633,30 @@ fn try_load_checkpoint(
             None
         }
         LoadCheckpoint::FromRecent => {
-            let path_step = checkpoint_dir
-                .read_dir()?
-                .map(|result| -> Result<_> {
-                    let entry = result?;
-                    if entry.file_type()?.is_file() {
-                        if let Ok(file_name) = entry.file_name().into_string() {
-                            match checkpoint_filename_regex.captures(&file_name) {
-                                Some(captures) => {
-                                    let step: usize =
-                                        captures.get(2).unwrap().as_str().parse().unwrap();
-                                    let path = entry.path();
-                                    Ok(Some((path, step)))
-                                }
-                                None => Ok(None),
-                            }
-                        } else {
-                            Ok(None)
-                        }
-                    } else {
-                        Ok(None)
-                    }
+            let paths: Vec<_> =
+                glob::glob(&format!("{}/*/checkpoints/*.ckpt", logging_dir.display()))
+                    .unwrap()
+                    .try_collect()?;
+            let paths = paths
+                .into_iter()
+                .filter_map(|path| {
+                    let file_name = path.file_name()?.to_str()?;
+                    let captures = checkpoint_filename_regex.captures(file_name)?;
+                    let datetime_str = captures.get(1)?.as_str();
+                    let datetime = DateTime::parse_from_str(datetime_str, FILE_STRFTIME).unwrap();
+                    Some((path, datetime))
                 })
-                .filter_map(|result| result.transpose())
-                .fold(Ok(None), |prev_result, curr_result| -> Result<_> {
-                    let prev = prev_result?;
-                    let curr = curr_result?;
-                    match prev {
-                        Some(prev) => {
-                            let (_prev_path, prev_step) = &prev;
-                            let (_curr_path, curr_step) = &curr;
-                            if curr_step > prev_step {
-                                Ok(Some(curr))
-                            } else {
-                                Ok(Some(prev))
-                            }
-                        }
-                        None => Ok(Some(curr)),
-                    }
-                })?;
-            let path = path_step.map(|(path, _step)| path);
+                .collect_vec();
+            let checkpoint_file = paths
+                .into_iter()
+                .max_by_key(|(_path, datetime)| datetime.clone())
+                .map(|(path, _datetime)| path);
 
-            if let None = &path {
-                warn!("no recent checkpoint files found");
+            if let None = &checkpoint_file {
+                warn!("no checkpoint file found");
             }
 
-            path
-        }
-        LoadCheckpoint::FromSession { session_id } => {
-            let path_step = checkpoint_dir
-                .read_dir()?
-                .map(|result| -> Result<_> {
-                    let entry = result?;
-                    if entry.file_type()?.is_file() {
-                        if let Ok(file_name) = entry.file_name().into_string() {
-                            match checkpoint_filename_regex.captures(&file_name) {
-                                Some(captures) => {
-                                    let uuid = captures.get(1).unwrap().as_str();
-                                    if uuid == session_id {
-                                        let step: usize =
-                                            captures.get(2).unwrap().as_str().parse().unwrap();
-                                        let path = entry.path();
-                                        Ok(Some((path, step)))
-                                    } else {
-                                        Ok(None)
-                                    }
-                                }
-                                None => Ok(None),
-                            }
-                        } else {
-                            Ok(None)
-                        }
-                    } else {
-                        Ok(None)
-                    }
-                })
-                .filter_map(|result| result.transpose())
-                .fold(Ok(None), |prev_result, curr_result| -> Result<_> {
-                    let prev = prev_result?;
-                    let curr = curr_result?;
-                    match prev {
-                        Some(prev) => {
-                            let (_prev_path, prev_step) = &prev;
-                            let (_curr_path, curr_step) = &curr;
-                            if curr_step > prev_step {
-                                Ok(Some(curr))
-                            } else {
-                                Ok(Some(prev))
-                            }
-                        }
-                        None => Ok(Some(curr)),
-                    }
-                })?;
-            let path = path_step.map(|(path, _step)| path);
-
-            if let None = &path {
-                warn!(
-                    "no recent checkpoint files found for session {}",
-                    session_id
-                );
-            }
-
-            path
+            checkpoint_file
         }
         LoadCheckpoint::FromFile { file } => {
             if file.is_file() {

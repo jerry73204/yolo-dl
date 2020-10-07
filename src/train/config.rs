@@ -70,7 +70,6 @@ pub struct TrainingConfig {
 pub enum LoadCheckpoint {
     Disabled,
     FromRecent,
-    FromSession { session_id: String },
     FromFile { file: PathBuf },
 }
 
