@@ -223,29 +223,31 @@ impl YoloLoss {
         let intersect_l = pred_l.max1(&target_l);
         let intersect_b = pred_b.min1(&target_b);
         let intersect_r = pred_r.min1(&target_r);
-        let intersect_h = &intersect_b - &intersect_t;
-        let intersect_w = &intersect_r - &intersect_l;
+        let intersect_h = (&intersect_b - &intersect_t).clamp_min(0.0);
+        let intersect_w = (&intersect_r - &intersect_l).clamp_min(0.0);
         let intersect_area = &intersect_h * &intersect_w;
 
         // compute IoU
         let union_area = &pred_area + &target_area - &intersect_area + epsilon;
-        let iou = &intersect_area / &union_area; // TODO: plus epsilon
+        let iou = &intersect_area / &union_area;
 
-        let xiou = match self.iou_kind {
+        let iou_variant = match self.iou_kind {
             IoUKind::IoU => iou,
             _ => {
-                let closure_t = pred_t.min1(&target_t);
-                let closure_l = pred_l.min1(&target_l);
-                let closure_b = pred_b.max1(&target_b);
-                let closure_r = pred_r.max1(&target_r);
-                let closure_h = &closure_b - &closure_t;
-                let closure_w = &closure_r - &closure_l;
-                let closure_area = &closure_h * &closure_w + epsilon;
+                let outer_t = pred_t.min1(&target_t);
+                let outer_l = pred_l.min1(&target_l);
+                let outer_b = pred_b.max1(&target_b);
+                let outer_r = pred_r.max1(&target_r);
+                let outer_h = &outer_b - &outer_t;
+                let outer_w = &outer_r - &outer_l;
 
                 match self.iou_kind {
-                    IoUKind::GIoU => &iou - (&closure_area - &union_area) / &closure_area,
+                    IoUKind::GIoU => {
+                        let outer_area = &outer_h * &outer_w + epsilon;
+                        &iou - (&outer_area - &union_area) / &outer_area
+                    }
                     _ => {
-                        let diagonal_square = closure_h.pow(2.0) + closure_w.pow(2.0) + epsilon;
+                        let diagonal_square = outer_h.pow(2.0) + outer_w.pow(2.0) + epsilon;
                         let center_dist_square =
                             (pred_cy - target_cy).pow(2.0) + (pred_cx - target_cx).pow(2.0);
 
@@ -271,7 +273,7 @@ impl YoloLoss {
         };
 
         // IoU loss
-        let iou_loss: Tensor = { 1.0 - xiou };
+        let iou_loss: Tensor = 1.0 - iou_variant;
         let reduced_iou_loss = match self.reduction {
             Reduction::None => iou_loss.shallow_clone(),
             Reduction::Mean => iou_loss.mean(Kind::Float),
