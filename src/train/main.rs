@@ -55,7 +55,14 @@ pub async fn main() -> Result<()> {
 
     // create channels
     let (logging_tx, logging_rx) = broadcast::channel(2);
-    let (data_tx, data_rx) = async_std::sync::channel(2);
+    let (data_tx, data_rx) = {
+        let channel_size = if config.training.enable_multi_gpu {
+            config.training.workers.len() * 2
+        } else {
+            2
+        };
+        async_std::sync::channel(channel_size)
+    };
 
     // start logger
     let logging_future =
