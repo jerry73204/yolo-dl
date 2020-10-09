@@ -55,7 +55,7 @@ pub async fn main() -> Result<()> {
 
     // create channels
     let (logging_tx, logging_rx) = broadcast::channel(2);
-    let (training_tx, training_rx) = async_std::sync::channel(2);
+    let (data_tx, data_rx) = async_std::sync::channel(2);
 
     // start logger
     let logging_future =
@@ -69,7 +69,7 @@ pub async fn main() -> Result<()> {
 
             while let Some(result) = train_stream.next().await {
                 let record = result?;
-                training_tx.send(record).await;
+                data_tx.send(record).await;
             }
 
             Fallible::Ok(())
@@ -90,7 +90,7 @@ pub async fn main() -> Result<()> {
                 checkpoint_dir,
                 input_channels,
                 num_classes,
-                training_rx,
+                data_rx,
                 logging_tx,
             ))
         } else {
@@ -101,7 +101,7 @@ pub async fn main() -> Result<()> {
                     checkpoint_dir,
                     input_channels,
                     num_classes,
-                    training_rx,
+                    data_rx,
                     logging_tx,
                 )
             })
@@ -115,7 +115,7 @@ pub async fn main() -> Result<()> {
 
 async fn multi_gpu_training_worker(
     config: Arc<Config>,
-    logging_dir: Arc<PathBuf>,
+    _logging_dir: Arc<PathBuf>,
     checkpoint_dir: Arc<PathBuf>,
     input_channels: usize,
     num_classes: usize,
@@ -158,15 +158,29 @@ async fn multi_gpu_training_worker(
         .training
         .save_checkpoint_steps
         .map(|steps| steps.get());
+    let mut timing = Timing::new();
+
+    if let None = save_checkpoint_steps {
+        warn!("checkpoint saving is disabled");
+    }
 
     // initialize workers
-    let mut worker_contexts: Vec<_> = {
+    info!("initializing model");
+
+    let mut worker_contexts = {
         let init_lr = lr_scheduler.next();
-        config
-            .training
-            .workers
-            .iter()
-            .map(|worker_config| -> Result<_> {
+
+        future::try_join_all(config.training.workers.iter().map(|worker_config| {
+            let TrainingConfig {
+                match_grid_method,
+                iou_kind,
+                momentum,
+                weight_decay,
+                ..
+            } = config.training;
+            let worker_config = worker_config.clone();
+
+            async_std::task::spawn_blocking(move || {
                 let device = worker_config.device;
                 let minibatch_size = worker_config
                     .minibatch_size
@@ -177,17 +191,12 @@ async fn multi_gpu_training_worker(
                 let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
                 let yolo_loss = YoloLossInit {
                     reduction: Reduction::Mean,
-                    match_grid_method: Some(config.training.match_grid_method),
-                    iou_kind: Some(config.training.iou_kind),
+                    match_grid_method: Some(match_grid_method),
+                    iou_kind: Some(iou_kind),
                     ..Default::default()
                 }
                 .build();
                 let optimizer = {
-                    let TrainingConfig {
-                        momentum,
-                        weight_decay,
-                        ..
-                    } = config.as_ref().training;
                     let mut opt = nn::Adam {
                         wd: weight_decay.raw(),
                         ..Default::default()
@@ -197,7 +206,7 @@ async fn multi_gpu_training_worker(
                     opt
                 };
 
-                Ok(WorkerContext {
+                Fallible::Ok(WorkerContext {
                     device,
                     minibatch_size,
                     vs,
@@ -206,8 +215,10 @@ async fn multi_gpu_training_worker(
                     optimizer,
                 })
             })
-            .try_collect()?
+        }))
+        .await?
     };
+    timing.set_record("init worker contexts");
 
     // load checkpoint
     let worker_contexts_ = {
@@ -223,8 +234,13 @@ async fn multi_gpu_training_worker(
         .await?
     };
     worker_contexts = worker_contexts_;
+    timing.set_record("load checkpoint");
+
+    // info!("{:#?}", timing.records());
 
     // training loop
+    let mut timing = Timing::new();
+
     while let Ok(record) = data_rx.recv().await {
         let TrainingRecord {
             epoch,
@@ -254,6 +270,7 @@ async fn multi_gpu_training_worker(
 
             worker_contexts = iter::once(first_context).chain(other_contexts).collect();
         }
+        timing.set_record("sync weights");
 
         // forward step
         let outputs = {
@@ -357,6 +374,7 @@ async fn multi_gpu_training_worker(
             outputs.sort_by_cached_key(|output| output.job_index);
             outputs
         };
+        timing.set_record("forward step");
 
         // backward step
         let outputs = {
@@ -406,6 +424,7 @@ async fn multi_gpu_training_worker(
 
             outputs
         };
+        timing.set_record("backward step");
 
         // compute losses from each job
         let losses = async_std::task::spawn_blocking(move || {
@@ -468,6 +487,7 @@ async fn multi_gpu_training_worker(
             losses
         })
         .await;
+        timing.set_record("compute loss");
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
@@ -487,6 +507,7 @@ async fn multi_gpu_training_worker(
             .await?;
             worker_contexts = worker_contexts_;
         }
+        timing.set_record("save checkpoint");
 
         // send to logger
         {
@@ -539,17 +560,22 @@ async fn multi_gpu_training_worker(
         }
 
         training_step += 1;
+
+        timing.set_record("finalize");
+
+        // info!("{:#?}", timing.records());
+        timing = Timing::new();
     }
     Ok(())
 }
 
 fn single_gpu_training_worker(
     config: Arc<Config>,
-    logging_dir: Arc<PathBuf>,
+    _logging_dir: Arc<PathBuf>,
     checkpoint_dir: Arc<PathBuf>,
     input_channels: usize,
     num_classes: usize,
-    training_rx: async_std::sync::Receiver<TrainingRecord>,
+    data_rx: async_std::sync::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
 ) -> Result<()> {
     warn!(r#"multi-gpu feature is disabled, use "master_device" as default device"#);
@@ -601,7 +627,7 @@ fn single_gpu_training_worker(
     // training
     info!("start training");
 
-    while let Ok(record) = async_std::task::block_on(training_rx.recv()) {
+    while let Ok(record) = async_std::task::block_on(data_rx.recv()) {
         timing.set_record("next record");
 
         let TrainingRecord {
