@@ -7,10 +7,10 @@ mod util;
 
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint},
+    config::{Config, LoadCheckpoint, TrainingConfig},
     data::{DataSet, TrainingRecord},
     message::LoggingMessage,
-    util::{RateCounter, Timing},
+    util::{LrScheduler, RateCounter, Timing},
 };
 
 const FILE_STRFTIME: &str = "%Y-%m-%d-%H-%M-%S.%3f%z";
@@ -147,6 +147,7 @@ async fn multi_gpu_training_worker(
         gradients: Vec<Tensor>,
     }
 
+    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule)?;
     let mut rate_counter = RateCounter::with_second_intertal();
     let master_device = config.training.master_device;
     let batch_size = config.training.batch_size.get();
@@ -157,48 +158,72 @@ async fn multi_gpu_training_worker(
         .map(|steps| steps.get());
 
     // initialize workers
-    let mut worker_contexts: Vec<_> = config
-        .training
-        .workers
-        .iter()
-        .map(|worker_config| -> Result<_> {
-            let device = worker_config.device;
-            let minibatch_size = worker_config
-                .minibatch_size
-                .map(|size| size.get())
-                .unwrap_or(default_minibatch_size);
-            let vs = nn::VarStore::new(device);
-            let root = vs.root();
-            let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
-            let yolo_loss = YoloLossInit {
-                reduction: Reduction::Mean,
-                match_grid_method: Some(config.training.match_grid_method),
-                iou_kind: Some(config.training.iou_kind),
-                ..Default::default()
-            }
-            .build();
-            let optimizer = nn::Adam::default().build(&vs, 0.01)?;
+    let mut worker_contexts: Vec<_> = {
+        let init_lr = lr_scheduler.next();
+        config
+            .training
+            .workers
+            .iter()
+            .map(|worker_config| -> Result<_> {
+                let device = worker_config.device;
+                let minibatch_size = worker_config
+                    .minibatch_size
+                    .map(|size| size.get())
+                    .unwrap_or(default_minibatch_size);
+                let vs = nn::VarStore::new(device);
+                let root = vs.root();
+                let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+                let yolo_loss = YoloLossInit {
+                    reduction: Reduction::Mean,
+                    match_grid_method: Some(config.training.match_grid_method),
+                    iou_kind: Some(config.training.iou_kind),
+                    ..Default::default()
+                }
+                .build();
+                let optimizer = {
+                    let TrainingConfig {
+                        momentum,
+                        weight_decay,
+                        ..
+                    } = config.as_ref().training;
+                    let mut opt = nn::Adam {
+                        wd: weight_decay.raw(),
+                        ..Default::default()
+                    }
+                    .build(&vs, init_lr)?;
+                    opt.set_momentum(momentum.raw());
+                    opt
+                };
 
-            Ok(WorkerContext {
-                device,
-                minibatch_size,
-                vs,
-                model,
-                yolo_loss,
-                optimizer,
+                Ok(WorkerContext {
+                    device,
+                    minibatch_size,
+                    vs,
+                    model,
+                    yolo_loss,
+                    optimizer,
+                })
             })
-        })
-        .try_collect()?;
+            .try_collect()?
+    };
 
     // load checkpoint
-    try_load_checkpoint(
-        &mut worker_contexts[0].vs,
-        &config.logging.dir,
-        &config.training.load_checkpoint,
-    )?;
+    let worker_contexts_ = {
+        let config = config.clone();
+        async_std::task::spawn_blocking(move || -> Result<_> {
+            try_load_checkpoint(
+                &mut worker_contexts[0].vs,
+                &config.logging.dir,
+                &config.training.load_checkpoint,
+            )?;
+            Ok(worker_contexts)
+        })
+        .await?
+    };
+    worker_contexts = worker_contexts_;
 
     // training loop
-    let mut training_step = 0;
+    let mut training_step = config.training.initial_step.unwrap_or(0);
 
     while let Ok(record) = data_rx.recv().await {
         let TrainingRecord {
@@ -377,13 +402,13 @@ async fn multi_gpu_training_worker(
                 })
             })
             .await;
-
             worker_contexts = worker_contexts_;
+
             outputs
         };
 
         // compute losses from each job
-        let losses = {
+        let losses = async_std::task::spawn_blocking(move || {
             let (
                 loss_vec,
                 iou_loss_vec,
@@ -441,16 +466,26 @@ async fn multi_gpu_training_worker(
             };
 
             losses
-        };
+        })
+        .await;
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
-            save_checkpoint(
-                &worker_contexts[0].vs,
-                &checkpoint_dir,
-                training_step,
-                f64::from(&losses.loss),
-            )?;
+            let losses = losses.shallow_clone();
+            let checkpoint_dir = checkpoint_dir.clone();
+
+            let worker_contexts_ = async_std::task::spawn_blocking(move || -> Result<_> {
+                save_checkpoint(
+                    &worker_contexts[0].vs,
+                    &checkpoint_dir,
+                    training_step,
+                    f64::from(&losses.loss),
+                )?;
+
+                Ok(worker_contexts)
+            })
+            .await?;
+            worker_contexts = worker_contexts_;
         }
 
         // send to logger
@@ -479,11 +514,28 @@ async fn multi_gpu_training_worker(
         if let Some(batch_rate) = rate_counter.rate() {
             let record_rate = batch_rate * config.training.batch_size.get() as f64;
             info!(
-                "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
-                epoch, training_step, batch_rate, record_rate
+                "epoch: {}\tstep: {}\tlr: {:.5}\t{:.2} batches/s\t{:.2} records/s",
+                epoch,
+                training_step,
+                lr_scheduler.lr(),
+                batch_rate,
+                record_rate
             );
         } else {
-            info!("epoch: {}\tstep: {}", epoch, training_step);
+            info!(
+                "epoch: {}\tstep: {}\tlr: {:5}",
+                epoch,
+                training_step,
+                lr_scheduler.lr()
+            );
+        }
+
+        // update lr
+        {
+            let lr = lr_scheduler.next();
+            worker_contexts
+                .iter_mut()
+                .for_each(|context| context.optimizer.set_lr(lr));
         }
 
         training_step += 1;
@@ -505,6 +557,7 @@ fn single_gpu_training_worker(
     // init model
     info!("initializing model");
     let device = config.training.master_device;
+    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule)?;
     let mut vs = nn::VarStore::new(device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
@@ -514,10 +567,24 @@ fn single_gpu_training_worker(
         ..Default::default()
     }
     .build();
-    let mut optimizer = nn::Adam::default().build(&vs, 0.01)?;
+    let mut optimizer = {
+        let TrainingConfig {
+            momentum,
+            weight_decay,
+            ..
+        } = config.as_ref().training;
+        let lr = lr_scheduler.next();
+        let mut opt = nn::Adam {
+            wd: weight_decay.raw(),
+            ..Default::default()
+        }
+        .build(&vs, lr)?;
+        opt.set_momentum(momentum.raw());
+        opt
+    };
     let mut rate_counter = RateCounter::with_second_intertal();
     let mut timing = Timing::new();
-    let mut training_step = 0;
+    let mut training_step = config.training.initial_step.unwrap_or(0);
     let save_checkpoint_steps = config
         .training
         .save_checkpoint_steps
@@ -561,12 +628,24 @@ fn single_gpu_training_worker(
         if let Some(batch_rate) = rate_counter.rate() {
             let record_rate = batch_rate * config.training.batch_size.get() as f64;
             info!(
-                "epoch: {}\tstep: {}\t{:.2} mini-batches/s\t{:.2} records/s",
-                epoch, training_step, batch_rate, record_rate
+                "epoch: {}\tstep: {}\tlr: {:.5}\t{:.2} batches/s\t{:.2} records/s",
+                epoch,
+                training_step,
+                lr_scheduler.lr(),
+                batch_rate,
+                record_rate
             );
         } else {
-            info!("epoch: {}\tstep: {}", epoch, training_step);
+            info!(
+                "epoch: {}\tstep: {}\tlr: {:5}",
+                epoch,
+                training_step,
+                lr_scheduler.lr()
+            );
         }
+
+        // update lr
+        optimizer.set_lr(lr_scheduler.next());
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {

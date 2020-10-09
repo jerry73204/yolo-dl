@@ -57,6 +57,10 @@ pub struct TrainingConfig {
     pub default_minibatch_size: NonZeroUsize,
     pub match_grid_method: MatchGrid,
     pub iou_kind: IoUKind,
+    pub initial_step: Option<usize>,
+    pub lr_schedule: LearningRateSchedule,
+    pub momentum: R64,
+    pub weight_decay: R64,
     pub save_checkpoint_steps: Option<NonZeroUsize>,
     pub load_checkpoint: LoadCheckpoint,
     pub enable_multi_gpu: bool,
@@ -78,4 +82,11 @@ pub struct WorkerConfig {
     #[serde(with = "tch_serde::serde_device")]
     pub device: Device,
     pub minibatch_size: Option<NonZeroUsize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LearningRateSchedule {
+    Constant { lr: R64 },
+    StepWise { steps: Vec<(usize, R64)> },
 }

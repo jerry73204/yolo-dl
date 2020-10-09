@@ -26,6 +26,17 @@
         "default_minibatch_size": 84,
         "match_grid_method": "Rect4",
         "iou_kind": "GIoU",
+        "initial_step": 0,
+        "momentum": 0.9,
+        "weight_decay": 0.0005,
+        "lr_schedule": {
+            "type": "StepWise",
+            "steps": [
+                [0, 0.01],
+                [400000, 0.001],
+                [450000, 0.0001],
+            ],
+        },
         "save_checkpoint_steps": 1,
         "load_checkpoint": {
             "type": "Disabled",
@@ -38,5 +49,4 @@
             }
         ]
     },
-
 }
