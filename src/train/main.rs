@@ -147,7 +147,9 @@ async fn multi_gpu_training_worker(
         gradients: Vec<Tensor>,
     }
 
-    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule)?;
+    let init_training_step = config.training.initial_step.unwrap_or(0);
+    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule, init_training_step)?;
+    let mut training_step = init_training_step;
     let mut rate_counter = RateCounter::with_second_intertal();
     let master_device = config.training.master_device;
     let batch_size = config.training.batch_size.get();
@@ -223,8 +225,6 @@ async fn multi_gpu_training_worker(
     worker_contexts = worker_contexts_;
 
     // training loop
-    let mut training_step = config.training.initial_step.unwrap_or(0);
-
     while let Ok(record) = data_rx.recv().await {
         let TrainingRecord {
             epoch,
@@ -523,7 +523,7 @@ async fn multi_gpu_training_worker(
             );
         } else {
             info!(
-                "epoch: {}\tstep: {}\tlr: {:5}",
+                "epoch: {}\tstep: {}\tlr: {:.5}",
                 epoch,
                 training_step,
                 lr_scheduler.lr()
@@ -557,7 +557,9 @@ fn single_gpu_training_worker(
     // init model
     info!("initializing model");
     let device = config.training.master_device;
-    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule)?;
+    let init_training_step = config.training.initial_step.unwrap_or(0);
+    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule, init_training_step)?;
+    let mut training_step = init_training_step;
     let mut vs = nn::VarStore::new(device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
@@ -584,7 +586,6 @@ fn single_gpu_training_worker(
     };
     let mut rate_counter = RateCounter::with_second_intertal();
     let mut timing = Timing::new();
-    let mut training_step = config.training.initial_step.unwrap_or(0);
     let save_checkpoint_steps = config
         .training
         .save_checkpoint_steps
@@ -637,7 +638,7 @@ fn single_gpu_training_worker(
             );
         } else {
             info!(
-                "epoch: {}\tstep: {}\tlr: {:5}",
+                "epoch: {}\tstep: {}\tlr: {:.5}",
                 epoch,
                 training_step,
                 lr_scheduler.lr()

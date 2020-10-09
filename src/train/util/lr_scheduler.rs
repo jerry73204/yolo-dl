@@ -14,8 +14,10 @@ pub enum LrScheduler {
 }
 
 impl LrScheduler {
-    pub fn new(config: &LearningRateSchedule) -> Result<Self> {
-        let scheduler = match *config {
+    pub fn new(config: &LearningRateSchedule, init_step: impl Into<Option<usize>>) -> Result<Self> {
+        let init_step = init_step.into();
+
+        let mut scheduler = match *config {
             LearningRateSchedule::Constant { lr } => {
                 ensure!(lr >= 0.0, "the lr must be positive");
                 Self::Constant { lr }
@@ -43,6 +45,11 @@ impl LrScheduler {
                 }
             }
         };
+
+        if let Some(init_step) = init_step {
+            scheduler.set_step(init_step);
+        }
+
         Ok(scheduler)
     }
 
