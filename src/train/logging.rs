@@ -157,10 +157,6 @@ pub async fn logging_worker(
                                         .into_iter()
                                         .unzip_n_vec();
 
-                                    // draw target bboxes
-                                    let _ =
-                                        canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
-
                                     // draw predicted bboxes
                                     {
                                         let flat_indexes = Tensor::of_slice(&flat_indexes);
@@ -207,8 +203,12 @@ pub async fn logging_worker(
                                         //     output.objectness().index_select(0, &flat_indexes);
 
                                         let _ =
-                                            canvas.batch_draw_rect_(&pred_btlbrs, 2, &pred_color);
+                                            canvas.batch_draw_rect_(&pred_btlbrs, 1, &pred_color);
                                     }
+
+                                    // draw target bboxes
+                                    let _ =
+                                        canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
 
                                     timing.set_record("draw");
                                     Ok((canvas, timing))
