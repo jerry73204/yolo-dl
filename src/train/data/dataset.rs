@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    config::{Config, DatasetConfig, PreprocessorConfig, TrainingConfig},
+    config::{Config, DatasetConfig, DatasetKind, PreprocessorConfig, TrainingConfig},
     message::LoggingMessage,
     util::Timing,
 };
@@ -32,15 +32,54 @@ pub struct DataSet {
 impl DataSet {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
         let Config {
-            dataset:
-                DatasetConfig {
-                    dataset_dir,
-                    dataset_name,
-                    ..
-                },
+            dataset: DatasetConfig { kind, .. },
             ..
         } = &*config;
-        let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
+
+        let dataset = match kind {
+            DatasetKind::Coco {
+                dataset_dir,
+                dataset_name,
+                ..
+            } => coco::DataSet::load_async(dataset_dir, &dataset_name).await?,
+            DatasetKind::Voc { dataset_dir, .. } => {
+                let dataset_dir = dataset_dir.to_owned();
+                let samples =
+                    async_std::task::spawn_blocking(move || voc_dataset::load(dataset_dir)).await?;
+                todo!();
+            }
+            DatasetKind::Iii { dataset_dir, .. } => {
+                let xml_files: Vec<_> =
+                    glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?.try_collect()?;
+                let tasks = xml_files
+                    .into_iter()
+                    .map(|xml_file| async move {
+                        let xml_content = async_std::fs::read_to_string(&xml_file)
+                            .await
+                            .with_context(|| {
+                                format!("failed to read annotation file {}", xml_file.display())
+                            })?;
+
+                        let annotation = async_std::task::spawn_blocking(move || -> Result<_> {
+                            let annotation: voc_dataset::Annotation =
+                                serde_xml_rs::from_str(&xml_content).with_context(|| {
+                                    format!(
+                                        "failed to parse annotation file {}",
+                                        xml_file.display()
+                                    )
+                                })?;
+                            Ok(annotation)
+                        })
+                        .await?;
+
+                        Fallible::Ok(annotation)
+                    })
+                    .map(async_std::task::spawn);
+
+                let annotations = future::try_join_all(tasks).await?;
+                todo!();
+            }
+        };
 
         Ok(Self { config, dataset })
     }

@@ -1,9 +1,16 @@
 {
     "dataset": {
-        "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
-        "dataset_name": "train2017",
         "whitelist_classes": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "image_size": 256,
+        "kind": {
+            "type": "Coco",
+            "dataset_dir": "/mnt/client/aeon/coco-2017",
+            "dataset_name": "train2017",
+        },
+        // "kind": {
+        //     "type": "Iii",
+        //     "dataset_dir": "/mnt/client/aeon/dataset-demo-171207",
+        // },
     },
     "logging": {
         "dir": "logs",

@@ -6,6 +6,7 @@ pub use chrono::{DateTime, Local};
 pub use coco::Category;
 pub use futures::{
     future,
+    future::FutureExt,
     stream::{Stream, StreamExt, TryStreamExt},
     AsyncWriteExt,
 };

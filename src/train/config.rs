@@ -31,10 +31,24 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetConfig {
-    pub dataset_dir: PathBuf,
-    pub dataset_name: String,
     pub whitelist_classes: Option<Vec<String>>,
     pub image_size: NonZeroUsize,
+    pub kind: DatasetKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum DatasetKind {
+    Coco {
+        dataset_dir: PathBuf,
+        dataset_name: String,
+    },
+    Voc {
+        dataset_dir: PathBuf,
+    },
+    Iii {
+        dataset_dir: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
