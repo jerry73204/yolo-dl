@@ -6,14 +6,6 @@ use crate::{
     util::Timing,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CocoRecord {
-    pub path: PathBuf,
-    pub size: PixelSize<usize>,
-    /// Bounding box in pixel units.
-    pub bboxes: Vec<LabeledPixelBBox<R64>>,
-}
-
 #[derive(Debug, TensorLike)]
 pub struct TrainingRecord {
     pub epoch: usize,
@@ -26,7 +18,7 @@ pub struct TrainingRecord {
 #[derive(Debug)]
 pub struct DataSet {
     config: Arc<Config>,
-    dataset: coco::DataSet,
+    storage: DatasetStorage,
 }
 
 impl DataSet {
@@ -41,47 +33,30 @@ impl DataSet {
                 dataset_dir,
                 dataset_name,
                 ..
-            } => coco::DataSet::load_async(dataset_dir, &dataset_name).await?,
+            } => {
+                let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
+                Self {
+                    config,
+                    storage: DatasetStorage::Coco { dataset },
+                }
+            }
             DatasetKind::Voc { dataset_dir, .. } => {
-                let dataset_dir = dataset_dir.to_owned();
-                let samples =
-                    async_std::task::spawn_blocking(move || voc_dataset::load(dataset_dir)).await?;
-                todo!();
+                let samples = load_voc_dataset(dataset_dir).await?;
+                Self {
+                    config,
+                    storage: DatasetStorage::Voc { samples },
+                }
             }
             DatasetKind::Iii { dataset_dir, .. } => {
-                let xml_files: Vec<_> =
-                    glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?.try_collect()?;
-                let tasks = xml_files
-                    .into_iter()
-                    .map(|xml_file| async move {
-                        let xml_content = async_std::fs::read_to_string(&xml_file)
-                            .await
-                            .with_context(|| {
-                                format!("failed to read annotation file {}", xml_file.display())
-                            })?;
-
-                        let annotation = async_std::task::spawn_blocking(move || -> Result<_> {
-                            let annotation: voc_dataset::Annotation =
-                                serde_xml_rs::from_str(&xml_content).with_context(|| {
-                                    format!(
-                                        "failed to parse annotation file {}",
-                                        xml_file.display()
-                                    )
-                                })?;
-                            Ok(annotation)
-                        })
-                        .await?;
-
-                        Fallible::Ok(annotation)
-                    })
-                    .map(async_std::task::spawn);
-
-                let annotations = future::try_join_all(tasks).await?;
-                todo!();
+                let samples = load_iii_dataset(dataset_dir).await?;
+                Self {
+                    config,
+                    storage: DatasetStorage::Iii { samples },
+                }
             }
         };
 
-        Ok(Self { config, dataset })
+        Ok(dataset)
     }
 
     pub fn input_channels(&self) -> usize {
@@ -89,7 +64,10 @@ impl DataSet {
     }
 
     pub fn num_classes(&self) -> usize {
-        self.dataset.instances.categories.len()
+        match &self.storage {
+            DatasetStorage::Coco { dataset, .. } => dataset.instances.categories.len(),
+            _ => todo!(),
+        }
     }
 
     pub async fn train_stream(
@@ -123,11 +101,17 @@ impl DataSet {
         let batch_size = batch_size.get();
         let image_size = image_size.get() as i64;
 
-        let coco::DataSet {
-            instances,
-            image_dir,
-            ..
-        } = &self.dataset;
+        let (instances, image_dir) = match &self.storage {
+            DatasetStorage::Coco {
+                dataset:
+                    coco::DataSet {
+                        instances,
+                        image_dir,
+                        ..
+                    },
+            } => (instances, image_dir),
+            _ => todo!(),
+        };
 
         let annotations: HashMap<_, _> = instances
             .annotations
@@ -450,4 +434,11 @@ impl DataSet {
 
         Ok(Box::pin(stream))
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum DatasetStorage {
+    Coco { dataset: coco::DataSet },
+    Iii { samples: Vec<IiiSample> },
+    Voc { samples: Vec<voc_dataset::Sample> },
 }
