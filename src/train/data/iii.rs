@@ -31,7 +31,7 @@ where
             let annotation = {
                 let xml_file = xml_file.clone();
                 async_std::task::spawn_blocking(move || -> Result<_> {
-                    let annotation: IiiAnnotation = serde_xml_rs::from_str(&xml_content)
+                    let annotation: voc_dataset::Annotation = serde_xml_rs::from_str(&xml_content)
                         .with_context(|| {
                             format!("failed to parse annotation file {}", xml_file.display())
                         })?;
@@ -64,101 +64,5 @@ where
 #[derive(Debug, Clone)]
 pub struct IiiSample {
     pub image_file: PathBuf,
-    pub annotation: IiiAnnotation,
+    pub annotation: voc_dataset::Annotation,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename = "annotation")]
-pub struct IiiAnnotation {
-    pub filename: String,
-    pub folder: String,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub object: Vec<voc_dataset::Object>,
-    pub segmented: Option<bool>,
-    pub size: voc_dataset::Size,
-}
-
-// /// Correspond to <pose> in annotation XML.
-// #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-// #[serde(rename = "pose")]
-// pub enum Pose {
-//     Frontal,
-//     Rear,
-//     Left,
-//     Right,
-//     Unspecified,
-// }
-
-// /// Correspond to <bndbox> in annotation XML.
-// #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-// #[serde(rename = "bndbox")]
-// pub struct BndBox {
-//     pub xmin: R64,
-//     pub ymin: R64,
-//     pub xmax: R64,
-//     pub ymax: R64,
-// }
-
-// /// Correspond to <size> in annotation XML.
-// #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-// #[serde(rename = "size")]
-// pub struct Size {
-//     pub width: usize,
-//     pub height: usize,
-//     pub depth: usize,
-// }
-
-// /// Correspond to <size> in annotation XML.
-// #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-// #[serde(rename = "point")]
-// pub struct Point {
-//     pub x: usize,
-//     pub y: usize,
-// }
-
-// /// Correspond to <object> in annotation XML.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(rename = "object")]
-// pub struct Object {
-//     pub name: String,
-//     pub pose: Pose,
-//     pub bndbox: BndBox,
-//     pub actions: Option<Actions>,
-//     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-//     pub part: Vec<Part>,
-//     pub truncated: Option<bool>,
-//     pub difficult: Option<bool>,
-//     pub occluded: Option<bool>,
-//     pub point: Option<Point>,
-// }
-
-// /// Correspond to <part> in annotation XML.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(rename = "part")]
-// pub struct Part {
-//     pub name: String,
-//     pub bndbox: BndBox,
-// }
-
-// /// Correspond to <source> in annotation XML.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(rename = "source")]
-// pub struct Source {
-//     pub database: String,
-//     pub annotation: String,
-//     pub image: String,
-// }
-
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// #[serde(rename = "actions")]
-// pub struct Actions {
-//     pub jumping: bool,
-//     pub other: bool,
-//     pub phoning: bool,
-//     pub playinginstrument: bool,
-//     pub reading: bool,
-//     pub ridinghorse: bool,
-//     pub running: bool,
-//     pub takingphoto: bool,
-//     pub walking: bool,
-// }
