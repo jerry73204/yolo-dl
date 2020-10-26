@@ -39,8 +39,8 @@ pub async fn logging_worker(
                     rate_counter.add(1.0);
                     msg
                 }
-                Err(broadcast::RecvError::Lagged(_)) => continue,
-                Err(broadcast::RecvError::Closed) => break,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
             };
 
             match kind {
