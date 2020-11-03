@@ -31,7 +31,7 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetConfig {
-    pub whitelist_classes: Option<Vec<String>>,
+    pub classes_file: PathBuf,
     pub image_size: NonZeroUsize,
     pub kind: DatasetKind,
 }

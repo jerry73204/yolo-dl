@@ -61,6 +61,21 @@ impl<U> BBox<R64, U>
 where
     U: Unit,
 {
+    pub fn try_from_tlbr(tlbr: [R64; 4]) -> Result<Self> {
+        let [t, l, b, r] = tlbr;
+        let cy = (t + b) / 2.0;
+        let cx = (l + r) / 2.0;
+        let h = b - t;
+        let w = r - l;
+
+        ensure!(h >= 0.0 && w >= 0.0, "invalid tlbr bbox {:?}", tlbr);
+
+        Ok(Self {
+            cycxhw: [cy, cx, h, w],
+            _phantom: PhantomData,
+        })
+    }
+
     pub fn from_tlhw(tlhw: [R64; 4]) -> Self {
         let [t, l, h, w] = tlhw;
         let cy = t + h / 2.0;

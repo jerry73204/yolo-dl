@@ -1,4 +1,4 @@
-use super::CocoRecord;
+use super::DataRecord;
 use crate::{
     common::*,
     util::{TensorEx, Timing},
@@ -308,7 +308,7 @@ impl CacheLoader {
         Ok(loader)
     }
 
-    pub async fn load_cache(&self, record: &CocoRecord) -> Result<(Tensor, Vec<LabeledRatioBBox>)> {
+    pub async fn load_cache(&self, record: &DataRecord) -> Result<(Tensor, Vec<LabeledRatioBBox>)> {
         use async_std::{fs::File, io::BufWriter};
 
         // load config
@@ -317,7 +317,7 @@ impl CacheLoader {
             image_channels,
             ..
         } = *self;
-        let CocoRecord {
+        let DataRecord {
             path: ref image_path,
             size:
                 PixelSize {

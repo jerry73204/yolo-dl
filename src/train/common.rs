@@ -7,10 +7,11 @@ pub use coco::Category;
 pub use futures::{
     future,
     future::FutureExt,
-    stream::{Stream, StreamExt, TryStreamExt},
+    stream::{self, Stream, StreamExt, TryStreamExt},
     AsyncWriteExt,
 };
 pub use image::{imageops::FilterType, DynamicImage, FlatSamples, ImageFormat, Pixel};
+pub use indexmap::IndexSet;
 pub use itertools::{izip, Itertools};
 pub use log::{info, warn};
 pub use ndarray::{Array, Array2, Array3, ArrayD};
@@ -27,8 +28,9 @@ pub use serde::{
 pub use std::{
     borrow::{Borrow, Cow},
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
+    fmt::Debug,
     future::Future,
     hash::{Hash, Hasher},
     iter::{self, Sum},
@@ -38,6 +40,7 @@ pub use std::{
     ops::{Add, Deref, DerefMut, Div, Mul, Rem, Sub},
     path::{Path, PathBuf},
     pin::Pin,
+    rc::Rc,
     sync::{
         atomic::{self, AtomicBool},
         Arc,

@@ -1,6 +1,6 @@
 {
     "dataset": {
-        "whitelist_classes": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
+        "classes_file": "cfg/coco.classes",
         "image_size": 256,
         "kind": {
             "type": "Coco",

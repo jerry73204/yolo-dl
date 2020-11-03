@@ -6,6 +6,23 @@ use crate::{
     util::Timing,
 };
 
+pub trait GenericDataset
+where
+    Self: Debug + Sync + Send,
+{
+    fn input_channels(&self) -> usize;
+    fn num_classes(&self) -> usize;
+    fn records(&self) -> Result<Vec<Arc<DataRecord>>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DataRecord {
+    pub path: PathBuf,
+    pub size: PixelSize<usize>,
+    /// Bounding box in pixel units.
+    pub bboxes: Vec<LabeledPixelBBox<R64>>,
+}
+
 #[derive(Debug, TensorLike)]
 pub struct TrainingRecord {
     pub epoch: usize,
@@ -16,58 +33,47 @@ pub struct TrainingRecord {
 }
 
 #[derive(Debug)]
-pub struct DataSet {
+pub struct Dataset {
     config: Arc<Config>,
-    storage: DatasetStorage,
+    dataset: Box<dyn GenericDataset>,
 }
 
-impl DataSet {
+impl GenericDataset for Dataset {
+    fn input_channels(&self) -> usize {
+        self.dataset.input_channels()
+    }
+
+    fn num_classes(&self) -> usize {
+        self.dataset.num_classes()
+    }
+
+    fn records(&self) -> Result<Vec<Arc<DataRecord>>> {
+        self.dataset.records()
+    }
+}
+
+impl Dataset {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
         let Config {
             dataset: DatasetConfig { kind, .. },
             ..
         } = &*config;
 
-        let dataset = match kind {
+        let dataset: Box<dyn GenericDataset + Send> = match kind {
             DatasetKind::Coco {
                 dataset_dir,
                 dataset_name,
                 ..
-            } => {
-                let dataset = coco::DataSet::load_async(dataset_dir, &dataset_name).await?;
-                Self {
-                    config,
-                    storage: DatasetStorage::Coco { dataset },
-                }
-            }
+            } => Box::new(CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?),
             DatasetKind::Voc { dataset_dir, .. } => {
-                let samples = load_voc_dataset(dataset_dir).await?;
-                Self {
-                    config,
-                    storage: DatasetStorage::Voc { samples },
-                }
+                Box::new(VocDataset::load(config.clone(), dataset_dir).await?)
             }
             DatasetKind::Iii { dataset_dir, .. } => {
-                let samples = load_iii_dataset(dataset_dir).await?;
-                Self {
-                    config,
-                    storage: DatasetStorage::Iii { samples },
-                }
+                Box::new(IiiDataset::load(config.clone(), dataset_dir).await?)
             }
         };
 
-        Ok(dataset)
-    }
-
-    pub fn input_channels(&self) -> usize {
-        3
-    }
-
-    pub fn num_classes(&self) -> usize {
-        match &self.storage {
-            DatasetStorage::Coco { dataset, .. } => dataset.instances.categories.len(),
-            _ => todo!(),
-        }
+        Ok(Self { config, dataset })
     }
 
     pub async fn train_stream(
@@ -75,12 +81,7 @@ impl DataSet {
         logging_tx: broadcast::Sender<LoggingMessage>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         let Config {
-            dataset:
-                DatasetConfig {
-                    ref whitelist_classes,
-                    image_size,
-                    ..
-                },
+            dataset: DatasetConfig { image_size, .. },
             preprocessor:
                 PreprocessorConfig {
                     ref cache_dir,
@@ -100,84 +101,7 @@ impl DataSet {
         } = *self.config;
         let batch_size = batch_size.get();
         let image_size = image_size.get() as i64;
-
-        let (instances, image_dir) = match &self.storage {
-            DatasetStorage::Coco {
-                dataset:
-                    coco::DataSet {
-                        instances,
-                        image_dir,
-                        ..
-                    },
-            } => (instances, image_dir),
-            _ => todo!(),
-        };
-
-        let annotations: HashMap<_, _> = instances
-            .annotations
-            .iter()
-            .map(|ann| (ann.id, ann))
-            .collect();
-        let images: HashMap<_, _> = instances.images.iter().map(|img| (img.id, img)).collect();
-        let categories: HashMap<_, _> = match whitelist_classes {
-            Some(whitelist_classes) => instances
-                .categories
-                .iter()
-                .filter_map(|cat| {
-                    let Category { id, ref name, .. } = *cat;
-
-                    // filter by whitelist
-                    if whitelist_classes.contains(name) {
-                        Some((id, name.to_owned()))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            None => instances
-                .categories
-                .iter()
-                .map(|cat| {
-                    let Category { id, ref name, .. } = *cat;
-                    (id, name.to_owned())
-                })
-                .collect(),
-        };
-
-        let records = Arc::new(
-            annotations
-                .iter()
-                .map(|(_id, ann)| (ann.image_id, ann))
-                .into_group_map()
-                .into_iter()
-                .map(|(image_id, anns)| {
-                    let image = &images[&image_id];
-                    let bboxes = anns
-                        .into_iter()
-                        .filter_map(|ann| {
-                            let [l, t, w, h] = ann.bbox.clone();
-                            let category_id = ann.category_id;
-
-                            // filter by whiltelist
-                            if categories.contains_key(&category_id) {
-                                let bbox =
-                                    PixelBBox::from_tlhw([t.into(), l.into(), h.into(), w.into()]);
-                                Some(LabeledPixelBBox { bbox, category_id })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect_vec();
-
-                    CocoRecord {
-                        path: image_dir.join(&image.file_name),
-                        size: PixelSize::new(image.height, image.width),
-                        bboxes,
-                    }
-                })
-                .map(Arc::new)
-                .collect_vec(),
-        );
+        let records = Arc::new(self.dataset.records()?);
 
         // repeat records
         let stream = futures::stream::repeat(records).enumerate();
@@ -436,9 +360,23 @@ impl DataSet {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum DatasetStorage {
-    Coco { dataset: coco::DataSet },
-    Iii { samples: Vec<IiiSample> },
-    Voc { samples: Vec<voc_dataset::Sample> },
+pub async fn load_classes_file<P>(path: P) -> Result<IndexSet<String>>
+where
+    P: AsRef<async_std::path::Path>,
+{
+    let path = path.as_ref();
+    let content = async_std::fs::read_to_string(path).await?;
+    let lines: Vec<_> = content.lines().collect();
+    let classes: IndexSet<_> = lines.iter().cloned().map(ToOwned::to_owned).collect();
+    ensure!(
+        lines.len() == classes.len(),
+        "duplicated class names found in '{}'",
+        path.display()
+    );
+    ensure!(
+        classes.len() > 0,
+        "no classes found in '{}'",
+        path.display()
+    );
+    Ok(classes)
 }

@@ -8,7 +8,7 @@ mod util;
 use crate::{
     common::*,
     config::{Config, LoadCheckpoint, TrainingConfig},
-    data::{DataSet, TrainingRecord},
+    data::{Dataset, GenericDataset, TrainingRecord},
     message::LoggingMessage,
     util::{LrScheduler, RateCounter, Timing},
 };
@@ -49,7 +49,7 @@ pub async fn main() -> Result<()> {
 
     // load dataset
     info!("loading dataset");
-    let dataset = DataSet::new(config.clone()).await?;
+    let dataset = Dataset::new(config.clone()).await?;
     let input_channels = dataset.input_channels();
     let num_classes = dataset.num_classes();
 
