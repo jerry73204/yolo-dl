@@ -6,8 +6,9 @@ use crate::{
 
 const III_DEPTH: usize = 3;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct IiiDataset {
+    pub config: Arc<Config>,
     pub samples: Vec<IiiSample>,
     pub classes: IndexSet<String>,
 }
@@ -19,6 +20,10 @@ impl GenericDataset for IiiDataset {
 
     fn num_classes(&self) -> usize {
         self.classes.len()
+    }
+
+    fn classes(&self) -> &IndexSet<String> {
+        &self.classes
     }
 
     fn records(&self) -> Result<Vec<Arc<DataRecord>>> {
@@ -40,7 +45,12 @@ impl GenericDataset for IiiDataset {
                     .object
                     .iter()
                     .filter_map(|obj| {
-                        let class_index = self.classes.get_index_of(&obj.name)?;
+                        // filter by class list and whitelist
+                        let class_name = &obj.name;
+                        let class_index = self.classes.get_index_of(class_name)?;
+                        if let Some(whitelist) = &self.config.dataset.class_whiltelist {
+                            whitelist.get(class_name)?;
+                        }
                         Some((obj, class_index))
                     })
                     .map(|(obj, class_index)| -> Result<_> {
@@ -154,7 +164,11 @@ impl IiiDataset {
                 .await?
         };
 
-        Ok(IiiDataset { samples, classes })
+        Ok(IiiDataset {
+            config,
+            samples,
+            classes,
+        })
     }
 }
 

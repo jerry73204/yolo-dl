@@ -4,8 +4,9 @@ use crate::{
     config::{Config, DatasetConfig},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct CocoDataset {
+    pub config: Arc<Config>,
     pub dataset: coco::DataSet,
     pub category_id_to_classes: HashMap<usize, String>,
     pub classes: IndexSet<String>,
@@ -18,6 +19,10 @@ impl GenericDataset for CocoDataset {
 
     fn num_classes(&self) -> usize {
         self.classes.len()
+    }
+
+    fn classes(&self) -> &IndexSet<String> {
+        &self.classes
     }
 
     fn records(&self) -> Result<Vec<Arc<DataRecord>>> {
@@ -49,9 +54,14 @@ impl GenericDataset for CocoDataset {
                 let bboxes = anns
                     .into_iter()
                     .filter_map(|ann| {
-                        let [l, t, w, h] = ann.bbox.clone();
+                        // filter by class list and whitelist
                         let category_name = &category_id_to_classes[&ann.category_id];
                         let class_index = classes.get_index_of(category_name)?;
+                        if let Some(whitelist) = &self.config.dataset.class_whiltelist {
+                            whitelist.get(category_name)?;
+                        }
+
+                        let [l, t, w, h] = ann.bbox;
                         let bbox = PixelBBox::from_tlhw([t.into(), l.into(), h.into(), w.into()]);
                         Some(LabeledPixelBBox {
                             bbox,
@@ -100,6 +110,7 @@ impl CocoDataset {
         })?;
 
         Ok(CocoDataset {
+            config,
             dataset,
             category_id_to_classes,
             classes,

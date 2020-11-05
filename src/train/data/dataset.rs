@@ -12,6 +12,7 @@ where
 {
     fn input_channels(&self) -> usize;
     fn num_classes(&self) -> usize;
+    fn classes(&self) -> &IndexSet<String>;
     fn records(&self) -> Result<Vec<Arc<DataRecord>>>;
 }
 
