@@ -18,7 +18,7 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DataRecord {
-    pub path: PathBuf,
+    pub path: Arc<PathBuf>,
     pub size: PixelSize<usize>,
     /// Bounding box in pixel units.
     pub bboxes: Vec<LabeledPixelBBox<R64>>,
@@ -36,7 +36,7 @@ pub struct TrainingRecord {
 #[derive(Debug)]
 pub struct Dataset {
     config: Arc<Config>,
-    dataset: Box<dyn GenericDataset>,
+    dataset: Arc<Box<dyn GenericDataset>>,
 }
 
 impl GenericDataset for Dataset {
@@ -78,7 +78,10 @@ impl Dataset {
             }
         };
 
-        Ok(Self { config, dataset })
+        Ok(Self {
+            config,
+            dataset: Arc::new(dataset),
+        })
     }
 
     pub async fn train_stream(
@@ -106,7 +109,11 @@ impl Dataset {
         } = *self.config;
         let batch_size = batch_size.get();
         let image_size = image_size.get() as i64;
-        let records = Arc::new(self.dataset.records()?);
+        let records = {
+            let dataset = self.dataset.clone();
+            let records = async_std::task::spawn_blocking(move || dataset.records()).await?;
+            Arc::new(records)
+        };
 
         // repeat records
         let stream = futures::stream::repeat(records).enumerate();
@@ -160,21 +167,24 @@ impl Dataset {
                 timing.set_record("wait for cache loader");
 
                 async move {
-                    let load_cache_futs = record_vec
-                        .into_iter()
-                        .map(|record| {
+                    let image_bbox_vec: Vec<_> = stream::iter(record_vec.into_iter())
+                        .par_then(None, move |record| {
                             let cache_loader = cache_loader.clone();
 
                             async move {
                                 // load cache
-                                let (image, bboxes) = cache_loader.load_cache(&record).await?;
+                                let (image, bboxes) =
+                                    cache_loader.load_cache(&record).await.with_context(|| {
+                                        format!(
+                                            "failed to load image file {}",
+                                            record.path.display()
+                                        )
+                                    })?;
                                 Fallible::Ok((image, bboxes))
                             }
                         })
-                        .map(async_std::task::spawn);
-
-                    let image_bbox_vec: Vec<(_, _)> =
-                        futures::future::try_join_all(load_cache_futs).await?;
+                        .try_collect()
+                        .await?;
 
                     // send to logger
                     {

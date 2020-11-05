@@ -20,11 +20,15 @@ impl<U> LabeledBBox<R64, U>
 where
     U: Unit,
 {
-    pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> LabeledRatioBBox {
-        LabeledRatioBBox {
-            bbox: self.bbox.to_ratio_bbox(image_height, image_width),
+    pub fn to_ratio_bbox(
+        &self,
+        image_height: usize,
+        image_width: usize,
+    ) -> Result<LabeledRatioBBox> {
+        Ok(LabeledRatioBBox {
+            bbox: self.bbox.to_ratio_bbox(image_height, image_width)?,
             category_id: self.category_id,
-        }
+        })
     }
 }
 
@@ -104,7 +108,7 @@ where
         [t, l, b, r]
     }
 
-    pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> RatioBBox {
+    pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> Result<RatioBBox> {
         let Self {
             cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
             ..
@@ -122,47 +126,41 @@ where
         let epsilon = 1e-8;
 
         if orig_t < 0.0 {
-            if abs_diff_eq!(orig_t.raw(), 0.0, epsilon = epsilon) {
-                orig_t = R64::new(0.0);
-            } else {
-                panic!(
-                    "the bbox exceeds the image boundary: expect minimum top 0.0, found {}",
-                    orig_t
-                );
-            }
+            ensure!(
+                abs_diff_eq!(orig_t.raw(), 0.0, epsilon = epsilon),
+                "the bbox exceeds the image boundary: expect minimum top 0.0, found {}",
+                orig_t
+            );
+            orig_t = R64::new(0.0);
         }
 
         if orig_l < 0.0 {
-            if abs_diff_eq!(orig_l.raw(), 0.0, epsilon = epsilon) {
-                orig_l = R64::new(0.0);
-            } else {
-                panic!(
-                    "the bbox exceeds the image boundary: expect minimum left 0.0, found {}",
-                    orig_l
-                );
-            }
+            ensure!(
+                abs_diff_eq!(orig_l.raw(), 0.0, epsilon = epsilon),
+                "the bbox exceeds the image boundary: expect minimum left 0.0, found {}",
+                orig_l
+            );
+            orig_l = R64::new(0.0);
         }
 
         if orig_b > image_height {
-            if abs_diff_eq!(orig_b.raw(), image_height.raw(), epsilon = epsilon) {
-                orig_b = image_height;
-            } else {
-                panic!(
-                    "the bbox exceeds the image boundary: expect maximum bottom {}, found {}",
-                    image_height, orig_b
-                );
-            }
+            ensure!(
+                abs_diff_eq!(orig_b.raw(), image_height.raw(), epsilon = epsilon),
+                "the bbox exceeds the image boundary: expect maximum bottom {}, found {}",
+                image_height,
+                orig_b
+            );
+            orig_b = image_height;
         }
 
         if orig_r > image_width {
-            if abs_diff_eq!(orig_r.raw(), image_width.raw(), epsilon = epsilon) {
-                orig_r = image_width;
-            } else {
-                panic!(
-                    "the bbox exceeds the image boundary: expect maximum right {}, found {}",
-                    image_width, orig_r
-                );
-            }
+            ensure!(
+                abs_diff_eq!(orig_r.raw(), image_width.raw(), epsilon = epsilon),
+                "the bbox exceeds the image boundary: expect maximum right {}, found {}",
+                image_width,
+                orig_r
+            );
+            orig_r = image_width;
         }
 
         // construct ratio bbox
@@ -176,12 +174,12 @@ where
         let ratio_cy = ratio_t + ratio_h / 2.0;
         let ratio_cx = ratio_l + ratio_w / 2.0;
 
-        RatioBBox::new([
+        Ok(RatioBBox::new([
             ratio_cy.into(),
             ratio_cx.into(),
             ratio_h.into(),
             ratio_w.into(),
-        ])
+        ]))
     }
 }
 

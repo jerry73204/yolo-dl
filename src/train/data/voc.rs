@@ -67,7 +67,7 @@ impl GenericDataset for VocDataset {
                     .try_collect()?;
 
                 Ok(Arc::new(DataRecord {
-                    path: image_path.clone(),
+                    path: Arc::new(image_path.clone()),
                     size,
                     bboxes,
                 }))

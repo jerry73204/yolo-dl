@@ -64,8 +64,12 @@ impl GenericDataset for IiiDataset {
                         } = obj.bndbox;
                         let bbox = match PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax]) {
                             Ok(bbox) => bbox,
-                            Err(err) => {
-                                warn!("failed to parse '{}': {:?}", annotation_file.display(), err);
+                            Err(_err) => {
+                                warn!(
+                                    "failed to parse '{}': invalid bbox {:?}",
+                                    annotation_file.display(),
+                                    [ymin, xmin, ymax, xmax]
+                                );
                                 return None;
                             }
                         };
@@ -170,7 +174,8 @@ impl IiiDataset {
                                 "{}.jpg",
                                 annotation_file.file_stem().unwrap().to_str().unwrap()
                             );
-                            annotation_file.parent().unwrap().join(file_name)
+                            let image_path = annotation_file.parent().unwrap().join(file_name);
+                            Arc::new(image_path)
                         };
 
                         // sanity check
@@ -204,7 +209,7 @@ impl IiiDataset {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IiiSample {
-    pub image_file: PathBuf,
+    pub image_file: Arc<PathBuf>,
     pub annotation_file: Arc<PathBuf>,
     pub annotation: voc::Annotation,
 }

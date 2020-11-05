@@ -327,7 +327,7 @@ impl CacheLoader {
                 },
             ref bboxes,
         } = *record;
-        let image_path: &async_std::path::Path = image_path.as_ref();
+        let image_path: &async_std::path::Path = (**image_path).as_ref();
 
         ensure!(
             image_channels == 3,
@@ -475,9 +475,9 @@ impl CacheLoader {
         timing.set_record("pad");
 
         // compute new bboxes
-        let output_bboxes = bboxes
+        let output_bboxes: Vec<_> = bboxes
             .iter()
-            .map(|orig_bbox| {
+            .map(|orig_bbox| -> Result<_> {
                 let LabeledPixelBBox {
                     bbox:
                         PixelBBox {
@@ -492,13 +492,13 @@ impl CacheLoader {
                 let new_h = orig_h * resize_ratio;
                 let new_w = orig_w * resize_ratio;
 
-                LabeledRatioBBox {
+                Ok(LabeledRatioBBox {
                     bbox: PixelBBox::from_cycxhw([new_cy, new_cx, new_h, new_w])
-                        .to_ratio_bbox(image_size, image_size),
+                        .to_ratio_bbox(image_size, image_size)?,
                     category_id,
-                }
+                })
             })
-            .collect_vec();
+            .try_collect()?;
 
         timing.set_record("compute bboxes");
 
