@@ -57,7 +57,7 @@ impl GenericDataset for CocoDataset {
                         // filter by class list and whitelist
                         let category_name = &category_id_to_classes[&ann.category_id];
                         let class_index = classes.get_index_of(category_name)?;
-                        if let Some(whitelist) = &self.config.dataset.class_whiltelist {
+                        if let Some(whitelist) = &self.config.dataset.class_whitelist {
                             whitelist.get(category_name)?;
                         }
 
@@ -101,6 +101,27 @@ impl CocoDataset {
             .collect();
 
         // sanity check
+        {
+            let categories: HashSet<_> = category_id_to_classes.values().collect();
+            let classes: HashSet<_> = classes.iter().collect();
+            let nonexist_classes: Vec<_> = classes.difference(&categories).collect();
+            let uncovered_classes: Vec<_> = categories.difference(&classes).collect();
+
+            if !nonexist_classes.is_empty() {
+                warn!(
+                    "these classes are not defined in dataset: {:?}",
+                    nonexist_classes
+                );
+            }
+
+            if !uncovered_classes.is_empty() {
+                warn!(
+                    "these classes are not covered by classes file: {:?}",
+                    uncovered_classes
+                );
+            }
+        }
+
         dataset.instances.annotations.iter().try_for_each(|ann| {
             ensure!(
                 category_id_to_classes.contains_key(&ann.category_id),

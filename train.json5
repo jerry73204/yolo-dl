@@ -1,7 +1,8 @@
 {
     "dataset": {
-        "classes_file": "cfg/coco.classes",
+        "classes_file": "cfg/coco.class",
         "image_size": 256,
+        "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "kind": {
             "type": "Coco",
             "dataset_dir": "/mnt/client/aeon/coco-2017",

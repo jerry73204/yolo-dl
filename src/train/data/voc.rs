@@ -46,7 +46,7 @@ impl GenericDataset for VocDataset {
                         // filter by class list and whitelist
                         let class_name = &obj.name;
                         let class_index = self.classes.get_index_of(class_name)?;
-                        if let Some(whitelist) = &self.config.dataset.class_whiltelist {
+                        if let Some(whitelist) = &self.config.dataset.class_whitelist {
                             whitelist.get(class_name)?;
                         }
                         Some((obj, class_index))

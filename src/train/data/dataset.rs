@@ -48,6 +48,10 @@ impl GenericDataset for Dataset {
         self.dataset.num_classes()
     }
 
+    fn classes(&self) -> &IndexSet<String> {
+        self.dataset.classes()
+    }
+
     fn records(&self) -> Result<Vec<Arc<DataRecord>>> {
         self.dataset.records()
     }

@@ -33,7 +33,7 @@ pub struct LoggingConfig {
 pub struct DatasetConfig {
     pub classes_file: PathBuf,
     pub image_size: NonZeroUsize,
-    pub class_whiltelist: Option<HashSet<String>>,
+    pub class_whitelist: Option<HashSet<String>>,
     pub kind: DatasetKind,
 }
 
