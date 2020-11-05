@@ -3,6 +3,7 @@ use crate::{
     common::*,
     config::{Config, DatasetConfig},
 };
+use voc_dataset as voc;
 
 const III_DEPTH: usize = 3;
 
@@ -33,11 +34,12 @@ impl GenericDataset for IiiDataset {
             .map(|sample| -> Result<_> {
                 let IiiSample {
                     image_file,
+                    annotation_file,
                     annotation,
                 } = sample;
 
                 let size = {
-                    let voc_dataset::Size { width, height, .. } = annotation.size;
+                    let voc::Size { width, height, .. } = annotation.size;
                     PixelSize::new(height, width)
                 };
 
@@ -53,20 +55,49 @@ impl GenericDataset for IiiDataset {
                         }
                         Some((obj, class_index))
                     })
-                    .map(|(obj, class_index)| -> Result<_> {
-                        let voc_dataset::BndBox {
+                    .filter_map(|(obj, class_index)| {
+                        let voc::BndBox {
                             xmin,
                             ymin,
                             xmax,
                             ymax,
                         } = obj.bndbox;
-                        let bbox = LabeledPixelBBox {
-                            bbox: PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax])?,
+                        let bbox = match PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax]) {
+                            Ok(bbox) => bbox,
+                            Err(err) => {
+                                warn!("failed to parse '{}': {:?}", annotation_file.display(), err);
+                                return None;
+                            }
+                        };
+
+                        let labeled_bbox = LabeledPixelBBox {
+                            bbox,
                             category_id: class_index,
                         };
-                        Ok(bbox)
+                        Some(labeled_bbox)
                     })
-                    .try_collect()?;
+                    .collect();
+                // .map(|(obj, class_index)| -> Result<_> {
+                //     let voc::BndBox {
+                //         xmin,
+                //         ymin,
+                //         xmax,
+                //         ymax,
+                //     } = obj.bndbox;
+                //     let bbox = PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax])
+                //         .with_context(|| {
+                //             format!(
+                //                 "failed to parse annotation file '{}'",
+                //                 annotation_file.display()
+                //             )
+                //         })?;
+                //     let labeled_bbox = LabeledPixelBBox {
+                //         bbox,
+                //         category_id: class_index,
+                //     };
+                //     Ok(labeled_bbox)
+                // })
+                // .try_collect()?;
 
                 Ok(Arc::new(DataRecord {
                     path: image_file.clone(),
@@ -108,40 +139,38 @@ impl IiiDataset {
         // parse xml files
         let samples: Vec<_> = {
             stream::iter(xml_files.into_iter())
-                .par_then(None, move |xml_file| {
-                    async move {
-                        let xml_file = Arc::new(xml_file);
+                .par_then(None, move |annotation_file| {
+                    let annotation_file = Arc::new(annotation_file);
 
-                        let xml_content = async_std::fs::read_to_string(&*xml_file)
+                    async move {
+                        let xml_content = async_std::fs::read_to_string(&*annotation_file)
                             .await
                             .with_context(|| {
-                                format!("failed to read annotation file {}", xml_file.display())
+                                format!(
+                                    "failed to read annotation file {}",
+                                    annotation_file.display()
+                                )
                             })?;
 
-                        let annotation = {
-                            let xml_file = xml_file.clone();
-                            async_std::task::spawn_blocking(move || -> Result<_> {
-                                let annotation: voc_dataset::Annotation =
-                                    serde_xml_rs::from_str(&xml_content).with_context(|| {
-                                        format!(
-                                            "failed to parse annotation file {}",
-                                            xml_file.display()
-                                        )
-                                    })?;
-                                Ok(annotation)
+                        let annotation: voc::Annotation = {
+                            async_std::task::spawn_blocking(move || {
+                                serde_xml_rs::from_str(&xml_content)
                             })
-                            .await?
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "failed to parse annotation file {}",
+                                    annotation_file.display()
+                                )
+                            })?
                         };
 
                         let image_file = {
-                            let file_name =
-                                format!("{}.jpg", xml_file.file_stem().unwrap().to_str().unwrap());
-                            xml_file
-                                .parent()
-                                .ok_or_else(|| {
-                                    format_err!("invalid xml path {}", xml_file.display())
-                                })?
-                                .join(file_name)
+                            let file_name = format!(
+                                "{}.jpg",
+                                annotation_file.file_stem().unwrap().to_str().unwrap()
+                            );
+                            annotation_file.parent().unwrap().join(file_name)
                         };
 
                         // sanity check
@@ -154,6 +183,7 @@ impl IiiDataset {
 
                         let sample = IiiSample {
                             annotation,
+                            annotation_file,
                             image_file,
                         };
 
@@ -175,5 +205,6 @@ impl IiiDataset {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IiiSample {
     pub image_file: PathBuf,
-    pub annotation: voc_dataset::Annotation,
+    pub annotation_file: Arc<PathBuf>,
+    pub annotation: voc::Annotation,
 }
