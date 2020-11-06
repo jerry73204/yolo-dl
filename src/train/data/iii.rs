@@ -81,27 +81,6 @@ impl GenericDataset for IiiDataset {
                         Some(labeled_bbox)
                     })
                     .collect();
-                // .map(|(obj, class_index)| -> Result<_> {
-                //     let voc::BndBox {
-                //         xmin,
-                //         ymin,
-                //         xmax,
-                //         ymax,
-                //     } = obj.bndbox;
-                //     let bbox = PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax])
-                //         .with_context(|| {
-                //             format!(
-                //                 "failed to parse annotation file '{}'",
-                //                 annotation_file.display()
-                //             )
-                //         })?;
-                //     let labeled_bbox = LabeledPixelBBox {
-                //         bbox,
-                //         category_id: class_index,
-                //     };
-                //     Ok(labeled_bbox)
-                // })
-                // .try_collect()?;
 
                 Ok(Arc::new(DataRecord {
                     path: image_file.clone(),
@@ -144,8 +123,6 @@ impl IiiDataset {
         let samples: Vec<_> = {
             stream::iter(xml_files.into_iter())
                 .par_then(None, move |annotation_file| {
-                    let annotation_file = Arc::new(annotation_file);
-
                     async move {
                         let xml_content = async_std::fs::read_to_string(&*annotation_file)
                             .await
@@ -174,8 +151,8 @@ impl IiiDataset {
                                 "{}.jpg",
                                 annotation_file.file_stem().unwrap().to_str().unwrap()
                             );
-                            let image_path = annotation_file.parent().unwrap().join(file_name);
-                            Arc::new(image_path)
+                            let image_file = annotation_file.parent().unwrap().join(file_name);
+                            image_file
                         };
 
                         // sanity check
@@ -209,7 +186,7 @@ impl IiiDataset {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IiiSample {
-    pub image_file: Arc<PathBuf>,
-    pub annotation_file: Arc<PathBuf>,
+    pub image_file: PathBuf,
+    pub annotation_file: PathBuf,
     pub annotation: voc::Annotation,
 }

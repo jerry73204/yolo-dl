@@ -2,7 +2,7 @@ pub use anyhow::{ensure, format_err, Result};
 pub use approx::abs_diff_eq;
 pub use indexmap::IndexMap;
 pub use itertools::{iproduct, izip, Itertools};
-pub use log::info;
+pub use log::{info, warn};
 pub use noisy_float::prelude::*;
 pub use serde::{de::Error as DeserializeError, Deserialize, Deserializer, Serialize, Serializer};
 pub use std::{

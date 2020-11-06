@@ -71,7 +71,7 @@ impl GenericDataset for CocoDataset {
                     .collect_vec();
 
                 Arc::new(DataRecord {
-                    path: Arc::new(image_dir.join(&image.file_name)),
+                    path: image_dir.join(&image.file_name),
                     size: PixelSize::new(image.height, image.width),
                     bboxes,
                 })

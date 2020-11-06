@@ -24,11 +24,20 @@ where
         &self,
         image_height: usize,
         image_width: usize,
-    ) -> Result<LabeledRatioBBox> {
-        Ok(LabeledRatioBBox {
-            bbox: self.bbox.to_ratio_bbox(image_height, image_width)?,
+    ) -> Result<LabeledRatioBBox, LabeledRatioBBox> {
+        let (bbox, has_violations) = match self.bbox.to_ratio_bbox(image_height, image_width) {
+            Ok(bbox) => (bbox, false),
+            Err(bbox) => (bbox, true),
+        };
+        let labeled_bbox = LabeledRatioBBox {
+            bbox,
             category_id: self.category_id,
-        })
+        };
+        if !has_violations {
+            Ok(labeled_bbox)
+        } else {
+            Err(labeled_bbox)
+        }
     }
 }
 
@@ -108,7 +117,11 @@ where
         [t, l, b, r]
     }
 
-    pub fn to_ratio_bbox(&self, image_height: usize, image_width: usize) -> Result<RatioBBox> {
+    pub fn to_ratio_bbox(
+        &self,
+        image_height: usize,
+        image_width: usize,
+    ) -> Result<RatioBBox, RatioBBox> {
         let Self {
             cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
             ..
@@ -117,51 +130,48 @@ where
         let image_height = R64::new(image_height as f64);
         let image_width = R64::new(image_width as f64);
 
-        let mut orig_t = orig_cy - orig_h / 2.0;
-        let mut orig_l = orig_cx - orig_w / 2.0;
-        let mut orig_b = orig_cy + orig_h / 2.0;
-        let mut orig_r = orig_cx + orig_w / 2.0;
+        let orig_t = orig_cy - orig_h / 2.0;
+        let orig_l = orig_cx - orig_w / 2.0;
+        let orig_b = orig_cy + orig_h / 2.0;
+        let orig_r = orig_cx + orig_w / 2.0;
 
         // fix the value if it slightly exceeds the boundary
-        let epsilon = 1e-8;
+        let mut has_violations = false;
 
-        if orig_t < 0.0 {
-            ensure!(
-                abs_diff_eq!(orig_t.raw(), 0.0, epsilon = epsilon),
-                "the bbox exceeds the image boundary: expect minimum top 0.0, found {}",
-                orig_t
-            );
-            orig_t = R64::new(0.0);
-        }
+        let orig_t = if orig_t < 0.0 {
+            has_violations = true;
+            warn!("bbox top {} drops below the minimum 0.0", orig_t);
+            R64::new(0.0)
+        } else {
+            orig_t
+        };
 
-        if orig_l < 0.0 {
-            ensure!(
-                abs_diff_eq!(orig_l.raw(), 0.0, epsilon = epsilon),
-                "the bbox exceeds the image boundary: expect minimum left 0.0, found {}",
-                orig_l
-            );
-            orig_l = R64::new(0.0);
-        }
+        let orig_l = if orig_l < 0.0 {
+            has_violations = true;
+            warn!("bbox left {} drops below the minimum 0.0", orig_l);
+            R64::new(0.0)
+        } else {
+            orig_l
+        };
 
-        if orig_b > image_height {
-            ensure!(
-                abs_diff_eq!(orig_b.raw(), image_height.raw(), epsilon = epsilon),
-                "the bbox exceeds the image boundary: expect maximum bottom {}, found {}",
-                image_height,
-                orig_b
+        let orig_b = if orig_b > image_height {
+            has_violations = true;
+            warn!(
+                "bbox bottom {} exceeds the maximum {}",
+                orig_b, image_height
             );
-            orig_b = image_height;
-        }
+            image_height
+        } else {
+            orig_b
+        };
 
-        if orig_r > image_width {
-            ensure!(
-                abs_diff_eq!(orig_r.raw(), image_width.raw(), epsilon = epsilon),
-                "the bbox exceeds the image boundary: expect maximum right {}, found {}",
-                image_width,
-                orig_r
-            );
-            orig_r = image_width;
-        }
+        let orig_r = if orig_r > image_width {
+            has_violations = true;
+            warn!("bbox right {} exceeds the maximum {}", orig_r, image_width);
+            image_width
+        } else {
+            orig_r
+        };
 
         // construct ratio bbox
         let ratio_t = orig_t / image_height;
@@ -174,12 +184,18 @@ where
         let ratio_cy = ratio_t + ratio_h / 2.0;
         let ratio_cx = ratio_l + ratio_w / 2.0;
 
-        Ok(RatioBBox::new([
+        let bbox = RatioBBox::new([
             ratio_cy.into(),
             ratio_cx.into(),
             ratio_h.into(),
             ratio_w.into(),
-        ]))
+        ]);
+
+        if !has_violations {
+            Ok(bbox)
+        } else {
+            Err(bbox)
+        }
     }
 }
 

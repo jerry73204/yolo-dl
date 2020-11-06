@@ -18,7 +18,7 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DataRecord {
-    pub path: Arc<PathBuf>,
+    pub path: PathBuf,
     pub size: PixelSize<usize>,
     /// Bounding box in pixel units.
     pub bboxes: Vec<LabeledPixelBBox<R64>>,

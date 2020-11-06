@@ -492,11 +492,17 @@ impl CacheLoader {
                 let new_h = orig_h * resize_ratio;
                 let new_w = orig_w * resize_ratio;
 
-                Ok(LabeledRatioBBox {
-                    bbox: PixelBBox::from_cycxhw([new_cy, new_cx, new_h, new_w])
-                        .to_ratio_bbox(image_size, image_size)?,
-                    category_id,
-                })
+                let bbox = match PixelBBox::from_cycxhw([new_cy, new_cx, new_h, new_w])
+                    .to_ratio_bbox(image_size, image_size)
+                {
+                    Ok(bbox) => bbox,
+                    Err(bbox) => {
+                        warn!("invalid bbox foudn in '{}'", image_path.display());
+                        bbox
+                    }
+                };
+
+                Ok(LabeledRatioBBox { bbox, category_id })
             })
             .try_collect()?;
 
