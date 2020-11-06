@@ -497,7 +497,7 @@ impl CacheLoader {
                 {
                     Ok(bbox) => bbox,
                     Err(bbox) => {
-                        warn!("invalid bbox foudn in '{}'", image_path.display());
+                        warn!("invalid bbox found in '{}'", image_path.display());
                         bbox
                     }
                 };
