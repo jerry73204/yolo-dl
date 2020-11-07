@@ -1,0 +1,15 @@
+[package]
+name = "darknet-parse"
+version = "0.1.0"
+authors = ["jerry73204 <jerry73204@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_ini = "0.2"
+anyhow = "1.0"
+noisy_float = { version = "0.1", features = ["serde-1"] }
+itertools = "0.9"
+
+[patch.crates-io]
+serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
