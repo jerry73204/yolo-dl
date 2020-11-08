@@ -10,6 +10,10 @@ serde_ini = "0.2"
 anyhow = "1.0"
 noisy_float = { version = "0.1", features = ["serde-1"] }
 itertools = "0.9"
+binread = "1.4"
+owning_ref = "0.4"
+log = "0.4"
+serde_repr = "0.1"
 
 [patch.crates-io]
 serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
