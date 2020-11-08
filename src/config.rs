@@ -123,8 +123,19 @@ pub struct Convolutional {
     pub batch_normalize: bool,
     pub filters: usize,
     pub size: usize,
+    // pub stride_x: usize,
+    // pub stride_y: usize,
+    #[serde(default = "default_stride")]
     pub stride: usize,
-    pub pad: usize,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub pad: bool,
+    // pub padding: usize,
+    #[serde(default = "default_groups")]
+    pub groups: usize,
+    #[serde(default = "default_dilation")]
+    pub dilation: usize,
+    pub antialiasing: usize,
+    pub share_index: Option<usize>,
     pub activation: Activation,
 }
 
@@ -268,6 +279,18 @@ pub enum Policy {
 
 fn default_bool_false() -> bool {
     false
+}
+
+fn default_groups() -> usize {
+    1
+}
+
+fn default_stride() -> usize {
+    1
+}
+
+fn default_dilation() -> usize {
+    1
 }
 
 mod serde_zero_one_bool {
