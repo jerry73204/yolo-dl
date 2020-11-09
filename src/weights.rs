@@ -70,13 +70,17 @@ where
 
                 Ok(taken)
             }
+
+            pub fn remaining_len(&self) -> usize {
+                self.buffer.len()
+            }
+
+            pub fn is_eof(&self) -> bool {
+                self.buffer.len() == 0
+            }
         }
 
-        // loop
-        let init_state = State {
-            cursor: Cursor { buffer },
-            shape: input_size,
-        };
+        // layer loading functions
 
         let load_convolutional = |layer: &Convolutional, state: &mut State| -> Result<_> {
             let State { cursor, shape } = state;
@@ -225,7 +229,12 @@ where
             })
         };
 
-        layers
+        // loop
+        let init_state = State {
+            cursor: Cursor { buffer },
+            shape: input_size,
+        };
+        let final_state = layers
             .iter()
             .try_fold(init_state, |mut state, layer| -> Result<_> {
                 let CommonLayerOptions { dont_load, .. } = *layer.common();
@@ -234,18 +243,29 @@ where
                     return Ok(state);
                 }
 
-                let weights: Weights = match layer {
+                let weights: Option<Weights> = match layer {
                     Layer::Convolutional(convolutional) => {
-                        load_convolutional(convolutional, &mut state)?.into()
+                        Some(load_convolutional(convolutional, &mut state)?.into())
                     }
-                    Layer::Connected(connected) => load_connected(connected, &mut state)?.into(),
-                    Layer::BatchNorm(batch_norm) => load_batch_norm(batch_norm, &mut state)?.into(),
-                    Layer::Shortcut(shortcut) => load_shortcut(shortcut, &mut state)?.into(),
-                    _ => todo!(),
+                    Layer::Connected(connected) => {
+                        Some(load_connected(connected, &mut state)?.into())
+                    }
+                    Layer::BatchNorm(batch_norm) => {
+                        Some(load_batch_norm(batch_norm, &mut state)?.into())
+                    }
+                    Layer::Shortcut(shortcut) => Some(load_shortcut(shortcut, &mut state)?.into()),
+                    Layer::MaxPool(_) | Layer::Route(_) | Layer::UpSample(_) | Layer::Yolo(_) => {
+                        None
+                    }
                 };
 
                 Ok(state)
             })?;
+
+        ensure!(
+            final_state.cursor.is_eof(),
+            "the weights file is not totally consumed"
+        )
     }
 
     Ok(())
