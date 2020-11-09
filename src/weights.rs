@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     config::{
-        CommonLayerOptions, CommonLayerOptionsEx, Config, Connected, Convolutional, Layer, Net,
-        Shape,
+        BatchNorm, CommonLayerOptions, CommonLayerOptionsEx, Config, Connected, Convolutional,
+        Layer, Net, Shape, Shortcut,
     },
 };
 
@@ -58,8 +58,17 @@ where
         }
 
         impl Cursor {
-            pub fn read<T>(&mut self, size: usize) -> Result<OwningRef<Arc<Vec<u8>>, [T]>> {
-                todo!();
+            pub fn read<T>(&mut self, numel: usize) -> Result<OwningRef<Arc<Vec<u8>>, [T]>> {
+                let elem_size = mem::size_of::<T>();
+                let size = elem_size * numel;
+
+                ensure!(size <= self.buffer.len(), "early EOF");
+                let taken = self.buffer.clone().map(|buf| unsafe {
+                    slice::from_raw_parts(buf.split_at(size).0.as_ptr() as *const T, numel)
+                });
+                self.buffer = self.buffer.clone().map(|buf| buf.split_at(size).1);
+
+                Ok(taken)
             }
         }
 
@@ -69,86 +78,169 @@ where
             shape: input_size,
         };
 
+        let load_convolutional = |layer: &Convolutional, state: &mut State| -> Result<_> {
+            let State { cursor, shape } = state;
+            let Convolutional {
+                filters,
+                batch_normalize,
+                flipped,
+                padding,
+                size,
+                stride_x,
+                stride_y,
+                common:
+                    CommonLayerOptions {
+                        dont_load_scales, ..
+                    },
+                ..
+            } = *layer;
+            let [height, width, channels] = match *shape {
+                Shape::Hwc([h, w, c]) => [h, w, c],
+                _ => bail!("invalid input shape"),
+            };
+
+            let biases = cursor.read::<R32>(filters)?;
+            let scales = if batch_normalize && !dont_load_scales {
+                let scales = cursor.read::<R32>(filters)?;
+                let rolling_mean = cursor.read::<R32>(filters)?;
+                let rolling_variance = cursor.read::<R32>(filters)?;
+
+                Some(ScaleWeights {
+                    scales: Box::new(scales),
+                    rolling_mean: Box::new(rolling_mean),
+                    rolling_variance: Box::new(rolling_variance),
+                })
+            } else {
+                None
+            };
+            let weights = {
+                let num_weights = layer.num_weights(channels)?;
+                let weights = cursor.read::<R32>(num_weights)?;
+
+                if flipped {
+                    warn!("TODO: implement flipped option");
+                }
+
+                weights
+            };
+
+            // update shape
+            *shape = {
+                let new_height = (height + 2 * padding - size) / stride_y + 1;
+                let new_width = (width + 2 * padding - size) / stride_x + 1;
+                Shape::Hwc([new_height, new_width, filters])
+            };
+
+            Ok(ConvolutionalWeights {
+                biases: Box::new(biases),
+                weights: Box::new(weights),
+                scales,
+            })
+        };
+
+        let load_connected = |layer: &Connected, state: &mut State| -> Result<_> {
+            let State { cursor, shape } = state;
+            let Connected {
+                output,
+                batch_normalize,
+                common:
+                    CommonLayerOptions {
+                        dont_load_scales, ..
+                    },
+                ..
+            } = *layer;
+
+            let inputs = match *shape {
+                Shape::Flat(inputs) => inputs,
+                _ => bail!("invalid shape"),
+            };
+
+            let (biases, weights) = {
+                let biases = cursor.read::<R32>(output)?;
+                let weights = cursor.read::<R32>(inputs * output)?;
+                if transpose {
+                    warn!("TODO: transpose");
+                    (biases, weights)
+                } else {
+                    (biases, weights)
+                }
+            };
+
+            let scales = if batch_normalize && !dont_load_scales {
+                let scales = cursor.read::<R32>(output)?;
+                let rolling_mean = cursor.read::<R32>(output)?;
+                let rolling_variance = cursor.read::<R32>(output)?;
+
+                Some(ScaleWeights {
+                    scales: Box::new(scales),
+                    rolling_mean: Box::new(rolling_mean),
+                    rolling_variance: Box::new(rolling_variance),
+                })
+            } else {
+                None
+            };
+
+            // update shape
+            *shape = Shape::Flat(output);
+
+            Ok(ConnectedWeights {
+                biases: Box::new(biases),
+                weights: Box::new(weights),
+                scales,
+            })
+        };
+
+        let load_batch_norm = |_layer: &BatchNorm, state: &mut State| -> Result<_> {
+            let State { cursor, shape } = state;
+            let channels = match *shape {
+                Shape::Hwc([_, _, channels]) => channels,
+                _ => bail!("invalid input shape"),
+            };
+            let biases = cursor.read::<R32>(channels)?;
+            let scales = cursor.read::<R32>(channels)?;
+            let rolling_mean = cursor.read::<R32>(channels)?;
+            let rolling_variance = cursor.read::<R32>(channels)?;
+
+            Ok(BatchNormWeights {
+                biases: Box::new(biases),
+                scales: Box::new(scales),
+                rolling_mean: Box::new(rolling_mean),
+                rolling_variance: Box::new(rolling_variance),
+            })
+        };
+
+        let load_shortcut = |layer: &Shortcut, state: &mut State| -> Result<_> {
+            let State { cursor, shape } = state;
+            let channels = match *shape {
+                Shape::Hwc([_, _, channels]) => channels,
+                _ => bail!("invalid input shape"),
+            };
+            let weights = {
+                let num_weights = layer.num_weights(channels);
+                cursor.read::<R32>(num_weights)?
+            };
+
+            Ok(ShortcutWeights {
+                weights: Box::new(weights),
+            })
+        };
+
         layers
             .iter()
             .try_fold(init_state, |mut state, layer| -> Result<_> {
-                let State { cursor, shape } = &mut state;
-
                 let CommonLayerOptions { dont_load, .. } = *layer.common();
 
                 if dont_load {
-                    warn!("TODO: implement dont_load");
+                    return Ok(state);
                 }
 
                 let weights: Weights = match layer {
                     Layer::Convolutional(convolutional) => {
-                        todo!();
+                        load_convolutional(convolutional, &mut state)?.into()
                     }
-                    Layer::Connected(connected) => {
-                        let Connected {
-                            output,
-                            batch_normalize,
-                            common:
-                                CommonLayerOptions {
-                                    dont_load_scales, ..
-                                },
-                            ..
-                        } = *connected;
-
-                        let inputs = match *shape {
-                            Shape::Flat(inputs) => inputs,
-                            _ => bail!("invalid shape"),
-                        };
-
-                        let (biases, weights) = {
-                            let biases = cursor.read::<R32>(output)?;
-                            let weights = cursor.read::<R32>(inputs * output)?;
-                            if transpose {
-                                warn!("TODO: transpose");
-                                (biases, weights)
-                            } else {
-                                (biases, weights)
-                            }
-                        };
-
-                        let scales = if batch_normalize && !dont_load_scales {
-                            let scales = cursor.read::<R32>(output)?;
-                            let rolling_mean = cursor.read::<R32>(output)?;
-                            let rolling_variance = cursor.read::<R32>(output)?;
-
-                            Some(ConnectedScaleWeights {
-                                scales: Box::new(scales),
-                                rolling_mean: Box::new(rolling_mean),
-                                rolling_variance: Box::new(rolling_variance),
-                            })
-                        } else {
-                            None
-                        };
-
-                        ConnectedWeights {
-                            biases: Box::new(biases),
-                            weights: Box::new(weights),
-                            scales,
-                        }
-                        .into()
-                    }
-                    Layer::BatchNorm(batchnorm) => {
-                        let channels = match *shape {
-                            Shape::Hwc([_, _, channels]) => channels,
-                            _ => bail!("invalid input shape"),
-                        };
-                        let biases = cursor.read::<R32>(channels)?;
-                        let scales = cursor.read::<R32>(channels)?;
-                        let rolling_mean = cursor.read::<R32>(channels)?;
-                        let rolling_variance = cursor.read::<R32>(channels)?;
-                        BatchNormWeights {
-                            biases: Box::new(biases),
-                            scales: Box::new(scales),
-                            rolling_mean: Box::new(rolling_mean),
-                            rolling_variance: Box::new(rolling_variance),
-                        }
-                        .into()
-                    }
+                    Layer::Connected(connected) => load_connected(connected, &mut state)?.into(),
+                    Layer::BatchNorm(batch_norm) => load_batch_norm(batch_norm, &mut state)?.into(),
+                    Layer::Shortcut(shortcut) => load_shortcut(shortcut, &mut state)?.into(),
                     _ => todo!(),
                 };
 
@@ -172,7 +264,7 @@ where
 {
 }
 
-#[derive(Debug, Clone, BinRead)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, BinRead)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -186,6 +278,7 @@ pub enum Weights {
     Connected(ConnectedWeights),
     Convolutional(ConvolutionalWeights),
     BatchNorm(BatchNormWeights),
+    Shortcut(ShortcutWeights),
 }
 
 impl From<ConnectedWeights> for Weights {
@@ -206,22 +299,32 @@ impl From<BatchNormWeights> for Weights {
     }
 }
 
-#[derive(Debug)]
-pub struct ConnectedWeights {
-    pub biases: Box<dyn Buffer<R32>>,
-    pub weights: Box<dyn Buffer<R32>>,
-    pub scales: Option<ConnectedScaleWeights>,
+impl From<ShortcutWeights> for Weights {
+    fn from(weights: ShortcutWeights) -> Self {
+        Self::Shortcut(weights)
+    }
 }
 
 #[derive(Debug)]
-pub struct ConnectedScaleWeights {
+pub struct ScaleWeights {
     pub scales: Box<dyn Buffer<R32>>,
     pub rolling_mean: Box<dyn Buffer<R32>>,
     pub rolling_variance: Box<dyn Buffer<R32>>,
 }
 
 #[derive(Debug)]
-pub struct ConvolutionalWeights {} // TODO
+pub struct ConnectedWeights {
+    pub biases: Box<dyn Buffer<R32>>,
+    pub weights: Box<dyn Buffer<R32>>,
+    pub scales: Option<ScaleWeights>,
+}
+
+#[derive(Debug)]
+pub struct ConvolutionalWeights {
+    pub biases: Box<dyn Buffer<R32>>,
+    pub weights: Box<dyn Buffer<R32>>,
+    pub scales: Option<ScaleWeights>,
+}
 
 #[derive(Debug)]
 pub struct BatchNormWeights {
@@ -229,6 +332,11 @@ pub struct BatchNormWeights {
     pub scales: Box<dyn Buffer<R32>>,
     pub rolling_mean: Box<dyn Buffer<R32>>,
     pub rolling_variance: Box<dyn Buffer<R32>>,
+}
+
+#[derive(Debug)]
+pub struct ShortcutWeights {
+    pub weights: Box<dyn Buffer<R32>>,
 }
 
 #[cfg(test)]

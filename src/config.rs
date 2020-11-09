@@ -756,6 +756,16 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
+    impl Convolutional {
+        pub fn num_weights(&self, channels: usize) -> Result<usize> {
+            ensure!(
+                channels % self.groups == 0,
+                "the input channels is not multiple of groups"
+            );
+            Ok((channels / self.groups) * self.filters * self.size.pow(2))
+        }
+    }
+
     impl CommonLayerOptionsEx for Convolutional {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
@@ -801,11 +811,6 @@ mod items {
             let stride_x = stride_x.unwrap_or(stride);
             let stride_y = stride_y.unwrap_or(stride);
 
-            ensure!(
-                size != 1 || dilation == 1,
-                "dilation must be 1 if size is 1"
-            );
-
             let padding = match (pad, padding) {
                 (true, Some(_)) => {
                     warn!("padding option is ignored and is set to size / 2 due to pad == 1");
@@ -824,13 +829,20 @@ mod items {
                 _ => bail!("at most one of sway, rotate, stretch, stretch_sway can be set"),
             };
 
+            // sanity check
+            ensure!(
+                size != 1 || dilation == 1,
+                "dilation must be 1 if size is 1"
+            );
+
             match (deform, size == 1) {
-                (Deform::None, _) => (),
-                (_, false) => (),
+                (Deform::None, _) | (_, false) => (),
                 (_, true) => {
                     bail!("sway, rotate, stretch, stretch_sway shoud be used with size >= 3")
                 }
-            };
+            }
+
+            ensure!(!xnor || groups == 1, "groups must be 1 if xnor is enabled");
 
             Ok(Self {
                 filters,
@@ -1011,7 +1023,8 @@ mod items {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Shortcut {
-        pub from: isize,
+        #[serde(with = "serde_vec_isize", default)]
+        pub from: Vec<isize>,
         pub activation: Activation,
         #[serde(with = "serde_weights_type", default = "defaults::weights_type")]
         pub weights_type: WeightsType,
@@ -1019,6 +1032,16 @@ mod items {
         pub weights_normalization: WeightsNormalization,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
+    }
+
+    impl Shortcut {
+        pub fn num_weights(&self, channels: usize) -> usize {
+            match self.weights_type {
+                WeightsType::None => 0,
+                WeightsType::PerFeature => self.from.len() + 1,
+                WeightsType::PerChannel => (self.from.len() + 1) * channels,
+            }
+        }
     }
 
     impl CommonLayerOptionsEx for Shortcut {

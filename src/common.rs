@@ -16,8 +16,9 @@ pub use std::{
     fs::{self, File},
     hash::Hash,
     io::{prelude::*, BufReader},
-    iter,
+    iter, mem,
     num::NonZeroUsize,
     path::{Path, PathBuf},
+    slice,
     sync::Arc,
 };
