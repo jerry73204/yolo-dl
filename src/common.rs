@@ -16,6 +16,6 @@ pub use std::{
     io::{prelude::*, BufReader},
     iter,
     num::NonZeroUsize,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };

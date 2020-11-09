@@ -1,8 +1,7 @@
 use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "Vec<Item>")]
-#[serde(into = "Vec<Item>")]
+#[serde(try_from = "Vec<Item>", into = "Vec<Item>")]
 pub struct Config {
     pub net: Net,
     pub layers: Vec<Layer>,
@@ -91,8 +90,7 @@ pub enum Item {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "RawNet")]
-#[serde(into = "RawNet")]
+#[serde(try_from = "RawNet", into = "RawNet")]
 pub struct Net {
     pub max_batches: usize,
     pub batch: usize,
@@ -679,8 +677,7 @@ impl From<Net> for RawNet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "RawConvolutional")]
-#[serde(into = "RawConvolutional")]
+#[serde(try_from = "RawConvolutional", into = "RawConvolutional")]
 pub struct Convolutional {
     pub filters: usize,
     pub groups: usize,
@@ -729,7 +726,7 @@ impl TryFrom<RawConvolutional> for Convolutional {
             cbn,
             binary,
             xnor,
-            bin_output,
+            use_bin_output,
             sway,
             rotate,
             stretch,
@@ -790,7 +787,7 @@ impl TryFrom<RawConvolutional> for Convolutional {
             cbn,
             binary,
             xnor,
-            use_bin_output: bin_output,
+            use_bin_output,
             deform,
             flipped,
             dot,
@@ -831,8 +828,12 @@ pub struct RawConvolutional {
     pub binary: bool,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub xnor: bool,
-    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
-    pub bin_output: bool,
+    #[serde(
+        rename = "bin_output",
+        with = "serde_zero_one_bool",
+        default = "default_bool_false"
+    )]
+    pub use_bin_output: bool,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub sway: bool,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
@@ -873,7 +874,7 @@ impl From<Convolutional> for RawConvolutional {
             cbn,
             binary,
             xnor,
-            use_bin_output: bin_output,
+            use_bin_output,
             deform,
             flipped,
             dot,
@@ -909,7 +910,7 @@ impl From<Convolutional> for RawConvolutional {
             cbn,
             binary,
             xnor,
-            bin_output,
+            use_bin_output,
             sway,
             rotate,
             stretch,
@@ -928,46 +929,178 @@ impl From<Convolutional> for RawConvolutional {
 pub struct Route {
     #[serde(with = "serde_vec_isize")]
     pub layers: Vec<isize>,
+    #[serde(default = "default_route_groups")]
+    pub groups: usize,
+    #[serde(default = "default_route_group_id")]
+    pub groupd_id: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Shortcut {
     pub from: isize,
     pub activation: Activation,
+    #[serde(with = "serde_weights_type", default = "default_weights_type")]
+    pub weights_type: WeightsType,
+    #[serde(default = "default_weights_normalization")]
+    pub weights_normalization: WeightsNormalization,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(from = "RawMaxPool", into = "RawMaxPool")]
 pub struct MaxPool {
-    pub stride: usize,
+    pub stride_x: usize,
+    pub stride_y: usize,
     pub size: usize,
+    pub padding: usize,
+    pub maxpool_depth: usize,
+    pub out_channels: usize,
+    pub antialiasing: bool,
+}
+
+impl From<RawMaxPool> for MaxPool {
+    fn from(raw: RawMaxPool) -> Self {
+        let RawMaxPool {
+            stride,
+            stride_x,
+            stride_y,
+            size,
+            padding,
+            maxpool_depth,
+            out_channels,
+            antialiasing,
+        } = raw;
+
+        let stride_x = stride_x.unwrap_or(stride);
+        let stride_y = stride_y.unwrap_or(stride);
+        let size = size.unwrap_or(stride);
+        let padding = padding.unwrap_or(size - 1);
+
+        Self {
+            stride_x,
+            stride_y,
+            size,
+            padding,
+            maxpool_depth,
+            out_channels,
+            antialiasing,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RawMaxPool {
+    #[serde(default = "default_maxpool_stride")]
+    pub stride: usize,
+    pub stride_x: Option<usize>,
+    pub stride_y: Option<usize>,
+    pub size: Option<usize>,
+    pub padding: Option<usize>,
+    #[serde(default = "default_maxpool_depth")]
+    pub maxpool_depth: usize,
+    #[serde(default = "default_out_channels")]
+    pub out_channels: usize,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub antialiasing: bool,
+}
+
+impl From<MaxPool> for RawMaxPool {
+    fn from(maxpool: MaxPool) -> Self {
+        let MaxPool {
+            stride_x,
+            stride_y,
+            size,
+            padding,
+            maxpool_depth,
+            out_channels,
+            antialiasing,
+        } = maxpool;
+
+        Self {
+            stride: default_maxpool_stride(),
+            stride_x: Some(stride_x),
+            stride_y: Some(stride_y),
+            size: Some(size),
+            padding: Some(padding),
+            maxpool_depth,
+            out_channels,
+            antialiasing,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UpSample {
+    #[serde(default = "default_upsample_stride")]
     pub stride: usize,
+    #[serde(default = "default_upsample_scale")]
+    pub scale: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Yolo {
+    #[serde(default = "default_classes")]
+    pub classes: usize,
+    #[serde(default = "default_num")]
+    pub num: usize,
     #[serde(with = "serde_vec_usize")]
     pub mask: Vec<usize>,
-    #[serde(with = "serde_anchors")]
-    pub anchors: Vec<(usize, usize)>,
-    pub classes: usize,
-    pub num: usize,
-    pub jitter: R64,
-    pub ignore_thresh: R64,
-    pub truth_thresh: R64,
-    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
-    pub random: bool,
+    #[serde(rename = "max", default = "default_max_boxes")]
+    pub max_boxes: usize,
+    pub max_delta: Option<R64>,
+    #[serde(with = "serde_opt_vec_usize", default)]
+    pub counters_per_class: Option<Vec<usize>>,
+    #[serde(default = "default_yolo_label_smooth_eps")]
+    pub label_smooth_eps: R64,
+    #[serde(default = "default_scale_x_y")]
     pub scale_x_y: R64,
-    pub iou_thresh: R64,
-    pub cls_normalizer: R64,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub objectness_smooth: bool,
+    #[serde(default = "default_iou_normalizer")]
     pub iou_normalizer: R64,
+    #[serde(default = "default_obj_normalizer")]
+    pub obj_normalizer: R64,
+    #[serde(default = "default_cls_normalizer")]
+    pub cls_normalizer: R64,
+    #[serde(default = "default_delta_normalizer")]
+    pub delta_normalizer: R64,
+    #[serde(default = "default_iou_loss")]
     pub iou_loss: IouLoss,
-    pub nms_kind: NmsKind,
+    #[serde(default = "default_iou_thresh_kind")]
+    pub iou_thresh_kind: IouThreshold,
+    #[serde(default = "default_beta_nms")]
     pub beta_nms: R64,
-    pub max_delta: R64,
+    #[serde(default = "default_nms_kind")]
+    pub nms_kind: NmsKind,
+    #[serde(default = "default_yolo_point")]
+    pub yolo_point: YoloPoint,
+    #[serde(default = "default_jitter")]
+    pub jitter: R64,
+    #[serde(default = "default_resize")]
+    pub resize: R64,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub focal_loss: bool,
+    #[serde(default = "default_ignore_thresh")]
+    pub ignore_thresh: R64,
+    #[serde(default = "default_truth_thresh")]
+    pub truth_thresh: R64,
+    #[serde(default = "default_iou_thresh")]
+    pub iou_thresh: R64,
+    #[serde(default = "default_random")]
+    pub random: R64,
+    #[serde(default = "default_track_history_size")]
+    pub track_history_size: usize,
+    #[serde(default = "default_sim_thresh")]
+    pub sim_thresh: R64,
+    #[serde(default = "default_dets_for_track")]
+    pub dets_for_track: usize,
+    #[serde(default = "default_dets_for_show")]
+    pub dets_for_show: usize,
+    #[serde(default = "default_track_ciou_norm")]
+    pub track_ciou_norm: R64,
+    pub embedding_layer: Option<isize>,
+    pub map: Option<PathBuf>,
+    #[serde(with = "serde_anchors", default)]
+    pub anchors: Option<Vec<(usize, usize)>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1037,6 +1170,28 @@ pub enum IouLoss {
     DIoU,
     #[serde(rename = "ciou")]
     CIoU,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IouThreshold {
+    #[serde(rename = "iou")]
+    IoU,
+    #[serde(rename = "giou")]
+    GIoU,
+    #[serde(rename = "diou")]
+    DIoU,
+    #[serde(rename = "ciou")]
+    CIoU,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum YoloPoint {
+    #[serde(rename = "center")]
+    Center,
+    #[serde(rename = "left_top")]
+    LeftTop,
+    #[serde(rename = "right_bottom")]
+    RightBottom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1124,6 +1279,26 @@ pub struct Adam {
     b1: R64,
     b2: R64,
     eps: R64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WeightsType {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "per_feature")]
+    PerFeature,
+    #[serde(rename = "per_channel")]
+    PerChannel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WeightsNormalization {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "relu")]
+    ReLU,
+    #[serde(rename = "softmax")]
+    Softmax,
 }
 
 // utility functions
@@ -1274,6 +1449,143 @@ fn default_gamma() -> R64 {
 
 fn default_burn_in() -> usize {
     0
+}
+
+fn default_route_groups() -> usize {
+    1
+}
+
+fn default_route_group_id() -> usize {
+    0
+}
+
+fn default_weights_type() -> WeightsType {
+    WeightsType::None
+}
+
+fn default_weights_normalization() -> WeightsNormalization {
+    WeightsNormalization::None
+}
+
+fn default_maxpool_stride() -> usize {
+    1
+}
+
+fn default_maxpool_depth() -> usize {
+    0
+}
+
+fn default_out_channels() -> usize {
+    1
+}
+
+fn default_upsample_stride() -> usize {
+    2
+}
+
+fn default_upsample_scale() -> usize {
+    1
+}
+
+fn default_classes() -> usize {
+    warn!("classes option is not specified, use default 20");
+    20
+}
+
+fn default_num() -> usize {
+    1
+}
+
+fn default_max_boxes() -> usize {
+    200
+}
+
+fn default_yolo_label_smooth_eps() -> R64 {
+    R64::new(0.0)
+}
+
+fn default_scale_x_y() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_iou_normalizer() -> R64 {
+    R64::new(0.75)
+}
+
+fn default_obj_normalizer() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_cls_normalizer() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_delta_normalizer() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_iou_loss() -> IouLoss {
+    IouLoss::Mse
+}
+
+fn default_iou_thresh_kind() -> IouThreshold {
+    IouThreshold::IoU
+}
+
+fn default_beta_nms() -> R64 {
+    R64::new(0.6)
+}
+
+fn default_nms_kind() -> NmsKind {
+    NmsKind::Default
+}
+
+fn default_yolo_point() -> YoloPoint {
+    YoloPoint::Center
+}
+
+fn default_jitter() -> R64 {
+    R64::new(0.2)
+}
+
+fn default_resize() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_ignore_thresh() -> R64 {
+    R64::new(0.5)
+}
+
+fn default_truth_thresh() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_iou_thresh() -> R64 {
+    R64::new(1.0)
+}
+
+fn default_random() -> R64 {
+    R64::new(0.0)
+}
+
+fn default_track_history_size() -> usize {
+    5
+}
+
+fn default_sim_thresh() -> R64 {
+    R64::new(0.8)
+}
+
+fn default_dets_for_track() -> usize {
+    1
+}
+
+fn default_dets_for_show() -> usize {
+    1
+}
+
+fn default_track_ciou_norm() -> R64 {
+    R64::new(0.01)
 }
 
 mod serde_zero_one_bool {
@@ -1439,23 +1751,33 @@ mod serde_opt_vec_r64 {
 mod serde_anchors {
     use super::*;
 
-    pub fn serialize<S>(steps: &Vec<(usize, usize)>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(
+        steps: &Option<Vec<(usize, usize)>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         steps
-            .iter()
-            .flat_map(|(w, h)| vec![w, h])
-            .map(|val| val.to_string())
-            .join(",")
+            .as_ref()
+            .map(|steps| {
+                steps
+                    .iter()
+                    .flat_map(|(w, h)| vec![w, h])
+                    .map(|val| val.to_string())
+                    .join(",")
+            })
             .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<(usize, usize)>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(usize, usize)>>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let text = String::deserialize(deserializer)?;
+        let text = match Option::<String>::deserialize(deserializer)? {
+            Some(text) => text,
+            None => return Ok(None),
+        };
         let values: Vec<usize> = text
             .chars()
             .filter(|c| !c.is_whitespace())
@@ -1475,7 +1797,41 @@ mod serde_anchors {
             .into_iter()
             .map(|mut chunk| (chunk.next().unwrap(), chunk.next().unwrap()))
             .collect();
-        Ok(anchors)
+        Ok(Some(anchors))
+    }
+}
+
+mod serde_weights_type {
+    use super::*;
+
+    pub fn serialize<S>(weights_type: &WeightsType, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match weights_type {
+            WeightsType::None => "none",
+            WeightsType::PerFeature => "per_feature",
+            WeightsType::PerChannel => "per_channel",
+        }
+        .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<WeightsType, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let weights_type = match text.as_str() {
+            "per_feature" | "per_layer" => WeightsType::PerFeature,
+            "per_channel" => WeightsType::PerChannel,
+            _ => {
+                return Err(D::Error::custom(format!(
+                    "'{}' is not a valid weights type",
+                    text
+                )))
+            }
+        };
+        Ok(weights_type)
     }
 }
 
