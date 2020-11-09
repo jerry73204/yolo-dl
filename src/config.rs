@@ -109,7 +109,7 @@ pub struct Net {
     pub loss_scale: R64,
     pub dynamic_minibatch: bool,
     pub optimized_memory: bool,
-    pub workspace_size_limit_MB: usize,
+    pub workspace_size_limit_mb: usize,
     pub adam: Option<Adam>,
     pub input_size: InputSize,
     pub max_crop: usize,
@@ -163,10 +163,10 @@ impl TryFrom<RawNet> for Net {
             loss_scale,
             dynamic_minibatch,
             optimized_memory,
-            workspace_size_limit_MB,
+            workspace_size_limit_mb,
             adam,
-            B1,
-            B2,
+            b1,
+            b2,
             eps,
             width,
             height,
@@ -210,11 +210,7 @@ impl TryFrom<RawNet> for Net {
         let sgdr_cycle = sgdr_cycle.unwrap_or(max_batches);
         let sequential_subdivisions = sequential_subdivisions.unwrap_or(subdivisions);
         let adam = if adam {
-            Some(Adam {
-                b1: B1,
-                b2: B2,
-                eps,
-            })
+            Some(Adam { b1, b2, eps })
         } else {
             None
         };
@@ -307,7 +303,7 @@ impl TryFrom<RawNet> for Net {
             loss_scale,
             dynamic_minibatch,
             optimized_memory,
-            workspace_size_limit_MB,
+            workspace_size_limit_mb,
             adam,
             input_size,
             max_crop,
@@ -375,14 +371,17 @@ pub struct RawNet {
     pub dynamic_minibatch: bool,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub optimized_memory: bool,
-    #[serde(default = "default_workspace_size_limit_MB")]
-    pub workspace_size_limit_MB: usize,
+    #[serde(
+        rename = "workspace_size_limit_MB",
+        default = "default_workspace_size_limit_mb"
+    )]
+    pub workspace_size_limit_mb: usize,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub adam: bool,
-    #[serde(default = "default_B1")]
-    pub B1: R64,
-    #[serde(default = "default_B2")]
-    pub B2: R64,
+    #[serde(rename = "B1", default = "default_b1")]
+    pub b1: R64,
+    #[serde(rename = "B2", default = "default_b2")]
+    pub b2: R64,
     #[serde(default = "default_eps")]
     pub eps: R64,
     pub width: Option<NonZeroUsize>,
@@ -475,7 +474,7 @@ impl From<Net> for RawNet {
             loss_scale,
             dynamic_minibatch,
             optimized_memory,
-            workspace_size_limit_MB,
+            workspace_size_limit_mb,
             adam,
             input_size,
             max_crop,
@@ -507,9 +506,9 @@ impl From<Net> for RawNet {
             burn_in,
         } = net;
 
-        let (adam, B1, B2, eps) = match adam {
+        let (adam, b1, b2, eps) = match adam {
             Some(Adam { b1, b2, eps }) => (true, b1, b2, eps),
-            None => (false, default_B1(), default_B2(), default_eps()),
+            None => (false, default_b1(), default_b2(), default_eps()),
         };
         let (inputs, height, width, channels) = match input_size {
             InputSize::Hwc {
@@ -630,10 +629,10 @@ impl From<Net> for RawNet {
             loss_scale,
             dynamic_minibatch,
             optimized_memory,
-            workspace_size_limit_MB,
+            workspace_size_limit_mb,
             adam,
-            B1,
-            B2,
+            b1,
+            b2,
             eps,
             width: width.map(|w| NonZeroUsize::new(w).unwrap()),
             height: height.map(|h| NonZeroUsize::new(h).unwrap()),
@@ -1375,15 +1374,15 @@ fn default_loss_scale() -> R64 {
     R64::new(1.0)
 }
 
-fn default_workspace_size_limit_MB() -> usize {
+fn default_workspace_size_limit_mb() -> usize {
     1024
 }
 
-fn default_B1() -> R64 {
+fn default_b1() -> R64 {
     R64::new(0.9)
 }
 
-fn default_B2() -> R64 {
+fn default_b2() -> R64 {
     R64::new(0.999)
 }
 
