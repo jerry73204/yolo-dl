@@ -2,7 +2,7 @@ use crate::common::*;
 
 pub use items::*;
 
-trait CommonLayerOptionsEx {
+pub trait CommonLayerOptionsEx {
     fn common(&self) -> &CommonLayerOptions;
 }
 

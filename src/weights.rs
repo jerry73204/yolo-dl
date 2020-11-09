@@ -1,6 +1,9 @@
 use crate::{
     common::*,
-    config::{CommonLayerOptions, Config, Connected, Convolutional, Layer, Net, Shape},
+    config::{
+        CommonLayerOptions, CommonLayerOptionsEx, Config, Connected, Convolutional, Layer, Net,
+        Shape,
+    },
 };
 
 pub fn load<P1, P2>(config_file: P1, weights_file: P2) -> Result<()>
@@ -71,7 +74,16 @@ where
             .try_fold(init_state, |mut state, layer| -> Result<_> {
                 let State { cursor, shape } = &mut state;
 
+                let CommonLayerOptions { dont_load, .. } = *layer.common();
+
+                if dont_load {
+                    warn!("TODO: implement dont_load");
+                }
+
                 let weights: Weights = match layer {
+                    Layer::Convolutional(convolutional) => {
+                        todo!();
+                    }
                     Layer::Connected(connected) => {
                         let Connected {
                             output,
@@ -92,7 +104,7 @@ where
                             let biases = cursor.read::<R32>(output)?;
                             let weights = cursor.read::<R32>(inputs * output)?;
                             if transpose {
-                                // TODO
+                                warn!("TODO: transpose");
                                 (biases, weights)
                             } else {
                                 (biases, weights)
