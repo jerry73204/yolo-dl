@@ -22,6 +22,7 @@ impl TryFrom<Vec<Item>> for Config {
         let layers: Vec<_> = items
             .map(|item| {
                 let layer = match item {
+                    Item::Connected(layer) => Layer::Connected(layer),
                     Item::Convolutional(layer) => Layer::Convolutional(layer),
                     Item::Route(layer) => Layer::Route(layer),
                     Item::Shortcut(layer) => Layer::Shortcut(layer),
@@ -40,6 +41,8 @@ impl TryFrom<Vec<Item>> for Config {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Layer {
+    #[serde(rename = "connected")]
+    Connected(Connected),
     #[serde(rename = "convolutional")]
     Convolutional(Convolutional),
     #[serde(rename = "route")]
@@ -59,6 +62,7 @@ impl From<Config> for Vec<Item> {
         let Config { net, layers } = config;
         let items: Vec<_> = iter::once(Item::Net(net))
             .chain(layers.into_iter().map(|layer| match layer {
+                Layer::Connected(layer) => Item::Connected(layer),
                 Layer::Convolutional(layer) => Item::Convolutional(layer),
                 Layer::Route(layer) => Item::Route(layer),
                 Layer::Shortcut(layer) => Item::Shortcut(layer),
@@ -75,6 +79,8 @@ impl From<Config> for Vec<Item> {
 pub enum Item {
     #[serde(rename = "net")]
     Net(Net),
+    #[serde(rename = "connected")]
+    Connected(Connected),
     #[serde(rename = "convolutional")]
     Convolutional(Convolutional),
     #[serde(rename = "route")]
@@ -111,7 +117,7 @@ pub struct Net {
     pub optimized_memory: bool,
     pub workspace_size_limit_mb: usize,
     pub adam: Option<Adam>,
-    pub input_size: InputSize,
+    pub input_size: Shape,
     pub max_crop: usize,
     pub min_crop: usize,
     pub flip: bool,
@@ -217,14 +223,10 @@ impl TryFrom<RawNet> for Net {
         let max_crop = max_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0) * 2);
         let min_crop = min_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0));
         let input_size = match (inputs, height, width, channels) {
-            (Some(inputs), None, None, None) => InputSize::Inputs {
-                inputs: inputs.get(),
-            },
-            (None, Some(height), Some(width), Some(channels)) => InputSize::Hwc {
-                height: height.get(),
-                width: width.get(),
-                channels: channels.get(),
-            },
+            (Some(inputs), None, None, None) => Shape::Flat(inputs.get()),
+            (None, Some(height), Some(width), Some(channels)) => {
+                Shape::Hwc([height.get(), width.get(), channels.get()])
+            }
             _ => bail!("either inputs or height/width/channels must be specified"),
         };
         let policy = match policy {
@@ -511,12 +513,10 @@ impl From<Net> for RawNet {
             None => (false, default_b1(), default_b2(), default_eps()),
         };
         let (inputs, height, width, channels) = match input_size {
-            InputSize::Hwc {
-                height,
-                width,
-                channels,
-            } => (None, Some(height), Some(width), Some(channels)),
-            InputSize::Inputs { inputs } => (Some(inputs), None, None, None),
+            Shape::Hwc([height, width, channels]) => {
+                (None, Some(height), Some(width), Some(channels))
+            }
+            Shape::Flat(inputs) => (Some(inputs), None, None, None),
         };
 
         let (policy, step, scale, steps, scales, seq_scales, gamma) = match policy {
@@ -676,6 +676,18 @@ impl From<Net> for RawNet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Connected {
+    #[serde(default = "default_connected_output")]
+    pub output: usize,
+    #[serde(default = "default_connected_activation")]
+    pub activation: Activation,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub batch_normalize: bool,
+    #[serde(flatten)]
+    pub common: CommonOptions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawConvolutional", into = "RawConvolutional")]
 pub struct Convolutional {
     pub filters: usize,
@@ -701,6 +713,8 @@ pub struct Convolutional {
     pub grad_centr: bool,
     pub reverse: bool,
     pub coordconv: bool,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 impl TryFrom<RawConvolutional> for Convolutional {
@@ -736,6 +750,7 @@ impl TryFrom<RawConvolutional> for Convolutional {
             grad_centr,
             reverse,
             coordconv,
+            common,
         } = raw;
 
         let stride_x = stride_x.unwrap_or(stride);
@@ -794,6 +809,7 @@ impl TryFrom<RawConvolutional> for Convolutional {
             grad_centr,
             reverse,
             coordconv,
+            common,
         })
     }
 }
@@ -853,6 +869,8 @@ pub struct RawConvolutional {
     pub reverse: bool,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub coordconv: bool,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 impl From<Convolutional> for RawConvolutional {
@@ -881,6 +899,7 @@ impl From<Convolutional> for RawConvolutional {
             grad_centr,
             reverse,
             coordconv,
+            common,
         } = conv;
 
         let (sway, rotate, stretch, stretch_sway) = match deform {
@@ -920,6 +939,7 @@ impl From<Convolutional> for RawConvolutional {
             grad_centr,
             reverse,
             coordconv,
+            common,
         }
     }
 }
@@ -932,6 +952,8 @@ pub struct Route {
     pub groups: usize,
     #[serde(default = "default_route_group_id")]
     pub groupd_id: usize,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -942,6 +964,8 @@ pub struct Shortcut {
     pub weights_type: WeightsType,
     #[serde(default = "default_weights_normalization")]
     pub weights_normalization: WeightsNormalization,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -954,6 +978,8 @@ pub struct MaxPool {
     pub maxpool_depth: usize,
     pub out_channels: usize,
     pub antialiasing: bool,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 impl From<RawMaxPool> for MaxPool {
@@ -967,6 +993,7 @@ impl From<RawMaxPool> for MaxPool {
             maxpool_depth,
             out_channels,
             antialiasing,
+            common,
         } = raw;
 
         let stride_x = stride_x.unwrap_or(stride);
@@ -982,6 +1009,7 @@ impl From<RawMaxPool> for MaxPool {
             maxpool_depth,
             out_channels,
             antialiasing,
+            common,
         }
     }
 }
@@ -1000,6 +1028,8 @@ pub struct RawMaxPool {
     pub out_channels: usize,
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub antialiasing: bool,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 impl From<MaxPool> for RawMaxPool {
@@ -1012,6 +1042,7 @@ impl From<MaxPool> for RawMaxPool {
             maxpool_depth,
             out_channels,
             antialiasing,
+            common,
         } = maxpool;
 
         Self {
@@ -1023,6 +1054,7 @@ impl From<MaxPool> for RawMaxPool {
             maxpool_depth,
             out_channels,
             antialiasing,
+            common,
         }
     }
 }
@@ -1033,6 +1065,8 @@ pub struct UpSample {
     pub stride: usize,
     #[serde(default = "default_upsample_scale")]
     pub scale: usize,
+    #[serde(flatten)]
+    pub common: CommonOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1100,6 +1134,45 @@ pub struct Yolo {
     pub map: Option<PathBuf>,
     #[serde(with = "serde_anchors", default)]
     pub anchors: Option<Vec<(usize, usize)>>,
+    #[serde(flatten)]
+    pub common: CommonOptions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CommonOptions {
+    pub clip: Option<R64>,
+    #[serde(
+        rename = "onlyforward",
+        with = "serde_zero_one_bool",
+        default = "default_bool_false"
+    )]
+    pub only_forward: bool,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub dont_update: bool,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub burnin_update: bool,
+    #[serde(
+        rename = "stopbackward",
+        with = "serde_zero_one_bool",
+        default = "default_bool_false"
+    )]
+    pub stop_backward: bool,
+    #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
+    pub train_only_bn: bool,
+    #[serde(
+        rename = "dontload",
+        with = "serde_zero_one_bool",
+        default = "default_bool_false"
+    )]
+    pub dont_load: bool,
+    #[serde(
+        rename = "dontloadscales",
+        with = "serde_zero_one_bool",
+        default = "default_bool_false"
+    )]
+    pub dont_load_scales: bool,
+    #[serde(rename = "learning_rate", default = "default_learning_scale_scale")]
+    pub learning_scale_scale: R64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1262,15 +1335,9 @@ pub enum MixUp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum InputSize {
-    Hwc {
-        height: usize,
-        width: usize,
-        channels: usize,
-    },
-    Inputs {
-        inputs: usize,
-    },
+pub enum Shape {
+    Hwc([usize; 3]),
+    Flat(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1587,6 +1654,18 @@ fn default_track_ciou_norm() -> R64 {
     R64::new(0.01)
 }
 
+fn default_connected_output() -> usize {
+    1
+}
+
+fn default_connected_activation() -> Activation {
+    Activation::Logistic
+}
+
+fn default_learning_scale_scale() -> R64 {
+    R64::new(1.0)
+}
+
 mod serde_zero_one_bool {
     use super::*;
 
@@ -1831,20 +1910,5 @@ mod serde_weights_type {
             }
         };
         Ok(weights_type)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wtf() -> Result<()> {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("yolov4.cfg");
-        let config: Config = serde_ini::from_str(&fs::read_to_string(path)?)?;
-        dbg!(config);
-        Ok(())
     }
 }
