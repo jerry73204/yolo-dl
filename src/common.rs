@@ -12,7 +12,9 @@ pub use serde_repr::{Deserialize_repr, Serialize_repr};
 pub use std::{
     collections::HashMap,
     convert::TryFrom,
+    fmt::Debug,
     fs::{self, File},
+    hash::Hash,
     io::{prelude::*, BufReader},
     iter,
     num::NonZeroUsize,
