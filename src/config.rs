@@ -29,6 +29,7 @@ impl TryFrom<Vec<Item>> for Config {
                     Item::MaxPool(layer) => Layer::MaxPool(layer),
                     Item::UpSample(layer) => Layer::UpSample(layer),
                     Item::Yolo(layer) => Layer::Yolo(layer),
+                    Item::BatchNorm(layer) => Layer::BatchNorm(layer),
                     Item::Net(_layer) => bail!("the 'net' layer must appear in the first section"),
                 };
                 Ok(layer)
@@ -55,6 +56,8 @@ pub enum Layer {
     UpSample(UpSample),
     #[serde(rename = "yolo")]
     Yolo(Yolo),
+    #[serde(rename = "batchnorm")]
+    BatchNorm(BatchNorm),
 }
 
 impl From<Config> for Vec<Item> {
@@ -69,6 +72,7 @@ impl From<Config> for Vec<Item> {
                 Layer::MaxPool(layer) => Item::MaxPool(layer),
                 Layer::UpSample(layer) => Item::UpSample(layer),
                 Layer::Yolo(layer) => Item::Yolo(layer),
+                Layer::BatchNorm(layer) => Item::BatchNorm(layer),
             }))
             .collect();
         items
@@ -93,6 +97,8 @@ pub enum Item {
     UpSample(UpSample),
     #[serde(rename = "yolo")]
     Yolo(Yolo),
+    #[serde(rename = "batchnorm")]
+    BatchNorm(BatchNorm),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -684,7 +690,7 @@ pub struct Connected {
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub batch_normalize: bool,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -714,7 +720,7 @@ pub struct Convolutional {
     pub reverse: bool,
     pub coordconv: bool,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 impl TryFrom<RawConvolutional> for Convolutional {
@@ -870,7 +876,7 @@ pub struct RawConvolutional {
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub coordconv: bool,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 impl From<Convolutional> for RawConvolutional {
@@ -953,7 +959,7 @@ pub struct Route {
     #[serde(default = "default_route_group_id")]
     pub groupd_id: usize,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -965,7 +971,7 @@ pub struct Shortcut {
     #[serde(default = "default_weights_normalization")]
     pub weights_normalization: WeightsNormalization,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -979,7 +985,7 @@ pub struct MaxPool {
     pub out_channels: usize,
     pub antialiasing: bool,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 impl From<RawMaxPool> for MaxPool {
@@ -1029,7 +1035,7 @@ pub struct RawMaxPool {
     #[serde(with = "serde_zero_one_bool", default = "default_bool_false")]
     pub antialiasing: bool,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 impl From<MaxPool> for RawMaxPool {
@@ -1066,7 +1072,7 @@ pub struct UpSample {
     #[serde(default = "default_upsample_scale")]
     pub scale: usize,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1135,11 +1141,14 @@ pub struct Yolo {
     #[serde(with = "serde_anchors", default)]
     pub anchors: Option<Vec<(usize, usize)>>,
     #[serde(flatten)]
-    pub common: CommonOptions,
+    pub common: CommonLayerOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct CommonOptions {
+pub struct BatchNorm;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CommonLayerOptions {
     pub clip: Option<R64>,
     #[serde(
         rename = "onlyforward",
