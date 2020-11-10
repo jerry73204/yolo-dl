@@ -14,6 +14,11 @@ binread = "1.4"
 owning_ref = "0.4"
 log = "0.4"
 serde_repr = "0.1"
+petgraph = "0.5"
+indexmap = "1.6"
+
+[dev-dependencies]
+pretty_env_logger = "0.4"
 
 [patch.crates-io]
 serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }

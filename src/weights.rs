@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     config::{
-        BatchNorm, CommonLayerOptions, CommonLayerOptionsEx, Config, Connected, Convolutional,
-        Layer, Net, Shape, Shortcut,
+        BatchNormConfig, CommonLayerOptions, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
+        LayerConfig, LayerConfigEx, NetConfig, Shape, ShortcutConfig,
     },
 };
 
@@ -12,8 +12,8 @@ where
     P2: AsRef<Path>,
 {
     // load config file
-    let Config {
-        net: Net {
+    let DarknetConfig {
+        net: NetConfig {
             input_size, batch, ..
         },
         layers,
@@ -82,9 +82,9 @@ where
 
         // layer loading functions
 
-        let load_convolutional = |layer: &Convolutional, state: &mut State| -> Result<_> {
+        let load_convolutional = |layer: &ConvolutionalConfig, state: &mut State| -> Result<_> {
             let State { cursor, shape } = state;
-            let Convolutional {
+            let ConvolutionalConfig {
                 filters,
                 batch_normalize,
                 flipped,
@@ -92,40 +92,53 @@ where
                 size,
                 stride_x,
                 stride_y,
+                share_index,
                 common:
                     CommonLayerOptions {
                         dont_load_scales, ..
                     },
                 ..
             } = *layer;
+
             let [height, width, channels] = match *shape {
                 Shape::Hwc([h, w, c]) => [h, w, c],
                 _ => bail!("invalid input shape"),
             };
 
-            let biases = cursor.read::<R32>(filters)?;
-            let scales = if batch_normalize && !dont_load_scales {
-                let scales = cursor.read::<R32>(filters)?;
-                let rolling_mean = cursor.read::<R32>(filters)?;
-                let rolling_variance = cursor.read::<R32>(filters)?;
-
-                Some(ScaleWeights {
-                    scales: Box::new(scales),
-                    rolling_mean: Box::new(rolling_mean),
-                    rolling_variance: Box::new(rolling_variance),
-                })
-            } else {
+            let weights = if let Some(share_index) = share_index {
+                warn!("TODO: implement shared_index");
                 None
-            };
-            let weights = {
-                let num_weights = layer.num_weights(channels)?;
-                let weights = cursor.read::<R32>(num_weights)?;
+            } else {
+                let biases = cursor.read::<R32>(filters)?;
+                let scales = if batch_normalize && !dont_load_scales {
+                    let scales = cursor.read::<R32>(filters)?;
+                    let rolling_mean = cursor.read::<R32>(filters)?;
+                    let rolling_variance = cursor.read::<R32>(filters)?;
 
-                if flipped {
-                    warn!("TODO: implement flipped option");
-                }
+                    Some(ScaleWeights {
+                        scales: Box::new(scales),
+                        rolling_mean: Box::new(rolling_mean),
+                        rolling_variance: Box::new(rolling_variance),
+                    })
+                } else {
+                    None
+                };
+                let weights = {
+                    let num_weights = layer.num_weights(channels)?;
+                    let weights = cursor.read::<R32>(num_weights)?;
 
-                weights
+                    if flipped {
+                        warn!("TODO: implement flipped option");
+                    }
+
+                    weights
+                };
+
+                Some(ConvolutionalWeights {
+                    biases: Box::new(biases),
+                    weights: Box::new(weights),
+                    scales,
+                })
             };
 
             // update shape
@@ -135,16 +148,12 @@ where
                 Shape::Hwc([new_height, new_width, filters])
             };
 
-            Ok(ConvolutionalWeights {
-                biases: Box::new(biases),
-                weights: Box::new(weights),
-                scales,
-            })
+            Ok(weights)
         };
 
-        let load_connected = |layer: &Connected, state: &mut State| -> Result<_> {
+        let load_connected = |layer: &ConnectedConfig, state: &mut State| -> Result<_> {
             let State { cursor, shape } = state;
-            let Connected {
+            let ConnectedConfig {
                 output,
                 batch_normalize,
                 common:
@@ -194,7 +203,7 @@ where
             })
         };
 
-        let load_batch_norm = |_layer: &BatchNorm, state: &mut State| -> Result<_> {
+        let load_batch_norm = |_layer: &BatchNormConfig, state: &mut State| -> Result<_> {
             let State { cursor, shape } = state;
             let channels = match *shape {
                 Shape::Hwc([_, _, channels]) => channels,
@@ -213,7 +222,7 @@ where
             })
         };
 
-        let load_shortcut = |layer: &Shortcut, state: &mut State| -> Result<_> {
+        let load_shortcut = |layer: &ShortcutConfig, state: &mut State| -> Result<_> {
             let State { cursor, shape } = state;
             let channels = match *shape {
                 Shape::Hwc([_, _, channels]) => channels,
@@ -234,33 +243,58 @@ where
             cursor: Cursor { buffer },
             shape: input_size,
         };
-        let final_state = layers
-            .iter()
-            .try_fold(init_state, |mut state, layer| -> Result<_> {
+        let final_state = layers.iter().enumerate().try_fold(
+            init_state,
+            |mut state, (layer_index, layer)| -> Result<_> {
                 let CommonLayerOptions { dont_load, .. } = *layer.common();
 
                 if dont_load {
                     return Ok(state);
                 }
 
+                let input_shape = state.shape.clone();
+
                 let weights: Option<Weights> = match layer {
-                    Layer::Convolutional(convolutional) => {
-                        Some(load_convolutional(convolutional, &mut state)?.into())
+                    LayerConfig::Convolutional(convolutional) => {
+                        load_convolutional(convolutional, &mut state)?.map(Into::into)
                     }
-                    Layer::Connected(connected) => {
+                    LayerConfig::Connected(connected) => {
                         Some(load_connected(connected, &mut state)?.into())
                     }
-                    Layer::BatchNorm(batch_norm) => {
+                    LayerConfig::BatchNorm(batch_norm) => {
                         Some(load_batch_norm(batch_norm, &mut state)?.into())
                     }
-                    Layer::Shortcut(shortcut) => Some(load_shortcut(shortcut, &mut state)?.into()),
-                    Layer::MaxPool(_) | Layer::Route(_) | Layer::UpSample(_) | Layer::Yolo(_) => {
-                        None
+                    LayerConfig::Shortcut(shortcut) => {
+                        Some(load_shortcut(shortcut, &mut state)?.into())
                     }
+                    LayerConfig::MaxPool(_)
+                    | LayerConfig::Route(_)
+                    | LayerConfig::UpSample(_)
+                    | LayerConfig::Yolo(_) => None,
                 };
 
+                #[cfg(debug_assertions)]
+                {
+                    let output_shape = state.shape.clone();
+                    let kind = match layer {
+                        LayerConfig::Convolutional(_) => "convolutional",
+                        LayerConfig::Connected(_) => "connected",
+                        LayerConfig::BatchNorm(_) => "batch_norm",
+                        LayerConfig::Shortcut(_) => "shortcut",
+                        LayerConfig::MaxPool(_) => "max_pool",
+                        LayerConfig::Route(_) => "route",
+                        LayerConfig::UpSample(_) => "up_sample",
+                        LayerConfig::Yolo(_) => "yolo",
+                    };
+                    debug!(
+                        "{}\t{}\t{:?}\t{:?}",
+                        layer_index, kind, input_shape, output_shape
+                    );
+                }
+
                 Ok(state)
-            })?;
+            },
+        )?;
 
         ensure!(
             final_state.cursor.is_eof(),
@@ -346,6 +380,12 @@ pub struct ConvolutionalWeights {
     pub scales: Option<ScaleWeights>,
 }
 
+impl Default for ConvolutionalWeights {
+    fn default() -> Self {
+        todo!();
+    }
+}
+
 #[derive(Debug)]
 pub struct BatchNormWeights {
     pub biases: Box<dyn Buffer<R32>>,
@@ -357,19 +397,4 @@ pub struct BatchNormWeights {
 #[derive(Debug)]
 pub struct ShortcutWeights {
     pub weights: Box<dyn Buffer<R32>>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wtf() -> Result<()> {
-        let config_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("yolov4.cfg");
-        let weights_path = "/home/jerry73204/Downloads/yolov4.weights";
-        load(config_path, weights_path)?;
-        Ok(())
-    }
 }

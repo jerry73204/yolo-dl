@@ -2,18 +2,39 @@ use crate::common::*;
 
 pub use items::*;
 
-pub trait CommonLayerOptionsEx {
+pub trait LayerConfigEx {
     fn common(&self) -> &CommonLayerOptions;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "Vec<Item>", into = "Vec<Item>")]
-pub struct Config {
-    pub net: Net,
-    pub layers: Vec<Layer>,
+pub struct DarknetConfig {
+    pub net: NetConfig,
+    pub layers: Vec<LayerConfig>,
 }
 
-impl TryFrom<Vec<Item>> for Config {
+impl DarknetConfig {
+    pub fn load<P>(config_file: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        Ok(Self::from_str(&fs::read_to_string(config_file)?)?)
+    }
+
+    pub fn to_string(&self) -> Result<String> {
+        Ok(serde_ini::to_string(self)?)
+    }
+}
+
+impl FromStr for DarknetConfig {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        Ok(serde_ini::from_str(text)?)
+    }
+}
+
+impl TryFrom<Vec<Item>> for DarknetConfig {
     type Error = anyhow::Error;
 
     fn try_from(items: Vec<Item>) -> Result<Self, Self::Error> {
@@ -28,75 +49,56 @@ impl TryFrom<Vec<Item>> for Config {
         let layers: Vec<_> = items
             .map(|item| {
                 let layer = match item {
-                    Item::Connected(layer) => Layer::Connected(layer),
-                    Item::Convolutional(layer) => Layer::Convolutional(layer),
-                    Item::Route(layer) => Layer::Route(layer),
-                    Item::Shortcut(layer) => Layer::Shortcut(layer),
-                    Item::MaxPool(layer) => Layer::MaxPool(layer),
-                    Item::UpSample(layer) => Layer::UpSample(layer),
-                    Item::Yolo(layer) => Layer::Yolo(layer),
-                    Item::BatchNorm(layer) => Layer::BatchNorm(layer),
+                    Item::Connected(layer) => LayerConfig::Connected(layer),
+                    Item::Convolutional(layer) => LayerConfig::Convolutional(layer),
+                    Item::Route(layer) => LayerConfig::Route(layer),
+                    Item::Shortcut(layer) => LayerConfig::Shortcut(layer),
+                    Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
+                    Item::UpSample(layer) => LayerConfig::UpSample(layer),
+                    Item::Yolo(layer) => LayerConfig::Yolo(layer),
+                    Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
                     Item::Net(_layer) => bail!("the 'net' layer must appear in the first section"),
                 };
                 Ok(layer)
             })
             .try_collect()?;
 
-        Ok(Config { net, layers })
+        Ok(Self { net, layers })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Layer {
+pub enum LayerConfig {
     #[serde(rename = "connected")]
-    Connected(Connected),
+    Connected(ConnectedConfig),
     #[serde(rename = "convolutional")]
-    Convolutional(Convolutional),
+    Convolutional(ConvolutionalConfig),
     #[serde(rename = "route")]
-    Route(Route),
+    Route(RouteConfig),
     #[serde(rename = "shortcut")]
-    Shortcut(Shortcut),
+    Shortcut(ShortcutConfig),
     #[serde(rename = "maxpool")]
-    MaxPool(MaxPool),
+    MaxPool(MaxPoolConfig),
     #[serde(rename = "upsample")]
-    UpSample(UpSample),
+    UpSample(UpSampleConfig),
     #[serde(rename = "yolo")]
-    Yolo(Yolo),
+    Yolo(YoloConfig),
     #[serde(rename = "batchnorm")]
-    BatchNorm(BatchNorm),
+    BatchNorm(BatchNormConfig),
 }
 
-impl CommonLayerOptionsEx for Layer {
+impl LayerConfigEx for LayerConfig {
     fn common(&self) -> &CommonLayerOptions {
         match self {
-            Layer::Connected(layer) => layer.common(),
-            Layer::Convolutional(layer) => layer.common(),
-            Layer::Route(layer) => layer.common(),
-            Layer::Shortcut(layer) => layer.common(),
-            Layer::MaxPool(layer) => layer.common(),
-            Layer::UpSample(layer) => layer.common(),
-            Layer::Yolo(layer) => layer.common(),
-            Layer::BatchNorm(layer) => layer.common(),
+            LayerConfig::Connected(layer) => layer.common(),
+            LayerConfig::Convolutional(layer) => layer.common(),
+            LayerConfig::Route(layer) => layer.common(),
+            LayerConfig::Shortcut(layer) => layer.common(),
+            LayerConfig::MaxPool(layer) => layer.common(),
+            LayerConfig::UpSample(layer) => layer.common(),
+            LayerConfig::Yolo(layer) => layer.common(),
+            LayerConfig::BatchNorm(layer) => layer.common(),
         }
-    }
-}
-
-impl From<Config> for Vec<Item> {
-    fn from(config: Config) -> Self {
-        let Config { net, layers } = config;
-        let items: Vec<_> = iter::once(Item::Net(net))
-            .chain(layers.into_iter().map(|layer| match layer {
-                Layer::Connected(layer) => Item::Connected(layer),
-                Layer::Convolutional(layer) => Item::Convolutional(layer),
-                Layer::Route(layer) => Item::Route(layer),
-                Layer::Shortcut(layer) => Item::Shortcut(layer),
-                Layer::MaxPool(layer) => Item::MaxPool(layer),
-                Layer::UpSample(layer) => Item::UpSample(layer),
-                Layer::Yolo(layer) => Item::Yolo(layer),
-                Layer::BatchNorm(layer) => Item::BatchNorm(layer),
-            }))
-            .collect();
-        items
     }
 }
 
@@ -106,28 +108,47 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum Item {
         #[serde(rename = "net")]
-        Net(Net),
+        Net(NetConfig),
         #[serde(rename = "connected")]
-        Connected(Connected),
+        Connected(ConnectedConfig),
         #[serde(rename = "convolutional")]
-        Convolutional(Convolutional),
+        Convolutional(ConvolutionalConfig),
         #[serde(rename = "route")]
-        Route(Route),
+        Route(RouteConfig),
         #[serde(rename = "shortcut")]
-        Shortcut(Shortcut),
+        Shortcut(ShortcutConfig),
         #[serde(rename = "maxpool")]
-        MaxPool(MaxPool),
+        MaxPool(MaxPoolConfig),
         #[serde(rename = "upsample")]
-        UpSample(UpSample),
+        UpSample(UpSampleConfig),
         #[serde(rename = "yolo")]
-        Yolo(Yolo),
+        Yolo(YoloConfig),
         #[serde(rename = "batchnorm")]
-        BatchNorm(BatchNorm),
+        BatchNorm(BatchNormConfig),
+    }
+
+    impl From<DarknetConfig> for Vec<Item> {
+        fn from(config: DarknetConfig) -> Self {
+            let DarknetConfig { net, layers } = config;
+            let items: Vec<_> = iter::once(Item::Net(net))
+                .chain(layers.into_iter().map(|layer| match layer {
+                    LayerConfig::Connected(layer) => Item::Connected(layer),
+                    LayerConfig::Convolutional(layer) => Item::Convolutional(layer),
+                    LayerConfig::Route(layer) => Item::Route(layer),
+                    LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
+                    LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
+                    LayerConfig::UpSample(layer) => Item::UpSample(layer),
+                    LayerConfig::Yolo(layer) => Item::Yolo(layer),
+                    LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
+                }))
+                .collect();
+            items
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawNet", into = "RawNet")]
-    pub struct Net {
+    #[serde(try_from = "RawNetConfig", into = "RawNetConfig")]
+    pub struct NetConfig {
         pub max_batches: usize,
         pub batch: usize,
         pub learning_rate: R64,
@@ -177,11 +198,11 @@ mod items {
         pub burn_in: usize,
     }
 
-    impl TryFrom<RawNet> for Net {
+    impl TryFrom<RawNetConfig> for NetConfig {
         type Error = Error;
 
-        fn try_from(raw: RawNet) -> Result<Self, Self::Error> {
-            let RawNet {
+        fn try_from(raw: RawNetConfig) -> Result<Self, Self::Error> {
+            let RawNetConfig {
                 max_batches,
                 batch,
                 learning_rate,
@@ -320,7 +341,7 @@ mod items {
                 },
             };
 
-            Ok(Net {
+            Ok(Self {
                 max_batches,
                 batch,
                 learning_rate,
@@ -373,7 +394,7 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawNet {
+    pub struct RawNetConfig {
         #[serde(default = "defaults::max_batches")]
         pub max_batches: usize,
         #[serde(default = "defaults::batch")]
@@ -489,9 +510,9 @@ mod items {
         pub gamma: R64,
     }
 
-    impl From<Net> for RawNet {
-        fn from(net: Net) -> Self {
-            let Net {
+    impl From<NetConfig> for RawNetConfig {
+        fn from(net: NetConfig) -> Self {
+            let NetConfig {
                 max_batches,
                 batch,
                 learning_rate,
@@ -644,7 +665,7 @@ mod items {
                 ),
             };
 
-            RawNet {
+            Self {
                 max_batches,
                 batch,
                 learning_rate,
@@ -709,7 +730,7 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Connected {
+    pub struct ConnectedConfig {
         #[serde(default = "defaults::connected_output")]
         pub output: usize,
         #[serde(default = "defaults::connected_activation")]
@@ -720,15 +741,15 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl CommonLayerOptionsEx for Connected {
+    impl LayerConfigEx for ConnectedConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawConvolutional", into = "RawConvolutional")]
-    pub struct Convolutional {
+    #[serde(try_from = "RawConvolutionalConfig", into = "RawConvolutionalConfig")]
+    pub struct ConvolutionalConfig {
         pub filters: usize,
         pub groups: usize,
         pub size: usize,
@@ -740,7 +761,7 @@ mod items {
         pub padding: usize,
         pub activation: Activation,
         pub assisted_excitation: bool,
-        pub share_index: Option<usize>,
+        pub share_index: Option<LayerIndex>,
         pub cbn: bool,
         pub binary: bool,
         pub xnor: bool,
@@ -756,7 +777,7 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl Convolutional {
+    impl ConvolutionalConfig {
         pub fn num_weights(&self, channels: usize) -> Result<usize> {
             ensure!(
                 channels % self.groups == 0,
@@ -766,17 +787,17 @@ mod items {
         }
     }
 
-    impl CommonLayerOptionsEx for Convolutional {
+    impl LayerConfigEx for ConvolutionalConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
-    impl TryFrom<RawConvolutional> for Convolutional {
+    impl TryFrom<RawConvolutionalConfig> for ConvolutionalConfig {
         type Error = anyhow::Error;
 
-        fn try_from(raw: RawConvolutional) -> Result<Self, Self::Error> {
-            let RawConvolutional {
+        fn try_from(raw: RawConvolutionalConfig) -> Result<Self, Self::Error> {
+            let RawConvolutionalConfig {
                 filters,
                 groups,
                 size,
@@ -874,7 +895,7 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawConvolutional {
+    pub struct RawConvolutionalConfig {
         pub filters: usize,
         #[serde(default = "defaults::groups")]
         pub groups: usize,
@@ -893,7 +914,7 @@ mod items {
         pub activation: Activation,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub assisted_excitation: bool,
-        pub share_index: Option<usize>,
+        pub share_index: Option<LayerIndex>,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub batch_normalize: bool,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
@@ -932,9 +953,9 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl From<Convolutional> for RawConvolutional {
-        fn from(conv: Convolutional) -> Self {
-            let Convolutional {
+    impl From<ConvolutionalConfig> for RawConvolutionalConfig {
+        fn from(conv: ConvolutionalConfig) -> Self {
+            let ConvolutionalConfig {
                 filters,
                 groups,
                 size,
@@ -1004,9 +1025,9 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Route {
-        #[serde(with = "serde_vec_isize")]
-        pub layers: Vec<isize>,
+    pub struct RouteConfig {
+        #[serde(with = "serde_vec_layer_index")]
+        pub layers: Vec<LayerIndex>,
         #[serde(default = "defaults::route_groups")]
         pub groups: usize,
         #[serde(default = "defaults::route_group_id")]
@@ -1015,16 +1036,16 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl CommonLayerOptionsEx for Route {
+    impl LayerConfigEx for RouteConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Shortcut {
-        #[serde(with = "serde_vec_isize", default)]
-        pub from: Vec<isize>,
+    pub struct ShortcutConfig {
+        #[serde(with = "serde_vec_layer_index")]
+        pub from: Vec<LayerIndex>,
         pub activation: Activation,
         #[serde(with = "serde_weights_type", default = "defaults::weights_type")]
         pub weights_type: WeightsType,
@@ -1034,7 +1055,7 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl Shortcut {
+    impl ShortcutConfig {
         pub fn num_weights(&self, channels: usize) -> usize {
             match self.weights_type {
                 WeightsType::None => 0,
@@ -1044,15 +1065,15 @@ mod items {
         }
     }
 
-    impl CommonLayerOptionsEx for Shortcut {
+    impl LayerConfigEx for ShortcutConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(from = "RawMaxPool", into = "RawMaxPool")]
-    pub struct MaxPool {
+    #[serde(from = "RawMaxPoolConfig", into = "RawMaxPoolConfig")]
+    pub struct MaxPoolConfig {
         pub stride_x: usize,
         pub stride_y: usize,
         pub size: usize,
@@ -1064,15 +1085,15 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl CommonLayerOptionsEx for MaxPool {
+    impl LayerConfigEx for MaxPoolConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
-    impl From<RawMaxPool> for MaxPool {
-        fn from(raw: RawMaxPool) -> Self {
-            let RawMaxPool {
+    impl From<RawMaxPoolConfig> for MaxPoolConfig {
+        fn from(raw: RawMaxPoolConfig) -> Self {
+            let RawMaxPoolConfig {
                 stride,
                 stride_x,
                 stride_y,
@@ -1103,7 +1124,7 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawMaxPool {
+    pub struct RawMaxPoolConfig {
         #[serde(default = "defaults::maxpool_stride")]
         pub stride: usize,
         pub stride_x: Option<usize>,
@@ -1120,9 +1141,9 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl From<MaxPool> for RawMaxPool {
-        fn from(maxpool: MaxPool) -> Self {
-            let MaxPool {
+    impl From<MaxPoolConfig> for RawMaxPoolConfig {
+        fn from(maxpool: MaxPoolConfig) -> Self {
+            let MaxPoolConfig {
                 stride_x,
                 stride_y,
                 size,
@@ -1148,7 +1169,7 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct UpSample {
+    pub struct UpSampleConfig {
         #[serde(default = "defaults::upsample_stride")]
         pub stride: usize,
         #[serde(default = "defaults::upsample_scale")]
@@ -1157,14 +1178,14 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl CommonLayerOptionsEx for UpSample {
+    impl LayerConfigEx for UpSampleConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Yolo {
+    pub struct YoloConfig {
         #[serde(default = "defaults::classes")]
         pub classes: usize,
         #[serde(default = "defaults::num")]
@@ -1224,7 +1245,7 @@ mod items {
         pub dets_for_show: usize,
         #[serde(default = "defaults::track_ciou_norm")]
         pub track_ciou_norm: R64,
-        pub embedding_layer: Option<isize>,
+        pub embedding_layer: Option<LayerIndex>,
         pub map: Option<PathBuf>,
         #[serde(with = "serde_anchors", default)]
         pub anchors: Option<Vec<(usize, usize)>>,
@@ -1232,19 +1253,19 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl CommonLayerOptionsEx for Yolo {
+    impl LayerConfigEx for YoloConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct BatchNorm {
+    pub struct BatchNormConfig {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
 
-    impl CommonLayerOptionsEx for BatchNorm {
+    impl LayerConfigEx for BatchNormConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
@@ -1446,10 +1467,86 @@ mod items {
         Random = 4,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum LayerIndex {
+        Relative(NonZeroUsize),
+        Absolute(usize),
+    }
+
+    impl LayerIndex {
+        pub fn relative(&self) -> Option<usize> {
+            match *self {
+                Self::Relative(index) => Some(index.get()),
+                Self::Absolute(_) => None,
+            }
+        }
+
+        pub fn absolute(&self) -> Option<usize> {
+            match *self {
+                Self::Absolute(index) => Some(index),
+                Self::Relative(_) => None,
+            }
+        }
+    }
+
+    impl From<isize> for LayerIndex {
+        fn from(index: isize) -> Self {
+            if index < 0 {
+                Self::Relative(NonZeroUsize::new(-index as usize).unwrap())
+            } else {
+                Self::Absolute(index as usize)
+            }
+        }
+    }
+
+    impl From<LayerIndex> for isize {
+        fn from(index: LayerIndex) -> Self {
+            match index {
+                LayerIndex::Relative(index) => -(index.get() as isize),
+                LayerIndex::Absolute(index) => index as isize,
+            }
+        }
+    }
+
+    impl Serialize for LayerIndex {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            isize::from(*self).serialize(serializer)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for LayerIndex {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let index: Self = isize::deserialize(deserializer)?.into();
+            Ok(index)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum Shape {
         Hwc([usize; 3]),
         Flat(usize),
+    }
+
+    impl Shape {
+        pub fn hwc(&self) -> Option<[usize; 3]> {
+            match *self {
+                Self::Hwc(hwc) => Some(hwc),
+                Self::Flat(_) => None,
+            }
+        }
+
+        pub fn flat(&self) -> Option<usize> {
+            match *self {
+                Self::Flat(flat) => Some(flat),
+                Self::Hwc(_) => None,
+            }
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1805,6 +1902,42 @@ mod serde_zero_one_bool {
                 &"0 or 1",
             )),
         }
+    }
+}
+
+mod serde_vec_layer_index {
+    use super::*;
+
+    pub fn serialize<S>(indexes: &Vec<LayerIndex>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let text = indexes
+            .iter()
+            .cloned()
+            .map(|index| isize::from(index).to_string())
+            .join(",");
+        text.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<LayerIndex>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let steps: Vec<_> = text
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .split(",")
+            .map(|token| -> Result<_> {
+                let index: isize = token.parse()?;
+                let index = LayerIndex::from(index);
+                Ok(index)
+            })
+            .try_collect()
+            .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
+        Ok(steps)
     }
 }
 
