@@ -2,7 +2,7 @@ use crate::common::*;
 
 // weight types
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Weights {
     Connected(ConnectedWeights),
     Convolutional(ConvolutionalWeights),
@@ -34,7 +34,7 @@ impl From<ShortcutWeights> for Weights {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScaleWeights {
     pub scales: Vec<f32>,
     pub rolling_mean: Vec<f32>,
@@ -52,14 +52,14 @@ impl ScaleWeights {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConnectedWeights {
     pub biases: Vec<f32>,
     pub weights: Vec<f32>,
     pub scales: Option<ScaleWeights>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConvolutionalWeights {
     Owned {
         biases: Vec<f32>,
@@ -71,7 +71,7 @@ pub enum ConvolutionalWeights {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BatchNormWeights {
     pub biases: Vec<f32>,
     pub scales: Vec<f32>,
@@ -79,7 +79,7 @@ pub struct BatchNormWeights {
     pub rolling_variance: Vec<f32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ShortcutWeights {
     pub weights: Option<Vec<f32>>,
 }

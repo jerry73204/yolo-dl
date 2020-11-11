@@ -13,7 +13,7 @@ use crate::{
 
 pub use layers::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Model {
     pub seen: u64,
     pub cur_iteration: u64,
@@ -638,7 +638,7 @@ mod layers {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Layer {
         Connected(ConnectedLayer),
         Convolutional(ConvolutionalLayer),
@@ -706,7 +706,7 @@ mod layers {
 
     macro_rules! declare_layer_type {
         ($name:ident, $config:ty, $weights:ty, $from_indexes:ty, $input_shape:ty, $output_shape:ty) => {
-            #[derive(Debug)]
+            #[derive(Debug, Clone)]
             pub struct $name {
                 pub config: $config,
                 pub weights: $weights,
