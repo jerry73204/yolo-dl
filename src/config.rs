@@ -87,6 +87,64 @@ pub enum LayerConfig {
     BatchNorm(BatchNormConfig),
 }
 
+impl LayerConfig {
+    pub fn connected(self) -> Option<ConnectedConfig> {
+        match self {
+            Self::Connected(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn convolutional(self) -> Option<ConvolutionalConfig> {
+        match self {
+            Self::Convolutional(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn route(self) -> Option<RouteConfig> {
+        match self {
+            Self::Route(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn shortcut(self) -> Option<ShortcutConfig> {
+        match self {
+            Self::Shortcut(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn max_pool(self) -> Option<MaxPoolConfig> {
+        match self {
+            Self::MaxPool(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn up_sample(self) -> Option<UpSampleConfig> {
+        match self {
+            Self::UpSample(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn batch_norm(self) -> Option<BatchNormConfig> {
+        match self {
+            Self::BatchNorm(conf) => Some(conf),
+            _ => None,
+        }
+    }
+
+    pub fn yolo(self) -> Option<YoloConfig> {
+        match self {
+            Self::Yolo(conf) => Some(conf),
+            _ => None,
+        }
+    }
+}
+
 impl LayerConfigEx for LayerConfig {
     fn common(&self) -> &CommonLayerOptions {
         match self {
@@ -778,6 +836,20 @@ mod items {
     }
 
     impl ConvolutionalConfig {
+        pub fn output_shape(&self, [h, w, c]: [usize; 3]) -> [usize; 3] {
+            let Self {
+                filters,
+                padding,
+                size,
+                stride_x,
+                stride_y,
+                ..
+            } = *self;
+            let out_h = (h + 2 * padding - size) / stride_y + 1;
+            let out_w = (w + 2 * padding - size) / stride_x + 1;
+            [out_h, out_w, filters]
+        }
+
         pub fn num_weights(&self, channels: usize) -> Result<usize> {
             ensure!(
                 channels % self.groups == 0,
@@ -1085,6 +1157,25 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
+    impl MaxPoolConfig {
+        pub fn output_shape(&self, input_shape: [usize; 3]) -> [usize; 3] {
+            let Self {
+                padding,
+                size,
+                stride_x,
+                stride_y,
+                ..
+            } = *self;
+            let [in_h, in_w, in_c] = input_shape;
+
+            let out_h = (in_h + padding - size) / stride_y + 1;
+            let out_w = (in_w + padding - size) / stride_x + 1;
+            let out_c = in_c;
+
+            [out_h, out_w, out_c]
+        }
+    }
+
     impl LayerConfigEx for MaxPoolConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
@@ -1172,10 +1263,26 @@ mod items {
     pub struct UpSampleConfig {
         #[serde(default = "defaults::upsample_stride")]
         pub stride: usize,
-        #[serde(default = "defaults::upsample_scale")]
-        pub scale: usize,
+        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        pub reverse: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
+    }
+
+    impl UpSampleConfig {
+        pub fn output_shape(&self, input_shape: [usize; 3]) -> [usize; 3] {
+            let Self {
+                stride, reverse, ..
+            } = *self;
+            let [in_h, in_w, in_c] = input_shape;
+            let (out_h, out_w) = if reverse {
+                (in_h / stride, in_w / stride)
+            } else {
+                (in_h * stride, in_w * stride)
+            };
+            let out_c = in_c;
+            [out_h, out_w, out_c]
+        }
     }
 
     impl LayerConfigEx for UpSampleConfig {
@@ -1760,10 +1867,6 @@ mod defaults {
 
     pub fn upsample_stride() -> usize {
         2
-    }
-
-    pub fn upsample_scale() -> usize {
-        1
     }
 
     pub fn classes() -> usize {

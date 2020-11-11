@@ -373,6 +373,12 @@ pub struct ConnectedWeights {
     pub scales: Option<ScaleWeights>,
 }
 
+impl Default for ConnectedWeights {
+    fn default() -> Self {
+        todo!();
+    }
+}
+
 #[derive(Debug)]
 pub struct ConvolutionalWeights {
     pub biases: Box<dyn Buffer<R32>>,
@@ -394,7 +400,19 @@ pub struct BatchNormWeights {
     pub rolling_variance: Box<dyn Buffer<R32>>,
 }
 
+impl Default for BatchNormWeights {
+    fn default() -> Self {
+        todo!();
+    }
+}
+
 #[derive(Debug)]
 pub struct ShortcutWeights {
     pub weights: Box<dyn Buffer<R32>>,
+}
+
+impl Default for ShortcutWeights {
+    fn default() -> Self {
+        todo!();
+    }
 }

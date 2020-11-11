@@ -1,6 +1,6 @@
 pub use anyhow::{bail, ensure, format_err, Error, Result};
 pub use binread::prelude::*;
-pub use indexmap::IndexMap;
+pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::Itertools;
 pub use log::{debug, warn};
 pub use noisy_float::prelude::{R32, R64};
@@ -15,7 +15,8 @@ pub use serde::{
 };
 pub use serde_repr::{Deserialize_repr, Serialize_repr};
 pub use std::{
-    collections::HashMap,
+    cmp::Ordering,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     fmt::Debug,
     fs::{self, File},
