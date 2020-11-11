@@ -1707,9 +1707,9 @@ mod items {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Adam {
-        b1: R64,
-        b2: R64,
-        eps: R64,
+        pub b1: R64,
+        pub b2: R64,
+        pub eps: R64,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

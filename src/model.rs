@@ -14,10 +14,10 @@ pub use layers::*;
 
 #[derive(Debug)]
 pub struct Model {
-    seen: u64,
-    cur_iteration: u64,
-    net: NetConfig,
-    layers: IndexMap<usize, Layer>,
+    pub seen: u64,
+    pub cur_iteration: u64,
+    pub net: NetConfig,
+    pub layers: IndexMap<usize, Layer>,
 }
 
 impl Model {
@@ -513,7 +513,7 @@ impl Model {
 }
 
 mod layers {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum LayerPosition {
