@@ -340,6 +340,7 @@ impl Model {
                 },
             )?;
 
+        // aggregate all computed features
         let layers: Vec<_> = {
             let mut from_indexes_map = from_indexes_map;
             let mut layer_configs_map = layer_configs_map;
@@ -347,26 +348,36 @@ impl Model {
 
             sorted_layer_indexes
                 .into_iter()
-                .map(|layer_index| {
+                .map(|layer_index| -> Result<_> {
                     let from_indexes = from_indexes_map.remove(&layer_index).unwrap();
                     let (input_shape, output_shape) = shapes_map.remove(&layer_index).unwrap();
                     let layer_config = layer_configs_map.remove(&layer_index).unwrap().clone();
 
-                    match layer_config {
-                        LayerConfig::Connected(conf) => Layer::Connected(ConnectedLayer {
-                            config: conf,
-                            weights: ConnectedWeights::default(),
-                            from_indexes: from_indexes.single().unwrap(),
-                            input_shape: input_shape.single_flat().unwrap(),
-                            output_shape: output_shape.flat().unwrap(),
-                        }),
+                    let layer = match layer_config {
+                        LayerConfig::Connected(conf) => {
+                            let input_shape = input_shape.single_flat().unwrap();
+                            let output_shape = output_shape.flat().unwrap();
+                            let weights = conf.build_weights(input_shape, output_shape);
+
+                            Layer::Connected(ConnectedLayer {
+                                config: conf,
+                                weights,
+                                from_indexes: from_indexes.single().unwrap(),
+                                input_shape,
+                                output_shape,
+                            })
+                        }
                         LayerConfig::Convolutional(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            let weights = conf.build_weights(input_shape, output_shape)?;
+
                             Layer::Convolutional(ConvolutionalLayer {
                                 config: conf,
-                                weights: ConvolutionalWeights::default(),
+                                weights,
                                 from_indexes: from_indexes.single().unwrap(),
-                                input_shape: input_shape.single_hwc().unwrap(),
-                                output_shape: output_shape.hwc().unwrap(),
+                                input_shape,
+                                output_shape,
                             })
                         }
                         LayerConfig::Route(conf) => Layer::Route(RouteLayer {
@@ -376,13 +387,19 @@ impl Model {
                             input_shape: input_shape.multiple_hwc().unwrap(),
                             output_shape: output_shape.hwc().unwrap(),
                         }),
-                        LayerConfig::Shortcut(conf) => Layer::Shortcut(ShortcutLayer {
-                            config: conf,
-                            weights: ShortcutWeights::default(),
-                            from_indexes: from_indexes.multiple().unwrap(),
-                            input_shape: input_shape.multiple_hwc().unwrap(),
-                            output_shape: output_shape.hwc().unwrap(),
-                        }),
+                        LayerConfig::Shortcut(conf) => {
+                            let input_shape = input_shape.multiple_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            let weights = conf.build_weights(&input_shape, output_shape);
+
+                            Layer::Shortcut(ShortcutLayer {
+                                config: conf,
+                                weights,
+                                from_indexes: from_indexes.multiple().unwrap(),
+                                input_shape,
+                                output_shape,
+                            })
+                        }
                         LayerConfig::MaxPool(conf) => Layer::MaxPool(MaxPoolLayer {
                             config: conf,
                             weights: (),
@@ -397,13 +414,19 @@ impl Model {
                             input_shape: input_shape.single_hwc().unwrap(),
                             output_shape: output_shape.hwc().unwrap(),
                         }),
-                        LayerConfig::BatchNorm(conf) => Layer::BatchNorm(BatchNormLayer {
-                            config: conf,
-                            weights: BatchNormWeights::default(),
-                            from_indexes: from_indexes.single().unwrap(),
-                            input_shape: input_shape.single_hwc().unwrap(),
-                            output_shape: output_shape.hwc().unwrap(),
-                        }),
+                        LayerConfig::BatchNorm(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            let weights = conf.build_weights(input_shape, output_shape);
+
+                            Layer::BatchNorm(BatchNormLayer {
+                                config: conf,
+                                weights,
+                                from_indexes: from_indexes.single().unwrap(),
+                                input_shape,
+                                output_shape,
+                            })
+                        }
                         LayerConfig::Yolo(conf) => Layer::Yolo(YoloLayer {
                             config: conf,
                             weights: (),
@@ -411,9 +434,11 @@ impl Model {
                             input_shape: input_shape.single_hwc().unwrap(),
                             output_shape: output_shape.hwc().unwrap(),
                         }),
-                    }
+                    };
+
+                    Ok(layer)
                 })
-                .collect()
+                .try_collect()?
         };
 
         Ok(Self { layers })

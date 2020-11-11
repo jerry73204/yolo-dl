@@ -229,13 +229,16 @@ where
                 _ => bail!("invalid input shape"),
             };
             let weights = {
-                let num_weights = layer.num_weights(channels);
-                cursor.read::<R32>(num_weights)?
+                layer
+                    .num_weights(channels)
+                    .map(|num_weights| -> Result<_> {
+                        let buf: Box<dyn Buffer<R32>> = Box::new(cursor.read::<R32>(num_weights)?);
+                        Ok(buf)
+                    })
+                    .transpose()?
             };
 
-            Ok(ShortcutWeights {
-                weights: Box::new(weights),
-            })
+            Ok(ShortcutWeights { weights })
         };
 
         // loop
@@ -311,10 +314,10 @@ where
 {
 }
 
-impl<T, Owned> Buffer<T> for OwningRef<Owned, [T]>
+impl<U, T> Buffer<T> for U
 where
     T: Debug,
-    Owned: Debug,
+    U: AsRef<[T]> + Debug,
 {
 }
 
@@ -366,6 +369,16 @@ pub struct ScaleWeights {
     pub rolling_variance: Box<dyn Buffer<R32>>,
 }
 
+impl ScaleWeights {
+    pub fn new(size: usize) -> Self {
+        Self {
+            scales: Box::new(vec![r32(0.0); size]),
+            rolling_mean: Box::new(vec![r32(0.0); size]),
+            rolling_variance: Box::new(vec![r32(0.0); size]),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ConnectedWeights {
     pub biases: Box<dyn Buffer<R32>>,
@@ -373,23 +386,11 @@ pub struct ConnectedWeights {
     pub scales: Option<ScaleWeights>,
 }
 
-impl Default for ConnectedWeights {
-    fn default() -> Self {
-        todo!();
-    }
-}
-
 #[derive(Debug)]
 pub struct ConvolutionalWeights {
     pub biases: Box<dyn Buffer<R32>>,
     pub weights: Box<dyn Buffer<R32>>,
     pub scales: Option<ScaleWeights>,
-}
-
-impl Default for ConvolutionalWeights {
-    fn default() -> Self {
-        todo!();
-    }
 }
 
 #[derive(Debug)]
@@ -400,19 +401,7 @@ pub struct BatchNormWeights {
     pub rolling_variance: Box<dyn Buffer<R32>>,
 }
 
-impl Default for BatchNormWeights {
-    fn default() -> Self {
-        todo!();
-    }
-}
-
 #[derive(Debug)]
 pub struct ShortcutWeights {
-    pub weights: Box<dyn Buffer<R32>>,
-}
-
-impl Default for ShortcutWeights {
-    fn default() -> Self {
-        todo!();
-    }
+    pub weights: Option<Box<dyn Buffer<R32>>>,
 }

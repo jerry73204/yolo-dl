@@ -1,4 +1,10 @@
-use crate::common::*;
+use crate::{
+    common::*,
+    weights::{
+        BatchNormWeights, Buffer, ConnectedWeights, ConvolutionalWeights, ScaleWeights,
+        ShortcutWeights,
+    },
+};
 
 pub use items::*;
 
@@ -85,64 +91,6 @@ pub enum LayerConfig {
     Yolo(YoloConfig),
     #[serde(rename = "batchnorm")]
     BatchNorm(BatchNormConfig),
-}
-
-impl LayerConfig {
-    pub fn connected(self) -> Option<ConnectedConfig> {
-        match self {
-            Self::Connected(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn convolutional(self) -> Option<ConvolutionalConfig> {
-        match self {
-            Self::Convolutional(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn route(self) -> Option<RouteConfig> {
-        match self {
-            Self::Route(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn shortcut(self) -> Option<ShortcutConfig> {
-        match self {
-            Self::Shortcut(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn max_pool(self) -> Option<MaxPoolConfig> {
-        match self {
-            Self::MaxPool(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn up_sample(self) -> Option<UpSampleConfig> {
-        match self {
-            Self::UpSample(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn batch_norm(self) -> Option<BatchNormConfig> {
-        match self {
-            Self::BatchNorm(conf) => Some(conf),
-            _ => None,
-        }
-    }
-
-    pub fn yolo(self) -> Option<YoloConfig> {
-        match self {
-            Self::Yolo(conf) => Some(conf),
-            _ => None,
-        }
-    }
 }
 
 impl LayerConfigEx for LayerConfig {
@@ -799,6 +747,20 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
+    impl ConnectedConfig {
+        pub fn build_weights(&self, input_shape: usize, output_shape: usize) -> ConnectedWeights {
+            ConnectedWeights {
+                biases: Box::new(vec![r32(0.0); input_shape]),
+                weights: Box::new(vec![r32(0.0); input_shape * output_shape]),
+                scales: if self.batch_normalize {
+                    Some(ScaleWeights::new(output_shape))
+                } else {
+                    None
+                },
+            }
+        }
+    }
+
     impl LayerConfigEx for ConnectedConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
@@ -836,6 +798,27 @@ mod items {
     }
 
     impl ConvolutionalConfig {
+        pub fn build_weights(
+            &self,
+            input_shape: [usize; 3],
+            output_shape: [usize; 3],
+        ) -> Result<ConvolutionalWeights> {
+            let [_, _, input_channels] = input_shape;
+            let weights = Box::new(vec![r32(0.0); self.num_weights(input_channels)?]);
+            let biases = Box::new(vec![r32(0.0); self.filters]);
+            let scales = if self.batch_normalize {
+                Some(ScaleWeights::new(self.filters))
+            } else {
+                None
+            };
+
+            Ok(ConvolutionalWeights {
+                weights,
+                biases,
+                scales,
+            })
+        }
+
         pub fn output_shape(&self, [h, w, c]: [usize; 3]) -> [usize; 3] {
             let Self {
                 filters,
@@ -850,12 +833,12 @@ mod items {
             [out_h, out_w, filters]
         }
 
-        pub fn num_weights(&self, channels: usize) -> Result<usize> {
+        pub fn num_weights(&self, input_channels: usize) -> Result<usize> {
             ensure!(
-                channels % self.groups == 0,
+                input_channels % self.groups == 0,
                 "the input channels is not multiple of groups"
             );
-            Ok((channels / self.groups) * self.filters * self.size.pow(2))
+            Ok((input_channels / self.groups) * self.filters * self.size.pow(2))
         }
     }
 
@@ -1128,11 +1111,26 @@ mod items {
     }
 
     impl ShortcutConfig {
-        pub fn num_weights(&self, channels: usize) -> usize {
+        pub fn build_weights(
+            &self,
+            input_shape: &[[usize; 3]],
+            output_shape: [usize; 3],
+        ) -> ShortcutWeights {
+            let [_, _, out_c] = output_shape;
+
+            let weights = self.num_weights(out_c).map(|num_weights| {
+                let buf: Box<dyn Buffer<R32>> = Box::new(vec![r32(0.0); num_weights]);
+                buf
+            });
+
+            ShortcutWeights { weights }
+        }
+
+        pub fn num_weights(&self, out_channels: usize) -> Option<usize> {
             match self.weights_type {
-                WeightsType::None => 0,
-                WeightsType::PerFeature => self.from.len() + 1,
-                WeightsType::PerChannel => (self.from.len() + 1) * channels,
+                WeightsType::None => None,
+                WeightsType::PerFeature => Some(self.from.len() + 1),
+                WeightsType::PerChannel => Some((self.from.len() + 1) * out_channels),
             }
         }
     }
@@ -1370,6 +1368,16 @@ mod items {
     pub struct BatchNormConfig {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
+    }
+
+    impl BatchNormConfig {
+        pub fn build_weights(
+            &self,
+            input_shape: [usize; 3],
+            output_shape: [usize; 3],
+        ) -> BatchNormWeights {
+            todo!();
+        }
     }
 
     impl LayerConfigEx for BatchNormConfig {
