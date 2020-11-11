@@ -63,15 +63,10 @@ impl Model {
                         let from_indexes_vec: Vec<_> = conf
                             .from
                             .iter()
-                            .map(|index| {
-                                let index = match *index {
-                                    LayerIndex::Relative(index) => {
-                                        let index = index.get();
-                                        ensure!(index <= layer_index, "invalid layer index");
-                                        layer_index - index
-                                    }
-                                    LayerIndex::Absolute(index) => index,
-                                };
+                            .map(|index| -> Result<_> {
+                                let index = index
+                                    .to_absolute(layer_index)
+                                    .ok_or_else(|| format_err!("invalid layer index"))?;
                                 Ok(LayerPosition::Absolute(index))
                             })
                             .try_collect()?;
@@ -351,7 +346,8 @@ impl Model {
                         LayerConfig::Convolutional(conf) => {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
-                            let weights = conf.build_weights(input_shape, output_shape)?;
+                            let weights =
+                                conf.build_weights(layer_index, input_shape, output_shape)?;
 
                             Layer::Convolutional(ConvolutionalLayer {
                                 config: conf,
@@ -804,6 +800,8 @@ mod layers {
                         ref mut weights,
                         ref mut scales,
                     },
+                input_shape,
+                output_shape,
                 ..
             } = *self;
 
@@ -815,7 +813,11 @@ mod layers {
             reader.read_f32_into::<LittleEndian>(weights)?;
 
             if transpose {
-                warn!("TODO: transpose");
+                crate::utils::transpose_matrix(
+                    weights,
+                    input_shape as usize,
+                    output_shape as usize,
+                )?;
             }
 
             if let (Some(scales), false) = (scales, dont_load_scales) {
@@ -839,8 +841,10 @@ mod layers {
             let Self {
                 config:
                     ConvolutionalConfig {
+                        groups,
+                        size,
+                        filters,
                         flipped,
-                        share_index,
                         common:
                             CommonLayerOptions {
                                 dont_load,
@@ -849,12 +853,8 @@ mod layers {
                             },
                         ..
                     },
-                weights:
-                    ConvolutionalWeights {
-                        ref mut biases,
-                        ref mut scales,
-                        ref mut weights,
-                    },
+                ref mut weights,
+                input_shape: [_h, _w, in_c],
                 ..
             } = *self;
 
@@ -862,27 +862,36 @@ mod layers {
                 return Ok(());
             }
 
-            if let Some(_share_index) = share_index {
-                warn!("TODO: implement shared_index");
-            } else {
-                reader.read_f32_into::<LittleEndian>(biases)?;
+            match weights {
+                ConvolutionalWeights::Ref { .. } => (),
+                ConvolutionalWeights::Owned {
+                    biases,
+                    scales,
+                    weights,
+                } => {
+                    reader.read_f32_into::<LittleEndian>(biases)?;
 
-                if let (Some(scales), false) = (scales, dont_load_scales) {
-                    let ScaleWeights {
-                        scales,
-                        rolling_mean,
-                        rolling_variance,
-                    } = scales;
+                    if let (Some(scales), false) = (scales, dont_load_scales) {
+                        let ScaleWeights {
+                            scales,
+                            rolling_mean,
+                            rolling_variance,
+                        } = scales;
 
-                    reader.read_f32_into::<LittleEndian>(scales)?;
-                    reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-                    reader.read_f32_into::<LittleEndian>(rolling_variance)?;
-                }
+                        reader.read_f32_into::<LittleEndian>(scales)?;
+                        reader.read_f32_into::<LittleEndian>(rolling_mean)?;
+                        reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+                    }
 
-                reader.read_f32_into::<LittleEndian>(weights)?;
+                    reader.read_f32_into::<LittleEndian>(weights)?;
 
-                if flipped {
-                    warn!("TODO: implement flipped option");
+                    if flipped {
+                        crate::utils::transpose_matrix(
+                            weights,
+                            ((in_c / groups) * size.pow(2)) as usize,
+                            filters as usize,
+                        )?;
+                    }
                 }
             }
 

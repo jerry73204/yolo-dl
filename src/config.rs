@@ -805,23 +805,33 @@ mod items {
     impl ConvolutionalConfig {
         pub fn build_weights(
             &self,
+            layer_index: usize,
             input_shape: [u64; 3],
             _output_shape: [u64; 3],
         ) -> Result<ConvolutionalWeights> {
-            let [_, _, input_channels] = input_shape;
-            let weights = vec![0.0; self.num_weights(input_channels)?];
-            let biases = vec![0.0; self.filters as usize];
-            let scales = if self.batch_normalize {
-                Some(ScaleWeights::new(self.filters))
+            let weights = if let Some(share_index) = self.share_index {
+                let share_index = share_index
+                    .to_absolute(layer_index)
+                    .ok_or_else(|| format_err!("invalid layer index"))?;
+                ConvolutionalWeights::Ref { share_index }
             } else {
-                None
+                let [_, _, input_channels] = input_shape;
+                let weights = vec![0.0; self.num_weights(input_channels)?];
+                let biases = vec![0.0; self.filters as usize];
+                let scales = if self.batch_normalize {
+                    Some(ScaleWeights::new(self.filters))
+                } else {
+                    None
+                };
+
+                ConvolutionalWeights::Owned {
+                    biases,
+                    weights,
+                    scales,
+                }
             };
 
-            Ok(ConvolutionalWeights {
-                weights,
-                biases,
-                scales,
-            })
+            Ok(weights)
         }
 
         pub fn output_shape(&self, [h, w, _c]: [u64; 3]) -> [u64; 3] {
@@ -1377,10 +1387,23 @@ mod items {
     impl BatchNormConfig {
         pub fn build_weights(
             &self,
-            _input_shape: [u64; 3],
+            input_shape: [u64; 3],
             _output_shape: [u64; 3],
         ) -> BatchNormWeights {
-            todo!();
+            let [_h, _w, channels] = input_shape;
+            let channels = channels as usize;
+
+            let biases = vec![0.0; channels];
+            let scales = vec![0.0; channels];
+            let rolling_mean = vec![0.0; channels];
+            let rolling_variance = vec![0.0; channels];
+
+            BatchNormWeights {
+                biases,
+                scales,
+                rolling_mean,
+                rolling_variance,
+            }
         }
     }
 
@@ -1604,6 +1627,20 @@ mod items {
             match *self {
                 Self::Absolute(index) => Some(index),
                 Self::Relative(_) => None,
+            }
+        }
+
+        pub fn to_absolute(&self, curr_index: usize) -> Option<usize> {
+            match *self {
+                Self::Absolute(index) => Some(index),
+                Self::Relative(index) => {
+                    let index = index.get();
+                    if index <= curr_index {
+                        Some(curr_index - index)
+                    } else {
+                        None
+                    }
+                }
             }
         }
     }

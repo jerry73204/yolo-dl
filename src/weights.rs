@@ -60,10 +60,15 @@ pub struct ConnectedWeights {
 }
 
 #[derive(Debug)]
-pub struct ConvolutionalWeights {
-    pub biases: Vec<f32>,
-    pub weights: Vec<f32>,
-    pub scales: Option<ScaleWeights>,
+pub enum ConvolutionalWeights {
+    Owned {
+        biases: Vec<f32>,
+        weights: Vec<f32>,
+        scales: Option<ScaleWeights>,
+    },
+    Ref {
+        share_index: usize,
+    },
 }
 
 #[derive(Debug)]
