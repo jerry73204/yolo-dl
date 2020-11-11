@@ -1,8 +1,7 @@
 use crate::{
     common::*,
     weights::{
-        BatchNormWeights, Buffer, ConnectedWeights, ConvolutionalWeights, ScaleWeights,
-        ShortcutWeights,
+        BatchNormWeights, ConnectedWeights, ConvolutionalWeights, ScaleWeights, ShortcutWeights,
     },
 };
 
@@ -155,28 +154,28 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(try_from = "RawNetConfig", into = "RawNetConfig")]
     pub struct NetConfig {
-        pub max_batches: usize,
-        pub batch: usize,
+        pub max_batches: u64,
+        pub batch: u64,
         pub learning_rate: R64,
         pub learning_rate_min: R64,
-        pub sgdr_cycle: usize,
-        pub sgdr_mult: usize,
+        pub sgdr_cycle: u64,
+        pub sgdr_mult: u64,
         pub momentum: R64,
         pub decay: R64,
-        pub subdivisions: usize,
-        pub time_steps: usize,
-        pub track: usize,
-        pub augment_speed: usize,
-        pub sequential_subdivisions: usize,
+        pub subdivisions: u64,
+        pub time_steps: u64,
+        pub track: u64,
+        pub augment_speed: u64,
+        pub sequential_subdivisions: u64,
         pub try_fix_nan: bool,
         pub loss_scale: R64,
         pub dynamic_minibatch: bool,
         pub optimized_memory: bool,
-        pub workspace_size_limit_mb: usize,
+        pub workspace_size_limit_mb: u64,
         pub adam: Option<Adam>,
         pub input_size: Shape,
-        pub max_crop: usize,
-        pub min_crop: usize,
+        pub max_crop: u64,
+        pub min_crop: u64,
         pub flip: bool,
         pub blur: bool,
         pub gaussian_noise: bool,
@@ -190,7 +189,7 @@ mod items {
         pub contrastive_color: bool,
         pub unsupervised: bool,
         pub label_smooth_eps: R64,
-        pub resize_step: usize,
+        pub resize_step: u64,
         pub attention: bool,
         pub adversarial_lr: R64,
         pub max_chart_loss: R64,
@@ -201,7 +200,13 @@ mod items {
         pub hue: R64,
         pub power: R64,
         pub policy: Policy,
-        pub burn_in: usize,
+        pub burn_in: u64,
+    }
+
+    impl NetConfig {
+        pub fn iteration(&self, seen: u64) -> u64 {
+            seen / (self.batch * self.subdivisions)
+        }
     }
 
     impl TryFrom<RawNetConfig> for NetConfig {
@@ -402,29 +407,29 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct RawNetConfig {
         #[serde(default = "defaults::max_batches")]
-        pub max_batches: usize,
+        pub max_batches: u64,
         #[serde(default = "defaults::batch")]
-        pub batch: usize,
+        pub batch: u64,
         #[serde(default = "defaults::learning_rate")]
         pub learning_rate: R64,
         #[serde(default = "defaults::learning_rate_min")]
         pub learning_rate_min: R64,
-        pub sgdr_cycle: Option<usize>,
+        pub sgdr_cycle: Option<u64>,
         #[serde(default = "defaults::sgdr_mult")]
-        pub sgdr_mult: usize,
+        pub sgdr_mult: u64,
         #[serde(default = "defaults::momentum")]
         pub momentum: R64,
         #[serde(default = "defaults::decay")]
         pub decay: R64,
         #[serde(default = "defaults::subdivisions")]
-        pub subdivisions: usize,
+        pub subdivisions: u64,
         #[serde(default = "defaults::time_steps")]
-        pub time_steps: usize,
+        pub time_steps: u64,
         #[serde(default = "defaults::track")]
-        pub track: usize,
+        pub track: u64,
         #[serde(default = "defaults::augment_speed")]
-        pub augment_speed: usize,
-        pub sequential_subdivisions: Option<usize>,
+        pub augment_speed: u64,
+        pub sequential_subdivisions: Option<u64>,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub try_fix_nan: bool,
         #[serde(default = "defaults::loss_scale")]
@@ -437,7 +442,7 @@ mod items {
             rename = "workspace_size_limit_MB",
             default = "defaults::workspace_size_limit_mb"
         )]
-        pub workspace_size_limit_mb: usize,
+        pub workspace_size_limit_mb: u64,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub adam: bool,
         #[serde(rename = "B1", default = "defaults::b1")]
@@ -446,12 +451,12 @@ mod items {
         pub b2: R64,
         #[serde(default = "defaults::eps")]
         pub eps: R64,
-        pub width: Option<NonZeroUsize>,
-        pub height: Option<NonZeroUsize>,
-        pub channels: Option<NonZeroUsize>,
-        pub inputs: Option<NonZeroUsize>,
-        pub max_crop: Option<usize>,
-        pub min_crop: Option<usize>,
+        pub width: Option<NonZeroU64>,
+        pub height: Option<NonZeroU64>,
+        pub channels: Option<NonZeroU64>,
+        pub inputs: Option<NonZeroU64>,
+        pub max_crop: Option<u64>,
+        pub min_crop: Option<u64>,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_true")]
         pub flip: bool,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
@@ -479,7 +484,7 @@ mod items {
         #[serde(default = "defaults::label_smooth_eps")]
         pub label_smooth_eps: R64,
         #[serde(default = "defaults::resize_step")]
-        pub resize_step: usize,
+        pub resize_step: u64,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub attention: bool,
         #[serde(default = "defaults::adversarial_lr")]
@@ -501,13 +506,13 @@ mod items {
         #[serde(default = "defaults::policy")]
         pub policy: PolicyKind,
         #[serde(default = "defaults::burn_in")]
-        pub burn_in: usize,
+        pub burn_in: u64,
         #[serde(default = "defaults::step")]
-        pub step: usize,
+        pub step: u64,
         #[serde(default = "defaults::scale")]
         pub scale: R64,
-        #[serde(with = "serde_opt_vec_usize", default)]
-        pub steps: Option<Vec<usize>>,
+        #[serde(with = "serde_opt_vec_u64", default)]
+        pub steps: Option<Vec<u64>>,
         #[serde(with = "serde_opt_vec_r64", default)]
         pub scales: Option<Vec<R64>>,
         #[serde(with = "serde_opt_vec_r64", default)]
@@ -694,10 +699,10 @@ mod items {
                 b1,
                 b2,
                 eps,
-                width: width.map(|w| NonZeroUsize::new(w).unwrap()),
-                height: height.map(|h| NonZeroUsize::new(h).unwrap()),
-                channels: channels.map(|c| NonZeroUsize::new(c).unwrap()),
-                inputs: inputs.map(|i| NonZeroUsize::new(i).unwrap()),
+                width: width.map(|w| NonZeroU64::new(w).unwrap()),
+                height: height.map(|h| NonZeroU64::new(h).unwrap()),
+                channels: channels.map(|c| NonZeroU64::new(c).unwrap()),
+                inputs: inputs.map(|i| NonZeroU64::new(i).unwrap()),
                 max_crop: Some(max_crop),
                 min_crop: Some(min_crop),
                 flip,
@@ -738,7 +743,7 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct ConnectedConfig {
         #[serde(default = "defaults::connected_output")]
-        pub output: usize,
+        pub output: u64,
         #[serde(default = "defaults::connected_activation")]
         pub activation: Activation,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
@@ -748,10 +753,10 @@ mod items {
     }
 
     impl ConnectedConfig {
-        pub fn build_weights(&self, input_shape: usize, output_shape: usize) -> ConnectedWeights {
+        pub fn build_weights(&self, input_shape: u64, output_shape: u64) -> ConnectedWeights {
             ConnectedWeights {
-                biases: Box::new(vec![r32(0.0); input_shape]),
-                weights: Box::new(vec![r32(0.0); input_shape * output_shape]),
+                biases: vec![0.0; input_shape as usize],
+                weights: vec![0.0; (input_shape * output_shape) as usize],
                 scales: if self.batch_normalize {
                     Some(ScaleWeights::new(output_shape))
                 } else {
@@ -770,15 +775,15 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(try_from = "RawConvolutionalConfig", into = "RawConvolutionalConfig")]
     pub struct ConvolutionalConfig {
-        pub filters: usize,
-        pub groups: usize,
-        pub size: usize,
+        pub filters: u64,
+        pub groups: u64,
+        pub size: u64,
         pub batch_normalize: bool,
-        pub stride_x: usize,
-        pub stride_y: usize,
-        pub dilation: usize,
+        pub stride_x: u64,
+        pub stride_y: u64,
+        pub dilation: u64,
         pub antialiasing: bool,
-        pub padding: usize,
+        pub padding: u64,
         pub activation: Activation,
         pub assisted_excitation: bool,
         pub share_index: Option<LayerIndex>,
@@ -800,12 +805,12 @@ mod items {
     impl ConvolutionalConfig {
         pub fn build_weights(
             &self,
-            input_shape: [usize; 3],
-            output_shape: [usize; 3],
+            input_shape: [u64; 3],
+            _output_shape: [u64; 3],
         ) -> Result<ConvolutionalWeights> {
             let [_, _, input_channels] = input_shape;
-            let weights = Box::new(vec![r32(0.0); self.num_weights(input_channels)?]);
-            let biases = Box::new(vec![r32(0.0); self.filters]);
+            let weights = vec![0.0; self.num_weights(input_channels)?];
+            let biases = vec![0.0; self.filters as usize];
             let scales = if self.batch_normalize {
                 Some(ScaleWeights::new(self.filters))
             } else {
@@ -819,7 +824,7 @@ mod items {
             })
         }
 
-        pub fn output_shape(&self, [h, w, c]: [usize; 3]) -> [usize; 3] {
+        pub fn output_shape(&self, [h, w, _c]: [u64; 3]) -> [u64; 3] {
             let Self {
                 filters,
                 padding,
@@ -833,12 +838,12 @@ mod items {
             [out_h, out_w, filters]
         }
 
-        pub fn num_weights(&self, input_channels: usize) -> Result<usize> {
+        pub fn num_weights(&self, input_channels: u64) -> Result<usize> {
             ensure!(
                 input_channels % self.groups == 0,
                 "the input channels is not multiple of groups"
             );
-            Ok((input_channels / self.groups) * self.filters * self.size.pow(2))
+            Ok(((input_channels / self.groups) * self.filters * self.size.pow(2)) as usize)
         }
     }
 
@@ -951,21 +956,21 @@ mod items {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct RawConvolutionalConfig {
-        pub filters: usize,
+        pub filters: u64,
         #[serde(default = "defaults::groups")]
-        pub groups: usize,
-        pub size: usize,
+        pub groups: u64,
+        pub size: u64,
         #[serde(default = "defaults::stride")]
-        pub stride: usize,
-        pub stride_x: Option<usize>,
-        pub stride_y: Option<usize>,
+        pub stride: u64,
+        pub stride_x: Option<u64>,
+        pub stride_y: Option<u64>,
         #[serde(default = "defaults::dilation")]
-        pub dilation: usize,
+        pub dilation: u64,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub antialiasing: bool,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub pad: bool,
-        pub padding: Option<usize>,
+        pub padding: Option<u64>,
         pub activation: Activation,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub assisted_excitation: bool,
@@ -1084,9 +1089,9 @@ mod items {
         #[serde(with = "serde_vec_layer_index")]
         pub layers: Vec<LayerIndex>,
         #[serde(default = "defaults::route_groups")]
-        pub groups: usize,
+        pub groups: u64,
         #[serde(default = "defaults::route_group_id")]
-        pub groupd_id: usize,
+        pub groupd_id: u64,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
@@ -1113,24 +1118,23 @@ mod items {
     impl ShortcutConfig {
         pub fn build_weights(
             &self,
-            input_shape: &[[usize; 3]],
-            output_shape: [usize; 3],
+            _input_shape: &[[u64; 3]],
+            output_shape: [u64; 3],
         ) -> ShortcutWeights {
             let [_, _, out_c] = output_shape;
 
-            let weights = self.num_weights(out_c).map(|num_weights| {
-                let buf: Box<dyn Buffer<R32>> = Box::new(vec![r32(0.0); num_weights]);
-                buf
-            });
+            let weights = self
+                .num_weights(out_c)
+                .map(|num_weights| vec![0.0; num_weights]);
 
             ShortcutWeights { weights }
         }
 
-        pub fn num_weights(&self, out_channels: usize) -> Option<usize> {
+        pub fn num_weights(&self, out_channels: u64) -> Option<usize> {
             match self.weights_type {
                 WeightsType::None => None,
                 WeightsType::PerFeature => Some(self.from.len() + 1),
-                WeightsType::PerChannel => Some((self.from.len() + 1) * out_channels),
+                WeightsType::PerChannel => Some((self.from.len() + 1) * out_channels as usize),
             }
         }
     }
@@ -1144,19 +1148,19 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(from = "RawMaxPoolConfig", into = "RawMaxPoolConfig")]
     pub struct MaxPoolConfig {
-        pub stride_x: usize,
-        pub stride_y: usize,
-        pub size: usize,
-        pub padding: usize,
-        pub maxpool_depth: usize,
-        pub out_channels: usize,
+        pub stride_x: u64,
+        pub stride_y: u64,
+        pub size: u64,
+        pub padding: u64,
+        pub maxpool_depth: u64,
+        pub out_channels: u64,
         pub antialiasing: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
 
     impl MaxPoolConfig {
-        pub fn output_shape(&self, input_shape: [usize; 3]) -> [usize; 3] {
+        pub fn output_shape(&self, input_shape: [u64; 3]) -> [u64; 3] {
             let Self {
                 padding,
                 size,
@@ -1215,15 +1219,15 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct RawMaxPoolConfig {
         #[serde(default = "defaults::maxpool_stride")]
-        pub stride: usize,
-        pub stride_x: Option<usize>,
-        pub stride_y: Option<usize>,
-        pub size: Option<usize>,
-        pub padding: Option<usize>,
+        pub stride: u64,
+        pub stride_x: Option<u64>,
+        pub stride_y: Option<u64>,
+        pub size: Option<u64>,
+        pub padding: Option<u64>,
         #[serde(default = "defaults::maxpool_depth")]
-        pub maxpool_depth: usize,
+        pub maxpool_depth: u64,
         #[serde(default = "defaults::out_channels")]
-        pub out_channels: usize,
+        pub out_channels: u64,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub antialiasing: bool,
         #[serde(flatten)]
@@ -1260,7 +1264,7 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct UpSampleConfig {
         #[serde(default = "defaults::upsample_stride")]
-        pub stride: usize,
+        pub stride: u64,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
         pub reverse: bool,
         #[serde(flatten)]
@@ -1268,7 +1272,7 @@ mod items {
     }
 
     impl UpSampleConfig {
-        pub fn output_shape(&self, input_shape: [usize; 3]) -> [usize; 3] {
+        pub fn output_shape(&self, input_shape: [u64; 3]) -> [u64; 3] {
             let Self {
                 stride, reverse, ..
             } = *self;
@@ -1292,16 +1296,16 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct YoloConfig {
         #[serde(default = "defaults::classes")]
-        pub classes: usize,
+        pub classes: u64,
         #[serde(default = "defaults::num")]
-        pub num: usize,
-        #[serde(with = "serde_vec_usize")]
-        pub mask: Vec<usize>,
+        pub num: u64,
+        #[serde(with = "serde_vec_u64")]
+        pub mask: Vec<u64>,
         #[serde(rename = "max", default = "defaults::max_boxes")]
-        pub max_boxes: usize,
+        pub max_boxes: u64,
         pub max_delta: Option<R64>,
-        #[serde(with = "serde_opt_vec_usize", default)]
-        pub counters_per_class: Option<Vec<usize>>,
+        #[serde(with = "serde_opt_vec_u64", default)]
+        pub counters_per_class: Option<Vec<u64>>,
         #[serde(default = "defaults::yolo_label_smooth_eps")]
         pub label_smooth_eps: R64,
         #[serde(default = "defaults::scale_x_y")]
@@ -1341,19 +1345,19 @@ mod items {
         #[serde(default = "defaults::random")]
         pub random: R64,
         #[serde(default = "defaults::track_history_size")]
-        pub track_history_size: usize,
+        pub track_history_size: u64,
         #[serde(default = "defaults::sim_thresh")]
         pub sim_thresh: R64,
         #[serde(default = "defaults::dets_for_track")]
-        pub dets_for_track: usize,
+        pub dets_for_track: u64,
         #[serde(default = "defaults::dets_for_show")]
-        pub dets_for_show: usize,
+        pub dets_for_show: u64,
         #[serde(default = "defaults::track_ciou_norm")]
         pub track_ciou_norm: R64,
         pub embedding_layer: Option<LayerIndex>,
         pub map: Option<PathBuf>,
         #[serde(with = "serde_anchors", default)]
-        pub anchors: Option<Vec<(usize, usize)>>,
+        pub anchors: Option<Vec<(u64, u64)>>,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
@@ -1373,8 +1377,8 @@ mod items {
     impl BatchNormConfig {
         pub fn build_weights(
             &self,
-            input_shape: [usize; 3],
-            output_shape: [usize; 3],
+            _input_shape: [u64; 3],
+            _output_shape: [u64; 3],
         ) -> BatchNormWeights {
             todo!();
         }
@@ -1550,7 +1554,7 @@ mod items {
         Poly,
         Constant,
         Step {
-            step: usize,
+            step: u64,
             scale: R64,
         },
         Exp {
@@ -1558,23 +1562,23 @@ mod items {
         },
         Sigmoid {
             gamma: R64,
-            step: usize,
+            step: u64,
         },
         Steps {
-            steps: Vec<usize>,
+            steps: Vec<u64>,
             scales: Vec<R64>,
             seq_scales: Vec<R64>,
         },
         Sgdr,
         SgdrCustom {
-            steps: Vec<usize>,
+            steps: Vec<u64>,
             scales: Vec<R64>,
             seq_scales: Vec<R64>,
         },
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
-    #[repr(usize)]
+    #[repr(u64)]
     pub enum MixUp {
         MixUp = 1,
         CutMix = 2,
@@ -1644,19 +1648,19 @@ mod items {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum Shape {
-        Hwc([usize; 3]),
-        Flat(usize),
+        Hwc([u64; 3]),
+        Flat(u64),
     }
 
     impl Shape {
-        pub fn hwc(&self) -> Option<[usize; 3]> {
+        pub fn hwc(&self) -> Option<[u64; 3]> {
             match *self {
                 Self::Hwc(hwc) => Some(hwc),
                 Self::Flat(_) => None,
             }
         }
 
-        pub fn flat(&self) -> Option<usize> {
+        pub fn flat(&self) -> Option<u64> {
             match *self {
                 Self::Flat(flat) => Some(flat),
                 Self::Hwc(_) => None,
@@ -1705,15 +1709,15 @@ mod defaults {
         false
     }
 
-    pub fn groups() -> usize {
+    pub fn groups() -> u64 {
         1
     }
 
-    pub fn stride() -> usize {
+    pub fn stride() -> u64 {
         1
     }
 
-    pub fn dilation() -> usize {
+    pub fn dilation() -> u64 {
         1
     }
 
@@ -1721,11 +1725,11 @@ mod defaults {
         R64::new(15.0)
     }
 
-    pub fn max_batches() -> usize {
+    pub fn max_batches() -> u64 {
         0
     }
 
-    pub fn batch() -> usize {
+    pub fn batch() -> u64 {
         1
     }
 
@@ -1737,7 +1741,7 @@ mod defaults {
         R64::new(0.00001)
     }
 
-    pub fn sgdr_mult() -> usize {
+    pub fn sgdr_mult() -> u64 {
         2
     }
 
@@ -1749,19 +1753,19 @@ mod defaults {
         R64::new(0.0001)
     }
 
-    pub fn subdivisions() -> usize {
+    pub fn subdivisions() -> u64 {
         1
     }
 
-    pub fn time_steps() -> usize {
+    pub fn time_steps() -> u64 {
         1
     }
 
-    pub fn track() -> usize {
+    pub fn track() -> u64 {
         1
     }
 
-    pub fn augment_speed() -> usize {
+    pub fn augment_speed() -> u64 {
         2
     }
 
@@ -1769,7 +1773,7 @@ mod defaults {
         R64::new(1.0)
     }
 
-    pub fn workspace_size_limit_mb() -> usize {
+    pub fn workspace_size_limit_mb() -> u64 {
         1024
     }
 
@@ -1793,7 +1797,7 @@ mod defaults {
         R64::new(0.0)
     }
 
-    pub fn resize_step() -> usize {
+    pub fn resize_step() -> u64 {
         32
     }
 
@@ -1829,7 +1833,7 @@ mod defaults {
         PolicyKind::Constant
     }
 
-    pub fn step() -> usize {
+    pub fn step() -> u64 {
         1
     }
 
@@ -1841,15 +1845,15 @@ mod defaults {
         R64::new(1.0)
     }
 
-    pub fn burn_in() -> usize {
+    pub fn burn_in() -> u64 {
         0
     }
 
-    pub fn route_groups() -> usize {
+    pub fn route_groups() -> u64 {
         1
     }
 
-    pub fn route_group_id() -> usize {
+    pub fn route_group_id() -> u64 {
         0
     }
 
@@ -1861,32 +1865,32 @@ mod defaults {
         WeightsNormalization::None
     }
 
-    pub fn maxpool_stride() -> usize {
+    pub fn maxpool_stride() -> u64 {
         1
     }
 
-    pub fn maxpool_depth() -> usize {
+    pub fn maxpool_depth() -> u64 {
         0
     }
 
-    pub fn out_channels() -> usize {
+    pub fn out_channels() -> u64 {
         1
     }
 
-    pub fn upsample_stride() -> usize {
+    pub fn upsample_stride() -> u64 {
         2
     }
 
-    pub fn classes() -> usize {
+    pub fn classes() -> u64 {
         warn!("classes option is not specified, use default 20");
         20
     }
 
-    pub fn num() -> usize {
+    pub fn num() -> u64 {
         1
     }
 
-    pub fn max_boxes() -> usize {
+    pub fn max_boxes() -> u64 {
         200
     }
 
@@ -1958,7 +1962,7 @@ mod defaults {
         R64::new(0.0)
     }
 
-    pub fn track_history_size() -> usize {
+    pub fn track_history_size() -> u64 {
         5
     }
 
@@ -1966,11 +1970,11 @@ mod defaults {
         R64::new(0.8)
     }
 
-    pub fn dets_for_track() -> usize {
+    pub fn dets_for_track() -> u64 {
         1
     }
 
-    pub fn dets_for_show() -> usize {
+    pub fn dets_for_show() -> u64 {
         1
     }
 
@@ -1978,7 +1982,7 @@ mod defaults {
         R64::new(0.01)
     }
 
-    pub fn connected_output() -> usize {
+    pub fn connected_output() -> u64 {
         1
     }
 
@@ -2052,10 +2056,10 @@ mod serde_vec_layer_index {
     }
 }
 
-mod serde_vec_isize {
+mod serde_vec_u64 {
     use super::*;
 
-    pub fn serialize<S>(steps: &Vec<isize>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(steps: &Vec<u64>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -2066,12 +2070,12 @@ mod serde_vec_isize {
             .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<isize>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u64>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let text = String::deserialize(deserializer)?;
-        let steps: Vec<isize> = text
+        let steps: Vec<u64> = text
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect::<String>()
@@ -2083,41 +2087,10 @@ mod serde_vec_isize {
     }
 }
 
-mod serde_vec_usize {
+mod serde_opt_vec_u64 {
     use super::*;
 
-    pub fn serialize<S>(steps: &Vec<usize>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        steps
-            .iter()
-            .map(|step| step.to_string())
-            .join(",")
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<usize>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = String::deserialize(deserializer)?;
-        let steps: Vec<usize> = text
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .split(",")
-            .map(|token| token.parse())
-            .try_collect()
-            .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
-        Ok(steps)
-    }
-}
-
-mod serde_opt_vec_usize {
-    use super::*;
-
-    pub fn serialize<S>(steps: &Option<Vec<usize>>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(steps: &Option<Vec<u64>>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -2127,12 +2100,12 @@ mod serde_opt_vec_usize {
             .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<usize>>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let text = <Option<String>>::deserialize(deserializer)?;
-        let steps: Option<Vec<usize>> = text
+        let steps: Option<Vec<u64>> = text
             .map(|text| {
                 text.chars()
                     .filter(|c| !c.is_whitespace())
@@ -2190,10 +2163,7 @@ mod serde_opt_vec_r64 {
 mod serde_anchors {
     use super::*;
 
-    pub fn serialize<S>(
-        steps: &Option<Vec<(usize, usize)>>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(steps: &Option<Vec<(u64, u64)>>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -2209,7 +2179,7 @@ mod serde_anchors {
             .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(usize, usize)>>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(u64, u64)>>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -2217,7 +2187,7 @@ mod serde_anchors {
             Some(text) => text,
             None => return Ok(None),
         };
-        let values: Vec<usize> = text
+        let values: Vec<u64> = text
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect::<String>()

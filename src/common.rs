@@ -1,5 +1,6 @@
 pub use anyhow::{bail, ensure, format_err, Error, Result};
-pub use binread::prelude::*;
+pub use binread::{prelude::*, BinReaderExt};
+pub use byteorder::{LittleEndian, ReadBytesExt};
 pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::Itertools;
 pub use log::{debug, warn};
@@ -23,7 +24,7 @@ pub use std::{
     hash::Hash,
     io::{prelude::*, BufReader},
     iter, mem,
-    num::NonZeroUsize,
+    num::{NonZeroU64, NonZeroUsize},
     path::{Path, PathBuf},
     slice,
     str::FromStr,

@@ -2,18 +2,22 @@ use crate::{
     common::*,
     config::{
         BatchNormConfig, CommonLayerOptions, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
-        LayerConfig, LayerConfigEx, LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape,
-        ShortcutConfig, UpSampleConfig, YoloConfig,
+        LayerConfig, LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig,
+        UpSampleConfig, YoloConfig,
     },
-    shape::ShapeEx,
-    weights::{BatchNormWeights, ConnectedWeights, ConvolutionalWeights, ShortcutWeights},
+    weights::{
+        BatchNormWeights, ConnectedWeights, ConvolutionalWeights, ScaleWeights, ShortcutWeights,
+    },
 };
 
 pub use layers::*;
 
 #[derive(Debug)]
 pub struct Model {
-    layers: Vec<Layer>,
+    seen: u64,
+    cur_iteration: u64,
+    net: NetConfig,
+    layers: IndexMap<usize, Layer>,
 }
 
 impl Model {
@@ -32,7 +36,6 @@ impl Model {
             net:
                 NetConfig {
                     input_size: model_input_shape,
-                    batch,
                     ..
                 },
             ref layers,
@@ -230,7 +233,7 @@ impl Model {
                                         Shape::Hwc(hwc) => Some(hwc),
                                         Shape::Flat(_) => None,
                                     }
-                                }).fold(Some(vec![]), |mut folded, shape| {
+                                }).fold(Some(vec![]), |folded, shape| {
                                     match (folded, shape) {
                                         (Some(mut folded), Some(shape)) => {
                                             folded.push(shape);
@@ -265,7 +268,7 @@ impl Model {
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
-                        LayerConfig::Shortcut(conf) => {
+                        LayerConfig::Shortcut(_conf) => {
                                 let input_shapes = multiple_hwc_input_shapes(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
                             let output_shape = {
@@ -290,11 +293,11 @@ impl Model {
                             let input_shapes = multiple_hwc_input_shapes(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
                             let [out_h, out_w] = {
-                                let set: HashSet<_> = input_shapes.iter().cloned().map(|[h, w, c]| [h ,w]).collect();
+                                let set: HashSet<_> = input_shapes.iter().cloned().map(|[h, w, _c]| [h ,w]).collect();
                                 ensure!(set.len() == 1, "output shapes of input layers to a route layer must have the same heights and widths");
                                 set.into_iter().next().unwrap()
                             };
-                            let out_c: usize = input_shapes.iter().cloned().map(|[_h, _w, c]| c).sum();
+                            let out_c: u64 = input_shapes.iter().cloned().map(|[_h, _w, c]| c).sum();
                             let output_shape = [out_h, out_w, out_c];
                             (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
                         }
@@ -314,34 +317,12 @@ impl Model {
 
                     collected.insert(*layer_index, (input_shape, output_shape));
 
-                    // #[cfg(debug_assertions)]
-                    // {
-                    //     let kind = match layer {
-                    //         Layer::Convolutional(_) => "convolutional",
-                    //         Layer::Connected(_) => "connected",
-                    //         Layer::BatchNorm(_) => "batch_norm",
-                    //         Layer::Shortcut(_) => "shortcut",
-                    //         Layer::MaxPool(_) => "max_pool",
-                    //         Layer::Route(_) => "route",
-                    //         Layer::UpSample(_) => "up_sample",
-                    //         Layer::Yolo(_) => "yolo",
-                    //     };
-
-                    //     debug!(
-                    //         "{}\t{}\t{:?}\t{:?}",
-                    //         layer_index,
-                    //         kind,
-                    //         layer.input_shape(),
-                    //         layer.output_shape()
-                    //     );
-                    // }
-
                     Ok(collected)
                 },
             )?;
 
         // aggregate all computed features
-        let layers: Vec<_> = {
+        let layers: IndexMap<_, _> = {
             let mut from_indexes_map = from_indexes_map;
             let mut layer_configs_map = layer_configs_map;
             let mut shapes_map = shapes_map;
@@ -436,18 +417,102 @@ impl Model {
                         }),
                     };
 
-                    Ok(layer)
+                    Ok((layer_index, layer))
                 })
                 .try_collect()?
         };
 
-        Ok(Self { layers })
+        // network parameters
+        let net = config.net.clone();
+        let seen = 0;
+        let cur_iteration = 0;
+
+        // print layer params for debugging
+        #[cfg(debug_assertions)]
+        {
+            let num_layers = layers.len();
+            (0..num_layers).for_each(|layer_index| {
+                let layer = &layers[&layer_index];
+                let kind = match layer {
+                    Layer::Convolutional(_) => "conv",
+                    Layer::Connected(_) => "connected",
+                    Layer::BatchNorm(_) => "batch_norm",
+                    Layer::Shortcut(_) => "shortcut",
+                    Layer::MaxPool(_) => "max_pool",
+                    Layer::Route(_) => "route",
+                    Layer::UpSample(_) => "up_sample",
+                    Layer::Yolo(_) => "yolo",
+                };
+
+                debug!(
+                    "{}\t{}\t{:?}\t{:?}",
+                    layer_index,
+                    kind,
+                    layer.input_shape(),
+                    layer.output_shape()
+                );
+            });
+        }
+
+        Ok(Self {
+            seen,
+            cur_iteration,
+            net,
+            layers,
+        })
     }
 
-    pub fn load_weights<P>(&mut self, weights_file: P)
+    pub fn load_weights<P>(&mut self, weights_file: P) -> Result<()>
     where
         P: AsRef<Path>,
     {
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, BinRead)]
+        pub struct Version {
+            pub major: u32,
+            pub minor: u32,
+            pub revision: u32,
+        }
+
+        let mut reader = BufReader::new(File::open(weights_file)?);
+
+        // load weights file
+        let (seen, transpose, mut reader) = move || -> Result<_, binread::Error> {
+            let version: Version = reader.read_le()?;
+            let Version { major, minor, .. } = version;
+
+            let seen: u64 = if major * 10 + minor >= 2 {
+                reader.read_le()?
+            } else {
+                let seen: u32 = reader.read_le()?;
+                seen as u64
+            };
+            let transpose = (major > 1000) || (minor > 1000);
+
+            Ok((seen, transpose, reader))
+        }()
+        .map_err(|err| format_err!("failed to parse weight file: {:?}", err))?;
+
+        // update network parameters
+        self.seen = seen;
+        self.cur_iteration = self.net.iteration(seen);
+
+        // load weights
+        {
+            let num_layers = self.layers.len();
+
+            (0..num_layers).try_for_each(|layer_index| -> Result<_> {
+                let layer = &mut self.layers[&layer_index];
+                layer.load_weights(&mut reader, transpose)?;
+                Ok(())
+            })?;
+
+            ensure!(
+                matches!(reader.fill_buf()?, &[]),
+                "the weights file is not totally consumed"
+            );
+        }
+
+        Ok(())
     }
 }
 
@@ -516,27 +581,27 @@ mod layers {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ShapeList {
-        SingleFlat(usize),
-        SingleHwc([usize; 3]),
-        MultipleHwc(Vec<[usize; 3]>),
+        SingleFlat(u64),
+        SingleHwc([u64; 3]),
+        MultipleHwc(Vec<[u64; 3]>),
     }
 
     impl ShapeList {
-        pub fn single_flat(&self) -> Option<usize> {
+        pub fn single_flat(&self) -> Option<u64> {
             match *self {
                 Self::SingleFlat(size) => Some(size),
                 _ => None,
             }
         }
 
-        pub fn single_hwc(&self) -> Option<[usize; 3]> {
+        pub fn single_hwc(&self) -> Option<[u64; 3]> {
             match *self {
                 Self::SingleHwc(hwc) => Some(hwc),
                 _ => None,
             }
         }
 
-        pub fn multiple_hwc(&self) -> Option<Vec<[usize; 3]>> {
+        pub fn multiple_hwc(&self) -> Option<Vec<[u64; 3]>> {
             match self {
                 Self::MultipleHwc(hwc) => Some(hwc.clone()),
                 _ => None,
@@ -557,6 +622,19 @@ mod layers {
     }
 
     impl Layer {
+        pub fn load_weights(&mut self, reader: impl ReadBytesExt, transpose: bool) -> Result<()> {
+            match self {
+                Self::Connected(layer) => layer.load_weights(reader, transpose),
+                Self::Convolutional(layer) => layer.load_weights(reader),
+                Self::Route(_layer) => Ok(()),
+                Self::Shortcut(layer) => layer.load_weights(reader),
+                Self::MaxPool(_layer) => Ok(()),
+                Self::UpSample(_layer) => Ok(()),
+                Self::Yolo(_layer) => Ok(()),
+                Self::BatchNorm(layer) => layer.load_weights(reader),
+            }
+        }
+
         pub fn input_shape(&self) -> ShapeList {
             match self {
                 Self::Connected(layer) => ShapeList::SingleFlat(layer.input_shape),
@@ -602,64 +680,57 @@ mod layers {
         ConnectedConfig,
         ConnectedWeights,
         LayerPosition,
-        usize,
-        usize
+        u64,
+        u64
     );
     declare_layer_type!(
         ConvolutionalLayer,
         ConvolutionalConfig,
         ConvolutionalWeights,
         LayerPosition,
-        [usize; 3],
-        [usize; 3]
+        [u64; 3],
+        [u64; 3]
     );
     declare_layer_type!(
         RouteLayer,
         RouteConfig,
         (),
         IndexSet<LayerPosition>,
-        Vec<[usize; 3]>,
-        [usize; 3]
+        Vec<[u64; 3]>,
+        [u64; 3]
     );
     declare_layer_type!(
         ShortcutLayer,
         ShortcutConfig,
         ShortcutWeights,
         IndexSet<LayerPosition>,
-        Vec<[usize; 3]>,
-        [usize; 3]
+        Vec<[u64; 3]>,
+        [u64; 3]
     );
     declare_layer_type!(
         MaxPoolLayer,
         MaxPoolConfig,
         (),
         LayerPosition,
-        [usize; 3],
-        [usize; 3]
+        [u64; 3],
+        [u64; 3]
     );
     declare_layer_type!(
         UpSampleLayer,
         UpSampleConfig,
         (),
         LayerPosition,
-        [usize; 3],
-        [usize; 3]
+        [u64; 3],
+        [u64; 3]
     );
-    declare_layer_type!(
-        YoloLayer,
-        YoloConfig,
-        (),
-        LayerPosition,
-        [usize; 3],
-        [usize; 3]
-    );
+    declare_layer_type!(YoloLayer, YoloConfig, (), LayerPosition, [u64; 3], [u64; 3]);
     declare_layer_type!(
         BatchNormLayer,
         BatchNormConfig,
         BatchNormWeights,
         LayerPosition,
-        [usize; 3],
-        [usize; 3]
+        [u64; 3],
+        [u64; 3]
     );
 
     impl From<ConnectedLayer> for Layer {
@@ -709,6 +780,170 @@ mod layers {
             Self::BatchNorm(from)
         }
     }
+
+    impl ConnectedLayer {
+        pub fn load_weights(
+            &mut self,
+            mut reader: impl ReadBytesExt,
+            transpose: bool,
+        ) -> Result<()> {
+            let Self {
+                config:
+                    ConnectedConfig {
+                        common:
+                            CommonLayerOptions {
+                                dont_load,
+                                dont_load_scales,
+                                ..
+                            },
+                        ..
+                    },
+                weights:
+                    ConnectedWeights {
+                        ref mut biases,
+                        ref mut weights,
+                        ref mut scales,
+                    },
+                ..
+            } = *self;
+
+            if dont_load {
+                return Ok(());
+            }
+
+            reader.read_f32_into::<LittleEndian>(biases)?;
+            reader.read_f32_into::<LittleEndian>(weights)?;
+
+            if transpose {
+                warn!("TODO: transpose");
+            }
+
+            if let (Some(scales), false) = (scales, dont_load_scales) {
+                let ScaleWeights {
+                    scales,
+                    rolling_mean,
+                    rolling_variance,
+                } = scales;
+
+                reader.read_f32_into::<LittleEndian>(scales)?;
+                reader.read_f32_into::<LittleEndian>(rolling_mean)?;
+                reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl ConvolutionalLayer {
+        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
+            let Self {
+                config:
+                    ConvolutionalConfig {
+                        flipped,
+                        share_index,
+                        common:
+                            CommonLayerOptions {
+                                dont_load,
+                                dont_load_scales,
+                                ..
+                            },
+                        ..
+                    },
+                weights:
+                    ConvolutionalWeights {
+                        ref mut biases,
+                        ref mut scales,
+                        ref mut weights,
+                    },
+                ..
+            } = *self;
+
+            if dont_load {
+                return Ok(());
+            }
+
+            if let Some(_share_index) = share_index {
+                warn!("TODO: implement shared_index");
+            } else {
+                reader.read_f32_into::<LittleEndian>(biases)?;
+
+                if let (Some(scales), false) = (scales, dont_load_scales) {
+                    let ScaleWeights {
+                        scales,
+                        rolling_mean,
+                        rolling_variance,
+                    } = scales;
+
+                    reader.read_f32_into::<LittleEndian>(scales)?;
+                    reader.read_f32_into::<LittleEndian>(rolling_mean)?;
+                    reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+                }
+
+                reader.read_f32_into::<LittleEndian>(weights)?;
+
+                if flipped {
+                    warn!("TODO: implement flipped option");
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    impl BatchNormLayer {
+        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
+            let Self {
+                config:
+                    BatchNormConfig {
+                        common: CommonLayerOptions { dont_load, .. },
+                        ..
+                    },
+                weights:
+                    BatchNormWeights {
+                        ref mut biases,
+                        ref mut scales,
+                        ref mut rolling_mean,
+                        ref mut rolling_variance,
+                    },
+                ..
+            } = *self;
+
+            if dont_load {
+                return Ok(());
+            }
+
+            reader.read_f32_into::<LittleEndian>(biases)?;
+            reader.read_f32_into::<LittleEndian>(scales)?;
+            reader.read_f32_into::<LittleEndian>(rolling_mean)?;
+            reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+
+            Ok(())
+        }
+    }
+
+    impl ShortcutLayer {
+        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
+            let Self {
+                config:
+                    ShortcutConfig {
+                        common: CommonLayerOptions { dont_load, .. },
+                        ..
+                    },
+                weights: ShortcutWeights { ref mut weights },
+                ..
+            } = *self;
+
+            if dont_load {
+                return Ok(());
+            }
+
+            if let Some(weights) = weights {
+                reader.read_f32_into::<LittleEndian>(weights)?;
+            }
+
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -723,8 +958,8 @@ mod tests {
             .join("yolov4.cfg");
         let weights_file = "/home/jerry73204/Downloads/yolov4.weights";
         let config = DarknetConfig::load(config_file)?;
-        dbg!(&config);
-        let model = Model::from_config(&config)?;
+        let mut model = Model::from_config(&config)?;
+        model.load_weights(weights_file)?;
         Ok(())
     }
 }

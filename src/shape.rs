@@ -1,4 +1,4 @@
 pub trait ShapeEx: Copy {}
 
-impl ShapeEx for usize {}
-impl ShapeEx for [usize; 3] {}
+impl ShapeEx for u64 {}
+impl ShapeEx for [u64; 3] {}
