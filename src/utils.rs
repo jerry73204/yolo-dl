@@ -15,3 +15,17 @@ where
 
     Ok(())
 }
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct DisplayAsDebug<T>(pub T)
+where
+    T: Display;
+
+impl<T> Debug for DisplayAsDebug<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}

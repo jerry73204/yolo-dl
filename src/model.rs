@@ -5,6 +5,7 @@ use crate::{
         LayerConfig, LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig,
         UpSampleConfig, YoloConfig,
     },
+    utils::DisplayAsDebug,
     weights::{
         BatchNormWeights, ConnectedWeights, ConvolutionalWeights, ScaleWeights, ShortcutWeights,
     },
@@ -521,6 +522,15 @@ mod layers {
         Absolute(usize),
     }
 
+    impl Display for LayerPosition {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Input => write!(f, "input"),
+                Self::Absolute(index) => write!(f, "{}", index),
+            }
+        }
+    }
+
     impl PartialOrd for LayerPosition {
         fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
             match (self, rhs) {
@@ -575,6 +585,19 @@ mod layers {
         }
     }
 
+    impl Display for LayerPositionSet {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Empty => write!(f, "empty"),
+                Self::Single(index) => write!(f, "{}", index),
+                Self::Multiple(indexes) => f
+                    .debug_list()
+                    .entries(indexes.iter().cloned().map(|index| DisplayAsDebug(index)))
+                    .finish(),
+            }
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ShapeList {
         SingleFlat(u64),
@@ -601,6 +624,16 @@ mod layers {
             match self {
                 Self::MultipleHwc(hwc) => Some(hwc.clone()),
                 _ => None,
+            }
+        }
+    }
+
+    impl Display for ShapeList {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::SingleFlat(size) => write!(f, "{}", size),
+                Self::SingleHwc([h, w, c]) => f.debug_list().entries(vec![h, w, c]).finish(),
+                Self::MultipleHwc(shapes) => write!(f, "{:?}", shapes),
             }
         }
     }
@@ -654,6 +687,19 @@ mod layers {
                 Self::UpSample(layer) => Shape::Hwc(layer.output_shape),
                 Self::Yolo(layer) => Shape::Hwc(layer.output_shape),
                 Self::BatchNorm(layer) => Shape::Hwc(layer.output_shape),
+            }
+        }
+
+        pub fn from_indexes(&self) -> LayerPositionSet {
+            match self {
+                Self::Connected(layer) => LayerPositionSet::Single(layer.from_indexes),
+                Self::Convolutional(layer) => LayerPositionSet::Single(layer.from_indexes),
+                Self::Route(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
+                Self::Shortcut(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
+                Self::MaxPool(layer) => LayerPositionSet::Single(layer.from_indexes),
+                Self::UpSample(layer) => LayerPositionSet::Single(layer.from_indexes),
+                Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
+                Self::BatchNorm(layer) => LayerPositionSet::Single(layer.from_indexes),
             }
         }
     }
@@ -952,23 +998,5 @@ mod layers {
 
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wtf() -> Result<()> {
-        pretty_env_logger::init();
-        let config_file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("yolov4.cfg");
-        let weights_file = "/home/jerry73204/Downloads/yolov4.weights";
-        let config = DarknetConfig::load(config_file)?;
-        let mut model = Model::from_config(&config)?;
-        model.load_weights(weights_file)?;
-        Ok(())
     }
 }

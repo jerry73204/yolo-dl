@@ -19,7 +19,7 @@ pub use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
     convert::TryFrom,
-    fmt::Debug,
+    fmt::{self, Debug, Display},
     fs::{self, File},
     hash::Hash,
     io::{prelude::*, BufReader},

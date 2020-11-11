@@ -1705,6 +1705,15 @@ mod items {
         }
     }
 
+    impl Display for Shape {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Hwc([h, w, c]) => f.debug_list().entries(vec![h, w, c]).finish(),
+                Self::Flat(size) => write!(f, "{}", size),
+            }
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Adam {
         pub b1: R64,
