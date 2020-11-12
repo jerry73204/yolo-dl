@@ -1,9 +1,4 @@
-use crate::{
-    common::*,
-    weights::{
-        BatchNormWeights, ConnectedWeights, ConvolutionalWeights, ScaleWeights, ShortcutWeights,
-    },
-};
+use crate::common::*;
 
 pub use items::*;
 
@@ -752,20 +747,6 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl ConnectedConfig {
-        pub fn build_weights(&self, input_shape: u64, output_shape: u64) -> ConnectedWeights {
-            ConnectedWeights {
-                biases: vec![0.0; input_shape as usize],
-                weights: vec![0.0; (input_shape * output_shape) as usize],
-                scales: if self.batch_normalize {
-                    Some(ScaleWeights::new(output_shape))
-                } else {
-                    None
-                },
-            }
-        }
-    }
-
     impl LayerConfigEx for ConnectedConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
@@ -803,37 +784,6 @@ mod items {
     }
 
     impl ConvolutionalConfig {
-        pub fn build_weights(
-            &self,
-            layer_index: usize,
-            input_shape: [u64; 3],
-            _output_shape: [u64; 3],
-        ) -> Result<ConvolutionalWeights> {
-            let weights = if let Some(share_index) = self.share_index {
-                let share_index = share_index
-                    .to_absolute(layer_index)
-                    .ok_or_else(|| format_err!("invalid layer index"))?;
-                ConvolutionalWeights::Ref { share_index }
-            } else {
-                let [_, _, input_channels] = input_shape;
-                let weights = vec![0.0; self.num_weights(input_channels)?];
-                let biases = vec![0.0; self.filters as usize];
-                let scales = if self.batch_normalize {
-                    Some(ScaleWeights::new(self.filters))
-                } else {
-                    None
-                };
-
-                ConvolutionalWeights::Owned {
-                    biases,
-                    weights,
-                    scales,
-                }
-            };
-
-            Ok(weights)
-        }
-
         pub fn output_shape(&self, [h, w, _c]: [u64; 3]) -> [u64; 3] {
             let Self {
                 filters,
@@ -853,7 +803,7 @@ mod items {
                 input_channels % self.groups == 0,
                 "the input channels is not multiple of groups"
             );
-            Ok(((input_channels / self.groups) * self.filters * self.size.pow(2)) as usize)
+            Ok((input_channels / self.groups * self.filters * self.size.pow(2)) as usize)
         }
     }
 
@@ -1126,20 +1076,6 @@ mod items {
     }
 
     impl ShortcutConfig {
-        pub fn build_weights(
-            &self,
-            _input_shape: &[[u64; 3]],
-            output_shape: [u64; 3],
-        ) -> ShortcutWeights {
-            let [_, _, out_c] = output_shape;
-
-            let weights = self
-                .num_weights(out_c)
-                .map(|num_weights| vec![0.0; num_weights]);
-
-            ShortcutWeights { weights }
-        }
-
         pub fn num_weights(&self, out_channels: u64) -> Option<usize> {
             match self.weights_type {
                 WeightsType::None => None,
@@ -1382,29 +1318,6 @@ mod items {
     pub struct BatchNormConfig {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
-    }
-
-    impl BatchNormConfig {
-        pub fn build_weights(
-            &self,
-            input_shape: [u64; 3],
-            _output_shape: [u64; 3],
-        ) -> BatchNormWeights {
-            let [_h, _w, channels] = input_shape;
-            let channels = channels as usize;
-
-            let biases = vec![0.0; channels];
-            let scales = vec![0.0; channels];
-            let rolling_mean = vec![0.0; channels];
-            let rolling_variance = vec![0.0; channels];
-
-            BatchNormWeights {
-                biases,
-                scales,
-                rolling_mean,
-                rolling_variance,
-            }
-        }
     }
 
     impl LayerConfigEx for BatchNormConfig {

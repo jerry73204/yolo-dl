@@ -16,6 +16,7 @@ pub use serde::{
 };
 pub use serde_repr::{Deserialize_repr, Serialize_repr};
 pub use std::{
+    borrow::Borrow,
     cmp::Ordering,
     collections::{HashMap, HashSet},
     convert::TryFrom,

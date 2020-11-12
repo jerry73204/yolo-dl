@@ -1,6 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use argh::FromArgs;
-use darknet_parse::{DarknetConfig, Layer, Model};
+use darknet_config::{DarknetConfig, DarknetModel, LayerBase, ModelBase};
 use prettytable::{cell, row, Table};
 use std::path::PathBuf;
 
@@ -24,9 +24,9 @@ fn main() -> Result<()> {
     } = argh::from_env();
 
     let config = DarknetConfig::load(config_file)?;
-    let mut model = Model::from_config(&config)?;
-    model.load_weights(weights_file)?;
+    let model = ModelBase::from_config(&config)?;
 
+    // print layer information
     {
         let mut table = Table::new();
         table.add_row(row![
@@ -42,14 +42,14 @@ fn main() -> Result<()> {
             let layer = &model.layers[&index];
 
             let kind = match layer {
-                Layer::Convolutional(_) => "conv",
-                Layer::Connected(_) => "connected",
-                Layer::BatchNorm(_) => "batch_norm",
-                Layer::Shortcut(_) => "shortcut",
-                Layer::MaxPool(_) => "max_pool",
-                Layer::Route(_) => "route",
-                Layer::UpSample(_) => "up_sample",
-                Layer::Yolo(_) => "yolo",
+                LayerBase::Convolutional(_) => "conv",
+                LayerBase::Connected(_) => "connected",
+                LayerBase::BatchNorm(_) => "batch_norm",
+                LayerBase::Shortcut(_) => "shortcut",
+                LayerBase::MaxPool(_) => "max_pool",
+                LayerBase::Route(_) => "route",
+                LayerBase::UpSample(_) => "up_sample",
+                LayerBase::Yolo(_) => "yolo",
             };
 
             table.add_row(row![
@@ -63,6 +63,13 @@ fn main() -> Result<()> {
 
         table.printstd();
     }
+
+    println!("loading weights file {}", weights_file.display());
+    let mut darknet_model = DarknetModel::new(&model)?;
+    darknet_model
+        .load_weights(weights_file)
+        .with_context(|| "failed to load weights file")?;
+    println!("weights file is successfully loaded!");
 
     Ok(())
 }

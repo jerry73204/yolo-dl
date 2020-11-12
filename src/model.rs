@@ -1,27 +1,22 @@
 use crate::{
     common::*,
     config::{
-        BatchNormConfig, CommonLayerOptions, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
-        LayerConfig, LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig,
-        UpSampleConfig, YoloConfig,
+        BatchNormConfig, ConnectedConfig, ConvolutionalConfig, DarknetConfig, LayerConfig,
+        LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig, UpSampleConfig,
+        YoloConfig,
     },
     utils::DisplayAsDebug,
-    weights::{
-        BatchNormWeights, ConnectedWeights, ConvolutionalWeights, ScaleWeights, ShortcutWeights,
-    },
 };
 
-pub use layers::*;
-
 #[derive(Debug, Clone)]
-pub struct Model {
+pub struct ModelBase {
     pub seen: u64,
     pub cur_iteration: u64,
     pub net: NetConfig,
-    pub layers: IndexMap<usize, Layer>,
+    pub layers: IndexMap<usize, LayerBase>,
 }
 
-impl Model {
+impl ModelBase {
     pub fn from_config_file<P>(config_file: P) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -334,11 +329,9 @@ impl Model {
                         LayerConfig::Connected(conf) => {
                             let input_shape = input_shape.single_flat().unwrap();
                             let output_shape = output_shape.flat().unwrap();
-                            let weights = conf.build_weights(input_shape, output_shape);
 
-                            Layer::Connected(ConnectedLayer {
+                            LayerBase::Connected(ConnectedLayerBase {
                                 config: conf,
-                                weights,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
                                 output_shape,
@@ -347,71 +340,79 @@ impl Model {
                         LayerConfig::Convolutional(conf) => {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
-                            let weights =
-                                conf.build_weights(layer_index, input_shape, output_shape)?;
 
-                            Layer::Convolutional(ConvolutionalLayer {
+                            LayerBase::Convolutional(ConvolutionalLayerBase {
                                 config: conf,
-                                weights,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
                                 output_shape,
                             })
                         }
-                        LayerConfig::Route(conf) => Layer::Route(RouteLayer {
-                            config: conf,
-                            weights: (),
-                            from_indexes: from_indexes.multiple().unwrap(),
-                            input_shape: input_shape.multiple_hwc().unwrap(),
-                            output_shape: output_shape.hwc().unwrap(),
-                        }),
-                        LayerConfig::Shortcut(conf) => {
+                        LayerConfig::Route(conf) => {
                             let input_shape = input_shape.multiple_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
-                            let weights = conf.build_weights(&input_shape, output_shape);
 
-                            Layer::Shortcut(ShortcutLayer {
+                            LayerBase::Route(RouteLayerBase {
                                 config: conf,
-                                weights,
                                 from_indexes: from_indexes.multiple().unwrap(),
                                 input_shape,
                                 output_shape,
                             })
                         }
-                        LayerConfig::MaxPool(conf) => Layer::MaxPool(MaxPoolLayer {
-                            config: conf,
-                            weights: (),
-                            from_indexes: from_indexes.single().unwrap(),
-                            input_shape: input_shape.single_hwc().unwrap(),
-                            output_shape: output_shape.hwc().unwrap(),
-                        }),
-                        LayerConfig::UpSample(conf) => Layer::UpSample(UpSampleLayer {
-                            config: conf,
-                            weights: (),
-                            from_indexes: from_indexes.single().unwrap(),
-                            input_shape: input_shape.single_hwc().unwrap(),
-                            output_shape: output_shape.hwc().unwrap(),
-                        }),
-                        LayerConfig::BatchNorm(conf) => {
+                        LayerConfig::Shortcut(conf) => {
+                            let input_shape = input_shape.multiple_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+
+                            LayerBase::Shortcut(ShortcutLayerBase {
+                                config: conf,
+                                from_indexes: from_indexes.multiple().unwrap(),
+                                input_shape,
+                                output_shape,
+                            })
+                        }
+                        LayerConfig::MaxPool(conf) => {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
-                            let weights = conf.build_weights(input_shape, output_shape);
-
-                            Layer::BatchNorm(BatchNormLayer {
+                            LayerBase::MaxPool(MaxPoolLayerBase {
                                 config: conf,
-                                weights,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
                                 output_shape,
                             })
                         }
-                        LayerConfig::Yolo(conf) => Layer::Yolo(YoloLayer {
-                            config: conf,
-                            weights: (),
-                            from_indexes: from_indexes.single().unwrap(),
-                            input_shape: input_shape.single_hwc().unwrap(),
-                            output_shape: output_shape.hwc().unwrap(),
-                        }),
+                        LayerConfig::UpSample(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+
+                            LayerBase::UpSample(UpSampleLayerBase {
+                                config: conf,
+                                from_indexes: from_indexes.single().unwrap(),
+                                input_shape,
+                                output_shape,
+                            })
+                        }
+                        LayerConfig::BatchNorm(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            debug_assert_eq!(input_shape, output_shape);
+
+                            LayerBase::BatchNorm(BatchNormLayerBase {
+                                config: conf,
+                                from_indexes: from_indexes.single().unwrap(),
+                                inout_shape: input_shape,
+                            })
+                        }
+                        LayerConfig::Yolo(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            debug_assert_eq!(input_shape, output_shape);
+
+                            LayerBase::Yolo(YoloLayerBase {
+                                config: conf,
+                                from_indexes: from_indexes.single().unwrap(),
+                                inout_shape: input_shape,
+                            })
+                        }
                     };
 
                     Ok((layer_index, layer))
@@ -431,14 +432,14 @@ impl Model {
             (0..num_layers).for_each(|layer_index| {
                 let layer = &layers[&layer_index];
                 let kind = match layer {
-                    Layer::Convolutional(_) => "conv",
-                    Layer::Connected(_) => "connected",
-                    Layer::BatchNorm(_) => "batch_norm",
-                    Layer::Shortcut(_) => "shortcut",
-                    Layer::MaxPool(_) => "max_pool",
-                    Layer::Route(_) => "route",
-                    Layer::UpSample(_) => "up_sample",
-                    Layer::Yolo(_) => "yolo",
+                    LayerBase::Convolutional(_) => "conv",
+                    LayerBase::Connected(_) => "connected",
+                    LayerBase::BatchNorm(_) => "batch_norm",
+                    LayerBase::Shortcut(_) => "shortcut",
+                    LayerBase::MaxPool(_) => "max_pool",
+                    LayerBase::Route(_) => "route",
+                    LayerBase::UpSample(_) => "up_sample",
+                    LayerBase::Yolo(_) => "yolo",
                 };
 
                 debug!(
@@ -458,545 +459,314 @@ impl Model {
             layers,
         })
     }
+}
 
-    pub fn load_weights<P>(&mut self, weights_file: P) -> Result<()>
-    where
-        P: AsRef<Path>,
-    {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, BinRead)]
-        pub struct Version {
-            pub major: u32,
-            pub minor: u32,
-            pub revision: u32,
+// layer position
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LayerPosition {
+    Input,
+    Absolute(usize),
+}
+
+impl Display for LayerPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input => write!(f, "input"),
+            Self::Absolute(index) => write!(f, "{}", index),
         }
-
-        let mut reader = BufReader::new(File::open(weights_file)?);
-
-        // load weights file
-        let (seen, transpose, mut reader) = move || -> Result<_, binread::Error> {
-            let version: Version = reader.read_le()?;
-            let Version { major, minor, .. } = version;
-
-            let seen: u64 = if major * 10 + minor >= 2 {
-                reader.read_le()?
-            } else {
-                let seen: u32 = reader.read_le()?;
-                seen as u64
-            };
-            let transpose = (major > 1000) || (minor > 1000);
-
-            Ok((seen, transpose, reader))
-        }()
-        .map_err(|err| format_err!("failed to parse weight file: {:?}", err))?;
-
-        // update network parameters
-        self.seen = seen;
-        self.cur_iteration = self.net.iteration(seen);
-
-        // load weights
-        {
-            let num_layers = self.layers.len();
-
-            (0..num_layers).try_for_each(|layer_index| -> Result<_> {
-                let layer = &mut self.layers[&layer_index];
-                layer.load_weights(&mut reader, transpose)?;
-                Ok(())
-            })?;
-
-            ensure!(
-                matches!(reader.fill_buf()?, &[]),
-                "the weights file is not totally consumed"
-            );
-        }
-
-        Ok(())
     }
 }
 
-mod layers {
-    use super::*;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum LayerPosition {
-        Input,
-        Absolute(usize),
-    }
-
-    impl Display for LayerPosition {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Input => write!(f, "input"),
-                Self::Absolute(index) => write!(f, "{}", index),
-            }
+impl PartialOrd for LayerPosition {
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        match (self, rhs) {
+            (Self::Input, Self::Input) => Some(Ordering::Equal),
+            (Self::Input, Self::Absolute(_)) => Some(Ordering::Less),
+            (Self::Absolute(_), Self::Input) => Some(Ordering::Greater),
+            (Self::Absolute(lindex), Self::Absolute(rindex)) => lindex.partial_cmp(rindex),
         }
     }
+}
 
-    impl PartialOrd for LayerPosition {
-        fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
-            match (self, rhs) {
-                (Self::Input, Self::Input) => Some(Ordering::Equal),
-                (Self::Input, Self::Absolute(_)) => Some(Ordering::Less),
-                (Self::Absolute(_), Self::Input) => Some(Ordering::Greater),
-                (Self::Absolute(lindex), Self::Absolute(rindex)) => lindex.partial_cmp(rindex),
-            }
+impl Ord for LayerPosition {
+    fn cmp(&self, rhs: &Self) -> Ordering {
+        match (self, rhs) {
+            (Self::Input, Self::Input) => Ordering::Equal,
+            (Self::Input, Self::Absolute(_)) => Ordering::Less,
+            (Self::Absolute(_), Self::Input) => Ordering::Greater,
+            (Self::Absolute(lindex), Self::Absolute(rindex)) => lindex.cmp(rindex),
         }
     }
+}
 
-    impl Ord for LayerPosition {
-        fn cmp(&self, rhs: &Self) -> Ordering {
-            match (self, rhs) {
-                (Self::Input, Self::Input) => Ordering::Equal,
-                (Self::Input, Self::Absolute(_)) => Ordering::Less,
-                (Self::Absolute(_), Self::Input) => Ordering::Greater,
-                (Self::Absolute(lindex), Self::Absolute(rindex)) => lindex.cmp(rindex),
-            }
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LayerPositionSet {
+    Empty,
+    Single(LayerPosition),
+    Multiple(IndexSet<LayerPosition>),
+}
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum LayerPositionSet {
-        Empty,
-        Single(LayerPosition),
-        Multiple(IndexSet<LayerPosition>),
-    }
-
-    impl LayerPositionSet {
-        pub fn iter(&self) -> impl Iterator<Item = LayerPosition> {
-            let index_iter: Box<dyn Iterator<Item = LayerPosition>> = match *self {
-                Self::Empty => Box::new(iter::empty()),
-                Self::Single(index) => Box::new(iter::once(index)),
-                Self::Multiple(ref indexes) => Box::new(indexes.clone().into_iter()),
-            };
-            index_iter
-        }
-
-        pub fn single(&self) -> Option<LayerPosition> {
-            match *self {
-                Self::Single(index) => Some(index),
-                _ => None,
-            }
-        }
-
-        pub fn multiple(&self) -> Option<IndexSet<LayerPosition>> {
-            match self {
-                Self::Multiple(indexes) => Some(indexes.clone()),
-                _ => None,
-            }
-        }
-    }
-
-    impl Display for LayerPositionSet {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Empty => write!(f, "empty"),
-                Self::Single(index) => write!(f, "{}", index),
-                Self::Multiple(indexes) => f
-                    .debug_list()
-                    .entries(indexes.iter().cloned().map(|index| DisplayAsDebug(index)))
-                    .finish(),
-            }
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum ShapeList {
-        SingleFlat(u64),
-        SingleHwc([u64; 3]),
-        MultipleHwc(Vec<[u64; 3]>),
-    }
-
-    impl ShapeList {
-        pub fn single_flat(&self) -> Option<u64> {
-            match *self {
-                Self::SingleFlat(size) => Some(size),
-                _ => None,
-            }
-        }
-
-        pub fn single_hwc(&self) -> Option<[u64; 3]> {
-            match *self {
-                Self::SingleHwc(hwc) => Some(hwc),
-                _ => None,
-            }
-        }
-
-        pub fn multiple_hwc(&self) -> Option<Vec<[u64; 3]>> {
-            match self {
-                Self::MultipleHwc(hwc) => Some(hwc.clone()),
-                _ => None,
-            }
-        }
-    }
-
-    impl Display for ShapeList {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::SingleFlat(size) => write!(f, "{}", size),
-                Self::SingleHwc([h, w, c]) => f.debug_list().entries(vec![h, w, c]).finish(),
-                Self::MultipleHwc(shapes) => write!(f, "{:?}", shapes),
-            }
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum Layer {
-        Connected(ConnectedLayer),
-        Convolutional(ConvolutionalLayer),
-        Route(RouteLayer),
-        Shortcut(ShortcutLayer),
-        MaxPool(MaxPoolLayer),
-        UpSample(UpSampleLayer),
-        Yolo(YoloLayer),
-        BatchNorm(BatchNormLayer),
-    }
-
-    impl Layer {
-        pub fn load_weights(&mut self, reader: impl ReadBytesExt, transpose: bool) -> Result<()> {
-            match self {
-                Self::Connected(layer) => layer.load_weights(reader, transpose),
-                Self::Convolutional(layer) => layer.load_weights(reader),
-                Self::Route(_layer) => Ok(()),
-                Self::Shortcut(layer) => layer.load_weights(reader),
-                Self::MaxPool(_layer) => Ok(()),
-                Self::UpSample(_layer) => Ok(()),
-                Self::Yolo(_layer) => Ok(()),
-                Self::BatchNorm(layer) => layer.load_weights(reader),
-            }
-        }
-
-        pub fn input_shape(&self) -> ShapeList {
-            match self {
-                Self::Connected(layer) => ShapeList::SingleFlat(layer.input_shape),
-                Self::Convolutional(layer) => ShapeList::SingleHwc(layer.input_shape),
-                Self::Route(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),
-                Self::Shortcut(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),
-                Self::MaxPool(layer) => ShapeList::SingleHwc(layer.input_shape),
-                Self::UpSample(layer) => ShapeList::SingleHwc(layer.input_shape),
-                Self::Yolo(layer) => ShapeList::SingleHwc(layer.input_shape),
-                Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.input_shape),
-            }
-        }
-
-        pub fn output_shape(&self) -> Shape {
-            match self {
-                Self::Connected(layer) => Shape::Flat(layer.output_shape),
-                Self::Convolutional(layer) => Shape::Hwc(layer.output_shape),
-                Self::Route(layer) => Shape::Hwc(layer.output_shape),
-                Self::Shortcut(layer) => Shape::Hwc(layer.output_shape),
-                Self::MaxPool(layer) => Shape::Hwc(layer.output_shape),
-                Self::UpSample(layer) => Shape::Hwc(layer.output_shape),
-                Self::Yolo(layer) => Shape::Hwc(layer.output_shape),
-                Self::BatchNorm(layer) => Shape::Hwc(layer.output_shape),
-            }
-        }
-
-        pub fn from_indexes(&self) -> LayerPositionSet {
-            match self {
-                Self::Connected(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Convolutional(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Route(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
-                Self::Shortcut(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
-                Self::MaxPool(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::UpSample(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::BatchNorm(layer) => LayerPositionSet::Single(layer.from_indexes),
-            }
-        }
-    }
-
-    macro_rules! declare_layer_type {
-        ($name:ident, $config:ty, $weights:ty, $from_indexes:ty, $input_shape:ty, $output_shape:ty) => {
-            #[derive(Debug, Clone)]
-            pub struct $name {
-                pub config: $config,
-                pub weights: $weights,
-                pub from_indexes: $from_indexes,
-                pub input_shape: $input_shape,
-                pub output_shape: $output_shape,
-            }
+impl LayerPositionSet {
+    pub fn iter(&self) -> impl Iterator<Item = LayerPosition> {
+        let index_iter: Box<dyn Iterator<Item = LayerPosition>> = match *self {
+            Self::Empty => Box::new(iter::empty()),
+            Self::Single(index) => Box::new(iter::once(index)),
+            Self::Multiple(ref indexes) => Box::new(indexes.clone().into_iter()),
         };
+        index_iter
     }
 
-    declare_layer_type!(
-        ConnectedLayer,
-        ConnectedConfig,
-        ConnectedWeights,
-        LayerPosition,
-        u64,
-        u64
-    );
-    declare_layer_type!(
-        ConvolutionalLayer,
-        ConvolutionalConfig,
-        ConvolutionalWeights,
-        LayerPosition,
-        [u64; 3],
-        [u64; 3]
-    );
-    declare_layer_type!(
-        RouteLayer,
-        RouteConfig,
-        (),
-        IndexSet<LayerPosition>,
-        Vec<[u64; 3]>,
-        [u64; 3]
-    );
-    declare_layer_type!(
-        ShortcutLayer,
-        ShortcutConfig,
-        ShortcutWeights,
-        IndexSet<LayerPosition>,
-        Vec<[u64; 3]>,
-        [u64; 3]
-    );
-    declare_layer_type!(
-        MaxPoolLayer,
-        MaxPoolConfig,
-        (),
-        LayerPosition,
-        [u64; 3],
-        [u64; 3]
-    );
-    declare_layer_type!(
-        UpSampleLayer,
-        UpSampleConfig,
-        (),
-        LayerPosition,
-        [u64; 3],
-        [u64; 3]
-    );
-    declare_layer_type!(YoloLayer, YoloConfig, (), LayerPosition, [u64; 3], [u64; 3]);
-    declare_layer_type!(
-        BatchNormLayer,
-        BatchNormConfig,
-        BatchNormWeights,
-        LayerPosition,
-        [u64; 3],
-        [u64; 3]
-    );
-
-    impl From<ConnectedLayer> for Layer {
-        fn from(from: ConnectedLayer) -> Self {
-            Self::Connected(from)
+    pub fn single(&self) -> Option<LayerPosition> {
+        match *self {
+            Self::Single(index) => Some(index),
+            _ => None,
         }
     }
 
-    impl From<ConvolutionalLayer> for Layer {
-        fn from(from: ConvolutionalLayer) -> Self {
-            Self::Convolutional(from)
+    pub fn multiple(&self) -> Option<IndexSet<LayerPosition>> {
+        match self {
+            Self::Multiple(indexes) => Some(indexes.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl Display for LayerPositionSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "empty"),
+            Self::Single(index) => write!(f, "{}", index),
+            Self::Multiple(indexes) => f
+                .debug_list()
+                .entries(indexes.iter().cloned().map(|index| DisplayAsDebug(index)))
+                .finish(),
+        }
+    }
+}
+
+// shape
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShapeList {
+    SingleFlat(u64),
+    SingleHwc([u64; 3]),
+    MultipleHwc(Vec<[u64; 3]>),
+}
+
+impl ShapeList {
+    pub fn single_flat(&self) -> Option<u64> {
+        match *self {
+            Self::SingleFlat(size) => Some(size),
+            _ => None,
         }
     }
 
-    impl From<RouteLayer> for Layer {
-        fn from(from: RouteLayer) -> Self {
-            Self::Route(from)
+    pub fn single_hwc(&self) -> Option<[u64; 3]> {
+        match *self {
+            Self::SingleHwc(hwc) => Some(hwc),
+            _ => None,
         }
     }
 
-    impl From<ShortcutLayer> for Layer {
-        fn from(from: ShortcutLayer) -> Self {
-            Self::Shortcut(from)
+    pub fn multiple_hwc(&self) -> Option<Vec<[u64; 3]>> {
+        match self {
+            Self::MultipleHwc(hwc) => Some(hwc.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl Display for ShapeList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SingleFlat(size) => write!(f, "{}", size),
+            Self::SingleHwc([h, w, c]) => f.debug_list().entries(vec![h, w, c]).finish(),
+            Self::MultipleHwc(shapes) => write!(f, "{:?}", shapes),
+        }
+    }
+}
+
+// layer
+
+#[derive(Debug, Clone)]
+pub enum LayerBase {
+    Connected(ConnectedLayerBase),
+    Convolutional(ConvolutionalLayerBase),
+    Route(RouteLayerBase),
+    Shortcut(ShortcutLayerBase),
+    MaxPool(MaxPoolLayerBase),
+    UpSample(UpSampleLayerBase),
+    Yolo(YoloLayerBase),
+    BatchNorm(BatchNormLayerBase),
+}
+
+impl LayerBase {
+    pub fn input_shape(&self) -> ShapeList {
+        match self {
+            Self::Connected(layer) => ShapeList::SingleFlat(layer.input_shape),
+            Self::Convolutional(layer) => ShapeList::SingleHwc(layer.input_shape),
+            Self::Route(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),
+            Self::Shortcut(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),
+            Self::MaxPool(layer) => ShapeList::SingleHwc(layer.input_shape),
+            Self::UpSample(layer) => ShapeList::SingleHwc(layer.input_shape),
+            Self::Yolo(layer) => ShapeList::SingleHwc(layer.inout_shape),
+            Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.inout_shape),
         }
     }
 
-    impl From<MaxPoolLayer> for Layer {
-        fn from(from: MaxPoolLayer) -> Self {
-            Self::MaxPool(from)
+    pub fn output_shape(&self) -> Shape {
+        match self {
+            Self::Connected(layer) => Shape::Flat(layer.output_shape),
+            Self::Convolutional(layer) => Shape::Hwc(layer.output_shape),
+            Self::Route(layer) => Shape::Hwc(layer.output_shape),
+            Self::Shortcut(layer) => Shape::Hwc(layer.output_shape),
+            Self::MaxPool(layer) => Shape::Hwc(layer.output_shape),
+            Self::UpSample(layer) => Shape::Hwc(layer.output_shape),
+            Self::Yolo(layer) => Shape::Hwc(layer.inout_shape),
+            Self::BatchNorm(layer) => Shape::Hwc(layer.inout_shape),
         }
     }
 
-    impl From<UpSampleLayer> for Layer {
-        fn from(from: UpSampleLayer) -> Self {
-            Self::UpSample(from)
+    pub fn from_indexes(&self) -> LayerPositionSet {
+        match self {
+            Self::Connected(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::Convolutional(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::Route(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
+            Self::Shortcut(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
+            Self::MaxPool(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::UpSample(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::BatchNorm(layer) => LayerPositionSet::Single(layer.from_indexes),
         }
     }
+}
 
-    impl From<YoloLayer> for Layer {
-        fn from(from: YoloLayer) -> Self {
-            Self::Yolo(from)
+macro_rules! declare_layer_base_inout_shape {
+    ($name:ident, $config:ty, $from_indexes:ty, $input_shape:ty, $output_shape:ty) => {
+        #[derive(Debug, Clone)]
+        pub struct $name {
+            pub config: $config,
+            pub from_indexes: $from_indexes,
+            pub input_shape: $input_shape,
+            pub output_shape: $output_shape,
         }
+    };
+}
+
+macro_rules! declare_layer_base_single_shape {
+    ($name:ident, $config:ty, $from_indexes:ty, $inout_shape:ty) => {
+        #[derive(Debug, Clone)]
+        pub struct $name {
+            pub config: $config,
+            pub from_indexes: $from_indexes,
+            pub inout_shape: $inout_shape,
+        }
+    };
+}
+
+declare_layer_base_inout_shape!(ConnectedLayerBase, ConnectedConfig, LayerPosition, u64, u64);
+declare_layer_base_inout_shape!(
+    ConvolutionalLayerBase,
+    ConvolutionalConfig,
+    LayerPosition,
+    [u64; 3],
+    [u64; 3]
+);
+declare_layer_base_inout_shape!(
+    RouteLayerBase,
+    RouteConfig,
+    IndexSet<LayerPosition>,
+    Vec<[u64; 3]>,
+    [u64; 3]
+);
+declare_layer_base_inout_shape!(
+    ShortcutLayerBase,
+    ShortcutConfig,
+    IndexSet<LayerPosition>,
+    Vec<[u64; 3]>,
+    [u64; 3]
+);
+declare_layer_base_inout_shape!(
+    MaxPoolLayerBase,
+    MaxPoolConfig,
+    LayerPosition,
+    [u64; 3],
+    [u64; 3]
+);
+declare_layer_base_inout_shape!(
+    UpSampleLayerBase,
+    UpSampleConfig,
+    LayerPosition,
+    [u64; 3],
+    [u64; 3]
+);
+declare_layer_base_single_shape!(YoloLayerBase, YoloConfig, LayerPosition, [u64; 3]);
+declare_layer_base_single_shape!(BatchNormLayerBase, BatchNormConfig, LayerPosition, [u64; 3]);
+
+impl From<ConnectedLayerBase> for LayerBase {
+    fn from(from: ConnectedLayerBase) -> Self {
+        Self::Connected(from)
     }
+}
 
-    impl From<BatchNormLayer> for Layer {
-        fn from(from: BatchNormLayer) -> Self {
-            Self::BatchNorm(from)
-        }
+impl From<ConvolutionalLayerBase> for LayerBase {
+    fn from(from: ConvolutionalLayerBase) -> Self {
+        Self::Convolutional(from)
     }
+}
 
-    impl ConnectedLayer {
-        pub fn load_weights(
-            &mut self,
-            mut reader: impl ReadBytesExt,
-            transpose: bool,
-        ) -> Result<()> {
-            let Self {
-                config:
-                    ConnectedConfig {
-                        common:
-                            CommonLayerOptions {
-                                dont_load,
-                                dont_load_scales,
-                                ..
-                            },
-                        ..
-                    },
-                weights:
-                    ConnectedWeights {
-                        ref mut biases,
-                        ref mut weights,
-                        ref mut scales,
-                    },
-                input_shape,
-                output_shape,
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            reader.read_f32_into::<LittleEndian>(biases)?;
-            reader.read_f32_into::<LittleEndian>(weights)?;
-
-            if transpose {
-                crate::utils::transpose_matrix(
-                    weights,
-                    input_shape as usize,
-                    output_shape as usize,
-                )?;
-            }
-
-            if let (Some(scales), false) = (scales, dont_load_scales) {
-                let ScaleWeights {
-                    scales,
-                    rolling_mean,
-                    rolling_variance,
-                } = scales;
-
-                reader.read_f32_into::<LittleEndian>(scales)?;
-                reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-                reader.read_f32_into::<LittleEndian>(rolling_variance)?;
-            }
-
-            Ok(())
-        }
+impl From<RouteLayerBase> for LayerBase {
+    fn from(from: RouteLayerBase) -> Self {
+        Self::Route(from)
     }
+}
 
-    impl ConvolutionalLayer {
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                config:
-                    ConvolutionalConfig {
-                        groups,
-                        size,
-                        filters,
-                        flipped,
-                        common:
-                            CommonLayerOptions {
-                                dont_load,
-                                dont_load_scales,
-                                ..
-                            },
-                        ..
-                    },
-                ref mut weights,
-                input_shape: [_h, _w, in_c],
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            match weights {
-                ConvolutionalWeights::Ref { .. } => (),
-                ConvolutionalWeights::Owned {
-                    biases,
-                    scales,
-                    weights,
-                } => {
-                    reader.read_f32_into::<LittleEndian>(biases)?;
-
-                    if let (Some(scales), false) = (scales, dont_load_scales) {
-                        let ScaleWeights {
-                            scales,
-                            rolling_mean,
-                            rolling_variance,
-                        } = scales;
-
-                        reader.read_f32_into::<LittleEndian>(scales)?;
-                        reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-                        reader.read_f32_into::<LittleEndian>(rolling_variance)?;
-                    }
-
-                    reader.read_f32_into::<LittleEndian>(weights)?;
-
-                    if flipped {
-                        crate::utils::transpose_matrix(
-                            weights,
-                            ((in_c / groups) * size.pow(2)) as usize,
-                            filters as usize,
-                        )?;
-                    }
-                }
-            }
-
-            Ok(())
-        }
+impl From<ShortcutLayerBase> for LayerBase {
+    fn from(from: ShortcutLayerBase) -> Self {
+        Self::Shortcut(from)
     }
+}
 
-    impl BatchNormLayer {
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                config:
-                    BatchNormConfig {
-                        common: CommonLayerOptions { dont_load, .. },
-                        ..
-                    },
-                weights:
-                    BatchNormWeights {
-                        ref mut biases,
-                        ref mut scales,
-                        ref mut rolling_mean,
-                        ref mut rolling_variance,
-                    },
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            reader.read_f32_into::<LittleEndian>(biases)?;
-            reader.read_f32_into::<LittleEndian>(scales)?;
-            reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-            reader.read_f32_into::<LittleEndian>(rolling_variance)?;
-
-            Ok(())
-        }
+impl From<MaxPoolLayerBase> for LayerBase {
+    fn from(from: MaxPoolLayerBase) -> Self {
+        Self::MaxPool(from)
     }
+}
 
-    impl ShortcutLayer {
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                config:
-                    ShortcutConfig {
-                        common: CommonLayerOptions { dont_load, .. },
-                        ..
-                    },
-                weights: ShortcutWeights { ref mut weights },
-                ..
-            } = *self;
+impl From<UpSampleLayerBase> for LayerBase {
+    fn from(from: UpSampleLayerBase) -> Self {
+        Self::UpSample(from)
+    }
+}
 
-            if dont_load {
-                return Ok(());
-            }
+impl From<YoloLayerBase> for LayerBase {
+    fn from(from: YoloLayerBase) -> Self {
+        Self::Yolo(from)
+    }
+}
 
-            if let Some(weights) = weights {
-                reader.read_f32_into::<LittleEndian>(weights)?;
-            }
+impl From<BatchNormLayerBase> for LayerBase {
+    fn from(from: BatchNormLayerBase) -> Self {
+        Self::BatchNorm(from)
+    }
+}
 
-            Ok(())
-        }
+impl ConvolutionalLayerBase {
+    pub fn weights_shape(&self) -> [u64; 4] {
+        let Self {
+            config:
+                ConvolutionalConfig {
+                    groups,
+                    filters,
+                    size,
+                    ..
+                },
+            input_shape: [_h, _w, in_c],
+            ..
+        } = *self;
+
+        debug_assert!(in_c % groups == 0,);
+        [in_c / groups, filters, size, size]
     }
 }
