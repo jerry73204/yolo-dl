@@ -1045,20 +1045,67 @@ mod items {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(try_from = "RawRouteConfig", into = "RawRouteConfig")]
     pub struct RouteConfig {
-        #[serde(with = "serde_vec_layer_index")]
         pub layers: Vec<LayerIndex>,
-        #[serde(default = "defaults::route_groups")]
-        pub groups: u64,
-        #[serde(default = "defaults::route_group_id")]
-        pub groupd_id: u64,
-        #[serde(flatten)]
+        pub group: RouteGroup,
         pub common: CommonLayerOptions,
+    }
+
+    impl TryFrom<RawRouteConfig> for RouteConfig {
+        type Error = Error;
+
+        fn try_from(from: RawRouteConfig) -> Result<Self, Self::Error> {
+            let RawRouteConfig {
+                layers,
+                group_id,
+                groups,
+                common,
+            } = from;
+
+            let group = RouteGroup::new(group_id, groups.get())
+                .ok_or_else(|| format_err!("group_id must be less than groups"))?;
+
+            Ok(Self {
+                layers,
+                group,
+                common,
+            })
+        }
     }
 
     impl LayerConfigEx for RouteConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct RawRouteConfig {
+        #[serde(with = "serde_vec_layer_index")]
+        pub layers: Vec<LayerIndex>,
+        #[serde(default = "defaults::route_groups")]
+        pub groups: NonZeroU64,
+        #[serde(default = "defaults::route_group_id")]
+        pub group_id: u64,
+        #[serde(flatten)]
+        pub common: CommonLayerOptions,
+    }
+
+    impl From<RouteConfig> for RawRouteConfig {
+        fn from(from: RouteConfig) -> Self {
+            let RouteConfig {
+                layers,
+                group,
+                common,
+            } = from;
+
+            Self {
+                layers,
+                group_id: group.group_id(),
+                groups: NonZeroU64::new(group.num_groups()).unwrap(),
+                common,
+            }
         }
     }
 
@@ -1653,6 +1700,33 @@ mod items {
         #[serde(rename = "softmax")]
         Softmax,
     }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct RouteGroup {
+        group_id: u64,
+        num_groups: u64,
+    }
+
+    impl RouteGroup {
+        pub fn new(group_id: u64, num_groups: u64) -> Option<Self> {
+            if num_groups == 0 || group_id >= num_groups {
+                None
+            } else {
+                Some(Self {
+                    group_id,
+                    num_groups,
+                })
+            }
+        }
+
+        pub fn group_id(&self) -> u64 {
+            self.group_id
+        }
+
+        pub fn num_groups(&self) -> u64 {
+            self.num_groups
+        }
+    }
 }
 
 // utility functions
@@ -1808,8 +1882,8 @@ mod defaults {
         0
     }
 
-    pub fn route_groups() -> u64 {
-        1
+    pub fn route_groups() -> NonZeroU64 {
+        NonZeroU64::new(1).unwrap()
     }
 
     pub fn route_group_id() -> u64 {
