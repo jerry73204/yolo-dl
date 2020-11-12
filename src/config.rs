@@ -1098,7 +1098,7 @@ mod items {
         pub stride_y: u64,
         pub size: u64,
         pub padding: u64,
-        pub maxpool_depth: u64,
+        pub maxpool_depth: bool,
         pub out_channels: u64,
         pub antialiasing: bool,
         #[serde(flatten)]
@@ -1170,8 +1170,8 @@ mod items {
         pub stride_y: Option<u64>,
         pub size: Option<u64>,
         pub padding: Option<u64>,
-        #[serde(default = "defaults::maxpool_depth")]
-        pub maxpool_depth: u64,
+        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        pub maxpool_depth: bool,
         #[serde(default = "defaults::out_channels")]
         pub out_channels: u64,
         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
@@ -1826,10 +1826,6 @@ mod defaults {
 
     pub fn maxpool_stride() -> u64 {
         1
-    }
-
-    pub fn maxpool_depth() -> u64 {
-        0
     }
 
     pub fn out_channels() -> u64 {
