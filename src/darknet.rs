@@ -9,7 +9,6 @@ use crate::{
         MaxPoolLayerBase, ModelBase, RouteLayerBase, ShortcutLayerBase, UpSampleLayerBase,
         YoloLayerBase,
     },
-    weights::WeightsInit,
 };
 
 pub use layer::*;
@@ -37,12 +36,26 @@ mod model {
 
                         let layer = match layer_base {
                             LayerBase::Connected(conf) => {
-                                let weights = ConnectedWeights::init(
-                                    layer_index,
-                                    &conf.config,
-                                    conf.input_shape,
-                                    conf.output_shape,
-                                )?;
+                                let ConnectedLayerBase {
+                                    config:
+                                        ConnectedConfig {
+                                            batch_normalize, ..
+                                        },
+                                    input_shape,
+                                    output_shape,
+                                    ..
+                                } = conf;
+                                let input_shape = input_shape as usize;
+
+                                let weights = ConnectedWeights {
+                                    biases: vec![0.0; input_shape],
+                                    weights: vec![0.0; input_shape * output_shape as usize],
+                                    scales: if batch_normalize {
+                                        Some(ScaleWeights::new(output_shape))
+                                    } else {
+                                        None
+                                    },
+                                };
 
                                 Layer::Connected(ConnectedLayer {
                                     base: conf,
@@ -50,12 +63,38 @@ mod model {
                                 })
                             }
                             LayerBase::Convolutional(conf) => {
-                                let weights = WeightsInit::init(
-                                    layer_index,
-                                    &conf.config,
-                                    conf.input_shape,
-                                    conf.output_shape,
-                                )?;
+                                let ConvolutionalLayerBase {
+                                    config:
+                                        ConvolutionalConfig {
+                                            ref share_index,
+                                            filters,
+                                            batch_normalize,
+                                            ..
+                                        },
+                                    input_shape: [_, _, in_c],
+                                    ..
+                                } = conf;
+
+                                let weights = if let Some(share_index) = share_index {
+                                    let share_index = share_index
+                                        .to_absolute(layer_index)
+                                        .ok_or_else(|| format_err!("invalid layer index"))?;
+                                    ConvolutionalWeights::Ref { share_index }
+                                } else {
+                                    let weights = vec![0.0; conf.config.num_weights(in_c)?];
+                                    let biases = vec![0.0; filters as usize];
+                                    let scales = if batch_normalize {
+                                        Some(ScaleWeights::new(filters))
+                                    } else {
+                                        None
+                                    };
+
+                                    ConvolutionalWeights::Owned {
+                                        biases,
+                                        weights,
+                                        scales,
+                                    }
+                                };
 
                                 Layer::Convolutional(ConvolutionalLayer {
                                     base: conf,
@@ -64,12 +103,13 @@ mod model {
                             }
                             LayerBase::Route(conf) => Layer::Route(RouteLayer { base: conf }),
                             LayerBase::Shortcut(conf) => {
-                                let weights = WeightsInit::init(
-                                    layer_index,
-                                    &conf.config,
-                                    conf.input_shape.clone(),
-                                    conf.output_shape,
-                                )?;
+                                let [_, _, out_c] = conf.output_shape;
+                                let weights = ShortcutWeights {
+                                    weights: conf
+                                        .config
+                                        .num_weights(out_c)
+                                        .map(|num_weights| vec![0.0; num_weights]),
+                                };
 
                                 Layer::Shortcut(ShortcutLayer {
                                     base: conf,
@@ -81,12 +121,20 @@ mod model {
                                 Layer::UpSample(UpSampleLayer { base: conf })
                             }
                             LayerBase::BatchNorm(conf) => {
-                                let weights = WeightsInit::init(
-                                    layer_index,
-                                    &conf.config,
-                                    conf.inout_shape,
-                                    (),
-                                )?;
+                                let [_h, _w, channels] = conf.inout_shape;
+                                let channels = channels as usize;
+
+                                let biases = vec![0.0; channels];
+                                let scales = vec![0.0; channels];
+                                let rolling_mean = vec![0.0; channels];
+                                let rolling_variance = vec![0.0; channels];
+
+                                let weights = BatchNormWeights {
+                                    biases,
+                                    scales,
+                                    rolling_mean,
+                                    rolling_variance,
+                                };
 
                                 Layer::BatchNorm(BatchNormLayer {
                                     base: conf,
@@ -457,29 +505,6 @@ mod weights {
         pub scales: Option<ScaleWeights>,
     }
 
-    impl WeightsInit for ConnectedWeights {
-        type Config = ConnectedConfig;
-        type InShape = u64;
-        type OutShape = u64;
-
-        fn init(
-            _layer_index: usize,
-            config: &Self::Config,
-            input_shape: Self::InShape,
-            output_shape: Self::OutShape,
-        ) -> Result<Self> {
-            Ok(ConnectedWeights {
-                biases: vec![0.0; input_shape as usize],
-                weights: vec![0.0; (input_shape * output_shape) as usize],
-                scales: if config.batch_normalize {
-                    Some(ScaleWeights::new(output_shape))
-                } else {
-                    None
-                },
-            })
-        }
-    }
-
     #[derive(Debug, Clone)]
     pub enum ConvolutionalWeights {
         Owned {
@@ -492,50 +517,6 @@ mod weights {
         },
     }
 
-    impl WeightsInit for ConvolutionalWeights {
-        type Config = ConvolutionalConfig;
-        type InShape = [u64; 3];
-        type OutShape = [u64; 3];
-
-        fn init(
-            layer_index: usize,
-            config: &Self::Config,
-            input_shape: Self::InShape,
-            _output_shape: Self::OutShape,
-        ) -> Result<Self> {
-            let Self::Config {
-                ref share_index,
-                filters,
-                batch_normalize,
-                ..
-            } = *config;
-
-            let weights = if let Some(share_index) = share_index {
-                let share_index = share_index
-                    .to_absolute(layer_index)
-                    .ok_or_else(|| format_err!("invalid layer index"))?;
-                Self::Ref { share_index }
-            } else {
-                let [_, _, input_channels] = input_shape;
-                let weights = vec![0.0; config.num_weights(input_channels)?];
-                let biases = vec![0.0; filters as usize];
-                let scales = if batch_normalize {
-                    Some(ScaleWeights::new(filters))
-                } else {
-                    None
-                };
-
-                Self::Owned {
-                    biases,
-                    weights,
-                    scales,
-                }
-            };
-
-            Ok(weights)
-        }
-    }
-
     #[derive(Debug, Clone)]
     pub struct BatchNormWeights {
         pub biases: Vec<f32>,
@@ -544,57 +525,8 @@ mod weights {
         pub rolling_variance: Vec<f32>,
     }
 
-    impl WeightsInit for BatchNormWeights {
-        type Config = BatchNormConfig;
-        type InShape = [u64; 3];
-        type OutShape = ();
-
-        fn init(
-            _layer_index: usize,
-            _config: &Self::Config,
-            input_shape: Self::InShape,
-            _output_shape: Self::OutShape,
-        ) -> Result<BatchNormWeights> {
-            let [_h, _w, channels] = input_shape;
-            let channels = channels as usize;
-
-            let biases = vec![0.0; channels];
-            let scales = vec![0.0; channels];
-            let rolling_mean = vec![0.0; channels];
-            let rolling_variance = vec![0.0; channels];
-
-            Ok(BatchNormWeights {
-                biases,
-                scales,
-                rolling_mean,
-                rolling_variance,
-            })
-        }
-    }
-
     #[derive(Debug, Clone)]
     pub struct ShortcutWeights {
         pub weights: Option<Vec<f32>>,
-    }
-
-    impl WeightsInit for ShortcutWeights {
-        type Config = ShortcutConfig;
-        type InShape = Vec<[u64; 3]>;
-        type OutShape = [u64; 3];
-
-        fn init(
-            _layer_index: usize,
-            config: &Self::Config,
-            _input_shape: Self::InShape,
-            output_shape: Self::OutShape,
-        ) -> Result<ShortcutWeights> {
-            let [_, _, out_c] = output_shape;
-
-            let weights = config
-                .num_weights(out_c)
-                .map(|num_weights| vec![0.0; num_weights]);
-
-            Ok(ShortcutWeights { weights })
-        }
     }
 }

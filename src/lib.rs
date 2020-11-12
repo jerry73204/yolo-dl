@@ -5,7 +5,6 @@ pub mod model;
 // #[cfg(feature = "with-tch")]
 // pub mod torch;
 pub mod utils;
-pub mod weights;
 
 pub use config::DarknetConfig;
 pub use darknet::DarknetModel;
