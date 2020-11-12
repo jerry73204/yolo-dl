@@ -280,7 +280,12 @@ impl ModelBase {
                             let output_shape = conf.output_shape(input_shape);
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
-                        LayerConfig::Route(_conf) => {
+                        LayerConfig::Route(conf) => {
+                            let RouteConfig { group, .. } = conf;
+
+                            let group_index = group.group_id();
+                            let num_groups = group.num_groups();
+
                             let input_shapes = multiple_hwc_input_shapes(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
                             let [out_h, out_w] = {
@@ -288,7 +293,10 @@ impl ModelBase {
                                 ensure!(set.len() == 1, "output shapes of input layers to a route layer must have the same heights and widths");
                                 set.into_iter().next().unwrap()
                             };
-                            let out_c: u64 = input_shapes.iter().cloned().map(|[_h, _w, c]| c).sum();
+                            let out_c: u64 = input_shapes.iter().cloned().try_fold(0, |sum, [_h, _w, c]| {
+                                ensure!(c % num_groups == 0, "the input channel size must be multiple of groups");
+                                Ok(sum + c / num_groups)
+                            })?;
                             let output_shape = [out_h, out_w, out_c];
                             (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
                         }
