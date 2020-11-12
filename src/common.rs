@@ -29,5 +29,5 @@ pub use std::{
     path::{Path, PathBuf},
     slice,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
