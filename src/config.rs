@@ -1044,10 +1044,12 @@ mod items {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
     #[serde(try_from = "RawRouteConfig", into = "RawRouteConfig")]
     pub struct RouteConfig {
-        pub layers: Vec<LayerIndex>,
+        #[derivative(Hash(hash_with = "hash_vec_layers"))]
+        pub layers: IndexSet<LayerIndex>,
         pub group: RouteGroup,
         pub common: CommonLayerOptions,
     }
@@ -1080,10 +1082,12 @@ mod items {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
     pub struct RawRouteConfig {
-        #[serde(with = "serde_vec_layer_index")]
-        pub layers: Vec<LayerIndex>,
+        #[derivative(Hash(hash_with = "hash_vec_layers"))]
+        #[serde(with = "serde_vec_layers")]
+        pub layers: IndexSet<LayerIndex>,
         #[serde(default = "defaults::route_groups")]
         pub groups: NonZeroU64,
         #[serde(default = "defaults::route_group_id")]
@@ -1109,10 +1113,12 @@ mod items {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
     pub struct ShortcutConfig {
-        #[serde(with = "serde_vec_layer_index")]
-        pub from: Vec<LayerIndex>,
+        #[derivative(Hash(hash_with = "hash_vec_layers"))]
+        #[serde(with = "serde_vec_layers")]
+        pub from: IndexSet<LayerIndex>,
         pub activation: Activation,
         #[serde(with = "serde_weights_type", default = "defaults::weights_type")]
         pub weights_type: WeightsType,
@@ -2024,6 +2030,14 @@ mod defaults {
     }
 }
 
+fn hash_vec_layers<H>(layers: &IndexSet<LayerIndex>, state: &mut H)
+where
+    H: Hasher,
+{
+    let layers: Vec<_> = layers.iter().cloned().collect();
+    layers.hash(state);
+}
+
 mod serde_zero_one_bool {
     use super::*;
 
@@ -2049,10 +2063,10 @@ mod serde_zero_one_bool {
     }
 }
 
-mod serde_vec_layer_index {
+mod serde_vec_layers {
     use super::*;
 
-    pub fn serialize<S>(indexes: &Vec<LayerIndex>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(indexes: &IndexSet<LayerIndex>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -2064,12 +2078,12 @@ mod serde_vec_layer_index {
         text.serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<LayerIndex>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexSet<LayerIndex>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let text = String::deserialize(deserializer)?;
-        let steps: Vec<_> = text
+        let layers_vec: Vec<_> = text
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect::<String>()
@@ -2080,8 +2094,14 @@ mod serde_vec_layer_index {
                 Ok(index)
             })
             .try_collect()
-            .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
-        Ok(steps)
+            .map_err(|err| D::Error::custom(format!("failed to parse layer index: {:?}", err)))?;
+        let layers_set: IndexSet<LayerIndex> = layers_vec.iter().cloned().collect();
+
+        if layers_vec.len() != layers_set.len() {
+            return Err(D::Error::custom("duplicated layer index is not allowed"));
+        }
+
+        Ok(layers_set)
     }
 }
 
