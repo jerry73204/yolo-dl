@@ -56,44 +56,35 @@ impl ModelBase {
                         }
                     }
                     LayerConfig::Shortcut(conf) => {
-                        let from_indexes_vec: Vec<_> = conf
-                            .from
-                            .iter()
-                            .map(|index| -> Result<_> {
+                        let from = &conf.from;
+                        let first_index = if layer_index == 0 {
+                            LayerPosition::Input
+                        } else {
+                            LayerPosition::Absolute(layer_index - 1)
+                        };
+
+                        let from_indexes: IndexSet<_> = iter::once(Ok(first_index))
+                            .chain(from.iter().map(|index| -> Result<_> {
                                 let index = index
                                     .to_absolute(layer_index)
                                     .ok_or_else(|| format_err!("invalid layer index"))?;
                                 Ok(LayerPosition::Absolute(index))
-                            })
+                            }))
                             .try_collect()?;
 
-                        {
-                            let mut set: IndexSet<_> = from_indexes_vec.iter().cloned().collect();
-                            ensure!(
-                                set.len() == from_indexes_vec.len(),
-                                "from indexes must not be duplicated"
-                            );
+                        ensure!(
+                            from_indexes.len() == from.len() + 1,
+                            "from must not contain the index to previous layer"
+                        );
 
-                            if layer_index == 0 {
-                                let inserted = set.insert(LayerPosition::Input);
-                                debug_assert!(inserted, "please report bug");
-                            } else {
-                                let inserted = set.insert(LayerPosition::Absolute(layer_index - 1));
-                                ensure!(
-                                    inserted,
-                                    "previous layer index must not be contained in from option"
-                                );
-                            }
-
-                            LayerPositionSet::Multiple(set)
-                        }
+                        LayerPositionSet::Multiple(from_indexes)
                     }
                     LayerConfig::Route(conf) => {
-                        let from_indexes_vec: Vec<_> = conf
+                        let from_indexes: IndexSet<_> = conf
                             .layers
                             .iter()
-                            .map(|index| {
-                                let index = match *index {
+                            .map(|&index| {
+                                let index = match index {
                                     LayerIndex::Relative(index) => {
                                         let index = index.get();
                                         ensure!(index <= layer_index, "invalid layer index");
@@ -104,13 +95,7 @@ impl ModelBase {
                                 Ok(LayerPosition::Absolute(index))
                             })
                             .try_collect()?;
-                        let from_indexes_set: IndexSet<_> =
-                            from_indexes_vec.iter().cloned().collect();
-                        ensure!(
-                            from_indexes_set.len() == from_indexes_vec.len(),
-                            "the layer indexes must not be duplicated"
-                        );
-                        LayerPositionSet::Multiple(from_indexes_set)
+                        LayerPositionSet::Multiple(from_indexes)
                     }
                 };
                 Ok((layer_index, from_indexes))
@@ -262,16 +247,16 @@ impl ModelBase {
                         LayerConfig::Shortcut(_conf) => {
                                 let input_shapes = multiple_hwc_input_shapes(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = {
-                                let mut iter = input_shapes.iter().collect::<HashSet<_>>().into_iter();
-                                let first = iter.next().unwrap();
-                                ensure!(
-                                    matches!(iter.next(), None),
-                                    "the shapes of layers connected to a shortcut layer must be equal, but found {:?}",
-                                    input_shapes
-                                );
-                                first.to_owned()
-                            };
+
+                            // ensure input layers have equal heights and widths
+                            {
+                                let set: HashSet<_> = input_shapes.iter().map(|[h, w, _c]| [h, w]).collect();
+                                ensure!(set.len() == 1, "the input layers must have equal heights and widths");
+                            }
+
+                            // copy the shape of first layer as output shape
+                            let output_shape = input_shapes[0];
+
                             (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
                         },
                         LayerConfig::MaxPool(conf) => {
