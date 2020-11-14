@@ -1,6 +1,7 @@
 pub use anyhow::{bail, ensure, format_err, Error, Result};
 pub use binread::{prelude::*, BinReaderExt};
 pub use byteorder::{LittleEndian, ReadBytesExt};
+pub use derivative::Derivative;
 pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::Itertools;
 pub use log::{debug, warn};
@@ -23,6 +24,7 @@ pub use std::{
     fmt::{self, Debug, Display},
     fs::{self, File},
     hash::Hash,
+    hash::Hasher,
     io::{prelude::*, BufReader},
     iter, mem,
     num::{NonZeroU64, NonZeroUsize},
