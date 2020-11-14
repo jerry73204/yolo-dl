@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{
         BatchNormConfig, CommonLayerOptions, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
-        ShortcutConfig,
+        ShortcutConfig, WeightsType,
     },
     model::{
         BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, LayerBase,
@@ -32,116 +32,27 @@ mod model {
                     .layers
                     .iter()
                     .map(|(&layer_index, layer_base)| -> Result<_> {
-                        let layer_base = layer_base.clone();
-
                         let layer = match layer_base {
-                            LayerBase::Connected(conf) => {
-                                let ConnectedLayerBase {
-                                    config:
-                                        ConnectedConfig {
-                                            batch_normalize, ..
-                                        },
-                                    input_shape,
-                                    output_shape,
-                                    ..
-                                } = conf;
-                                let input_shape = input_shape as usize;
-
-                                let weights = ConnectedWeights {
-                                    biases: vec![0.0; input_shape],
-                                    weights: vec![0.0; input_shape * output_shape as usize],
-                                    scales: if batch_normalize {
-                                        Some(ScaleWeights::new(output_shape))
-                                    } else {
-                                        None
-                                    },
-                                };
-
-                                Layer::Connected(ConnectedLayer {
-                                    base: conf,
-                                    weights,
-                                })
+                            LayerBase::Connected(base) => {
+                                Layer::Connected(ConnectedLayer::new(base))
                             }
-                            LayerBase::Convolutional(conf) => {
-                                let ConvolutionalLayerBase {
-                                    config:
-                                        ConvolutionalConfig {
-                                            ref share_index,
-                                            filters,
-                                            batch_normalize,
-                                            ..
-                                        },
-                                    input_shape: [_, _, in_c],
-                                    ..
-                                } = conf;
-
-                                let weights = if let Some(share_index) = share_index {
-                                    let share_index = share_index
-                                        .to_absolute(layer_index)
-                                        .ok_or_else(|| format_err!("invalid layer index"))?;
-                                    ConvolutionalWeights::Ref { share_index }
-                                } else {
-                                    let weights = vec![0.0; conf.config.num_weights(in_c)?];
-                                    let biases = vec![0.0; filters as usize];
-                                    let scales = if batch_normalize {
-                                        Some(ScaleWeights::new(filters))
-                                    } else {
-                                        None
-                                    };
-
-                                    ConvolutionalWeights::Owned {
-                                        biases,
-                                        weights,
-                                        scales,
-                                    }
-                                };
-
-                                Layer::Convolutional(ConvolutionalLayer {
-                                    base: conf,
-                                    weights,
-                                })
+                            LayerBase::Convolutional(base) => {
+                                Layer::Convolutional(ConvolutionalLayer::new(base, layer_index)?)
                             }
-                            LayerBase::Route(conf) => Layer::Route(RouteLayer { base: conf }),
-                            LayerBase::Shortcut(conf) => {
-                                let [_, _, out_c] = conf.output_shape;
-                                let weights = ShortcutWeights {
-                                    weights: conf
-                                        .config
-                                        .num_weights(out_c)
-                                        .map(|num_weights| vec![0.0; num_weights]),
-                                };
-
-                                Layer::Shortcut(ShortcutLayer {
-                                    base: conf,
-                                    weights,
-                                })
+                            LayerBase::Route(base) => {
+                                Layer::Route(RouteLayer { base: base.clone() })
                             }
-                            LayerBase::MaxPool(conf) => Layer::MaxPool(MaxPoolLayer { base: conf }),
-                            LayerBase::UpSample(conf) => {
-                                Layer::UpSample(UpSampleLayer { base: conf })
+                            LayerBase::Shortcut(base) => Layer::Shortcut(ShortcutLayer::new(base)),
+                            LayerBase::MaxPool(base) => {
+                                Layer::MaxPool(MaxPoolLayer { base: base.clone() })
                             }
-                            LayerBase::BatchNorm(conf) => {
-                                let [_h, _w, channels] = conf.inout_shape;
-                                let channels = channels as usize;
-
-                                let biases = vec![0.0; channels];
-                                let scales = vec![0.0; channels];
-                                let rolling_mean = vec![0.0; channels];
-                                let rolling_variance = vec![0.0; channels];
-
-                                let weights = BatchNormWeights {
-                                    biases,
-                                    scales,
-                                    rolling_mean,
-                                    rolling_variance,
-                                };
-
-                                Layer::BatchNorm(BatchNormLayer {
-                                    base: conf,
-                                    weights,
-                                })
+                            LayerBase::UpSample(base) => {
+                                Layer::UpSample(UpSampleLayer { base: base.clone() })
                             }
-                            LayerBase::Yolo(conf) => Layer::Yolo(YoloLayer { base: conf }),
+                            LayerBase::BatchNorm(base) => {
+                                Layer::BatchNorm(BatchNormLayer::new(base))
+                            }
+                            LayerBase::Yolo(base) => Layer::Yolo(YoloLayer { base: base.clone() }),
                         };
 
                         Ok((layer_index, layer))
@@ -284,6 +195,38 @@ mod layer {
     declare_darknet_layer!(YoloLayer, YoloLayerBase);
 
     impl ConnectedLayer {
+        pub fn new(base: &ConnectedLayerBase) -> Self {
+            let ConnectedLayerBase {
+                config: ConnectedConfig {
+                    batch_normalize, ..
+                },
+                input_shape,
+                output_shape,
+                ..
+            } = *base;
+            let input_shape = input_shape as usize;
+            let output_shape = output_shape as usize;
+
+            let weights = ConnectedWeights {
+                biases: Array1::from_shape_vec(input_shape, vec![0.0; input_shape]).unwrap(),
+                weights: Array2::from_shape_vec(
+                    [input_shape, output_shape],
+                    vec![0.0; input_shape * output_shape],
+                )
+                .unwrap(),
+                scales: if batch_normalize {
+                    Some(ScaleWeights::new(output_shape as usize))
+                } else {
+                    None
+                },
+            };
+
+            Self {
+                base: base.clone(),
+                weights,
+            }
+        }
+
         pub fn load_weights(
             &mut self,
             mut reader: impl ReadBytesExt,
@@ -319,27 +262,19 @@ mod layer {
                 return Ok(());
             }
 
-            reader.read_f32_into::<LittleEndian>(biases)?;
-            reader.read_f32_into::<LittleEndian>(weights)?;
+            reader.read_f32_into::<LittleEndian>(biases.as_slice_mut().unwrap())?;
+            reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
 
             if transpose {
                 crate::utils::transpose_matrix(
-                    weights,
+                    weights.as_slice_mut().unwrap(),
                     input_shape as usize,
                     output_shape as usize,
                 )?;
             }
 
             if let (Some(scales), false) = (scales, dont_load_scales) {
-                let ScaleWeights {
-                    scales,
-                    rolling_mean,
-                    rolling_variance,
-                } = scales;
-
-                reader.read_f32_into::<LittleEndian>(scales)?;
-                reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-                reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+                scales.load_weights(reader)?;
             }
 
             Ok(())
@@ -347,6 +282,62 @@ mod layer {
     }
 
     impl ConvolutionalLayer {
+        pub fn new(base: &ConvolutionalLayerBase, layer_index: usize) -> Result<Self> {
+            let ConvolutionalLayerBase {
+                config:
+                    ConvolutionalConfig {
+                        share_index,
+                        filters,
+                        batch_normalize,
+                        size,
+                        groups,
+                        ..
+                    },
+                input_shape: [_, _, in_c],
+                ..
+            } = *base;
+
+            ensure!(
+                in_c % groups == 0,
+                "the input channels is not multiple of groups"
+            );
+
+            let weights = if let Some(share_index) = share_index {
+                let share_index = share_index
+                    .to_absolute(layer_index)
+                    .ok_or_else(|| format_err!("invalid layer index"))?;
+                ConvolutionalWeights::Ref { share_index }
+            } else {
+                let weights_shape = {
+                    let [s1, s2, s3, s4] = [in_c / groups, filters, size, size];
+                    [s1 as usize, s2 as usize, s3 as usize, s4 as usize]
+                };
+                let weights = Array4::from_shape_vec(
+                    weights_shape,
+                    vec![0.0; weights_shape.iter().cloned().product()],
+                )
+                .unwrap();
+                let biases =
+                    Array1::from_shape_vec(filters as usize, vec![0.0; filters as usize]).unwrap();
+                let scales = if batch_normalize {
+                    Some(ScaleWeights::new(filters as usize))
+                } else {
+                    None
+                };
+
+                ConvolutionalWeights::Owned {
+                    biases,
+                    weights,
+                    scales,
+                }
+            };
+
+            Ok(Self {
+                base: base.clone(),
+                weights,
+            })
+        }
+
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
                 base:
@@ -383,25 +374,17 @@ mod layer {
                     scales,
                     weights,
                 } => {
-                    reader.read_f32_into::<LittleEndian>(biases)?;
+                    reader.read_f32_into::<LittleEndian>(biases.as_slice_mut().unwrap())?;
 
                     if let (Some(scales), false) = (scales, dont_load_scales) {
-                        let ScaleWeights {
-                            scales,
-                            rolling_mean,
-                            rolling_variance,
-                        } = scales;
-
-                        reader.read_f32_into::<LittleEndian>(scales)?;
-                        reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-                        reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+                        scales.load_weights(&mut reader)?;
                     }
 
-                    reader.read_f32_into::<LittleEndian>(weights)?;
+                    reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
 
                     if flipped {
                         crate::utils::transpose_matrix(
-                            weights,
+                            weights.as_slice_mut().unwrap(),
                             ((in_c / groups) * size.pow(2)) as usize,
                             filters as usize,
                         )?;
@@ -414,6 +397,28 @@ mod layer {
     }
 
     impl BatchNormLayer {
+        pub fn new(base: &BatchNormLayerBase) -> Self {
+            let [_h, _w, channels] = base.inout_shape;
+            let channels = channels as usize;
+
+            let biases = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
+            let scales = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
+            let rolling_mean = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
+            let rolling_variance = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
+
+            let weights = BatchNormWeights {
+                biases,
+                scales,
+                rolling_mean,
+                rolling_variance,
+            };
+
+            Self {
+                base: base.clone(),
+                weights,
+            }
+        }
+
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
                 base:
@@ -439,16 +444,51 @@ mod layer {
                 return Ok(());
             }
 
-            reader.read_f32_into::<LittleEndian>(biases)?;
-            reader.read_f32_into::<LittleEndian>(scales)?;
-            reader.read_f32_into::<LittleEndian>(rolling_mean)?;
-            reader.read_f32_into::<LittleEndian>(rolling_variance)?;
+            reader.read_f32_into::<LittleEndian>(biases.as_slice_mut().unwrap())?;
+            reader.read_f32_into::<LittleEndian>(scales.as_slice_mut().unwrap())?;
+            reader.read_f32_into::<LittleEndian>(rolling_mean.as_slice_mut().unwrap())?;
+            reader.read_f32_into::<LittleEndian>(rolling_variance.as_slice_mut().unwrap())?;
 
             Ok(())
         }
     }
 
     impl ShortcutLayer {
+        pub fn new(base: &ShortcutLayerBase) -> Self {
+            let ShortcutLayerBase {
+                config:
+                    ShortcutConfig {
+                        weights_type,
+                        ref from,
+                        ..
+                    },
+                output_shape: [_, _, out_c],
+                ..
+            } = *base;
+
+            let out_c = out_c as usize;
+            let num_input_layers = from.len() + 1;
+
+            let weights = match weights_type {
+                WeightsType::None => ShortcutWeights::None,
+                WeightsType::PerFeature => ShortcutWeights::PerFeature(
+                    Array1::from_shape_vec(num_input_layers, vec![0.0; num_input_layers]).unwrap(),
+                ),
+                WeightsType::PerChannel => ShortcutWeights::PerChannel(
+                    Array2::from_shape_vec(
+                        [num_input_layers, out_c],
+                        vec![0.0; num_input_layers * out_c],
+                    )
+                    .unwrap(),
+                ),
+            };
+
+            ShortcutLayer {
+                base: base.clone(),
+                weights,
+            }
+        }
+
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
                 base:
@@ -460,7 +500,7 @@ mod layer {
                             },
                         ..
                     },
-                weights: ShortcutWeights { ref mut weights },
+                ref mut weights,
                 ..
             } = *self;
 
@@ -468,8 +508,14 @@ mod layer {
                 return Ok(());
             }
 
-            if let Some(weights) = weights {
-                reader.read_f32_into::<LittleEndian>(weights)?;
+            match weights {
+                ShortcutWeights::None => (),
+                ShortcutWeights::PerFeature(weights) => {
+                    reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
+                }
+                ShortcutWeights::PerChannel(weights) => {
+                    reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
+                }
             }
 
             Ok(())
@@ -482,34 +528,46 @@ mod weights {
 
     #[derive(Debug, Clone)]
     pub struct ScaleWeights {
-        pub scales: Vec<f32>,
-        pub rolling_mean: Vec<f32>,
-        pub rolling_variance: Vec<f32>,
+        pub scales: Array1<f32>,
+        pub rolling_mean: Array1<f32>,
+        pub rolling_variance: Array1<f32>,
     }
 
     impl ScaleWeights {
-        pub fn new(size: u64) -> Self {
-            let size = size as usize;
+        pub fn new(size: usize) -> Self {
             Self {
-                scales: vec![0.0; size],
-                rolling_mean: vec![0.0; size],
-                rolling_variance: vec![0.0; size],
+                scales: Array1::from_shape_vec(size, vec![0.0; size]).unwrap(),
+                rolling_mean: Array1::from_shape_vec(size, vec![0.0; size]).unwrap(),
+                rolling_variance: Array1::from_shape_vec(size, vec![0.0; size]).unwrap(),
             }
+        }
+
+        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
+            let Self {
+                scales,
+                rolling_mean,
+                rolling_variance,
+            } = self;
+
+            reader.read_f32_into::<LittleEndian>(scales.as_slice_mut().unwrap())?;
+            reader.read_f32_into::<LittleEndian>(rolling_mean.as_slice_mut().unwrap())?;
+            reader.read_f32_into::<LittleEndian>(rolling_variance.as_slice_mut().unwrap())?;
+            Ok(())
         }
     }
 
     #[derive(Debug, Clone)]
     pub struct ConnectedWeights {
-        pub biases: Vec<f32>,
-        pub weights: Vec<f32>,
+        pub biases: Array1<f32>,
+        pub weights: Array2<f32>,
         pub scales: Option<ScaleWeights>,
     }
 
     #[derive(Debug, Clone)]
     pub enum ConvolutionalWeights {
         Owned {
-            biases: Vec<f32>,
-            weights: Vec<f32>,
+            biases: Array1<f32>,
+            weights: Array4<f32>,
             scales: Option<ScaleWeights>,
         },
         Ref {
@@ -519,14 +577,16 @@ mod weights {
 
     #[derive(Debug, Clone)]
     pub struct BatchNormWeights {
-        pub biases: Vec<f32>,
-        pub scales: Vec<f32>,
-        pub rolling_mean: Vec<f32>,
-        pub rolling_variance: Vec<f32>,
+        pub biases: Array1<f32>,
+        pub scales: Array1<f32>,
+        pub rolling_mean: Array1<f32>,
+        pub rolling_variance: Array1<f32>,
     }
 
     #[derive(Debug, Clone)]
-    pub struct ShortcutWeights {
-        pub weights: Option<Vec<f32>>,
+    pub enum ShortcutWeights {
+        None,
+        PerFeature(Array1<f32>),
+        PerChannel(Array2<f32>),
     }
 }

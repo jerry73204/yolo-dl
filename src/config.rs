@@ -797,14 +797,6 @@ mod items {
             let out_w = (w + 2 * padding - size) / stride_x + 1;
             [out_h, out_w, filters]
         }
-
-        pub fn num_weights(&self, input_channels: u64) -> Result<usize> {
-            ensure!(
-                input_channels % self.groups == 0,
-                "the input channels is not multiple of groups"
-            );
-            Ok((input_channels / self.groups * self.filters * self.size.pow(2)) as usize)
-        }
     }
 
     impl LayerConfigEx for ConvolutionalConfig {
@@ -1126,16 +1118,6 @@ mod items {
         pub weights_normalization: WeightsNormalization,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
-    }
-
-    impl ShortcutConfig {
-        pub fn num_weights(&self, out_channels: u64) -> Option<usize> {
-            match self.weights_type {
-                WeightsType::None => None,
-                WeightsType::PerFeature => Some(self.from.len() + 1),
-                WeightsType::PerChannel => Some((self.from.len() + 1) * out_channels as usize),
-            }
-        }
     }
 
     impl LayerConfigEx for ShortcutConfig {

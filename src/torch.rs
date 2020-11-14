@@ -320,8 +320,12 @@ mod layer {
                         ..Default::default()
                     },
                 );
-                linear.ws.replace(weights, &[output_shape, input_shape]);
-                linear.bs.replace(biases, &[output_shape]);
+                linear
+                    .ws
+                    .replace(weights.as_slice().unwrap(), &[output_shape, input_shape]);
+                linear
+                    .bs
+                    .replace(biases.as_slice().unwrap(), &[output_shape]);
                 linear
             };
 
@@ -336,11 +340,13 @@ mod layer {
                 let mut batch_norm = nn::batch_norm1d(path, output_shape, Default::default());
                 batch_norm
                     .running_mean
-                    .replace(rolling_mean, &[output_shape]);
+                    .replace(rolling_mean.as_slice().unwrap(), &[output_shape]);
                 batch_norm
                     .running_var
-                    .replace(rolling_variance, &[output_shape]);
-                batch_norm.ws.replace(scales, &[output_shape]);
+                    .replace(rolling_variance.as_slice().unwrap(), &[output_shape]);
+                batch_norm
+                    .ws
+                    .replace(scales.as_slice().unwrap(), &[output_shape]);
 
                 batch_norm
             });
@@ -444,8 +450,10 @@ mod layer {
                     );
 
                     debug_assert!(matches!(conv.bs, Some(_)));
-                    conv.ws.replace(weights, &kernel_shape);
-                    conv.bs.as_mut().map(|bs| bs.replace(biases, &[k_channels]));
+                    conv.ws.replace(weights.as_slice().unwrap(), &kernel_shape);
+                    conv.bs
+                        .as_mut()
+                        .map(|bs| bs.replace(biases.as_slice().unwrap(), &[k_channels]));
 
                     let batch_norm = scales.as_ref().map(|scales| {
                         let darknet::ScaleWeights {
@@ -456,9 +464,13 @@ mod layer {
 
                         // TODO: batch norm config
                         let mut batch_norm = nn::batch_norm2d(path, out_c, Default::default());
-                        batch_norm.running_mean.replace(rolling_mean, &[out_c]);
-                        batch_norm.running_var.replace(rolling_variance, &[out_c]);
-                        batch_norm.ws.replace(scales, &[out_c]);
+                        batch_norm
+                            .running_mean
+                            .replace(rolling_mean.as_slice().unwrap(), &[out_c]);
+                        batch_norm
+                            .running_var
+                            .replace(rolling_variance.as_slice().unwrap(), &[out_c]);
+                        batch_norm.ws.replace(scales.as_slice().unwrap(), &[out_c]);
 
                         batch_norm
                     });
@@ -521,10 +533,14 @@ mod layer {
 
             // TODO: batch norm config
             let mut batch_norm = nn::batch_norm2d(path, in_c, Default::default());
-            batch_norm.running_mean.replace(rolling_mean, &[in_c]);
-            batch_norm.running_var.replace(rolling_variance, &[in_c]);
-            batch_norm.ws.replace(scales, &[in_c]);
-            batch_norm.bs.replace(biases, &[in_c]);
+            batch_norm
+                .running_mean
+                .replace(rolling_mean.as_slice().unwrap(), &[in_c]);
+            batch_norm
+                .running_var
+                .replace(rolling_variance.as_slice().unwrap(), &[in_c]);
+            batch_norm.ws.replace(scales.as_slice().unwrap(), &[in_c]);
+            batch_norm.bs.replace(biases.as_slice().unwrap(), &[in_c]);
 
             Ok(BatchNormLayer {
                 base: from.base.clone(),
@@ -562,10 +578,12 @@ mod layer {
                         output_shape,
                         ..
                     },
+                ref weights,
                 ..
             } = *from;
 
             let [_h, _w, out_c] = output_shape;
+            // TODO: translate weights
 
             Ok(ShortcutLayer {
                 base: from.base.clone(),
@@ -577,10 +595,41 @@ mod layer {
             })
         }
 
-        pub fn forward<T>(&self, xs: &[T]) -> Tensor
+        pub fn forward<T>(&self, tensors: &[T]) -> Tensor
         where
             T: Borrow<Tensor>,
         {
+            let [_h, _w, out_c] = self.base.output_shape;
+            let out_c = out_c as i64;
+
+            // let sum = tensors[0].borrow().shallow_clone();
+            let tensors: Vec<_> = self
+                .base
+                .input_shape
+                .iter()
+                .cloned()
+                .zip_eq(tensors.iter())
+                .map(|([in_h, in_w, in_c], tensor)| {
+                    let tensor = tensor.borrow();
+                    let in_h = in_h as i64;
+                    let in_w = in_w as i64;
+                    let in_c = in_c as i64;
+
+                    match in_c.cmp(&out_c) {
+                        Ordering::Less => {
+                            // assume [batch, channel, height, width] shape
+                            let (bsize, _, _, _) = tensor.size4().unwrap();
+                            let zeros = Tensor::zeros(
+                                &[bsize, out_c - in_c, in_h, in_w],
+                                (tensor.kind(), tensor.device()),
+                            );
+                            Tensor::cat(&[tensor, &zeros], 1)
+                        }
+                        Ordering::Greater => tensor.narrow(1, 0, out_c),
+                        Ordering::Equal => tensor.shallow_clone(),
+                    }
+                })
+                .collect();
             todo!();
         }
     }
