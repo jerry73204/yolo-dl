@@ -582,15 +582,46 @@ mod layer {
                 ..
             } = *from;
 
-            let [_h, _w, out_c] = output_shape;
-            // TODO: translate weights
+            let [out_h, out_w, out_c] = output_shape;
+            let zero_paddings: Vec<_> = input_shape
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, [in_h, in_w, in_c])| {
+                    if in_c < out_c {
+                        let zeros = path.zeros_no_train(
+                            &format!("zero_padding_{}", index),
+                            &[(out_c - in_c) as i64, out_h as i64, out_w as i64],
+                        );
+                        Some(zeros)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let num_features = from_indexes.len() as i64;
+            let weights_kind = match weights {
+                darknet::ShortcutWeights::None => ShortcutWeightsKind::None,
+                darknet::ShortcutWeights::PerFeature(from_weights) => {
+                    let weights_shape = [num_features];
+                    let mut to_weights = path.zeros("weights", &weights_shape);
+                    to_weights.replace(from_weights.as_slice().unwrap(), &weights_shape);
+                    ShortcutWeightsKind::PerFeature(to_weights)
+                }
+                darknet::ShortcutWeights::PerChannel(from_weights) => {
+                    let weights_shape = [num_features, out_c as i64];
+                    let mut to_weights = path.zeros("weights", &weights_shape);
+                    to_weights.replace(from_weights.as_slice().unwrap(), &weights_shape);
+                    ShortcutWeightsKind::PerChannel(to_weights)
+                }
+            };
 
             Ok(ShortcutLayer {
                 base: from.base.clone(),
                 weights: ShortcutWeights {
-                    activation,
-                    weights_type,
-                    weights_normalization,
+                    zero_paddings,
+                    weights_kind,
                 },
             })
         }
@@ -599,38 +630,88 @@ mod layer {
         where
             T: Borrow<Tensor>,
         {
-            let [_h, _w, out_c] = self.base.output_shape;
+            let Self {
+                base:
+                    ShortcutLayerBase {
+                        config:
+                            ShortcutConfig {
+                                weights_normalization,
+                                ..
+                            },
+                        ref input_shape,
+                        ref from_indexes,
+                        output_shape: [_h, _w, out_c],
+                        ..
+                    },
+                weights:
+                    ShortcutWeights {
+                        ref zero_paddings,
+                        ref weights_kind,
+                    },
+                ..
+            } = *self;
+
             let out_c = out_c as i64;
 
-            // let sum = tensors[0].borrow().shallow_clone();
-            let tensors: Vec<_> = self
-                .base
-                .input_shape
+            // pad or truncate channels
+            let tensors: Vec<_> = zero_paddings
                 .iter()
-                .cloned()
                 .zip_eq(tensors.iter())
-                .map(|([in_h, in_w, in_c], tensor)| {
+                .map(|(zero_padding, tensor)| {
+                    // assume [batch, channel, height, width] shape                            let (bsize, _, _, _) = tensor.size4().unwrap();
                     let tensor = tensor.borrow();
-                    let in_h = in_h as i64;
-                    let in_w = in_w as i64;
-                    let in_c = in_c as i64;
-
-                    match in_c.cmp(&out_c) {
-                        Ordering::Less => {
-                            // assume [batch, channel, height, width] shape
-                            let (bsize, _, _, _) = tensor.size4().unwrap();
-                            let zeros = Tensor::zeros(
-                                &[bsize, out_c - in_c, in_h, in_w],
-                                (tensor.kind(), tensor.device()),
-                            );
-                            Tensor::cat(&[tensor, &zeros], 1)
-                        }
-                        Ordering::Greater => tensor.narrow(1, 0, out_c),
-                        Ordering::Equal => tensor.shallow_clone(),
-                    }
+                    let tensor = match zero_padding {
+                        Some(zeros) => Tensor::cat(&[tensor, &zeros], 1),
+                        None => tensor.narrow(1, 0, out_c),
+                    };
+                    tensor
                 })
                 .collect();
-            todo!();
+
+            // stack input tensors
+            // becomes shape [batch, from_index, channel, height, width]
+            let tensor = Tensor::cat(&tensors, 1);
+
+            // scale by weights
+            // becomes shape [batch, channel, height, width]
+            let num_input_layers = from_indexes.len() as i64;
+
+            let tensor = match weights_kind {
+                ShortcutWeightsKind::None => tensor.sum1(&[1], false, tensor.kind()),
+                ShortcutWeightsKind::PerFeature(weights) => {
+                    let weights = match weights_normalization {
+                        WeightsNormalization::None => weights.shallow_clone(),
+                        WeightsNormalization::ReLU => {
+                            let relu = weights.relu();
+                            &relu / (relu.sum(relu.kind()) + 0.0001)
+                        }
+                        WeightsNormalization::Softmax => weights.softmax(0, weights.kind()),
+                    };
+
+                    let weights = weights.view([1, num_input_layers, 1, 1]).expand_as(&tensor);
+                    (&tensor * weights).sum1(&[1], false, tensor.kind())
+                }
+                ShortcutWeightsKind::PerChannel(weights) => {
+                    let weights = match weights_normalization {
+                        WeightsNormalization::None => weights.shallow_clone(),
+                        WeightsNormalization::ReLU => {
+                            // assume weights tensor has shape [num_input_layers, num_channels]
+                            let relu = weights.relu();
+                            let sum = relu.sum1(&[0], true, relu.kind()).expand_as(&relu) + 0.0001;
+                            relu / sum
+                        }
+                        WeightsNormalization::Softmax => weights.softmax(0, weights.kind()),
+                    };
+
+                    let weights = weights
+                        .view([1, num_input_layers, out_c, 1])
+                        .expand_as(&tensor);
+
+                    (&tensor * weights).sum1(&[1], false, tensor.kind())
+                }
+            };
+
+            tensor
         }
     }
 
@@ -842,9 +923,15 @@ mod weights {
 
     #[derive(Debug)]
     pub struct ShortcutWeights {
-        pub activation: Activation,
-        pub weights_type: WeightsType,
-        pub weights_normalization: WeightsNormalization,
+        pub zero_paddings: Vec<Option<Tensor>>,
+        pub weights_kind: ShortcutWeightsKind,
+    }
+
+    #[derive(Debug)]
+    pub enum ShortcutWeightsKind {
+        None,
+        PerFeature(Tensor),
+        PerChannel(Tensor),
     }
 
     #[derive(Debug)]
