@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     config::{
-        ConnectedConfig, ConvolutionalConfig, MaxPoolConfig, RouteConfig, Shape, ShortcutConfig,
-        UpSampleConfig, YoloConfig,
+        Activation, ConnectedConfig, ConvolutionalConfig, MaxPoolConfig, RouteConfig, Shape,
+        ShortcutConfig, UpSampleConfig, WeightsNormalization, WeightsType, YoloConfig,
     },
     darknet::{self, DarknetModel},
     model::{
@@ -86,321 +86,16 @@ mod tch_model {
                 IndexMap::new(),
                 |mut collected, (&layer_index, layer)| -> Result<_> {
                     let layer: Layer = match layer {
-                        darknet::Layer::Connected(conf) => {
-                            let darknet::ConnectedLayer {
-                                base:
-                                    ConnectedLayerBase {
-                                        config: ConnectedConfig { .. },
-                                        input_shape,
-                                        output_shape,
-                                        ..
-                                    },
-                                weights:
-                                    darknet::ConnectedWeights {
-                                        ref weights,
-                                        ref biases,
-                                        ref scales,
-                                    },
-                            } = *conf;
-
-                            let input_shape = input_shape as i64;
-                            let output_shape = output_shape as i64;
-
-                            let linear = {
-                                let mut linear = nn::linear(
-                                    path,
-                                    input_shape,
-                                    output_shape,
-                                    nn::LinearConfig {
-                                        bias: true,
-                                        ..Default::default()
-                                    },
-                                );
-                                linear.ws.replace(weights, &[output_shape, input_shape]);
-                                linear.bs.replace(biases, &[output_shape]);
-                                linear
-                            };
-
-                            let batch_norm = scales.as_ref().map(|scales| {
-                                let darknet::ScaleWeights {
-                                    scales,
-                                    rolling_mean,
-                                    rolling_variance,
-                                } = scales;
-
-                                // TODO: batch norm config
-                                let mut batch_norm =
-                                    nn::batch_norm1d(path, output_shape, Default::default());
-                                batch_norm
-                                    .running_mean
-                                    .replace(rolling_mean, &[output_shape]);
-                                batch_norm
-                                    .running_var
-                                    .replace(rolling_variance, &[output_shape]);
-                                batch_norm.ws.replace(scales, &[output_shape]);
-
-                                batch_norm
-                            });
-
-                            ConnectedLayer {
-                                base: conf.base.clone(),
-                                weights: ConnectedWeights { linear, batch_norm },
-                            }
-                            .into()
-                        }
+                        darknet::Layer::Connected(conf) => ConnectedLayer::new(path, conf)?.into(),
                         darknet::Layer::Convolutional(conf) => {
-                            let darknet::ConvolutionalLayer {
-                                base:
-                                    ConvolutionalLayerBase {
-                                        ref config,
-                                        input_shape,
-                                        output_shape,
-                                        ..
-                                    },
-                                ref weights,
-                                ..
-                            } = *conf;
-
-                            let ConvolutionalConfig {
-                                size,
-                                stride_y,
-                                stride_x,
-                                padding,
-                                groups,
-                                ..
-                            } = *config;
-
-                            let stride = if stride_y == stride_x {
-                                stride_y as i64
-                            } else {
-                                bail!("stride_y must be equal to stride_x")
-                            };
-
-                            let weights = match *weights {
-                                darknet::ConvolutionalWeights::Ref { share_index } => {
-                                    match &collected[share_index] {
-                                        Layer::Convolutional(target_layer) => {
-                                            let ConvolutionalLayer {
-                                                weights: ConvolutionalWeights { shared },
-                                                ..
-                                            } = target_layer;
-                                            ConvolutionalWeights {
-                                                shared: shared.clone(),
-                                            }
-                                        }
-                                        _ => bail!("share_index must point to convolution layer"),
-                                    }
-                                }
-                                darknet::ConvolutionalWeights::Owned {
-                                    ref biases,
-                                    ref scales,
-                                    ref weights,
-                                } => {
-                                    let [_h, _w, in_c] = input_shape;
-                                    let [_h, _w, out_c] = output_shape;
-                                    let in_c = in_c as i64;
-                                    let out_c = out_c as i64;
-                                    let kernel_shape = {
-                                        let [c1, c2, s1, s2] = conf.base.weights_shape();
-                                        [c1 as i64, c2 as i64, s1 as i64, s2 as i64]
-                                    };
-                                    let [k_channels, _, _, _] = kernel_shape;
-
-                                    let mut conv = nn::conv2d(
-                                        path,
-                                        in_c,
-                                        out_c,
-                                        size as i64,
-                                        nn::ConvConfig {
-                                            stride,
-                                            padding: padding as i64,
-                                            groups: groups as i64,
-                                            bias: true,
-                                            ..Default::default()
-                                        },
-                                    );
-
-                                    debug_assert!(matches!(conv.bs, Some(_)));
-                                    conv.ws.replace(weights, &kernel_shape);
-                                    conv.bs.as_mut().map(|bs| bs.replace(biases, &[k_channels]));
-
-                                    let batch_norm = scales.as_ref().map(|scales| {
-                                        let darknet::ScaleWeights {
-                                            scales,
-                                            rolling_mean,
-                                            rolling_variance,
-                                        } = scales;
-
-                                        // TODO: batch norm config
-                                        let mut batch_norm =
-                                            nn::batch_norm2d(path, out_c, Default::default());
-                                        batch_norm.running_mean.replace(rolling_mean, &[out_c]);
-                                        batch_norm.running_var.replace(rolling_variance, &[out_c]);
-                                        batch_norm.ws.replace(scales, &[out_c]);
-
-                                        batch_norm
-                                    });
-
-                                    ConvolutionalWeights {
-                                        shared: Arc::new(Mutex::new(ConvolutionalWeightsShared {
-                                            conv,
-                                            batch_norm,
-                                        })),
-                                    }
-                                }
-                            };
-
-                            ConvolutionalLayer {
-                                base: conf.base.clone(),
-                                weights,
-                            }
-                            .into()
+                            ConvolutionalLayer::new(path, conf, &collected)?.into()
                         }
-                        darknet::Layer::BatchNorm(conf) => {
-                            let darknet::BatchNormLayer {
-                                base:
-                                    BatchNormLayerBase {
-                                        inout_shape: [_h, _w, in_c],
-                                        ..
-                                    },
-                                weights:
-                                    darknet::BatchNormWeights {
-                                        ref biases,
-                                        ref scales,
-                                        ref rolling_mean,
-                                        ref rolling_variance,
-                                        ..
-                                    },
-                                ..
-                            } = *conf;
-
-                            let in_c = in_c as i64;
-
-                            // TODO: batch norm config
-                            let mut batch_norm = nn::batch_norm2d(path, in_c, Default::default());
-                            batch_norm.running_mean.replace(rolling_mean, &[in_c]);
-                            batch_norm.running_var.replace(rolling_variance, &[in_c]);
-                            batch_norm.ws.replace(scales, &[in_c]);
-                            batch_norm.bs.replace(biases, &[in_c]);
-
-                            BatchNormLayer {
-                                base: conf.base.clone(),
-                                weights: BatchNormWeights { batch_norm },
-                            }
-                            .into()
-                        }
-                        darknet::Layer::MaxPool(conf) => {
-                            let darknet::MaxPoolLayer {
-                                base:
-                                    MaxPoolLayerBase {
-                                        config:
-                                            MaxPoolConfig {
-                                                stride_x,
-                                                stride_y,
-                                                size,
-                                                padding,
-                                                maxpool_depth,
-                                                ..
-                                            },
-                                        ..
-                                    },
-                                ..
-                            } = *conf;
-
-                            let stride_y = stride_y as i64;
-                            let stride_x = stride_x as i64;
-                            let size = size as i64;
-                            let padding = padding as i64;
-
-                            ensure!(!maxpool_depth, "maxpool_depth is not implemented");
-
-                            MaxPoolLayer {
-                                base: conf.base.clone(),
-                                weights: MaxPoolWeights {
-                                    size,
-                                    stride_y,
-                                    stride_x,
-                                    padding,
-                                },
-                            }
-                            .into()
-                        }
-                        darknet::Layer::UpSample(conf) => {
-                            let darknet::UpSampleLayer {
-                                base:
-                                    UpSampleLayerBase {
-                                        // config:
-                                        //     UpSampleConfig {
-                                        //         stride, reverse, ..
-                                        //     },
-                                        output_shape: [out_h, out_w, _c],
-                                        ..
-                                    },
-                                ..
-                            } = *conf;
-
-                            let out_h = out_h as i64;
-                            let out_w = out_w as i64;
-
-                            UpSampleLayer {
-                                base: conf.base.clone(),
-                                weights: UpSampleWeights { out_h, out_w },
-                            }
-                            .into()
-                        }
-                        darknet::Layer::Shortcut(conf) => {
-                            let darknet::ShortcutLayer {
-                                base:
-                                    ShortcutLayerBase {
-                                        config:
-                                            ShortcutConfig {
-                                                activation,
-                                                weights_type,
-                                                weights_normalization,
-                                                ..
-                                            },
-                                        ref from_indexes,
-                                        ref input_shape,
-                                        ..
-                                    },
-                                ..
-                            } = *conf;
-                            todo!();
-                        }
-                        darknet::Layer::Route(conf) => {
-                            let darknet::RouteLayer {
-                                base:
-                                    RouteLayerBase {
-                                        config: RouteConfig { group, .. },
-                                        ref from_indexes,
-                                        ref input_shape,
-                                        ..
-                                    },
-                                ..
-                            } = *conf;
-
-                            let num_groups = group.num_groups();
-                            let group_id = group.group_id();
-
-                            let group_ranges: Vec<_> = input_shape
-                                .iter()
-                                .cloned()
-                                .map(|[_h, _w, c]| {
-                                    debug_assert_eq!(c % num_groups, 0);
-                                    let group_size = c / num_groups;
-                                    let channel_begin = group_size * group_id;
-                                    let channel_end = channel_begin + group_size;
-                                    (channel_begin as i64, channel_end as i64)
-                                })
-                                .collect();
-
-                            RouteLayer {
-                                base: conf.base.clone(),
-                                weights: RouteWeights { group_ranges },
-                            }
-                            .into()
-                        }
-                        darknet::Layer::Yolo(conf) => todo!(),
+                        darknet::Layer::BatchNorm(conf) => BatchNormLayer::new(path, conf)?.into(),
+                        darknet::Layer::MaxPool(conf) => MaxPoolLayer::new(path, conf)?.into(),
+                        darknet::Layer::UpSample(conf) => UpSampleLayer::new(path, conf)?.into(),
+                        darknet::Layer::Shortcut(conf) => ShortcutLayer::new(path, conf)?.into(),
+                        darknet::Layer::Route(conf) => RouteLayer::new(path, conf)?.into(),
+                        darknet::Layer::Yolo(conf) => YoloLayer::new(path, conf)?.into(),
                     };
 
                     collected.insert(layer_index, layer);
@@ -585,7 +280,77 @@ mod layer {
         }
     }
 
+    impl From<YoloLayer> for Layer {
+        fn from(from: YoloLayer) -> Self {
+            Self::Yolo(from)
+        }
+    }
+
     impl ConnectedLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::ConnectedLayer,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::ConnectedLayer {
+                base:
+                    ConnectedLayerBase {
+                        input_shape,
+                        output_shape,
+                        ..
+                    },
+                weights:
+                    darknet::ConnectedWeights {
+                        ref weights,
+                        ref biases,
+                        ref scales,
+                    },
+            } = *from;
+
+            let input_shape = input_shape as i64;
+            let output_shape = output_shape as i64;
+
+            let linear = {
+                let mut linear = nn::linear(
+                    path,
+                    input_shape,
+                    output_shape,
+                    nn::LinearConfig {
+                        bias: true,
+                        ..Default::default()
+                    },
+                );
+                linear.ws.replace(weights, &[output_shape, input_shape]);
+                linear.bs.replace(biases, &[output_shape]);
+                linear
+            };
+
+            let batch_norm = scales.as_ref().map(|scales| {
+                let darknet::ScaleWeights {
+                    scales,
+                    rolling_mean,
+                    rolling_variance,
+                } = scales;
+
+                // TODO: batch norm config
+                let mut batch_norm = nn::batch_norm1d(path, output_shape, Default::default());
+                batch_norm
+                    .running_mean
+                    .replace(rolling_mean, &[output_shape]);
+                batch_norm
+                    .running_var
+                    .replace(rolling_variance, &[output_shape]);
+                batch_norm.ws.replace(scales, &[output_shape]);
+
+                batch_norm
+            });
+
+            Ok(ConnectedLayer {
+                base: from.base.clone(),
+                weights: ConnectedWeights { linear, batch_norm },
+            })
+        }
+
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
                 weights: ConnectedWeights { linear, batch_norm },
@@ -601,6 +366,118 @@ mod layer {
     }
 
     impl ConvolutionalLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::ConvolutionalLayer,
+            collected: &IndexMap<usize, Layer>,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::ConvolutionalLayer {
+                base:
+                    ConvolutionalLayerBase {
+                        ref config,
+                        input_shape,
+                        output_shape,
+                        ..
+                    },
+                ref weights,
+                ..
+            } = *from;
+
+            let ConvolutionalConfig {
+                size,
+                stride_y,
+                stride_x,
+                padding,
+                groups,
+                ..
+            } = *config;
+
+            let stride = if stride_y == stride_x {
+                stride_y as i64
+            } else {
+                bail!("stride_y must be equal to stride_x")
+            };
+
+            let weights = match *weights {
+                darknet::ConvolutionalWeights::Ref { share_index } => {
+                    match &collected[share_index] {
+                        Layer::Convolutional(target_layer) => {
+                            let ConvolutionalLayer {
+                                weights: ConvolutionalWeights { shared },
+                                ..
+                            } = target_layer;
+                            ConvolutionalWeights {
+                                shared: shared.clone(),
+                            }
+                        }
+                        _ => bail!("share_index must point to convolution layer"),
+                    }
+                }
+                darknet::ConvolutionalWeights::Owned {
+                    ref biases,
+                    ref scales,
+                    ref weights,
+                } => {
+                    let [_h, _w, in_c] = input_shape;
+                    let [_h, _w, out_c] = output_shape;
+                    let in_c = in_c as i64;
+                    let out_c = out_c as i64;
+                    let kernel_shape = {
+                        let [c1, c2, s1, s2] = from.base.weights_shape();
+                        [c1 as i64, c2 as i64, s1 as i64, s2 as i64]
+                    };
+                    let [k_channels, _, _, _] = kernel_shape;
+
+                    let mut conv = nn::conv2d(
+                        path,
+                        in_c,
+                        out_c,
+                        size as i64,
+                        nn::ConvConfig {
+                            stride,
+                            padding: padding as i64,
+                            groups: groups as i64,
+                            bias: true,
+                            ..Default::default()
+                        },
+                    );
+
+                    debug_assert!(matches!(conv.bs, Some(_)));
+                    conv.ws.replace(weights, &kernel_shape);
+                    conv.bs.as_mut().map(|bs| bs.replace(biases, &[k_channels]));
+
+                    let batch_norm = scales.as_ref().map(|scales| {
+                        let darknet::ScaleWeights {
+                            scales,
+                            rolling_mean,
+                            rolling_variance,
+                        } = scales;
+
+                        // TODO: batch norm config
+                        let mut batch_norm = nn::batch_norm2d(path, out_c, Default::default());
+                        batch_norm.running_mean.replace(rolling_mean, &[out_c]);
+                        batch_norm.running_var.replace(rolling_variance, &[out_c]);
+                        batch_norm.ws.replace(scales, &[out_c]);
+
+                        batch_norm
+                    });
+
+                    ConvolutionalWeights {
+                        shared: Arc::new(Mutex::new(ConvolutionalWeightsShared {
+                            conv,
+                            batch_norm,
+                        })),
+                    }
+                }
+            };
+
+            Ok(ConvolutionalLayer {
+                base: from.base.clone(),
+                weights,
+            })
+        }
+
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
                 weights: ConvolutionalWeights { shared },
@@ -618,6 +495,43 @@ mod layer {
     }
 
     impl BatchNormLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::BatchNormLayer,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::BatchNormLayer {
+                base:
+                    BatchNormLayerBase {
+                        inout_shape: [_h, _w, in_c],
+                        ..
+                    },
+                weights:
+                    darknet::BatchNormWeights {
+                        ref biases,
+                        ref scales,
+                        ref rolling_mean,
+                        ref rolling_variance,
+                        ..
+                    },
+                ..
+            } = *from;
+
+            let in_c = in_c as i64;
+
+            // TODO: batch norm config
+            let mut batch_norm = nn::batch_norm2d(path, in_c, Default::default());
+            batch_norm.running_mean.replace(rolling_mean, &[in_c]);
+            batch_norm.running_var.replace(rolling_variance, &[in_c]);
+            batch_norm.ws.replace(scales, &[in_c]);
+            batch_norm.bs.replace(biases, &[in_c]);
+
+            Ok(BatchNormLayer {
+                base: from.base.clone(),
+                weights: BatchNormWeights { batch_norm },
+            })
+        }
+
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let BatchNormLayer {
                 weights: BatchNormWeights { batch_norm },
@@ -628,6 +542,41 @@ mod layer {
     }
 
     impl ShortcutLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::ShortcutLayer,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::ShortcutLayer {
+                base:
+                    ShortcutLayerBase {
+                        config:
+                            ShortcutConfig {
+                                activation,
+                                weights_type,
+                                weights_normalization,
+                                ..
+                            },
+                        ref from_indexes,
+                        ref input_shape,
+                        output_shape,
+                        ..
+                    },
+                ..
+            } = *from;
+
+            let [_h, _w, out_c] = output_shape;
+
+            Ok(ShortcutLayer {
+                base: from.base.clone(),
+                weights: ShortcutWeights {
+                    activation,
+                    weights_type,
+                    weights_normalization,
+                },
+            })
+        }
+
         pub fn forward<T>(&self, xs: &[T]) -> Tensor
         where
             T: Borrow<Tensor>,
@@ -637,6 +586,43 @@ mod layer {
     }
 
     impl RouteLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::RouteLayer,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::RouteLayer {
+                base:
+                    RouteLayerBase {
+                        config: RouteConfig { group, .. },
+                        ref from_indexes,
+                        ref input_shape,
+                        ..
+                    },
+                ..
+            } = *from;
+
+            let num_groups = group.num_groups();
+            let group_id = group.group_id();
+
+            let group_ranges: Vec<_> = input_shape
+                .iter()
+                .cloned()
+                .map(|[_h, _w, c]| {
+                    debug_assert_eq!(c % num_groups, 0);
+                    let group_size = c / num_groups;
+                    let channel_begin = group_size * group_id;
+                    let channel_end = channel_begin + group_size;
+                    (channel_begin as i64, channel_end as i64)
+                })
+                .collect();
+
+            Ok(RouteLayer {
+                base: from.base.clone(),
+                weights: RouteWeights { group_ranges },
+            })
+        }
+
         pub fn forward<T>(&self, tensors: &[T]) -> Tensor
         where
             T: Borrow<Tensor>,
@@ -661,6 +647,46 @@ mod layer {
     }
 
     impl MaxPoolLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::MaxPoolLayer,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::MaxPoolLayer {
+                base:
+                    MaxPoolLayerBase {
+                        config:
+                            MaxPoolConfig {
+                                stride_x,
+                                stride_y,
+                                size,
+                                padding,
+                                maxpool_depth,
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } = *from;
+
+            let stride_y = stride_y as i64;
+            let stride_x = stride_x as i64;
+            let size = size as i64;
+            let padding = padding as i64;
+
+            ensure!(!maxpool_depth, "maxpool_depth is not implemented");
+
+            Ok(MaxPoolLayer {
+                base: from.base.clone(),
+                weights: MaxPoolWeights {
+                    size,
+                    stride_y,
+                    stride_x,
+                    padding,
+                },
+            })
+        }
+
         pub fn forward(&self, xs: &Tensor) -> Tensor {
             let Self {
                 weights:
@@ -683,6 +709,29 @@ mod layer {
     }
 
     impl UpSampleLayer {
+        pub fn new<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::UpSampleLayer,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let darknet::UpSampleLayer {
+                base:
+                    UpSampleLayerBase {
+                        output_shape: [out_h, out_w, _c],
+                        ..
+                    },
+                ..
+            } = *from;
+
+            let out_h = out_h as i64;
+            let out_w = out_w as i64;
+
+            Ok(UpSampleLayer {
+                base: from.base.clone(),
+                weights: UpSampleWeights { out_h, out_w },
+            })
+        }
+
         pub fn forward(&self, xs: &Tensor) -> Tensor {
             let Self {
                 weights: UpSampleWeights { out_h, out_w },
@@ -693,6 +742,10 @@ mod layer {
     }
 
     impl YoloLayer {
+        pub fn new<'p>(path: impl Borrow<nn::Path<'p>>, from: &darknet::YoloLayer) -> Result<Self> {
+            todo!();
+        }
+
         pub fn forward(&self, xs: &Tensor) -> Tensor {
             todo!();
         }
@@ -739,7 +792,11 @@ mod weights {
     }
 
     #[derive(Debug)]
-    pub struct ShortcutWeights {}
+    pub struct ShortcutWeights {
+        pub activation: Activation,
+        pub weights_type: WeightsType,
+        pub weights_normalization: WeightsNormalization,
+    }
 
     #[derive(Debug)]
     pub struct RouteWeights {
