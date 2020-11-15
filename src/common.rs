@@ -3,7 +3,7 @@ pub use binread::{prelude::*, BinReaderExt};
 pub use byteorder::{LittleEndian, ReadBytesExt};
 pub use derivative::Derivative;
 pub use indexmap::{IndexMap, IndexSet};
-pub use itertools::Itertools;
+pub use itertools::{izip, Itertools};
 pub use log::{debug, warn};
 pub use ndarray::{Array1, Array2, Array3, Array4};
 pub use noisy_float::prelude::{r32, R32, R64};

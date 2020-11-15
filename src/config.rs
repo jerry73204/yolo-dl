@@ -1274,14 +1274,161 @@ mod items {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[serde(try_from = "RawYoloConfig", into = "RawYoloConfig")]
+    #[derivative(Hash)]
     pub struct YoloConfig {
+        pub classes: u64,
+        #[derivative(Hash(hash_with = "hash_vec_indexset::<u64, _>"))]
+        pub mask: IndexSet<u64>,
+        pub max_boxes: u64,
+        pub max_delta: Option<R64>,
+        pub counters_per_class: Option<Vec<u64>>,
+        pub label_smooth_eps: R64,
+        pub scale_x_y: R64,
+        pub objectness_smooth: bool,
+        pub iou_normalizer: R64,
+        pub obj_normalizer: R64,
+        pub cls_normalizer: R64,
+        pub delta_normalizer: R64,
+        pub iou_loss: IouLoss,
+        pub iou_thresh_kind: IouThreshold,
+        pub beta_nms: R64,
+        pub nms_kind: NmsKind,
+        pub yolo_point: YoloPoint,
+        pub jitter: R64,
+        pub resize: R64,
+        pub focal_loss: bool,
+        pub ignore_thresh: R64,
+        pub truth_thresh: R64,
+        pub iou_thresh: R64,
+        pub random: R64,
+        pub track_history_size: u64,
+        pub sim_thresh: R64,
+        pub dets_for_track: u64,
+        pub dets_for_show: u64,
+        pub track_ciou_norm: R64,
+        pub embedding_layer: Option<LayerIndex>,
+        pub map: Option<PathBuf>,
+        pub anchors: Vec<(u64, u64)>,
+        pub common: CommonLayerOptions,
+    }
+
+    impl TryFrom<RawYoloConfig> for YoloConfig {
+        type Error = Error;
+
+        fn try_from(from: RawYoloConfig) -> Result<Self, Self::Error> {
+            let RawYoloConfig {
+                classes,
+                num,
+                mask,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                focal_loss,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                track_history_size,
+                sim_thresh,
+                dets_for_track,
+                dets_for_show,
+                track_ciou_norm,
+                embedding_layer,
+                map,
+                anchors,
+                common,
+            } = from;
+
+            let anchors = match (num, anchors) {
+                (0, None) => vec![],
+                (_, None) => bail!("num and length of anchors mismatch"),
+                (_, Some(anchors)) => {
+                    ensure!(
+                        anchors.len() == num as usize,
+                        "num and length of anchors mismatch"
+                    );
+                    anchors
+                }
+            };
+
+            let mask = mask.unwrap_or_else(|| IndexSet::new());
+            ensure!(
+                mask.iter()
+                    .cloned()
+                    .all(|index| (index as usize) < anchors.len()),
+                "mask index exceeds total number of anchors"
+            );
+
+            Ok(Self {
+                classes,
+                mask,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                focal_loss,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                track_history_size,
+                sim_thresh,
+                dets_for_track,
+                dets_for_show,
+                track_ciou_norm,
+                embedding_layer,
+                map,
+                anchors,
+                common,
+            })
+        }
+    }
+
+    impl LayerConfigEx for YoloConfig {
+        fn common(&self) -> &CommonLayerOptions {
+            &self.common
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
+    pub struct RawYoloConfig {
         #[serde(default = "defaults::classes")]
         pub classes: u64,
         #[serde(default = "defaults::num")]
         pub num: u64,
-        #[serde(with = "serde_vec_u64")]
-        pub mask: Vec<u64>,
+        #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
+        #[serde(with = "serde_mask", default)]
+        pub mask: Option<IndexSet<u64>>,
         #[serde(rename = "max", default = "defaults::max_boxes")]
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
@@ -1343,9 +1490,88 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl LayerConfigEx for YoloConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
+    impl From<YoloConfig> for RawYoloConfig {
+        fn from(from: YoloConfig) -> Self {
+            let YoloConfig {
+                classes,
+                mask,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                focal_loss,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                track_history_size,
+                sim_thresh,
+                dets_for_track,
+                dets_for_show,
+                track_ciou_norm,
+                embedding_layer,
+                map,
+                anchors,
+                common,
+            } = from;
+
+            let num = anchors.len() as u64;
+            let mask = if mask.is_empty() { None } else { Some(mask) };
+            let anchors = if anchors.is_empty() {
+                None
+            } else {
+                Some(anchors)
+            };
+
+            Self {
+                classes,
+                num,
+                mask,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                focal_loss,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                track_history_size,
+                sim_thresh,
+                dets_for_track,
+                dets_for_show,
+                track_ciou_norm,
+                embedding_layer,
+                map,
+                anchors,
+                common,
+            }
         }
     }
 
@@ -2020,6 +2246,24 @@ where
     layers.hash(state);
 }
 
+fn hash_vec_indexset<T, H>(set: &IndexSet<T>, state: &mut H)
+where
+    T: Hash,
+    H: Hasher,
+{
+    let set: Vec<_> = set.iter().collect();
+    set.hash(state);
+}
+
+fn hash_option_vec_indexset<T, H>(opt: &Option<IndexSet<T>>, state: &mut H)
+where
+    T: Hash,
+    H: Hasher,
+{
+    let opt: Option<Vec<_>> = opt.as_ref().map(|set| set.iter().collect());
+    opt.hash(state);
+}
+
 mod serde_zero_one_bool {
     use super::*;
 
@@ -2087,26 +2331,25 @@ mod serde_vec_layers {
     }
 }
 
-mod serde_vec_u64 {
+mod serde_mask {
     use super::*;
 
-    pub fn serialize<S>(steps: &Vec<u64>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(steps: &Option<IndexSet<u64>>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         steps
-            .iter()
-            .map(|step| step.to_string())
-            .join(",")
+            .as_ref()
+            .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
             .serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u64>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IndexSet<u64>>, D::Error>
     where
         D: Deserializer<'de>,
     {
         let text = String::deserialize(deserializer)?;
-        let steps: Vec<u64> = text
+        let steps_vec: Vec<u64> = text
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect::<String>()
@@ -2114,7 +2357,13 @@ mod serde_vec_u64 {
             .map(|token| token.parse())
             .try_collect()
             .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
-        Ok(steps)
+        let steps_set: IndexSet<_> = steps_vec.iter().cloned().collect();
+
+        if steps_vec.len() != steps_set.len() {
+            return Err(D::Error::custom("duplicated mask indexes is not allowed"));
+        }
+
+        Ok(Some(steps_set))
     }
 }
 
