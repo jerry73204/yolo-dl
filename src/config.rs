@@ -63,6 +63,21 @@ impl TryFrom<Vec<Item>> for DarknetConfig {
             })
             .try_collect()?;
 
+        // ensure every yolo layer has equal anchor configuration
+        {
+            let anchors: HashSet<_> = layers
+                .iter()
+                .filter_map(|layer| match layer {
+                    LayerConfig::Yolo(layer) => Some(&layer.anchors),
+                    _ => None,
+                })
+                .collect();
+            ensure!(
+                anchors.len() == 1,
+                "every yolo layer must have equal anchor configuration"
+            );
+        }
+
         Ok(Self { net, layers })
     }
 }
@@ -1527,6 +1542,14 @@ mod items {
                 anchors,
                 common,
             } = from;
+
+            // make sure mask indexes are valid
+            assert!(
+                mask.iter()
+                    .cloned()
+                    .all(|index| (index as usize) < anchors.len()),
+                "mask indexes must not exceed total number of anchors"
+            );
 
             let num = anchors.len() as u64;
             let mask = if mask.is_empty() { None } else { Some(mask) };
