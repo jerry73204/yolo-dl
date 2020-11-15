@@ -294,11 +294,14 @@ impl ModelBase {
                             let [in_h, in_w, in_c] = hwc_input_shape(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
                             let YoloConfig {
-                                classes, anchors, ..
+                                classes, mask, ..
                             } = conf;
+
                             // [batch, anchor, entry, h, w]
-                            let num_anchors = anchors.len() as u64;
-                            let input_shape = [in_h, in_w, num_anchors  * (classes  + 4 + 1)];
+                            let num_masks = mask.len() as u64;
+                            ensure!(in_c == num_masks * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
+
+                            let input_shape = [in_h, in_w, num_masks  * (classes  + 4 + 1)];
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
