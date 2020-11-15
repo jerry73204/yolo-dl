@@ -154,7 +154,6 @@ impl ModelBase {
                 IndexMap::new(),
                 |mut collected, layer_index| -> Result<_> {
                     // closures
-
                     let hwc_input_shape = |from_indexes: &LayerPositionSet| {
                         let shape = match *from_indexes {
                             LayerPositionSet::Single(LayerPosition::Input) => {
@@ -291,9 +290,15 @@ impl ModelBase {
                             let output_shape = conf.output_shape(input_shape);
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
-                        LayerConfig::Yolo(_) => {
-                            let input_shape = hwc_input_shape(from_index)
+                        LayerConfig::Yolo(conf) => {
+                            let [in_h, in_w, in_c] = hwc_input_shape(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
+                            let YoloConfig {
+                                classes, anchors, ..
+                            } = conf;
+                            // [batch, anchor, entry, h, w]
+                            let num_anchors = anchors.len() as u64;
+                            let input_shape = [in_h, in_w, num_anchors  * (classes  + 4 + 1)];
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }

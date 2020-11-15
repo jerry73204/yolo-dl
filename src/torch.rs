@@ -566,13 +566,6 @@ mod layer {
             let darknet::ShortcutLayer {
                 base:
                     ShortcutLayerBase {
-                        config:
-                            ShortcutConfig {
-                                activation,
-                                weights_type,
-                                weights_normalization,
-                                ..
-                            },
                         ref from_indexes,
                         ref input_shape,
                         output_shape,
@@ -587,7 +580,7 @@ mod layer {
                 .iter()
                 .cloned()
                 .enumerate()
-                .map(|(index, [in_h, in_w, in_c])| {
+                .map(|(index, [_in_h, _in_w, in_c])| {
                     if in_c < out_c {
                         let zeros = path.zeros_no_train(
                             &format!("zero_padding_{}", index),
@@ -638,7 +631,6 @@ mod layer {
                                 weights_normalization,
                                 ..
                             },
-                        ref input_shape,
                         ref from_indexes,
                         output_shape: [_h, _w, out_c],
                         ..
@@ -658,7 +650,7 @@ mod layer {
                 .iter()
                 .zip_eq(tensors.iter())
                 .map(|(zero_padding, tensor)| {
-                    // assume [batch, channel, height, width] shape                            let (bsize, _, _, _) = tensor.size4().unwrap();
+                    // assume [batch, channel, height, width] shape
                     let tensor = tensor.borrow();
                     let tensor = match zero_padding {
                         Some(zeros) => Tensor::cat(&[tensor, &zeros], 1),
@@ -717,15 +709,13 @@ mod layer {
 
     impl RouteLayer {
         pub fn new<'p>(
-            path: impl Borrow<nn::Path<'p>>,
+            _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::RouteLayer,
         ) -> Result<Self> {
-            let path = path.borrow();
             let darknet::RouteLayer {
                 base:
                     RouteLayerBase {
                         config: RouteConfig { group, .. },
-                        ref from_indexes,
                         ref input_shape,
                         ..
                     },
@@ -778,10 +768,9 @@ mod layer {
 
     impl MaxPoolLayer {
         pub fn new<'p>(
-            path: impl Borrow<nn::Path<'p>>,
+            _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::MaxPoolLayer,
         ) -> Result<Self> {
-            let path = path.borrow();
             let darknet::MaxPoolLayer {
                 base:
                     MaxPoolLayerBase {
@@ -840,10 +829,9 @@ mod layer {
 
     impl UpSampleLayer {
         pub fn new<'p>(
-            path: impl Borrow<nn::Path<'p>>,
+            _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::UpSampleLayer,
         ) -> Result<Self> {
-            let path = path.borrow();
             let darknet::UpSampleLayer {
                 base:
                     UpSampleLayerBase {
