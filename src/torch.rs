@@ -368,8 +368,15 @@ mod layer {
                     rolling_variance,
                 } = scales;
 
-                // TODO: batch norm config
-                let mut batch_norm = nn::batch_norm1d(path, output_shape, Default::default());
+                let mut batch_norm = nn::batch_norm1d(
+                    path,
+                    output_shape,
+                    nn::BatchNormConfig {
+                        momentum: 0.05,
+                        eps: 0.00001,
+                        ..Default::default()
+                    },
+                );
                 batch_norm
                     .running_mean
                     .replace(rolling_mean.as_slice().unwrap(), &[output_shape]);
@@ -494,8 +501,15 @@ mod layer {
                             rolling_variance,
                         } = scales;
 
-                        // TODO: batch norm config
-                        let mut batch_norm = nn::batch_norm2d(path, out_c, Default::default());
+                        let mut batch_norm = nn::batch_norm2d(
+                            path,
+                            out_c,
+                            nn::BatchNormConfig {
+                                momentum: 0.1,
+                                eps: 0.00001,
+                                ..Default::default()
+                            },
+                        );
                         batch_norm
                             .running_mean
                             .replace(rolling_mean.as_slice().unwrap(), &[out_c]);
@@ -563,8 +577,15 @@ mod layer {
 
             let in_c = in_c as i64;
 
-            // TODO: batch norm config
-            let mut batch_norm = nn::batch_norm2d(path, in_c, Default::default());
+            let mut batch_norm = nn::batch_norm2d(
+                path,
+                in_c,
+                nn::BatchNormConfig {
+                    momentum: 0.1,
+                    eps: 0.00001,
+                    ..Default::default()
+                },
+            );
             batch_norm
                 .running_mean
                 .replace(rolling_mean.as_slice().unwrap(), &[in_c]);
