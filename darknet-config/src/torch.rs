@@ -649,12 +649,12 @@ mod layer {
             };
 
             let xs = match activation {
-                Activation::Swish => todo!(),
-                Activation::Mish => todo!(),
+                Activation::Swish => xs.swish(),
+                Activation::Mish => xs.mish(),
                 Activation::HardMish => xs.hardswish(),
-                Activation::NormalizeChannels => todo!(),
-                Activation::NormalizeChannelsSoftmax => todo!(),
-                Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
+                // Activation::NormalizeChannels => todo!(),
+                // Activation::NormalizeChannelsSoftmax => todo!(),
+                // Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
                 _ => unimplemented!(),
             };
 

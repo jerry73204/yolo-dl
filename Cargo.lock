@@ -670,6 +670,7 @@ dependencies = [
  "serde_ini",
  "serde_repr",
  "tch",
+ "tch-goodies",
  "tch-tensor-like",
  "unzip-n",
 ]
