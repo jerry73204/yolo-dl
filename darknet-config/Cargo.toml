@@ -31,6 +31,3 @@ prettytable-rs = "0.8"
 [features]
 default = ["with-tch"]
 with-tch = ["tch"]
-
-[patch.crates-io]
-serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
