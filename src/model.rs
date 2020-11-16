@@ -1,9 +1,9 @@
 use crate::{
     common::*,
     config::{
-        BatchNormConfig, ConnectedConfig, ConvolutionalConfig, DarknetConfig, LayerConfig,
-        LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig, UpSampleConfig,
-        YoloConfig,
+        BatchNormConfig, CompoundNetConfig, CompoundYoloConfig, ConnectedConfig,
+        ConvolutionalConfig, DarknetConfig, LayerConfig, LayerIndex, MaxPoolConfig, RouteConfig,
+        Shape, ShortcutConfig, UpSampleConfig,
     },
     utils::DisplayAsDebug,
 };
@@ -12,7 +12,7 @@ use crate::{
 pub struct ModelBase {
     pub seen: u64,
     pub cur_iteration: u64,
-    pub net: NetConfig,
+    pub net: CompoundNetConfig,
     pub layers: IndexMap<usize, LayerBase>,
 }
 
@@ -30,8 +30,9 @@ impl ModelBase {
         // load config file
         let DarknetConfig {
             net:
-                NetConfig {
+                CompoundNetConfig {
                     input_size: model_input_shape,
+                    classes: num_classes,
                     ..
                 },
             ref layers,
@@ -293,15 +294,15 @@ impl ModelBase {
                         LayerConfig::Yolo(conf) => {
                             let [in_h, in_w, in_c] = hwc_input_shape(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
-                            let YoloConfig {
-                                classes, mask, ..
+                            let CompoundYoloConfig {
+                                anchors, ..
                             } = conf;
 
                             // [batch, anchor, entry, h, w]
-                            let num_masks = mask.len() as u64;
-                            ensure!(in_c == num_masks * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
+                            let num_anchors = anchors.len() as u64;
+                            ensure!(in_c == num_anchors * (num_classes + 4 + 1), "the output channels and yolo input channels mismatch");
 
-                            let input_shape = [in_h, in_w, num_masks  * (classes  + 4 + 1)];
+                            let input_shape = [in_h, in_w, in_c];
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
@@ -702,7 +703,7 @@ declare_layer_base_inout_shape!(
     [u64; 3],
     [u64; 3]
 );
-declare_layer_base_single_shape!(YoloLayerBase, YoloConfig, LayerPosition, [u64; 3]);
+declare_layer_base_single_shape!(YoloLayerBase, CompoundYoloConfig, LayerPosition, [u64; 3]);
 declare_layer_base_single_shape!(BatchNormLayerBase, BatchNormConfig, LayerPosition, [u64; 3]);
 
 impl From<ConnectedLayerBase> for LayerBase {

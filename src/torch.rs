@@ -1,8 +1,9 @@
 use crate::{
     common::*,
     config::{
-        Activation, ConnectedConfig, ConvolutionalConfig, MaxPoolConfig, RouteConfig, Shape,
-        ShortcutConfig, UpSampleConfig, WeightsNormalization, WeightsType, YoloConfig,
+        Activation, CompoundNetConfig, CompoundYoloConfig, ConnectedConfig, ConvolutionalConfig,
+        DarknetConfig, MaxPoolConfig, RouteConfig, Shape, ShortcutConfig, UpSampleConfig,
+        WeightsNormalization, WeightsType,
     },
     darknet::{self, DarknetModel},
     model::{
@@ -100,6 +101,18 @@ mod tch_model {
             model: &DarknetModel,
         ) -> Result<Self> {
             let path = path.borrow();
+            let DarknetModel {
+                base:
+                    ModelBase {
+                        net:
+                            CompoundNetConfig {
+                                classes: num_classes,
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } = *model;
 
             let layers: IndexMap<_, _> = model.layers.iter().try_fold(
                 IndexMap::new(),
