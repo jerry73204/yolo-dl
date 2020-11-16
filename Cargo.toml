@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "yolo-dl",
-    "darknet-config"
+    "darknet-config",
+    "tch-goodies"
 ]
 
 [profile.release]
