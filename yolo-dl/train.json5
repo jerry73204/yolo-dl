@@ -3,15 +3,15 @@
         "classes_file": "cfg/coco.class",
         "image_size": 256,
         "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
-        "kind": {
-            "type": "Coco",
-            "dataset_dir": "/mnt/client/aeon/coco-2017",
-            "dataset_name": "train2017",
-        },
         // "kind": {
-        //     "type": "Iii",
-        //     "dataset_dir": "/mnt/client/aeon/dataset-demo-171207",
+        //     "type": "Coco",
+        //     "dataset_dir": "/mnt/client/aeon/coco-2017",
+        //     "dataset_name": "train2017",
         // },
+        "kind": {
+            "type": "Iii",
+            "dataset_dir": "/home/jerry73204/Downloads/171207",
+        },
     },
     "logging": {
         "dir": "logs",
