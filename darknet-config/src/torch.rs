@@ -632,7 +632,7 @@ mod layer {
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
                 base:
-                    ConvolutionalModelBase {
+                    ConvolutionalLayerBase {
                         config: ConvolutionalConfig { activation, .. },
                         ..
                     },
