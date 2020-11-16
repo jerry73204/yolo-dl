@@ -631,17 +631,34 @@ mod layer {
 
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
-                weights: ConvolutionalWeights { shared },
+                base:
+                    ConvolutionalModelBase {
+                        config: ConvolutionalConfig { activation, .. },
+                        ..
+                    },
+                weights: ConvolutionalWeights { ref shared, .. },
                 ..
-            } = self;
+            } = *self;
 
             let ConvolutionalWeightsShared { conv, batch_norm } = &*shared.lock().unwrap();
 
             let xs = xs.apply(conv);
-            match batch_norm {
+            let xs = match batch_norm {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
-            }
+            };
+
+            let xs = match activation {
+                Activation::Swish => todo!(),
+                Activation::Mish => todo!(),
+                Activation::HardMish => xs.hardswish(),
+                Activation::NormalizeChannels => todo!(),
+                Activation::NormalizeChannelsSoftmax => todo!(),
+                Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
+                _ => unimplemented!(),
+            };
+
+            xs
         }
     }
 
