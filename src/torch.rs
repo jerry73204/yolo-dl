@@ -127,7 +127,9 @@ mod tch_model {
                         darknet::Layer::UpSample(conf) => UpSampleLayer::new(path, conf)?.into(),
                         darknet::Layer::Shortcut(conf) => ShortcutLayer::new(path, conf)?.into(),
                         darknet::Layer::Route(conf) => RouteLayer::new(path, conf)?.into(),
-                        darknet::Layer::Yolo(conf) => YoloLayer::new(path, conf)?.into(),
+                        darknet::Layer::Yolo(conf) => {
+                            YoloLayer::new(path, conf, num_classes)?.into()
+                        }
                     };
 
                     collected.insert(layer_index, layer);
@@ -141,11 +143,17 @@ mod tch_model {
             })
         }
 
-        pub fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+        pub fn forward_t(
+            &mut self,
+            input: &Tensor,
+            train: bool,
+        ) -> IndexMap<usize, YoloLayerOutput> {
             let mut cached_tensors: HashMap<_, _> =
                 iter::once((LayerPosition::Input, input.shallow_clone())).collect();
+            let mut exported: HashMap<_, YoloLayerOutput> = HashMap::new();
 
-            self.layers.iter().for_each(|(&layer_index, layer)| {
+            self.layers.iter_mut().for_each(|(&layer_index, layer)| {
+                // get input tensors
                 let input = match layer.from_indexes() {
                     LayerPositionSet::Single(index) => {
                         TensorList::Single(cached_tensors[&index].shallow_clone())
@@ -160,12 +168,97 @@ mod tch_model {
                     LayerPositionSet::Empty => unreachable!(),
                 };
 
-                let output = layer.forward_t(input, train);
-                let prev = cached_tensors.insert(LayerPosition::Absolute(layer_index), output);
-                debug_assert!(matches!(prev, None));
+                // save output
+                match layer.forward_t(input, train) {
+                    LayerOutputKind::Tensor(output) => {
+                        let prev =
+                            cached_tensors.insert(LayerPosition::Absolute(layer_index), output);
+                        debug_assert!(matches!(prev, None));
+                    }
+                    LayerOutputKind::Yolo(output) => {
+                        let prev = exported.insert(layer_index, output);
+                        debug_assert!(matches!(prev, None));
+                    }
+                }
             });
 
-            todo!();
+            // pack output tensors
+            let exported: IndexMap<_, _> = {
+                let mut exported: Vec<_> = exported.into_iter().collect();
+                exported.sort_by_cached_key(|(layer_index, _output)| *layer_index);
+                exported.into_iter().collect()
+            };
+
+            exported
+        }
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct YoloLayerOutput {
+        // every tensor has shape [batch, anchor, entry, height, width]
+        pub y: Tensor,
+        pub x: Tensor,
+        pub h: Tensor,
+        pub w: Tensor,
+        pub objectness: Tensor,
+        pub class: Tensor,
+    }
+
+    #[derive(Debug)]
+    pub enum LayerOutputKind {
+        Tensor(Tensor),
+        Yolo(YoloLayerOutput),
+    }
+
+    // #[derive(Debug, TensorLike)]
+    // pub struct ModelOutput {
+    //     // (num_anchors, height, width) size per layer
+    //     pub feature_sizes: Vec<(i64, i64)>,
+    //     // every tensor has shape [batch, anchor, entry, \sum_i height_i x width_i]
+    //     pub y: Tensor,
+    //     pub x: Tensor,
+    //     pub h: Tensor,
+    //     pub w: Tensor,
+    //     pub objectness: Tensor,
+    //     pub class: Tensor,
+    // }
+
+    // impl ModelOutput {
+    //     pub fn new(outputs: &[YoloLayerOutput]) -> Self {
+    //         let feature_sizes = outputs.iter().map(|output| {
+    //             let (_bsize, anchor, _entry, height, width) = output.y.size5().unwrap();
+    //             (anchor, height, width)
+    //         });
+
+    //         todo!();
+    //     }
+    // }
+
+    impl LayerOutputKind {
+        pub fn tensor(self) -> Option<Tensor> {
+            match self {
+                Self::Tensor(tensor) => Some(tensor),
+                _ => None,
+            }
+        }
+
+        pub fn yolo(self) -> Option<YoloLayerOutput> {
+            match self {
+                Self::Yolo(output) => Some(output),
+                _ => None,
+            }
+        }
+    }
+
+    impl From<Tensor> for LayerOutputKind {
+        fn from(from: Tensor) -> Self {
+            Self::Tensor(from)
+        }
+    }
+
+    impl From<YoloLayerOutput> for LayerOutputKind {
+        fn from(from: YoloLayerOutput) -> Self {
+            Self::Yolo(from)
         }
     }
 }
@@ -243,16 +336,16 @@ mod layer {
             }
         }
 
-        pub fn forward_t(&self, xs: TensorList, train: bool) -> Tensor {
+        pub fn forward_t(&mut self, xs: TensorList, train: bool) -> LayerOutputKind {
             match self {
-                Layer::Connected(layer) => layer.forward_t(xs.single().unwrap(), train),
-                Layer::Convolutional(layer) => layer.forward_t(xs.single().unwrap(), train),
-                Layer::Route(layer) => layer.forward(xs.multiple().unwrap()),
-                Layer::Shortcut(layer) => layer.forward(xs.multiple().unwrap()),
-                Layer::MaxPool(layer) => layer.forward(xs.single().unwrap()),
-                Layer::UpSample(layer) => layer.forward(xs.single().unwrap()),
-                Layer::Yolo(layer) => layer.forward(xs.single().unwrap()),
-                Layer::BatchNorm(layer) => layer.forward_t(xs.single().unwrap(), train),
+                Layer::Connected(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
+                Layer::Convolutional(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
+                Layer::Route(layer) => layer.forward(xs.multiple().unwrap()).into(),
+                Layer::Shortcut(layer) => layer.forward(xs.multiple().unwrap()).into(),
+                Layer::MaxPool(layer) => layer.forward(xs.single().unwrap()).into(),
+                Layer::UpSample(layer) => layer.forward(xs.single().unwrap()).into(),
+                Layer::Yolo(layer) => layer.forward(xs.single().unwrap()).into(),
+                Layer::BatchNorm(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
             }
         }
     }
@@ -913,12 +1006,109 @@ mod layer {
     }
 
     impl YoloLayer {
-        pub fn new<'p>(path: impl Borrow<nn::Path<'p>>, from: &darknet::YoloLayer) -> Result<Self> {
-            todo!();
+        pub fn new<'p>(
+            _path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::YoloLayer,
+            num_classes: u64,
+        ) -> Result<Self> {
+            let weights = YoloWeights {
+                num_classes: num_classes as i64,
+                cache: None,
+            };
+
+            Ok(Self {
+                base: from.base.clone(),
+                weights,
+            })
         }
 
-        pub fn forward(&self, xs: &Tensor) -> Tensor {
-            todo!();
+        pub fn forward(&mut self, input: &Tensor) -> YoloLayerOutput {
+            let Self {
+                base:
+                    YoloLayerBase {
+                        config: CompoundYoloConfig { ref anchors, .. },
+                        ..
+                    },
+                weights: YoloWeights { num_classes, .. },
+                ..
+            } = *self;
+
+            let num_anchors = anchors.len() as i64;
+
+            // reshape to [bsize, n_anchors, n_classes + 4 + 1, height, width]
+            let (bsize, channels, height, width) = input.size4().unwrap();
+            debug_assert!(channels % num_anchors == 0);
+            let xs = input.view([bsize, num_anchors, -1, height, width]);
+
+            // unpack detection parameters
+            let raw_x = xs.narrow(2, 0, 1);
+            let raw_y = xs.narrow(2, 1, 1);
+            let raw_w = xs.narrow(2, 2, 1);
+            let raw_h = xs.narrow(2, 3, 1);
+            let objectness = xs.narrow(2, 4, 1);
+            let class = xs.narrow(2, 5, num_classes);
+
+            // calculate bbox
+            let YoloCache {
+                x_grids, y_grids, ..
+            } = self.cache(input);
+            let x = (&raw_x + x_grids.expand_as(&raw_x)) / width as f64;
+            let y = (&raw_y + y_grids.expand_as(&raw_y)) / height as f64;
+            let w = (raw_w.exp() + 0.5) / width as f64;
+            let h = (raw_h.exp() + 0.5) / height as f64;
+
+            YoloLayerOutput {
+                y,
+                x,
+                h,
+                w,
+                objectness,
+                class,
+            }
+        }
+
+        pub fn cache(&mut self, xs: &Tensor) -> &YoloCache {
+            let (_bsize, _channels, height, width) = xs.size4().unwrap();
+            let device = xs.device();
+            let kind = xs.kind();
+
+            let shoud_update = self
+                .weights
+                .cache
+                .as_ref()
+                .map(
+                    |&YoloCache {
+                         expect_height,
+                         expect_width,
+                         ..
+                     }| !(expect_height == height && expect_width == width),
+                )
+                .unwrap_or(true);
+
+            if shoud_update {
+                let (y_grids, x_grids) = {
+                    let grids = Tensor::meshgrid(&[
+                        Tensor::arange(height, (kind, device)),
+                        Tensor::arange(width, (kind, device)),
+                    ]);
+
+                    // stack and reshape to (batch x anchors x entry x height x width)
+                    // Tensor::stack(&[&grids[0], &grids[1]], 0).view([1, 1, 2, height, width])
+                    let y_grids = grids[0].view([1, 1, 1, height, width]);
+                    let x_grids = grids[1].view([1, 1, 1, height, width]);
+
+                    (y_grids, x_grids)
+                };
+
+                self.weights.cache = Some(YoloCache {
+                    expect_height: height,
+                    expect_width: width,
+                    y_grids,
+                    x_grids,
+                });
+            }
+
+            self.weights.cache.as_ref().unwrap()
         }
     }
 }
@@ -981,7 +1171,18 @@ mod weights {
     }
 
     #[derive(Debug)]
-    pub struct YoloWeights {}
+    pub struct YoloWeights {
+        pub num_classes: i64,
+        pub cache: Option<YoloCache>,
+    }
+
+    #[derive(Debug)]
+    pub struct YoloCache {
+        pub expect_height: i64,
+        pub expect_width: i64,
+        pub y_grids: Tensor,
+        pub x_grids: Tensor,
+    }
 }
 
 #[cfg(test)]
