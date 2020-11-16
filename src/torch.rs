@@ -76,6 +76,25 @@ mod tch_model {
     }
 
     impl TchModel {
+        pub fn from_config_file<'p, P>(
+            path: impl Borrow<nn::Path<'p>>,
+            config_file: P,
+        ) -> Result<Self>
+        where
+            P: AsRef<Path>,
+        {
+            let model = DarknetModel::from_config_file(config_file)?;
+            Self::from_darknet_model(path, &model)
+        }
+
+        pub fn from_config<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            config: &DarknetConfig,
+        ) -> Result<Self> {
+            let model = DarknetModel::from_config(config)?;
+            Self::from_darknet_model(path, &model)
+        }
+
         pub fn from_darknet_model<'p>(
             path: impl Borrow<nn::Path<'p>>,
             model: &DarknetModel,
