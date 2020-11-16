@@ -1,0 +1,36 @@
+[package]
+name = "darknet-config"
+version = "0.1.0"
+authors = ["jerry73204 <jerry73204@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_ini = "0.2"
+anyhow = "1.0"
+noisy_float = { version = "0.1", features = ["serde-1"] }
+itertools = "0.9"
+binread = "1.4"
+owning_ref = "0.4"
+log = "0.4"
+serde_repr = "0.1"
+petgraph = "0.5"
+indexmap = "1.6"
+byteorder = "1.3"
+derivative = "2.1"
+ndarray = "0.13"
+tch = { version = "0.3", optional = true }
+unzip-n = "0.1"
+tch-tensor-like = { version = "0.2", features = ["derive"] }
+
+[dev-dependencies]
+pretty_env_logger = "0.4"
+argh = "0.1"
+prettytable-rs = "0.8"
+
+[features]
+default = ["with-tch"]
+with-tch = ["tch"]
+
+[patch.crates-io]
+serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
