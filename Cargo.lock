@@ -2182,6 +2182,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tch-goodies"
+version = "0.1.0"
+dependencies = [
+ "tch",
+]
+
+[[package]]
 name = "tch-serde"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
