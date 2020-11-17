@@ -21,8 +21,10 @@ derivative = "2.1"
 ndarray = "0.13"
 tch = { version = "0.3", optional = true }
 unzip-n = "0.1"
+strum = { version = "0.19", features = ["derive"] }
 tch-tensor-like = { version = "0.2", features = ["derive"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
+
 
 [dev-dependencies]
 pretty_env_logger = "0.4"
