@@ -34,6 +34,7 @@ pub use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
+pub use strum::AsRefStr;
 pub use tch_goodies::TensorExt;
 pub use tch_tensor_like::TensorLike;
 pub use unzip_n::unzip_n;

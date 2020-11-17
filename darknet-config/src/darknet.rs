@@ -154,7 +154,7 @@ mod layer {
         };
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, AsRefStr)]
     pub enum Layer {
         Connected(ConnectedLayer),
         Convolutional(ConvolutionalLayer),
