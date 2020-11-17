@@ -754,21 +754,21 @@ impl From<BatchNormLayerBase> for LayerBase {
     }
 }
 
-impl ConvolutionalLayerBase {
-    pub fn weights_shape(&self) -> [u64; 4] {
-        let Self {
-            config:
-                ConvolutionalConfig {
-                    groups,
-                    filters,
-                    size,
-                    ..
-                },
-            input_shape: [_h, _w, in_c],
-            ..
-        } = *self;
+// impl ConvolutionalLayerBase {
+//     pub fn weights_shape(&self) -> [u64; 4] {
+//         let Self {
+//             config:
+//                 ConvolutionalConfig {
+//                     groups,
+//                     filters,
+//                     size,
+//                     ..
+//                 },
+//             input_shape: [_h, _w, in_c],
+//             ..
+//         } = *self;
 
-        debug_assert!(in_c % groups == 0,);
-        [in_c / groups, filters, size, size]
-    }
-}
+//         debug_assert!(in_c % groups == 0,);
+//         [in_c / groups, filters, size, size]
+//     }
+// }

@@ -593,11 +593,18 @@ mod layer {
                     let [_h, _w, out_c] = output_shape;
                     let in_c = in_c as i64;
                     let out_c = out_c as i64;
+                    let permuted_weights = weights
+                        .view()
+                        .permuted_axes([1, 0, 3, 2])
+                        .as_standard_layout()
+                        .into_owned();
                     let kernel_shape = {
-                        let [c1, c2, s1, s2] = from.base.weights_shape();
+                        let [c1, c2, s1, s2] = match permuted_weights.shape() {
+                            &[c1, c2, s1, s2] => [c1, c2, s1, s2],
+                            _ => unreachable!(),
+                        };
                         [c1 as i64, c2 as i64, s1 as i64, s2 as i64]
                     };
-                    let [k_channels, _, _, _] = kernel_shape;
 
                     let mut conv = nn::conv2d(
                         path,
@@ -614,10 +621,11 @@ mod layer {
                     );
 
                     debug_assert!(matches!(conv.bs, Some(_)));
-                    conv.ws.replace(weights.as_slice().unwrap(), &kernel_shape);
+                    conv.ws
+                        .replace(permuted_weights.as_slice().unwrap(), &kernel_shape);
                     conv.bs
                         .as_mut()
-                        .map(|bs| bs.replace(biases.as_slice().unwrap(), &[k_channels]));
+                        .map(|bs| bs.replace(biases.as_slice().unwrap(), &[out_c]));
 
                     let batch_norm = scales.as_ref().map(|scales| {
                         let darknet::ScaleWeights {
