@@ -2455,7 +2455,7 @@ mod items {
         #[serde(rename = "none")]
         None,
         #[serde(rename = "relu")]
-        ReLU,
+        Relu,
         #[serde(rename = "softmax")]
         Softmax,
     }

@@ -24,12 +24,33 @@ trait ReplaceTensor {
 
 impl ReplaceTensor for Tensor {
     fn replace(&mut self, data: &[f32], expect_shape: &[i64]) {
-        debug_assert_eq!(self.size(), expect_shape, "please report bug");
-        debug_assert_eq!(self.kind(), Kind::Float);
-        let new = Tensor::of_slice(data)
-            .view(expect_shape)
-            .to_device(self.device());
-        let _ = mem::replace(self, new);
+        tch::no_grad(|| {
+            debug_assert_eq!(self.size(), expect_shape, "please report bug");
+            debug_assert_eq!(self.kind(), Kind::Float);
+            let new = Tensor::of_slice(data)
+                .view(expect_shape)
+                .to_device(self.device());
+            let _ = mem::replace(self, new);
+        });
+    }
+}
+
+trait TensorActivationEx {
+    fn activation(&self, activation: Activation) -> Tensor;
+}
+
+impl TensorActivationEx for Tensor {
+    fn activation(&self, activation: Activation) -> Tensor {
+        match activation {
+            Activation::Relu => self.relu(),
+            Activation::Swish => self.swish(),
+            Activation::Mish => self.mish(),
+            Activation::HardMish => self.hardswish(),
+            // Activation::NormalizeChannels => todo!(),
+            // Activation::NormalizeChannelsSoftmax => todo!(),
+            // Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -491,15 +512,26 @@ mod layer {
 
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
-                weights: ConnectedWeights { linear, batch_norm },
+                base:
+                    ConnectedLayerBase {
+                        config: ConnectedConfig { activation, .. },
+                        ..
+                    },
+                weights:
+                    ConnectedWeights {
+                        ref linear,
+                        ref batch_norm,
+                    },
                 ..
-            } = self;
+            } = *self;
 
             let xs = xs.apply(linear);
-            match batch_norm {
+            let xs = match batch_norm {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
-            }
+            };
+            let xs = xs.activation(activation);
+            xs
         }
     }
 
@@ -647,17 +679,7 @@ mod layer {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
             };
-
-            let xs = match activation {
-                Activation::Swish => xs.swish(),
-                Activation::Mish => xs.mish(),
-                Activation::HardMish => xs.hardswish(),
-                // Activation::NormalizeChannels => todo!(),
-                // Activation::NormalizeChannelsSoftmax => todo!(),
-                // Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
-                _ => unimplemented!(),
-            };
-
+            let xs = xs.activation(activation);
             xs
         }
     }
@@ -836,7 +858,7 @@ mod layer {
                 ShortcutWeightsKind::PerFeature(weights) => {
                     let weights = match weights_normalization {
                         WeightsNormalization::None => weights.shallow_clone(),
-                        WeightsNormalization::ReLU => {
+                        WeightsNormalization::Relu => {
                             let relu = weights.relu();
                             &relu / (relu.sum(relu.kind()) + 0.0001)
                         }
@@ -849,7 +871,7 @@ mod layer {
                 ShortcutWeightsKind::PerChannel(weights) => {
                     let weights = match weights_normalization {
                         WeightsNormalization::None => weights.shallow_clone(),
-                        WeightsNormalization::ReLU => {
+                        WeightsNormalization::Relu => {
                             // assume weights tensor has shape [num_input_layers, num_channels]
                             let relu = weights.relu();
                             let sum = relu.sum1(&[0], true, relu.kind()).expand_as(&relu) + 0.0001;
@@ -1103,7 +1125,7 @@ mod layer {
                 .unwrap_or(true);
 
             if shoud_update {
-                let (y_grids, x_grids) = {
+                let (y_grids, x_grids) = tch::no_grad(|| {
                     let grids = Tensor::meshgrid(&[
                         Tensor::arange(height, (kind, device)),
                         Tensor::arange(width, (kind, device)),
@@ -1115,7 +1137,7 @@ mod layer {
                     let x_grids = grids[1].view([1, 1, 1, height, width]);
 
                     (y_grids, x_grids)
-                };
+                });
 
                 self.weights.cache = Some(YoloCache {
                     expect_height: height,
