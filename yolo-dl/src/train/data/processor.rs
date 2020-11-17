@@ -21,8 +21,8 @@ pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> 
         }
         &[batch_size, _n_channels, _height, _width] => {
             let input_scaled = (input * 255.0).to_kind(Kind::Uint8);
-            let resized_vec = (0..batch_size)
-                .map(|index| {
+            let resized_vec: Vec<_> = (0..batch_size)
+                .map(|index| -> Result<_> {
                     let resized = vision::image::resize_preserve_aspect_ratio(
                         &input_scaled.select(0, index),
                         out_w,
@@ -30,7 +30,7 @@ pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> 
                     )?;
                     Ok(resized)
                 })
-                .collect::<Fallible<Vec<_>>>()?;
+                .try_collect()?;
             let resized = Tensor::stack(resized_vec.as_slice(), 0);
             let resized_scaled = resized.to_kind(Kind::Float) / 255.0;
 
