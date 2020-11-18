@@ -204,7 +204,7 @@ impl BBox<Ratio, RatioUnit> {
     pub fn new(cycxhw: [Ratio; 4]) -> Self {
         let [cy, cx, h, w] = cycxhw;
 
-        // checked add
+        // checked add, panic if overflow
         let _t = cy - h / 2.0;
         let _l = cx - w / 2.0;
         let _b = cy + h / 2.0;

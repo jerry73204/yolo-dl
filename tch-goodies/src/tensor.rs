@@ -53,9 +53,9 @@ pub trait TensorExt {
     fn batch_draw_rect_(&mut self, btlbrs: &[[i64; 5]], stroke: usize, color: &Tensor) -> Tensor {
         self.f_batch_draw_rect_(btlbrs, stroke, color).unwrap()
     }
-    fn f_crop_by_ratio(&self, top: f64, bottom: f64, left: f64, right: f64) -> Result<Tensor>;
-    fn crop_by_ratio(&self, top: f64, left: f64, right: f64, bottom: f64) -> Tensor {
-        self.f_crop_by_ratio(top, left, right, bottom).unwrap()
+    fn f_crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Result<Tensor>;
+    fn crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Tensor {
+        self.f_crop_by_ratio(top, left, bottom, right).unwrap()
     }
     fn resize2d(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
     fn resize2d_exact(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
@@ -286,10 +286,10 @@ impl TensorExt for Tensor {
     }
 
     fn f_crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Result<Tensor> {
-        ensure!((0.0..1.0).contains(&top), "invalid range");
-        ensure!((0.0..1.0).contains(&left), "invalid range");
-        ensure!((0.0..1.0).contains(&bottom), "invalid range");
-        ensure!((0.0..1.0).contains(&right), "invalid range");
+        ensure!((0.0..=1.0).contains(&top), "invalid range");
+        ensure!((0.0..=1.0).contains(&left), "invalid range");
+        ensure!((0.0..=1.0).contains(&bottom), "invalid range");
+        ensure!((0.0..=1.0).contains(&right), "invalid range");
         ensure!(left < right, "invalid range");
         ensure!(top < bottom, "invalid range");
 
