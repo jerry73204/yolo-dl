@@ -11,6 +11,7 @@ use crate::{
         LayerPositionSet, MaxPoolLayerBase, ModelBase, RouteLayerBase, ShapeList,
         ShortcutLayerBase, UpSampleLayerBase, YoloLayerBase,
     },
+    utils::Unzip7,
 };
 use tch::{nn, Kind, Tensor};
 
@@ -164,96 +165,74 @@ mod tch_model {
             })
         }
 
-        pub fn forward_t(
-            &mut self,
-            input: &Tensor,
-            train: bool,
-        ) -> IndexMap<usize, YoloLayerOutput> {
-            let mut cached_tensors: HashMap<_, _> =
-                iter::once((LayerPosition::Input, input.shallow_clone())).collect();
-            let mut exported: HashMap<_, YoloLayerOutput> = HashMap::new();
+        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<MultiDenseDetection> {
+            let (_batch_size, _channels, input_h, input_w) = input.size4()?;
 
-            self.layers.iter_mut().for_each(|(&layer_index, layer)| {
-                // get input tensors
-                let input = match layer.from_indexes() {
-                    LayerPositionSet::Single(index) => {
-                        TensorList::Single(cached_tensors[&index].shallow_clone())
-                    }
-                    LayerPositionSet::Multiple(indexes) => {
-                        let tensors: Vec<_> = indexes
-                            .iter()
-                            .map(|index| cached_tensors[&index].shallow_clone())
-                            .collect();
-                        TensorList::Multiple(tensors)
-                    }
-                    LayerPositionSet::Empty => unreachable!(),
+            let detections_iter = {
+                let mut intermediate_tensors = hashmap! {
+                    LayerPosition::Input => input.shallow_clone()
+                };
+                let mut final_tensors = hashmap! {};
+
+                self.layers
+                    .iter_mut()
+                    .try_for_each(|(&layer_index, layer)| -> Result<_> {
+                        // get input tensors
+                        let input = match layer.from_indexes() {
+                            LayerPositionSet::Single(index) => {
+                                let tensor = intermediate_tensors[&index].shallow_clone();
+                                TensorList::Single(tensor)
+                            }
+                            LayerPositionSet::Multiple(indexes) => {
+                                let tensors: Vec<_> = indexes
+                                    .iter()
+                                    .map(|index| intermediate_tensors[&index].shallow_clone())
+                                    .collect();
+                                TensorList::Multiple(tensors)
+                            }
+                            LayerPositionSet::Empty => unreachable!(),
+                        };
+
+                        // save output
+                        match layer.forward_t(input, train)? {
+                            LayerOutputKind::Tensor(output) => {
+                                let prev = intermediate_tensors
+                                    .insert(LayerPosition::Absolute(layer_index), output);
+                                debug_assert!(matches!(prev, None));
+                            }
+                            LayerOutputKind::Yolo(output) => {
+                                let prev = final_tensors.insert(layer_index, output);
+                                debug_assert!(matches!(prev, None));
+                            }
+                        }
+
+                        Ok(())
+                    })?;
+
+                // pack output tensors
+                let exported_iter = {
+                    let mut exported: Vec<_> = final_tensors.into_iter().collect();
+                    exported.sort_by_cached_key(|(layer_index, _output)| *layer_index);
+                    exported.into_iter().map(|(_layer_index, output)| output)
                 };
 
-                // save output
-                match layer.forward_t(input, train) {
-                    LayerOutputKind::Tensor(output) => {
-                        let prev =
-                            cached_tensors.insert(LayerPosition::Absolute(layer_index), output);
-                        debug_assert!(matches!(prev, None));
-                    }
-                    LayerOutputKind::Yolo(output) => {
-                        let prev = exported.insert(layer_index, output);
-                        debug_assert!(matches!(prev, None));
-                    }
-                }
-            });
-
-            // pack output tensors
-            let exported: IndexMap<_, _> = {
-                let mut exported: Vec<_> = exported.into_iter().collect();
-                exported.sort_by_cached_key(|(layer_index, _output)| *layer_index);
-                exported.into_iter().collect()
+                exported_iter
             };
 
-            exported
-        }
-    }
+            // combine features from every yolo layer
 
-    #[derive(Debug, TensorLike)]
-    pub struct YoloLayerOutput {
-        // every tensor has shape [batch, anchor, entry, height, width]
-        pub y: Tensor,
-        pub x: Tensor,
-        pub h: Tensor,
-        pub w: Tensor,
-        pub objectness: Tensor,
-        pub class: Tensor,
+            let output =
+                MultiDenseDetection::new(input_h as usize, input_w as usize, detections_iter)?;
+
+            Ok(output)
+        }
     }
 
     #[derive(Debug)]
     pub enum LayerOutputKind {
         Tensor(Tensor),
-        Yolo(YoloLayerOutput),
+        Yolo(DenseDetection),
     }
-
-    // #[derive(Debug, TensorLike)]
-    // pub struct ModelOutput {
-    //     // (num_anchors, height, width) size per layer
-    //     pub feature_sizes: Vec<(i64, i64)>,
-    //     // every tensor has shape [batch, anchor, entry, \sum_i height_i x width_i]
-    //     pub y: Tensor,
-    //     pub x: Tensor,
-    //     pub h: Tensor,
-    //     pub w: Tensor,
-    //     pub objectness: Tensor,
-    //     pub class: Tensor,
-    // }
-
-    // impl ModelOutput {
-    //     pub fn new(outputs: &[YoloLayerOutput]) -> Self {
-    //         let feature_sizes = outputs.iter().map(|output| {
-    //             let (_bsize, anchor, _entry, height, width) = output.y.size5().unwrap();
-    //             (anchor, height, width)
-    //         });
-
-    //         todo!();
-    //     }
-    // }
 
     impl LayerOutputKind {
         pub fn tensor(self) -> Option<Tensor> {
@@ -263,7 +242,7 @@ mod tch_model {
             }
         }
 
-        pub fn yolo(self) -> Option<YoloLayerOutput> {
+        pub fn yolo(self) -> Option<DenseDetection> {
             match self {
                 Self::Yolo(output) => Some(output),
                 _ => None,
@@ -277,8 +256,8 @@ mod tch_model {
         }
     }
 
-    impl From<YoloLayerOutput> for LayerOutputKind {
-        fn from(from: YoloLayerOutput) -> Self {
+    impl From<DenseDetection> for LayerOutputKind {
+        fn from(from: DenseDetection) -> Self {
             Self::Yolo(from)
         }
     }
@@ -357,17 +336,18 @@ mod layer {
             }
         }
 
-        pub fn forward_t(&mut self, xs: TensorList, train: bool) -> LayerOutputKind {
-            match self {
+        pub fn forward_t(&mut self, xs: TensorList, train: bool) -> Result<LayerOutputKind> {
+            let output: LayerOutputKind = match self {
                 Layer::Connected(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
                 Layer::Convolutional(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
                 Layer::Route(layer) => layer.forward(xs.multiple().unwrap()).into(),
                 Layer::Shortcut(layer) => layer.forward(xs.multiple().unwrap()).into(),
                 Layer::MaxPool(layer) => layer.forward(xs.single().unwrap()).into(),
                 Layer::UpSample(layer) => layer.forward(xs.single().unwrap()).into(),
-                Layer::Yolo(layer) => layer.forward(xs.single().unwrap()).into(),
+                Layer::Yolo(layer) => layer.forward(xs.single().unwrap())?.into(),
                 Layer::BatchNorm(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
-            }
+            };
+            Ok(output)
         }
     }
 
@@ -1069,7 +1049,10 @@ mod layer {
             })
         }
 
-        pub fn forward(&mut self, input: &Tensor) -> YoloLayerOutput {
+        pub fn forward(&mut self, input: &Tensor) -> Result<DenseDetection> {
+            let YoloCache {
+                y_grids, x_grids, ..
+            } = self.cache(input);
             let Self {
                 base:
                     YoloLayerBase {
@@ -1083,7 +1066,7 @@ mod layer {
             let num_anchors = anchors.len() as i64;
 
             // reshape to [bsize, n_anchors, n_classes + 4 + 1, height, width]
-            let (bsize, channels, height, width) = input.size4().unwrap();
+            let (bsize, channels, height, width) = input.size4()?;
             debug_assert!(channels % num_anchors == 0);
             let xs = input.view([bsize, num_anchors, -1, height, width]);
 
@@ -1096,25 +1079,32 @@ mod layer {
             let class = xs.narrow(2, 5, num_classes);
 
             // calculate bbox
-            let YoloCache {
-                x_grids, y_grids, ..
-            } = self.cache(input);
-            let x = (&raw_x + x_grids.expand_as(&raw_x)) / width as f64;
-            let y = (&raw_y + y_grids.expand_as(&raw_y)) / height as f64;
-            let w = (raw_w.exp() + 0.5) / width as f64;
-            let h = (raw_h.exp() + 0.5) / height as f64;
+            let bbox_cy = (&raw_y + y_grids.expand_as(&raw_y)) / height as f64;
+            let bbox_cx = (&raw_x + x_grids.expand_as(&raw_x)) / width as f64;
+            let bbox_h = (raw_h.exp() + 0.5) / height as f64;
+            let bbox_w = (raw_w.exp() + 0.5) / width as f64;
 
-            YoloLayerOutput {
-                y,
-                x,
-                h,
-                w,
+            // anchors
+            let anchors: Vec<_> = anchors
+                .iter()
+                .cloned()
+                .map(|(anchor_h, anchor_w)| GridSize::new(anchor_h as f64, anchor_w as f64))
+                .collect();
+
+            DenseDetectionInit {
+                anchors,
+                num_classes: num_classes as usize,
+                bbox_cy,
+                bbox_cx,
+                bbox_h,
+                bbox_w,
                 objectness,
-                class,
+                classification: class,
             }
+            .try_into()
         }
 
-        pub fn cache(&mut self, xs: &Tensor) -> &YoloCache {
+        pub fn cache(&mut self, xs: &Tensor) -> YoloCache {
             let (_bsize, _channels, height, width) = xs.size4().unwrap();
             let device = xs.device();
             let kind = xs.kind();
@@ -1155,7 +1145,7 @@ mod layer {
                 });
             }
 
-            self.weights.cache.as_ref().unwrap()
+            self.weights.cache.as_ref().unwrap().shallow_clone()
         }
     }
 }
@@ -1223,30 +1213,13 @@ mod weights {
         pub cache: Option<YoloCache>,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, TensorLike)]
     pub struct YoloCache {
+        #[tensor_like(copy)]
         pub expect_height: i64,
+        #[tensor_like(copy)]
         pub expect_width: i64,
         pub y_grids: Tensor,
         pub x_grids: Tensor,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tch::Device;
-
-    #[test]
-    fn wtf() -> Result<()> {
-        let vs = nn::VarStore::new(Device::Cpu);
-        let root = vs.root();
-        let linear = nn::linear(&root, 5, 3, Default::default());
-        let batch_norm = nn::batch_norm2d(&root, 3, Default::default());
-        let conv = nn::conv2d(&root, 5, 4, 3, Default::default());
-
-        dbg!(batch_norm);
-
-        Ok(())
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     common::*,
     model::{InstanceIndex, LayerMeta, YoloOutput},
-    utils::{GridSize, LabeledGridBBox, LabeledRatioBBox, Unzip5},
+    utils::Unzip5,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

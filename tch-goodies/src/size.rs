@@ -1,5 +1,7 @@
-use super::{GridUnit, PixelUnit, Unit};
-use crate::common::*;
+use crate::{
+    common::*,
+    unit::{GridUnit, PixelUnit, Unit},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Hash, Deserialize, TensorLike)]
 pub struct Size<T, U>

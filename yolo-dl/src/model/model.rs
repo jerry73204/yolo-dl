@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    common::*,
-    utils::{GridSize, PixelSize},
-};
+use crate::common::*;
 
 #[derive(Debug)]
 pub struct YoloModel {

@@ -19,4 +19,8 @@ pub use std::{
     time::{Duration, Instant},
 };
 pub use tch::{kind::INT64_CPU, nn, Device, IndexOp, Kind, Reduction, Tensor};
+pub use tch_goodies::{
+    bbox::{LabeledGridBBox, LabeledRatioBBox},
+    size::{GridSize, PixelSize},
+};
 pub use tch_tensor_like::TensorLike;

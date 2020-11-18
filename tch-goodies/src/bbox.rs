@@ -1,6 +1,7 @@
 use crate::{
     common::*,
-    utils::{GridUnit, PixelUnit, Ratio, RatioUnit, Unit},
+    ratio::Ratio,
+    unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

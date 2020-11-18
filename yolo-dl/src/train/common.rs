@@ -52,6 +52,10 @@ pub use tch::{
     nn::{self, OptimizerConfig},
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
+pub use tch_goodies::{
+    BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
+    PixelSize, Ratio, RatioBBox,
+};
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, mpsc};
@@ -59,10 +63,7 @@ pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
     model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
-    utils::{
-        BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
-        PixelSize, Ratio, RatioBBox, Unzip2, Unzip3, Unzip4, Unzip5,
-    },
+    utils::{Unzip2, Unzip3, Unzip4, Unzip5},
 };
 
 pub type Fallible<T> = Result<T, Error>;

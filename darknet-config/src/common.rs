@@ -2,9 +2,11 @@ pub use anyhow::{bail, ensure, format_err, Error, Result};
 pub use binread::{prelude::*, BinReaderExt};
 pub use byteorder::{LittleEndian, ReadBytesExt};
 pub use derivative::Derivative;
+pub use image::{imageops::FilterType, DynamicImage};
 pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::{izip, Itertools};
 pub use log::{debug, warn};
+pub use maplit::hashmap;
 pub use ndarray::{Array1, Array2, Array3, Array4};
 pub use noisy_float::prelude::{r32, R32, R64};
 pub use owning_ref::{ArcRef, OwningRef};
@@ -22,6 +24,7 @@ pub use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
     convert::TryFrom,
+    convert::TryInto,
     fmt::{self, Debug, Display},
     fs::{self, File},
     hash::Hash,
@@ -35,6 +38,9 @@ pub use std::{
     sync::{Arc, Mutex},
 };
 pub use strum::AsRefStr;
-pub use tch_goodies::TensorExt;
+pub use tch_goodies::{
+    DenseDetection, DenseDetectionInit, GridSize, LayerMeta, MultiDenseDetection, PixelSize,
+    TensorExt,
+};
 pub use tch_tensor_like::TensorLike;
 pub use unzip_n::unzip_n;

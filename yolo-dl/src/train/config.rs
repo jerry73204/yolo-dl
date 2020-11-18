@@ -1,8 +1,5 @@
 use crate::common::*;
-use yolo_dl::{
-    loss::{IoUKind, MatchGrid},
-    utils::Ratio,
-};
+use yolo_dl::loss::{IoUKind, MatchGrid};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

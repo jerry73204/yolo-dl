@@ -1,5 +1,4 @@
-use super::Ratio;
-use crate::common::*;
+use crate::{common::*, ratio::Ratio};
 
 pub trait Unit {
     type Type;

@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    common::*,
-    utils::{GridSize, PixelSize, Unzip7},
-};
+use crate::{common::*, utils::Unzip7};
 
 pub enum YoloModule {
     Single(usize, Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>),
@@ -440,7 +437,7 @@ impl DetectInit {
 
         DetectModule {
             num_classes: num_classes as i64,
-            anchors_list: anchors_list,
+            anchors_list,
             device,
             cache: HashMap::new(),
         }

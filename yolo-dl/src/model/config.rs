@@ -1,5 +1,5 @@
 use super::*;
-use crate::{common::*, utils::PixelSize};
+use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct YoloInit {
