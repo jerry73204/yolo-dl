@@ -15,7 +15,8 @@ pub use std::{
     marker::PhantomData,
     ops::{Add, Deref, Div, Mul, Range, Sub},
 };
-pub use tch::{kind::Element, vision, Device, Kind, Tensor};
+pub use tch::{kind::Element, vision, Device, IndexOp, Kind, Tensor};
 pub use tch_tensor_like::TensorLike;
 
+unzip_n::unzip_n!(pub 4);
 unzip_n::unzip_n!(pub 10);
