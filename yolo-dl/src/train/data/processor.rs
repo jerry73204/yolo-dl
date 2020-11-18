@@ -4,7 +4,7 @@ use crate::{
     util::{TensorEx, Timing},
 };
 
-// utility funcions
+// utility functions
 
 pub fn resize_image(input: &Tensor, out_w: i64, out_h: i64) -> Fallible<Tensor> {
     match input.size().as_slice() {

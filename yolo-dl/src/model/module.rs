@@ -465,7 +465,7 @@ impl DetectModule {
         debug_assert_eq!(tensors.len(), self.anchors_list.len());
         let num_classes = self.num_classes;
         let device = self.device;
-        let num_outputs_per_anchor = num_classes + 5;
+        let num_entries = num_classes + 5;
         let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
 
         // load cached data
@@ -473,7 +473,7 @@ impl DetectModule {
             positions_grids,
             anchor_sizes_list,
             anchor_sizes_grids,
-        } = &*self.get_cache(tensors, image_size);
+        } = &*self.cache(tensors, image_size);
 
         // compute outputs
         let (cy_vec, cx_vec, h_vec, w_vec, objectness_vec, classification_vec, layer_meta) = izip!(
@@ -488,7 +488,7 @@ impl DetectModule {
                 let (bsize, channels, feature_height, feature_width) = xs.size4().unwrap();
                 let num_anchors = anchor_sizes.len() as i64;
                 debug_assert_eq!(bsize, batch_size);
-                debug_assert_eq!(channels, num_anchors * num_outputs_per_anchor);
+                debug_assert_eq!(channels, num_anchors * num_entries);
                 let feature_size = GridSize::new(feature_height, feature_width);
 
                 // gride size in pixels
@@ -513,46 +513,44 @@ impl DetectModule {
 
                 // transform outputs
                 let (cy, cx, h, w, objectness, classification) = {
-                    // convert shape to [n_anchors, height, width, batch_size, n_outputs]
-                    let outputs = xs
-                        .view([
-                            batch_size,
-                            num_anchors,
-                            num_outputs_per_anchor,
-                            feature_height,
-                            feature_width,
-                        ])
-                        .permute(&[1, 3, 4, 0, 2]);
+                    // convert shape to [batch_size, n_entries, n_anchors, height, width]
+                    let outputs = xs.view([
+                        batch_size,
+                        num_entries,
+                        num_anchors,
+                        feature_height,
+                        feature_width,
+                    ]);
 
                     // positions in grid units
                     let (cy, cx, h, w) = {
-                        let sigmoid = outputs.i((.., .., .., .., 0..4)).sigmoid();
+                        let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
 
                         let position =
-                            sigmoid.i((.., .., .., .., 0..2)) * 2.0 - 0.5 + positions_grid;
-                        let cy = position.i((.., .., .., .., 0..1));
-                        let cx = position.i((.., .., .., .., 1..2));
+                            sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
+                        let cy = position.i((.., 0..1, .., .., ..));
+                        let cx = position.i((.., 1..2, .., .., ..));
 
                         // bbox sizes in grid units
-                        let size = sigmoid.i((.., .., .., .., 2..4)).pow(2.0) * anchor_sizes_grid;
-                        let h = size.i((.., .., .., .., 0..1));
-                        let w = size.i((.., .., .., .., 1..2));
+                        let size = sigmoid.i((.., 2..4, .., .., ..)).pow(2.0) * anchor_sizes_grid;
+                        let h = size.i((.., 0..1, .., .., ..));
+                        let w = size.i((.., 1..2, .., .., ..));
 
                         (cy, cx, h, w)
                     };
 
                     // objectness
-                    let objectness = outputs.i((.., .., .., .., 4..5));
+                    let objectness = outputs.i((.., 4..5, .., .., ..));
 
                     // sparse classification
-                    let classification = outputs.i((.., .., .., .., 5..));
+                    let classification = outputs.i((.., 5.., .., .., ..));
 
-                    let cy = cy.view([-1, batch_size, 1]);
-                    let cx = cx.view([-1, batch_size, 1]);
-                    let h = h.view([-1, batch_size, 1]);
-                    let w = w.view([-1, batch_size, 1]);
-                    let objectness = objectness.reshape(&[-1, batch_size, 1]);
-                    let classification = classification.reshape(&[-1, batch_size, num_classes]);
+                    let cy = cy.view([batch_size, 1, -1]);
+                    let cx = cx.view([batch_size, 1, -1]);
+                    let h = h.view([batch_size, 1, -1]);
+                    let w = w.view([batch_size, 1, -1]);
+                    let objectness = objectness.reshape(&[batch_size, 1, -1]);
+                    let classification = classification.reshape(&[batch_size, num_classes, -1]);
 
                     (cy, cx, h, w, objectness, classification)
                 };
@@ -562,12 +560,12 @@ impl DetectModule {
         )
         .unzip_n_vec();
 
-        let cy = Tensor::cat(&cy_vec, 0).view([-1, 1]);
-        let cx = Tensor::cat(&cx_vec, 0).view([-1, 1]);
-        let h = Tensor::cat(&h_vec, 0).view([-1, 1]);
-        let w = Tensor::cat(&w_vec, 0).view([-1, 1]);
-        let objectness = Tensor::cat(&objectness_vec, 0).view([-1, 1]);
-        let classification = Tensor::cat(&classification_vec, 0).view([-1, num_classes]);
+        let cy = Tensor::cat(&cy_vec, 2);
+        let cx = Tensor::cat(&cx_vec, 2);
+        let h = Tensor::cat(&h_vec, 2);
+        let w = Tensor::cat(&w_vec, 2);
+        let objectness = Tensor::cat(&objectness_vec, 2);
+        let classification = Tensor::cat(&classification_vec, 2);
 
         YoloOutput {
             image_size: image_size.to_owned(),
@@ -584,11 +582,7 @@ impl DetectModule {
         }
     }
 
-    fn get_cache(
-        &mut self,
-        tensors: &[&Tensor],
-        image_size: &PixelSize<i64>,
-    ) -> &DetectModuleCache {
+    fn cache(&mut self, tensors: &[&Tensor], image_size: &PixelSize<i64>) -> &DetectModuleCache {
         let device = self.device;
         let anchors_list = self.anchors_list.clone();
 
@@ -605,14 +599,14 @@ impl DetectModule {
                                     Tensor::arange(feature_height, (Kind::Float, device)),
                                     Tensor::arange(feature_width, (Kind::Float, device)),
                                 ]);
-                                Tensor::stack(&[&grids[0], &grids[1]], 2).view(&[
+                                // corresponds to (batch x entry x anchor x height x width)
+                                Tensor::stack(&[&grids[0], &grids[1]], 2).view([
+                                    1,
+                                    2,
                                     1,
                                     feature_height,
                                     feature_width,
-                                    1,
-                                    2,
-                                ]
-                                    as &[_])
+                                ])
                             };
                             grid.set_requires_grad(false)
                         })
@@ -671,7 +665,8 @@ impl DetectModule {
 
                         Tensor::of_slice(&components)
                             .to_device(device)
-                            .view([num_anchors as i64, 1, 1, 1, 2])
+                            // corresponds to (batch x entry x anchor x height x width)
+                            .view([1, 2, num_anchors as i64, 1, 1])
                             .set_requires_grad(false)
                     })
                     .collect_vec()

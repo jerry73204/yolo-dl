@@ -330,7 +330,7 @@ impl YoloLoss {
         let target_objectness = {
             let mut target = pred_objectness.full_like(0.0);
             let _ = target.scatter_(
-                0,
+                2,
                 &pred_flat_indexes,
                 &(&non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
                     + (1.0 - self.objectness_iou_ratio)),
@@ -509,12 +509,12 @@ impl YoloLoss {
             )
             .to_device(device);
 
-            let cy = prediction.cy.index_select(0, &flat_indexes);
-            let cx = prediction.cx.index_select(0, &flat_indexes);
-            let height = prediction.height.index_select(0, &flat_indexes);
-            let width = prediction.width.index_select(0, &flat_indexes);
-            let objectness = prediction.objectness.index_select(0, &flat_indexes);
-            let classification = prediction.classification.index_select(0, &flat_indexes);
+            let cy = prediction.cy.index_select(2, &flat_indexes);
+            let cx = prediction.cx.index_select(2, &flat_indexes);
+            let height = prediction.height.index_select(2, &flat_indexes);
+            let width = prediction.width.index_select(2, &flat_indexes);
+            let objectness = prediction.objectness.index_select(2, &flat_indexes);
+            let classification = prediction.classification.index_select(2, &flat_indexes);
 
             PredInstances {
                 cy,

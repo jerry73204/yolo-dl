@@ -108,11 +108,11 @@ impl YoloOutput {
 
     pub fn to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
         let InstanceIndex {
-            batch_index,
             layer_index,
             anchor_index,
             grid_row,
             grid_col,
+            ..
         } = *instance_index;
 
         let LayerMeta {
@@ -121,10 +121,7 @@ impl YoloOutput {
             ..
         } = self.layer_meta[layer_index];
 
-        // batch last
-        let flat_index = (begin_flat_index + grid_col + width * (grid_row + height * anchor_index))
-            * self.batch_size
-            + batch_index as i64;
+        let flat_index = begin_flat_index + grid_col + width * (grid_row + height * anchor_index);
 
         flat_index
     }
