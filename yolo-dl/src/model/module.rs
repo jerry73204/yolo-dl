@@ -375,9 +375,7 @@ impl FocusInit {
         P: Borrow<nn::Path<'p>>,
     {
         let path = path.borrow();
-
         let Self { in_c, out_c, k } = self;
-
         let conv = ConvBlockInit {
             k,
             s: 1,
@@ -386,11 +384,7 @@ impl FocusInit {
         .build(path);
 
         Box::new(move |xs, train| {
-            let (height, width) = match xs.size().as_slice() {
-                &[_bsize, _channels, height, width] => (height, width),
-                _ => unreachable!(),
-            };
-
+            let (_bsize, _channels, height, width) = xs.size4().unwrap();
             let xs = Tensor::cat(
                 &[
                     xs.slice(2, 0, height, 2).slice(3, 0, width, 2),

@@ -238,11 +238,6 @@ impl MultiDenseDetection {
                 };
 
                 let grid_size = {
-                    let GridSize {
-                        height: feature_h,
-                        width: width_h,
-                        ..
-                    } = feature_size;
                     let grid_h = image_height as f64 / feature_h as f64;
                     let grid_w = image_width as f64 / feature_w as f64;
                     PixelSize::new(grid_h, grid_w)
