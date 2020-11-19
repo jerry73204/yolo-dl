@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{Config, LoggingConfig},
     message::{LoggingMessage, LoggingMessageKind},
-    util::{RateCounter, TensorEx, Timing},
+    util::{RateCounter, Timing},
 };
 
 pub async fn logging_worker(

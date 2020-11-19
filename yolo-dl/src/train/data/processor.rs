@@ -1,8 +1,5 @@
 use super::DataRecord;
-use crate::{
-    common::*,
-    util::{TensorEx, Timing},
-};
+use crate::{common::*, util::Timing};
 
 // utility functions
 
@@ -532,7 +529,7 @@ impl MosaicProcessor {
     pub async fn make_mosaic(
         &self,
         bbox_image_vec: Vec<(Tensor, Vec<LabeledRatioBBox>)>,
-    ) -> Fallible<(Tensor, Vec<LabeledRatioBBox>)> {
+    ) -> Result<(Tensor, Vec<LabeledRatioBBox>)> {
         let Self {
             image_size,
             mosaic_margin,
@@ -564,7 +561,8 @@ impl MosaicProcessor {
                         debug_assert_eq!(w, image_size);
                     }
 
-                    let cropped_image = image.crop_by_ratio(top, bottom, left, right)?;
+                    let cropped_image =
+                        image.f_crop_by_ratio(top.raw(), left.raw(), bottom.raw(), right.raw())?;
                     let cropped_bboxes = bboxes
                         .into_iter()
                         .filter_map(|bbox| bbox.crop(top, bottom, left, right))

@@ -54,7 +54,7 @@ pub use tch::{
 };
 pub use tch_goodies::{
     BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
-    PixelSize, Ratio, RatioBBox,
+    PixelSize, Ratio, RatioBBox, TensorExt,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;

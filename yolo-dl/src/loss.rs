@@ -1,7 +1,7 @@
 use crate::{
     common::*,
     model::{InstanceIndex, LayerMeta, YoloOutput},
-    utils::Unzip5,
+    utils::{Unzip2, Unzip5},
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -293,7 +293,7 @@ impl YoloLoss {
         let pos = 1.0 - 0.5 * self.smooth_bce_coef;
         let neg = 1.0 - pos;
         let pred_class = &pred_instances.dense_class;
-        let (_num_instances, num_classes) = pred_class.size2().unwrap();
+        let (_num_instances, _num_classes) = pred_class.size2().unwrap();
         let device = pred_class.device();
 
         // convert sparse index to dense one-hot-like
@@ -302,8 +302,7 @@ impl YoloLoss {
             let pos_values = Tensor::full(&target_class_sparse.size(), pos, (Kind::Float, device));
             let target = pred_class
                 .full_like(neg)
-                .scatter(0, &target_class_sparse, &pos_values)
-                .view([-1, num_classes]);
+                .scatter(0, &target_class_sparse, &pos_values);
             target
         };
 
@@ -317,29 +316,37 @@ impl YoloLoss {
         non_reduced_iou_loss: &Tensor,
     ) -> Tensor {
         let device = prediction.device;
-        let pred_flat_indexes = Tensor::of_slice(
-            &target_bboxes
-                .keys()
-                .map(|instance_index| prediction.to_flat_index(instance_index))
-                .collect_vec(),
-        )
-        .view([-1, 1])
-        .to_device(device);
+        let batch_size = prediction.batch_size;
+        let (batch_indexes_vec, flat_indexes_vec) = target_bboxes
+            .keys()
+            .map(|instance_index| {
+                let batch_index = instance_index.batch_index as i64;
+                let flat_index = prediction.to_flat_index(instance_index);
+                (batch_index, flat_index)
+            })
+            .unzip_n_vec();
+
+        let batch_indexes = Tensor::of_slice(&batch_indexes_vec).to_device(device);
+        let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
 
         let pred_objectness = &prediction.objectness;
         let target_objectness = {
-            let mut target = pred_objectness.full_like(0.0);
-            let _ = target.scatter_(
-                2,
-                &pred_flat_indexes,
-                &(&non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
-                    + (1.0 - self.objectness_iou_ratio)),
+            let target = pred_objectness.full_like(0.0);
+            let values = &non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
+                + (1.0 - self.objectness_iou_ratio);
+
+            let _ = target.permute(&[0, 2, 1]).index_put_(
+                &[&batch_indexes, &flat_indexes],
+                &values,
+                false,
             );
             target
         };
 
-        self.bce_objectness
-            .forward(&pred_objectness, &target_objectness)
+        self.bce_objectness.forward(
+            &pred_objectness.view([batch_size, -1]),
+            &target_objectness.view([batch_size, -1]),
+        )
     }
 
     /// Match target bboxes with grids.
@@ -501,20 +508,41 @@ impl YoloLoss {
     ) -> (PredInstances, TargetInstances) {
         let device = prediction.device;
         let pred_instances = {
-            let flat_indexes = Tensor::of_slice(
-                &target
-                    .keys()
-                    .map(|instance_index| prediction.to_flat_index(instance_index))
-                    .collect_vec(),
-            )
-            .to_device(device);
+            let (batch_indexes_vec, flat_indexes_vec) = target
+                .keys()
+                .map(|instance_index| {
+                    let batch_index = instance_index.batch_index as i64;
+                    let flat_index = prediction.to_flat_index(instance_index);
+                    (batch_index, flat_index)
+                })
+                .unzip_n_vec();
+            let batch_indexes = Tensor::of_slice(&batch_indexes_vec).to_device(device);
+            let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
 
-            let cy = prediction.cy.index_select(2, &flat_indexes);
-            let cx = prediction.cx.index_select(2, &flat_indexes);
-            let height = prediction.height.index_select(2, &flat_indexes);
-            let width = prediction.width.index_select(2, &flat_indexes);
-            let objectness = prediction.objectness.index_select(2, &flat_indexes);
-            let classification = prediction.classification.index_select(2, &flat_indexes);
+            let cy = prediction
+                .cy
+                .permute(&[0, 2, 1])
+                .index(&[&batch_indexes, &flat_indexes]);
+            let cx = prediction
+                .cx
+                .permute(&[0, 2, 1])
+                .index(&[&batch_indexes, &flat_indexes]);
+            let height = prediction
+                .height
+                .permute(&[0, 2, 1])
+                .index(&[&batch_indexes, &flat_indexes]);
+            let width = prediction
+                .width
+                .permute(&[0, 2, 1])
+                .index(&[&batch_indexes, &flat_indexes]);
+            let objectness = prediction
+                .objectness
+                .permute(&[0, 2, 1])
+                .index(&[&batch_indexes, &flat_indexes]);
+            let classification = prediction
+                .classification
+                .permute(&[0, 2, 1])
+                .index(&[&batch_indexes, &flat_indexes]);
 
             PredInstances {
                 cy,
