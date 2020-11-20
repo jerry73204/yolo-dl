@@ -7,10 +7,16 @@ pub struct CacheLoader {
     cache_dir: async_std::path::PathBuf,
     image_size: usize,
     image_channels: usize,
+    device: Device,
 }
 
 impl CacheLoader {
-    pub async fn new<P>(cache_dir: P, image_size: usize, image_channels: usize) -> Result<Self>
+    pub async fn new<P>(
+        cache_dir: P,
+        image_size: usize,
+        image_channels: usize,
+        device: impl Into<Option<Device>>,
+    ) -> Result<Self>
     where
         P: AsRef<async_std::path::Path>,
     {
@@ -24,6 +30,7 @@ impl CacheLoader {
             cache_dir,
             image_size,
             image_channels,
+            device: device.into().unwrap_or(Device::Cpu),
         };
 
         Ok(loader)
@@ -43,6 +50,7 @@ impl CacheLoader {
         let Self {
             image_size,
             image_channels,
+            device,
             ..
         } = *self;
         let image_path = image_path.as_ref();
@@ -96,8 +104,9 @@ impl CacheLoader {
                     cache_path.to_str().unwrap(),
                     false,
                     Some(cache_components as i64),
-                    FLOAT_CPU,
+                    (Kind::Float, Device::Cpu),
                 )?
+                .to_device(device)
                 .view_(&[
                     image_channels as i64,
                     cache_height as i64,
@@ -143,6 +152,7 @@ impl CacheLoader {
                     let tensor = tch::no_grad(|| {
                         Tensor::of_slice(&samples)
                             .to_kind(Kind::Float)
+                            .to_device(device)
                             .g_div1(255.0)
                             .view([
                                 cache_height as i64,

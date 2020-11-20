@@ -98,13 +98,14 @@ impl Dataset {
                     ref cache_dir,
                     mosaic_prob,
                     mosaic_margin,
-                    affine_prob,
-                    rotate_degrees,
-                    translation,
-                    scale,
-                    shear,
-                    horizontal_flip,
-                    vertical_flip,
+                    // affine_prob,
+                    // rotate_degrees,
+                    // translation,
+                    // scale,
+                    // shear,
+                    // horizontal_flip,
+                    // vertical_flip,
+                    device,
                     ..
                 },
             training: TrainingConfig { batch_size, .. },
@@ -159,7 +160,7 @@ impl Dataset {
         // load and cache images
         let stream = {
             let cache_loader =
-                Arc::new(CacheLoader::new(&cache_dir, image_size as usize, 3).await?);
+                Arc::new(CacheLoader::new(&cache_dir, image_size as usize, 3, device).await?);
             let logging_tx = logging_tx.clone();
 
             stream.try_par_then(None, move |args| {
