@@ -74,6 +74,7 @@
     },
     "preprocessor": {
         "cache_dir": "/home/aeon/tmp/yolo-dl-cache",
+        "device": "cuda(0)",
         "mosaic_prob": 0.3,
         "mosaic_margin": 0.4,
         "affine_prob": 0.3,
@@ -106,9 +107,6 @@
         "enable_multi_gpu": true,
         "master_device": "cuda(1)",
         "workers": [
-            // {
-            //     "device": "cuda(0)"
-            // },
             {
                 "device": "cuda(1)"
             },
