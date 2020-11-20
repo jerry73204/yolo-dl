@@ -64,7 +64,7 @@ pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
     model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
-    processor::{CacheLoader, MosaicProcessorInit},
+    processor::{CacheLoader, ParallelMosaicProcessorInit},
     profiling::Timing,
     utils::{Unzip2, Unzip3, Unzip4, Unzip5},
 };
