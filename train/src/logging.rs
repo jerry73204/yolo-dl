@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{Config, LoggingConfig},
     message::{LoggingMessage, LoggingMessageKind},
-    util::{RateCounter, Timing},
+    util::RateCounter,
 };
 
 pub async fn logging_worker(
@@ -78,7 +78,7 @@ pub async fn logging_worker(
                     losses,
                 } => {
                     if save_images {
-                        let mut timing = Timing::new();
+                        let mut timing = Timing::new("log training output");
 
                         let (canvas, mut timing) =
                             async_std::task::spawn_blocking(move || -> Result<_> {
@@ -221,7 +221,7 @@ pub async fn logging_worker(
                             .await?;
 
                         timing.set_record("write");
-                        // info!("{:#?}", timing.records());
+                        timing.report();
                     }
                 }
                 LoggingMessageKind::Images { images } => {

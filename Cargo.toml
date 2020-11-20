@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "yolo-dl",
+    "train",
     "darknet-config",
     "tch-goodies"
 ]

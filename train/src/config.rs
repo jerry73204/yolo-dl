@@ -46,6 +46,8 @@ pub enum DatasetKind {
     },
     Iii {
         dataset_dir: PathBuf,
+        #[serde(default = "empty_hashset::<PathBuf>")]
+        blacklist_files: HashSet<PathBuf>,
     },
 }
 
@@ -101,4 +103,8 @@ pub struct WorkerConfig {
 pub enum LearningRateSchedule {
     Constant { lr: R64 },
     StepWise { steps: Vec<(usize, R64)> },
+}
+
+fn empty_hashset<T>() -> HashSet<T> {
+    HashSet::new()
 }

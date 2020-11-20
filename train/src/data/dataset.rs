@@ -3,7 +3,6 @@ use crate::{
     common::*,
     config::{Config, DatasetConfig, DatasetKind, PreprocessorConfig, TrainingConfig},
     message::LoggingMessage,
-    util::Timing,
 };
 
 pub trait GenericDataset
@@ -73,9 +72,13 @@ impl Dataset {
             DatasetKind::Voc { dataset_dir, .. } => {
                 Box::new(VocDataset::load(config.clone(), dataset_dir).await?)
             }
-            DatasetKind::Iii { dataset_dir, .. } => {
-                Box::new(IiiDataset::load(config.clone(), dataset_dir).await?)
-            }
+            DatasetKind::Iii {
+                dataset_dir,
+                blacklist_files,
+                ..
+            } => Box::new(
+                IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone()).await?,
+            ),
         };
 
         Ok(Self {
@@ -133,13 +136,12 @@ impl Dataset {
 
             let record_vec = (0..num_records)
                 .map(|_| {
-                    let timing = Timing::new();
                     let record_vec = index_iters
                         .iter_mut()
                         .map(|iter| iter.next().unwrap())
                         .map(|index| records[index].clone())
                         .collect_vec();
-                    (epoch, record_vec, timing)
+                    (epoch, record_vec)
                 })
                 .collect_vec();
 
@@ -149,7 +151,7 @@ impl Dataset {
         // add step count
         let stream = stream
             .enumerate()
-            .map(|(step, (epoch, record_vec, timing))| Ok((step, epoch, record_vec, timing)));
+            .map(|(step, (epoch, record_vec))| Ok((step, epoch, record_vec)));
 
         // start of unordered ops
         let stream = stream.try_overflowing_enumerate();
@@ -161,10 +163,10 @@ impl Dataset {
             let logging_tx = logging_tx.clone();
 
             stream.try_par_then(None, move |args| {
-                let (index, (step, epoch, record_vec, mut timing)) = args;
+                let (index, (step, epoch, record_vec)) = args;
                 let cache_loader = cache_loader.clone();
                 let logging_tx = logging_tx.clone();
-                timing.set_record("wait for cache loader");
+                let mut timing = Timing::new("pipeline");
 
                 async move {
                     let image_bbox_vec: Vec<_> = stream::iter(record_vec.into_iter())
@@ -172,9 +174,17 @@ impl Dataset {
                             let cache_loader = cache_loader.clone();
 
                             async move {
+                                let DataRecord {
+                                    path: ref image_path,
+                                    ref bboxes,
+                                    ..
+                                } = *record;
+
                                 // load cache
-                                let (image, bboxes) =
-                                    cache_loader.load_cache(&record).await.with_context(|| {
+                                let (image, bboxes) = cache_loader
+                                    .load_cache(image_path, bboxes)
+                                    .await
+                                    .with_context(|| {
                                         format!(
                                             "failed to load image file {}",
                                             record.path.display()
@@ -362,7 +372,7 @@ impl Dataset {
         let stream = stream.try_par_then(None, move |(index, args)| async move {
             let (step, epoch, bboxes, image, timing_vec) = args;
 
-            // info!("{:#?}", timing_vec);
+            timing_vec[0].report();
 
             let record = TrainingRecord {
                 epoch,

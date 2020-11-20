@@ -13,7 +13,7 @@ pub use futures::{
 pub use image::{imageops::FilterType, DynamicImage, FlatSamples, ImageFormat, Pixel};
 pub use indexmap::IndexSet;
 pub use itertools::{izip, Itertools};
-pub use log::{info, warn};
+pub use log::{error, info, warn};
 pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
@@ -30,6 +30,7 @@ pub use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
+    env::{self, VarError},
     fmt::Debug,
     future::Future,
     hash::{Hash, Hasher},
@@ -43,7 +44,7 @@ pub use std::{
     rc::Rc,
     sync::{
         atomic::{self, AtomicBool},
-        Arc,
+        Arc, Once,
     },
     time::{Duration, Instant},
 };
@@ -53,8 +54,8 @@ pub use tch::{
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
-    BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox,
-    MosaicProcessorInit, PixelBBox, PixelSize, Ratio, RatioBBox, TensorExt,
+    BBox, GridBBox, GridSize, LabeledGridBBox, LabeledPixelBBox, LabeledRatioBBox, PixelBBox,
+    PixelSize, Ratio, RatioBBox, TensorExt,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
@@ -63,6 +64,8 @@ pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
     model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
+    processor::{CacheLoader, MosaicProcessorInit},
+    profiling::Timing,
     utils::{Unzip2, Unzip3, Unzip4, Unzip5},
 };
 

@@ -95,7 +95,11 @@ impl GenericDataset for IiiDataset {
 }
 
 impl IiiDataset {
-    pub async fn load<P>(config: Arc<Config>, dataset_dir: P) -> Result<IiiDataset>
+    pub async fn load<P>(
+        config: Arc<Config>,
+        dataset_dir: P,
+        blacklist_files: HashSet<PathBuf>,
+    ) -> Result<IiiDataset>
     where
         P: AsRef<Path>,
     {
@@ -112,8 +116,19 @@ impl IiiDataset {
         let xml_files = {
             let dataset_dir = dataset_dir.to_owned();
             async_std::task::spawn_blocking(move || {
-                let xml_files: Vec<_> =
-                    glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?.try_collect()?;
+                let xml_files: Vec<_> = glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?
+                    .map(|result| -> Result<_> {
+                        let path = result?;
+                        let suffix = path.strip_prefix(&dataset_dir).unwrap();
+                        if blacklist_files.contains(suffix) {
+                            warn!("ignore blacklisted file '{}'", path.display());
+                            Ok(None)
+                        } else {
+                            Ok(Some(path))
+                        }
+                    })
+                    .filter_map(|result| result.transpose())
+                    .try_collect()?;
                 Fallible::Ok(xml_files)
             })
             .await?

@@ -10,7 +10,7 @@ use crate::{
     config::{Config, LoadCheckpoint, TrainingConfig},
     data::{Dataset, GenericDataset, TrainingRecord},
     message::LoggingMessage,
-    util::{LrScheduler, RateCounter, Timing},
+    util::{LrScheduler, RateCounter},
 };
 
 const FILE_STRFTIME: &str = "%Y-%m-%d-%H-%M-%S.%3f%z";
@@ -165,7 +165,7 @@ async fn multi_gpu_training_worker(
         .training
         .save_checkpoint_steps
         .map(|steps| steps.get());
-    let mut timing = Timing::new();
+    let mut init_timing = Timing::new("initialization");
 
     if let None = save_checkpoint_steps {
         warn!("checkpoint saving is disabled");
@@ -225,7 +225,7 @@ async fn multi_gpu_training_worker(
         }))
         .await?
     };
-    timing.set_record("init worker contexts");
+    init_timing.set_record("init worker contexts");
 
     // load checkpoint
     let worker_contexts_ = {
@@ -241,12 +241,12 @@ async fn multi_gpu_training_worker(
         .await?
     };
     worker_contexts = worker_contexts_;
-    timing.set_record("load checkpoint");
+    init_timing.set_record("load checkpoint");
 
-    // info!("{:#?}", timing.records());
+    init_timing.report();
 
     // training loop
-    let mut timing = Timing::new();
+    let mut training_timing = Timing::new("training loop");
 
     while let Ok(record) = data_rx.recv().await {
         let TrainingRecord {
@@ -277,7 +277,7 @@ async fn multi_gpu_training_worker(
 
             worker_contexts = iter::once(first_context).chain(other_contexts).collect();
         }
-        timing.set_record("sync weights");
+        training_timing.set_record("sync weights");
 
         // forward step
         let outputs = {
@@ -317,7 +317,7 @@ async fn multi_gpu_training_worker(
                             let outputs = jobs
                                 .into_iter()
                                 .map(|job| {
-                                    let mut timing = Timing::new();
+                                    let mut worker_timing = Timing::new("worker");
 
                                     let WorkerContext {
                                         device,
@@ -335,26 +335,29 @@ async fn multi_gpu_training_worker(
                                     } = job;
 
                                     let image = image.to_device(device);
-                                    timing.set_record("to device");
+                                    worker_timing.set_record("to device");
 
                                     // forward pass
                                     let output = model.forward_t(&image, true);
-                                    timing.set_record("forward");
+                                    worker_timing.set_record("forward");
 
                                     // compute loss
                                     let losses = yolo_loss.forward(&output, &bboxes);
-                                    timing.set_record("loss");
+                                    worker_timing.set_record("loss");
 
                                     // compute gradients
                                     optimizer.zero_grad();
                                     losses.loss.backward();
-                                    timing.set_record("run_backward");
+                                    worker_timing.set_record("run_backward");
 
                                     let gradients = vs
                                         .trainable_variables()
                                         .iter()
                                         .map(|tensor| tensor.grad() * minibatch_size as f64)
                                         .collect_vec();
+                                    worker_timing.set_record("extract gradients");
+
+                                    worker_timing.report();
 
                                     WorkerOutput {
                                         job_index,
@@ -381,7 +384,7 @@ async fn multi_gpu_training_worker(
             outputs.sort_by_cached_key(|output| output.job_index);
             outputs
         };
-        timing.set_record("forward step");
+        training_timing.set_record("forward step");
 
         // backward step
         let outputs = {
@@ -431,7 +434,7 @@ async fn multi_gpu_training_worker(
 
             outputs
         };
-        timing.set_record("backward step");
+        training_timing.set_record("backward step");
 
         // compute losses from each job
         let losses = async_std::task::spawn_blocking(move || {
@@ -494,7 +497,7 @@ async fn multi_gpu_training_worker(
             losses
         })
         .await;
-        timing.set_record("compute loss");
+        training_timing.set_record("compute loss");
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
@@ -513,8 +516,8 @@ async fn multi_gpu_training_worker(
             })
             .await?;
             worker_contexts = worker_contexts_;
+            training_timing.set_record("save checkpoint");
         }
-        timing.set_record("save checkpoint");
 
         // send to logger
         {
@@ -568,10 +571,12 @@ async fn multi_gpu_training_worker(
 
         training_step += 1;
 
-        timing.set_record("finalize");
+        training_timing.set_record("finalize");
 
-        // info!("{:#?}", timing.records());
-        timing = Timing::new();
+        {
+            training_timing.report();
+            training_timing = Timing::new("training loop");
+        }
     }
     Ok(())
 }
@@ -618,7 +623,7 @@ fn single_gpu_training_worker(
         opt
     };
     let mut rate_counter = RateCounter::with_second_intertal();
-    let mut timing = Timing::new();
+    let mut timing = Timing::new("training loop");
     let save_checkpoint_steps = config
         .training
         .save_checkpoint_steps
@@ -706,8 +711,12 @@ fn single_gpu_training_worker(
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
 
-        // info!("{:#?}", timing.records());
-        timing = Timing::new();
+        // report profiling
+        {
+            timing.report();
+            timing = Timing::new("training loop");
+        }
+
         training_step += 1;
     }
 
