@@ -206,20 +206,26 @@ impl Dataset {
 
         // make mosaic
         let stream = {
-            let mosaic_processor = Arc::new(MosaicProcessor::new(image_size, mosaic_margin));
+            let mosaic_processor = Arc::new(
+                MosaicProcessorInit {
+                    mosaic_margin: mosaic_margin.raw(),
+                }
+                .build()?,
+            );
 
-            stream.try_par_then(None, move |(index, args)| {
+            stream.par_map(None, move |result| {
                 let mosaic_processor = mosaic_processor.clone();
                 let mut rng = StdRng::from_entropy();
                 let logging_tx = logging_tx.clone();
 
-                async move {
+                move || {
+                    let (index, args) = result?;
                     let (step, epoch, image_bbox_vec, mut timing) = args;
 
                     // randomly create mosaic image
                     let (merged_image, merged_bboxes) =
                         if rng.gen_range(0.0, 1.0) <= mosaic_prob.raw() {
-                            mosaic_processor.make_mosaic(image_bbox_vec).await?
+                            mosaic_processor.forward(image_bbox_vec)?
                         } else {
                             image_bbox_vec.into_iter().next().unwrap()
                         };

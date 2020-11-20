@@ -13,22 +13,18 @@ impl MosaicProcessorInit {
             "mosaic_margin must be in range 0.0..0.5"
         );
 
-        Ok(MosaicProcessor {
-            mosaic_margin,
-            rng: StdRng::from_entropy(),
-        })
+        Ok(MosaicProcessor { mosaic_margin })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct MosaicProcessor {
     mosaic_margin: f64,
-    rng: StdRng,
 }
 
 impl MosaicProcessor {
     pub fn forward<PairIntoIter, BBoxIntoIter>(
-        &mut self,
+        &self,
         input: PairIntoIter,
     ) -> Result<(Tensor, Vec<LabeledRatioBBox>)>
     where
@@ -37,12 +33,9 @@ impl MosaicProcessor {
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         let input_iter = input.into_iter();
-        let Self {
-            mosaic_margin,
-            ref mut rng,
-        } = *self;
-
         ensure!(input_iter.len() == 4, "expect exactly 4 images");
+        let Self { mosaic_margin } = *self;
+        let mut rng = rand::thread_rng();
 
         // random select pivot point
 
