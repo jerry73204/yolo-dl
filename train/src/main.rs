@@ -255,6 +255,7 @@ async fn multi_gpu_training_worker(
             image,
             bboxes,
         } = record.to_device(master_device);
+        training_timing.set_record("wait for data");
 
         // sync weights among workers
         {

@@ -377,7 +377,7 @@ impl Dataset {
             let record = TrainingRecord {
                 epoch,
                 step,
-                image,
+                image: image.set_requires_grad(false),
                 bboxes,
             };
 
