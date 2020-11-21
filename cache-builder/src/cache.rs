@@ -118,10 +118,13 @@ impl<I> DatasetInit<I> {
 
         // create memory mapped file
         let mut mmap = unsafe {
-            let output_file = std::fs::File::open(output_path)?;
+            let output_file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(output_path)?;
             let mmap = MmapOptions::new()
                 .offset(0)
-                .len(bbox_offset as usize)
+                .len(bbox_offset)
                 .map_mut(&output_file)?;
             mmap
         };

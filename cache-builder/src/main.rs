@@ -229,7 +229,7 @@ async fn build_iii_dataset(
                     ..
                 } = sample;
                 ensure!(
-                    orig_c != target_c,
+                    orig_c == target_c,
                     "expcet target number of channels {}, but found {}",
                     target_c,
                     orig_c
