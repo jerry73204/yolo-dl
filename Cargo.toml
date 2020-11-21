@@ -3,7 +3,8 @@ members = [
     "yolo-dl",
     "train",
     "darknet-config",
-    "tch-goodies"
+    "tch-goodies",
+    "cache-builder"
 ]
 
 [profile.release]
