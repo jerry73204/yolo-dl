@@ -48,8 +48,8 @@ impl<I> DatasetInit<I> {
         B: 'static + IntoIterator<Item = BBoxEntry> + Send,
         D: 'static + AsRef<[C]> + Send,
         C: Component,
-        E: 'static + Sync + Send + error::Error,
-        B::IntoIter: ExactSizeIterator + Send,
+        E: 'static + Sync + Send + Into<Error>,
+        B::IntoIter: Send,
     {
         let output_path = output_path.as_ref();
         let Self {
@@ -141,7 +141,7 @@ impl<I> DatasetInit<I> {
         let mut bbox_chunks: Vec<_> = {
             let mmap = mmap.clone();
             images
-                .map_err(|err| Error::from(err))
+                .map_err(|err| err.into())
                 .try_overflowing_enumerate()
                 .try_par_then(None, move |(index, item)| {
                     let mmap = mmap.clone();
@@ -176,11 +176,11 @@ impl<I> DatasetInit<I> {
         let bbox_entries: Vec<_> = bbox_chunks
             .into_iter()
             .scan(0, |bbox_index, (image_index, bboxes)| {
-                let bboxes_iter = bboxes.into_iter();
-                let num_bboxes = bboxes_iter.len();
+                let bboxes: Vec<_> = bboxes.into_iter().collect();
+                let num_bboxes = bboxes.len();
                 *bbox_index += num_bboxes;
                 image_entries[image_index].num_bboxes = num_bboxes as u32;
-                Some(bboxes_iter)
+                Some(bboxes)
             })
             .flatten()
             .collect();
@@ -246,7 +246,7 @@ impl ImageEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BBoxEntry {
-    pub tlbr: [u32; 4],
+    pub tlbr: [f64; 4],
     pub class: u32,
 }
 

@@ -1,7 +1,10 @@
 pub mod cache;
 mod common;
 
-use crate::common::*;
+use crate::{
+    cache::{BBoxEntry, DatasetInit, ImageItem},
+    common::*,
+};
 
 #[derive(Debug, Clone, FromArgs)]
 /// Dataset cache toolkit
@@ -25,17 +28,27 @@ struct InfoArgs {
     pub cache_file: PathBuf,
 }
 
-/// Build dataset cache
+/// Build cache for dataset
 #[derive(Debug, Clone, FromArgs)]
 #[argh(subcommand, name = "build")]
 struct BuildArgs {
-    /// dataset kind
-    #[argh(option)]
+    #[argh(positional)]
     pub kind: String,
+    #[argh(positional)]
+    pub image_size: String,
+    #[argh(positional)]
+    pub classes_file: PathBuf,
     #[argh(positional)]
     pub dataset_dir: PathBuf,
     #[argh(positional)]
     pub output_file: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct IiiSample {
+    pub image_file: PathBuf,
+    pub annotation_file: PathBuf,
+    pub annotation: voc::Annotation,
 }
 
 #[async_std::main]
@@ -62,14 +75,35 @@ async fn info(args: InfoArgs) -> Result<()> {
 async fn build(args: BuildArgs) -> Result<()> {
     let BuildArgs {
         kind,
+        image_size,
+        classes_file,
         dataset_dir,
         output_file,
     } = args;
 
+    let image_size = {
+        let tokens: Vec<_> = image_size.split('x').collect();
+        let sizes: Vec<usize> = tokens
+            .into_iter()
+            .map(|token| token.parse())
+            .try_collect()
+            .with_context(|| "the image size must be integers")?;
+        let sizes = <[usize; 3]>::try_from(sizes)
+            .map_err(|_| format_err!("the image size must be CxHxW"))?;
+        sizes
+    };
+
     match kind.as_str() {
         "coco" => {}
         "iii" => {
-            build_iii_dataset(&dataset_dir, HashSet::new()).await?;
+            build_iii_dataset(
+                image_size,
+                &classes_file,
+                &dataset_dir,
+                output_file,
+                HashSet::new(),
+            )
+            .await?;
         }
         "voc" => {}
         _ => bail!("dataset kind '{}' is not supported"),
@@ -79,9 +113,18 @@ async fn build(args: BuildArgs) -> Result<()> {
 }
 
 async fn build_iii_dataset(
+    image_size: [usize; 3],
+    classes_file: impl AsRef<async_std::path::Path>,
     dataset_dir: impl AsRef<async_std::path::Path>,
+    output_file: impl AsRef<async_std::path::Path>,
     blacklist_files: HashSet<PathBuf>,
 ) -> Result<()> {
+    let classes = {
+        let classes = load_classes_file(&classes_file).await?;
+        Arc::new(classes)
+    };
+    let [target_c, target_h, target_w] = image_size;
+
     // list xml files
     let xml_files = {
         let dataset_dir = dataset_dir.as_ref().to_owned();
@@ -105,7 +148,7 @@ async fn build_iii_dataset(
     };
 
     // parse xml files
-    let samples: Vec<_> = {
+    let mut samples: Vec<_> = {
         stream::iter(xml_files.into_iter())
             .par_then(None, move |annotation_file| {
                 async move {
@@ -161,14 +204,125 @@ async fn build_iii_dataset(
             .await?
     };
 
+    samples.sort_by_cached_key(|sample| sample.annotation_file.clone());
+    let num_images = samples.len();
+
     // build cache meta
+    let image_stream = {
+        let classes = classes.clone();
+        stream::iter(samples.into_iter()).par_then(None, move |sample| {
+            let classes = classes.clone();
+            async move {
+                let IiiSample {
+                    annotation:
+                        voc::Annotation {
+                            object,
+                            size:
+                                voc::Size {
+                                    height: orig_h,
+                                    width: orig_w,
+                                    depth: orig_c,
+                                },
+                            ..
+                        },
+                    image_file,
+                    ..
+                } = sample;
+                ensure!(
+                    orig_c != target_c,
+                    "expcet target number of channels {}, but found {}",
+                    target_c,
+                    orig_c
+                );
+
+                // build bbox entries
+                let bboxes = object.into_iter().filter_map(move |obj| {
+                    let voc::Object {
+                        name,
+                        bndbox:
+                            voc::BndBox {
+                                ymin,
+                                ymax,
+                                xmin,
+                                xmax,
+                            },
+                        ..
+                    } = obj;
+                    let tlbr = [ymin.raw(), xmin.raw(), ymax.raw(), xmax.raw()];
+                    let class_index = classes.get_index_of(&name)?;
+
+                    Some(BBoxEntry {
+                        tlbr,
+                        class: class_index as u32,
+                    })
+                });
+
+                let data = async_std::task::spawn_blocking(move || -> Result<_> {
+                    let image = vision::image::load(&image_file)?
+                        .to_kind(Kind::Float)
+                        .g_div1(255.0)
+                        .resize2d_letterbox(target_h as i64, target_w as i64)?;
+                    assert_eq!(
+                        image.size3()?,
+                        (target_c as i64, target_h as i64, target_w as i64)
+                    );
+                    let data = unsafe {
+                        let numel = image.numel();
+                        let mut data: Vec<f32> = Vec::with_capacity(numel);
+                        let slice = slice::from_raw_parts_mut(data.as_mut_ptr(), numel);
+                        image.copy_data(slice, numel);
+                        data.set_len(numel);
+                        data
+                    };
+
+                    Ok(data)
+                })
+                .await?;
+
+                Fallible::Ok(ImageItem { data, bboxes })
+            }
+        })
+    };
+
+    {
+        let classes: IndexMap<_, _> = classes
+            .iter()
+            .enumerate()
+            .map(|(index, class)| (index as u32, class.clone()))
+            .collect();
+        let shape = [target_c as u32, target_h as u32, target_w as u32];
+
+        DatasetInit {
+            num_images,
+            shape,
+            alignment: None,
+            classes,
+            images: image_stream,
+        }
+        .write(&output_file)
+        .await?;
+    }
 
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct IiiSample {
-    pub image_file: PathBuf,
-    pub annotation_file: PathBuf,
-    pub annotation: voc::Annotation,
+async fn load_classes_file<P>(path: P) -> Result<IndexSet<String>>
+where
+    P: AsRef<async_std::path::Path>,
+{
+    let path = path.as_ref();
+    let content = async_std::fs::read_to_string(path).await?;
+    let lines: Vec<_> = content.lines().collect();
+    let classes: IndexSet<_> = lines.iter().cloned().map(ToOwned::to_owned).collect();
+    ensure!(
+        lines.len() == classes.len(),
+        "duplicated class names found in '{}'",
+        path.display()
+    );
+    ensure!(
+        classes.len() > 0,
+        "no classes found in '{}'",
+        path.display()
+    );
+    Ok(classes)
 }
