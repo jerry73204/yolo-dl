@@ -19,7 +19,7 @@ pub use std::{
     slice,
     sync::Arc,
 };
-pub use tch::{vision, Kind};
+pub use tch::{vision, Device, Kind};
 pub use tch_goodies::TensorExt;
 pub use voc_dataset as voc;
 

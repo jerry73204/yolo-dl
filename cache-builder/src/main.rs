@@ -259,6 +259,7 @@ async fn build_iii_dataset(
 
                 let data = async_std::task::spawn_blocking(move || -> Result<_> {
                     let image = vision::image::load(&image_file)?
+                        .to_device(Device::cuda_if_available())
                         .to_kind(Kind::Float)
                         .g_div1(255.0)
                         .resize2d_letterbox(target_h as i64, target_w as i64)?;
