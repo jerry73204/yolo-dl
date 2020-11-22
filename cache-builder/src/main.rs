@@ -217,12 +217,7 @@ async fn build_iii_dataset(
                     annotation:
                         voc::Annotation {
                             object,
-                            size:
-                                voc::Size {
-                                    height: orig_h,
-                                    width: orig_w,
-                                    depth: orig_c,
-                                },
+                            size: voc::Size { depth: orig_c, .. },
                             ..
                         },
                     image_file,
@@ -259,10 +254,9 @@ async fn build_iii_dataset(
 
                 let data = async_std::task::spawn_blocking(move || -> Result<_> {
                     let image = vision::image::load(&image_file)?
-                        .to_device(Device::cuda_if_available())
+                        .resize2d_letterbox(target_h as i64, target_w as i64)?
                         .to_kind(Kind::Float)
-                        .g_div1(255.0)
-                        .resize2d_letterbox(target_h as i64, target_w as i64)?;
+                        .g_div1(255.0);
                     assert_eq!(
                         image.size3()?,
                         (target_c as i64, target_h as i64, target_w as i64)
