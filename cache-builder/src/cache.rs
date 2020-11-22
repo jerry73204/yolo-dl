@@ -149,6 +149,11 @@ impl<I> DatasetInit<I> {
                 .try_par_then(None, move |(index, item)| {
                     let mmap = mmap.clone();
                     async move {
+                        ensure!(
+                            index < num_images,
+                            "the number of stream items must not exceed num_images"
+                        );
+
                         let ImageItem { bboxes, data } = item;
                         let data = data.as_ref();
                         let bytes = safe_transmute::transmute_to_bytes(data);
@@ -157,6 +162,7 @@ impl<I> DatasetInit<I> {
                         let chunk = unsafe {
                             let begin = data_offset + index * per_data_size;
                             let end = begin + per_image_size;
+                            debug_assert!(end <= bbox_offset);
                             let slice = &mmap.as_ref()[begin..end];
                             let chunk =
                                 slice::from_raw_parts_mut(slice.as_ptr() as *mut _, per_image_size);
@@ -170,6 +176,11 @@ impl<I> DatasetInit<I> {
                 .try_collect()
                 .await?
         };
+
+        ensure!(
+            bbox_chunks.len() == num_images,
+            "the number of stream items must be equal to num_images"
+        );
 
         let mut mmap = Arc::try_unwrap(mmap).unwrap();
 
