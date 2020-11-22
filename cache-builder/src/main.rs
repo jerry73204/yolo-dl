@@ -124,9 +124,18 @@ async fn build_iii_dataset(
         Arc::new(classes)
     };
     let [target_c, target_h, target_w] = image_size;
+    let bar = Arc::new(ProgressBar::new(0).with_style(
+        ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+            )
+            .progress_chars("#>-"),
+    ));
 
     // list xml files
     let xml_files = {
+        bar.println("listing annotation files...");
+
         let dataset_dir = dataset_dir.as_ref().to_owned();
         async_std::task::spawn_blocking(move || {
             let xml_files: Vec<_> = glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?
@@ -149,8 +158,15 @@ async fn build_iii_dataset(
 
     // parse xml files
     let mut samples: Vec<_> = {
-        stream::iter(xml_files.into_iter())
+        bar.println(format!("{} annotation files found", xml_files.len()));
+        bar.println("parsing annotation files...");
+        bar.set_length(xml_files.len() as u64);
+        let bar_clone = bar.clone();
+
+        let samples: Vec<_> = stream::iter(xml_files.into_iter())
             .par_then(None, move |annotation_file| {
+                let bar = bar_clone.clone();
+
                 async move {
                     let xml_content = async_std::fs::read_to_string(&*annotation_file)
                         .await
@@ -197,21 +213,35 @@ async fn build_iii_dataset(
                         image_file,
                     };
 
+                    bar.inc(1);
+
                     Fallible::Ok(sample)
                 }
             })
             .try_collect()
-            .await?
+            .await?;
+
+        bar.finish();
+
+        samples
     };
 
     samples.sort_by_cached_key(|sample| sample.annotation_file.clone());
     let num_images = samples.len();
 
     // build cache meta
+    bar.reset();
+    bar.set_length(samples.len() as u64);
+    bar.println("process images...");
+
     let image_stream = {
+        let bar_clone = bar.clone();
         let classes = classes.clone();
+
         stream::iter(samples.into_iter()).par_then(None, move |sample| {
             let classes = classes.clone();
+            let bar = bar_clone.clone();
+
             async move {
                 let IiiSample {
                     annotation:
@@ -274,6 +304,8 @@ async fn build_iii_dataset(
                 })
                 .await?;
 
+                bar.inc(1);
+
                 Fallible::Ok(ImageItem { data, bboxes })
             }
         })
@@ -297,6 +329,8 @@ async fn build_iii_dataset(
         .write(&output_file)
         .await?;
     }
+
+    bar.finish();
 
     Ok(())
 }

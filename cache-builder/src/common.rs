@@ -3,6 +3,7 @@ pub use argh::FromArgs;
 pub use arraystring::ArrayString;
 pub use futures::{io::Cursor, stream, AsyncWriteExt, StreamExt, TryStream, TryStreamExt};
 pub use indexmap::{IndexMap, IndexSet};
+pub use indicatif::{ProgressBar, ProgressStyle};
 pub use itertools::Itertools;
 pub use log::{info, warn};
 pub use memmap::MmapOptions;
