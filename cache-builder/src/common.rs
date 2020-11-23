@@ -1,7 +1,9 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use argh::FromArgs;
 pub use arraystring::ArrayString;
-pub use futures::{io::Cursor, stream, AsyncWriteExt, StreamExt, TryStream, TryStreamExt};
+pub use futures::{
+    stream, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, StreamExt, TryStream, TryStreamExt,
+};
 pub use indexmap::{IndexMap, IndexSet};
 pub use indicatif::{ProgressBar, ProgressStyle};
 pub use itertools::Itertools;

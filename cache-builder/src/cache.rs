@@ -1,4 +1,10 @@
 use crate::common::*;
+use async_std::{
+    fs::File,
+    io::{BufWriter, SeekFrom},
+    path::Path,
+};
+use futures::io::Cursor;
 use typenum::consts::*;
 
 pub const MAGIC: [u8; 8] = [b'a', b'e', b'o', b'n', b'd', b'a', b't', b'a'];
@@ -38,7 +44,7 @@ pub struct DatasetInit<I> {
 impl<I> DatasetInit<I> {
     pub async fn write<P, B, D, C, E>(self, output_path: P) -> Result<()>
     where
-        P: AsRef<async_std::path::Path>,
+        P: AsRef<Path>,
         I: 'static
             + TryStream<Ok = ImageItem<B, D>, Error = E>
             + TryStreamExt
@@ -78,10 +84,8 @@ impl<I> DatasetInit<I> {
         let class_entries: Vec<_> = classes
             .iter()
             .map(|(&index, name)| -> Result<_> {
-                Ok(ClassEntry {
-                    index,
-                    name: ArrayString::try_from_str(name)?,
-                })
+                let bytes = <[u8; 24]>::try_from(name.as_bytes())?;
+                Ok(ClassEntry { index, name: bytes })
             })
             .try_collect()?;
         let mut image_entries = vec![ImageEntry::zero(); num_images as usize];
@@ -112,7 +116,7 @@ impl<I> DatasetInit<I> {
 
         // set file size
         {
-            let output_file = async_std::fs::File::create(output_path).await?;
+            let output_file = File::create(output_path).await?;
             output_file.set_len(bbox_offset as u64).await?;
         }
 
@@ -210,11 +214,13 @@ impl<I> DatasetInit<I> {
         // write bbox entries
         drop(mmap);
 
-        let mut writer =
-            async_std::io::BufWriter::new(async_std::fs::File::open(output_path).await?);
-        writer
-            .write_all(&bincode::serialize(&bbox_entries)?)
-            .await?;
+        {
+            let mut writer = BufWriter::new(File::open(output_path).await?);
+            writer.seek(SeekFrom::Start(bbox_offset as u64)).await?;
+            writer
+                .write_all(&bincode::serialize(&bbox_entries)?)
+                .await?;
+        }
 
         Ok(())
     }
@@ -227,7 +233,7 @@ pub struct ImageItem<B, D> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Header {
-    magic: [u8; 8],
+    pub magic: [u8; 8],
     pub num_images: u32,
     pub num_classes: u32,
     pub component_kind: ComponentKind,
@@ -240,7 +246,7 @@ pub struct Header {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassEntry {
     pub index: u32,
-    pub name: ArrayString<U23>,
+    pub name: [u8; 24],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,4 +275,14 @@ pub enum ComponentKind {
     F32 = 0,
     F64 = 1,
     U8 = 2,
+}
+
+impl ComponentKind {
+    pub fn component_size(&self) -> usize {
+        match self {
+            Self::F32 => mem::size_of::<f32>(),
+            Self::F64 => mem::size_of::<f64>(),
+            Self::U8 => mem::size_of::<u8>(),
+        }
+    }
 }
