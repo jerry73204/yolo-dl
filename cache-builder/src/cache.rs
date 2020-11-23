@@ -84,7 +84,9 @@ impl<I> DatasetInit<I> {
         let class_entries: Vec<_> = classes
             .iter()
             .map(|(&index, name)| -> Result<_> {
-                let bytes = <[u8; 24]>::try_from(name.as_bytes())?;
+                let slice = name.as_bytes();
+                let mut bytes = [0; 24];
+                bytes[0..(slice.len())].clone_from_slice(slice);
                 Ok(ClassEntry { index, name: bytes })
             })
             .try_collect()?;
