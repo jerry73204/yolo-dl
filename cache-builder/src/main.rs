@@ -211,8 +211,9 @@ async fn build_iii_dataset(
     // list xml files
     let xml_files = {
         bar.println("listing annotation files...");
-
+        let bar = bar.clone();
         let dataset_dir = dataset_dir.as_ref().to_owned();
+
         async_std::task::spawn_blocking(move || {
             let xml_files: Vec<_> = glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?
                 .map(|result| -> Result<_> {
@@ -226,6 +227,9 @@ async fn build_iii_dataset(
                     }
                 })
                 .filter_map(|result| result.transpose())
+                .inspect(|_| {
+                    bar.inc_length(1);
+                })
                 .try_collect()?;
             Fallible::Ok(xml_files)
         })
@@ -236,7 +240,6 @@ async fn build_iii_dataset(
     let mut samples: Vec<_> = {
         bar.println(format!("{} annotation files found", xml_files.len()));
         bar.println("parsing annotation files...");
-        bar.set_length(xml_files.len() as u64);
         let bar_clone = bar.clone();
 
         let samples: Vec<_> = stream::iter(xml_files.into_iter())
