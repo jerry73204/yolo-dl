@@ -1,6 +1,6 @@
 use crate::{common::*, utils};
 use async_std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{BufWriter, SeekFrom},
     path::Path,
 };
@@ -161,6 +161,8 @@ impl<I> DatasetWriterInit<I> {
                             let end = begin + per_image_size;
                             assert!(end <= bbox_offset);
                             let slice = &mmap.as_ref()[begin..end];
+                            // to convert from an immutable to mutable slice
+                            // we have to bypass ownership checking here
                             let chunk =
                                 slice::from_raw_parts_mut(slice.as_ptr() as *mut _, per_image_size);
                             chunk
@@ -208,7 +210,7 @@ impl<I> DatasetWriterInit<I> {
         drop(mmap);
 
         {
-            let file = File::open(output_path).await?;
+            let file = OpenOptions::new().write(true).open(output_path).await?;
             file.set_len(bbox_offset as u64).await?;
             let mut writer = BufWriter::new(file);
             writer.seek(SeekFrom::Start(bbox_offset as u64)).await?;
