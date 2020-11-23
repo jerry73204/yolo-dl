@@ -19,6 +19,7 @@ struct Args {
 enum SubCommand {
     Info(InfoArgs),
     Build(BuildArgs),
+    ExtractImage(ExtractImageArgs),
 }
 
 /// Query cache file information
@@ -45,6 +46,21 @@ struct BuildArgs {
     pub output_file: PathBuf,
 }
 
+/// Extract images from cache file
+#[derive(Debug, Clone, FromArgs)]
+#[argh(subcommand, name = "extract_image")]
+struct ExtractImageArgs {
+    /// plot bounding boxes on images
+    #[argh(option, default = "false")]
+    pub with_bbox: bool,
+    #[argh(positional)]
+    pub range: String,
+    #[argh(positional)]
+    pub cache_file: PathBuf,
+    #[argh(positional)]
+    pub output_dir: PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IiiSample {
     pub image_file: PathBuf,
@@ -62,6 +78,9 @@ async fn main() -> Result<()> {
         }
         SubCommand::Build(build_args) => {
             build(build_args).await?;
+        }
+        SubCommand::ExtractImage(extract_args) => {
+            extract_images(extract_args).await?;
         }
     }
 
@@ -114,11 +133,56 @@ async fn info(args: InfoArgs) -> Result<()> {
     Ok(())
 }
 
+async fn extract_images(args: ExtractImageArgs) -> Result<()> {
+    let ExtractImageArgs {
+        with_bbox,
+        range,
+        cache_file,
+        output_dir,
+    } = args;
 
+    // parse range command line argument
+    let (range_begin, range_end) = {
+        let range_error = "the range format must be one of .., BEGIN.., ..END, BEGIN..END";
+        let mut tokens = range.split("..");
+        let range_begin: Option<usize> = match tokens.next() {
+            None => {
+                bail!("{}", range_error)
+            }
+            Some("") => None,
+            Some(token) => Some(token.parse()?),
         };
+        let range_end: Option<usize> = match tokens.next() {
+            None => bail!("{}", range_error),
+            Some("") => None,
+            Some(token) => Some(token.parse()?),
+        };
+        ensure!(matches!(tokens.next(), None), "{}", range_error);
 
+        if let (Some(begin), Some(end)) = (range_begin, range_end) {
+            ensure!(begin <= end, "invalid range");
+        }
 
+        (range_begin, range_end)
+    };
 
+    // load dataset
+    let Dataset {
+        header:
+            Header {
+                magic: _,
+                shape,
+                component_kind,
+                alignment,
+                data_offset,
+                bbox_offset,
+            },
+        classes,
+        image_entries,
+        bbox_entries,
+    } = Dataset::open(cache_file).await?;
+
+    todo!();
 
     Ok(())
 }
