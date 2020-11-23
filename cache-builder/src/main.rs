@@ -158,6 +158,30 @@ async fn info(args: InfoArgs) -> Result<()> {
             })
             .try_collect()?;
 
+        // print classes
+        println!("# header");
+
+        let mut table = Table::new();
+        table.add_row(row!["num_classes", classes.len()]);
+        table.add_row(row!["num_images", image_entries.len()]);
+        table.add_row(row!["num_bboxes", bbox_entries.len()]);
+        table.add_row(row!["shape", format!("{:?}", shape)]);
+        table.add_row(row!["component kind", format!("{:?}", component_kind)]);
+        table.add_row(row!["alignment", alignment]);
+        table.add_row(row!["data_offset", data_offset]);
+        table.add_row(row!["bbox_offset", bbox_offset]);
+        table.printstd();
+
+        println!();
+        println!("# classes");
+        let table = classes
+            .iter()
+            .fold(Table::new(), |mut table, (index, name)| {
+                table.add_row(row![index, name]);
+                table
+            });
+        table.printstd();
+
         Ok(())
     })
     .await?;
@@ -450,4 +474,21 @@ where
         path.display()
     );
     Ok(classes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resize_test() -> Result<()> {
+        let image_file = "/home/aeon/dataset/ntu_delivery/171207/FILE171207-095406F/10148.jpg";
+        let (target_h, target_w) = (256, 256);
+        let image = vision::image::load(image_file)?
+            .to_device(Device::Cpu)
+            .resize2d_letterbox(target_h, target_w)?
+            .to_kind(Kind::Float)
+            .g_div1(255.0);
+        Ok(())
+    }
 }

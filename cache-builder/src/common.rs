@@ -10,6 +10,7 @@ pub use itertools::Itertools;
 pub use log::{info, warn};
 pub use memmap::MmapOptions;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
+pub use prettytable::{cell, row, Table};
 pub use safe_transmute::TriviallyTransmutable;
 pub use serde::{
     de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer,
