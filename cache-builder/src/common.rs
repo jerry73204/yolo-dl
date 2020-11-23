@@ -11,8 +11,11 @@ pub use log::{info, warn};
 pub use memmap::MmapOptions;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use safe_transmute::TriviallyTransmutable;
-pub use serde::{de::DeserializeOwned, Deserialize, Serialize};
+pub use serde::{
+    de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer,
+};
 pub use std::{
+    borrow::Borrow,
     collections::{HashMap, HashSet},
     convert::TryFrom,
     error,

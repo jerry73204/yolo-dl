@@ -77,14 +77,9 @@ impl<I> DatasetWriterInit<I> {
             bbox_offset: 0,
         };
         let class_entries: Vec<_> = classes
-            .iter()
-            .map(|(&index, name)| -> Result<_> {
-                let slice = name.as_bytes();
-                let mut bytes = [0; 24];
-                bytes[0..(slice.len())].clone_from_slice(slice);
-                Ok(ClassEntry { index, name: bytes })
-            })
-            .try_collect()?;
+            .into_iter()
+            .map(|(index, name)| ClassEntry { index, name })
+            .collect();
         let mut image_entries = vec![ImageEntry::zero(); num_images as usize];
 
         // compute offsets
@@ -246,7 +241,8 @@ pub struct Header {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassEntry {
     pub index: u32,
-    pub name: [u8; 24],
+    #[serde(with = "serde_fixed_length_string")]
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,5 +280,51 @@ impl ComponentKind {
             Self::F64 => mem::size_of::<f64>(),
             Self::U8 => mem::size_of::<u8>(),
         }
+    }
+}
+
+mod serde_fixed_length_string {
+    use super::*;
+
+    serde_big_array::big_array! {
+        BigArray; SIZE
+    }
+
+    const SIZE: usize = 64;
+
+    pub fn serialize<S>(from: &String, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bytes = cesu8::to_java_cesu8(from.as_str());
+        if bytes.len() > SIZE {
+            return Err(S::Error::custom(format!(
+                "the size of Java CESU-8 encoding of string exceed the maximum size {}",
+                SIZE
+            )));
+        }
+        let array = {
+            let mut array = [0u8; SIZE];
+            array[0..(bytes.len())].copy_from_slice(bytes.borrow());
+            array
+        };
+        array.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let array = <[u8; SIZE]>::deserialize(deserializer)?;
+        let nul_pos = array
+            .iter()
+            .position(|&byte| byte == 0)
+            .unwrap_or_else(|| array.len());
+        let text = cesu8::from_java_cesu8(&array[0..nul_pos])
+            .map_err(|err| {
+                D::Error::custom(format!("failed to decode as CESU-8 string: {:?}", err))
+            })?
+            .to_string();
+        Ok(text)
     }
 }
