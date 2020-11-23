@@ -1,8 +1,9 @@
 pub mod cache;
 mod common;
+pub mod utils;
 
 use crate::{
-    cache::{BBoxEntry, DatasetInit, ImageItem},
+    cache::{BBoxEntry, ClassEntry, DatasetInit, Header, ImageEntry, ImageItem},
     common::*,
 };
 
@@ -68,7 +69,82 @@ async fn main() -> Result<()> {
 }
 
 async fn info(args: InfoArgs) -> Result<()> {
-    unimplemented!();
+    let InfoArgs { cache_file } = args;
+
+    // create memory mapped file
+    let mut mmap = unsafe {
+        let output_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&cache_file)?;
+        let mmap = MmapOptions::new().map_mut(&output_file)?;
+        mmap
+    };
+
+    async_std::task::spawn_blocking(move || -> Result<_> {
+        let mmap_slice = mmap.as_ref();
+        let mut cursor = std::io::Cursor::new(mmap_slice);
+
+        // deserialize header
+        let Header {
+            magic,
+            num_classes,
+            num_images,
+            alignment,
+            shape,
+            component_kind,
+            data_offset,
+            bbox_offset,
+        } = bincode::deserialize_from(&mut cursor)?;
+        let component_size = component_kind.component_size();
+
+        ensure!(magic == cache::MAGIC, "file magic does not match");
+
+        // deserialize class entries
+        let classes: IndexMap<_, _> = (0..num_classes)
+            .map(|_| -> Result<_> {
+                let ClassEntry { index, name } = bincode::deserialize_from(&mut cursor)?;
+                Ok((index, name))
+            })
+            .try_collect()?;
+
+        // deserialize image entries
+        let image_entries: Vec<_> = (0..num_images)
+            .map(|_| -> Result<_> {
+                let entry: ImageEntry = bincode::deserialize_from(&mut cursor)?;
+                Ok(entry)
+            })
+            .try_collect()?;
+
+        // calculate data and bbox section offsets
+        let per_image_size = {
+            let [c, h, w] = shape;
+            component_size * c as usize * h as usize * w as usize
+        };
+
+        let bbox_ranges = image_entries.iter().scan(0usize, |bbox_index, entry| {
+            let ImageEntry { num_bboxes, .. } = *entry;
+            let begin = *bbox_index;
+            let end = begin + num_bboxes as usize;
+            *bbox_index = end;
+            Some(begin..end)
+        });
+
+        // deserialize bboxes
+        let num_bboxes = bbox_ranges.last().map(|range| range.end).unwrap_or(0);
+
+        cursor.set_position(bbox_offset as u64);
+        let bbox_entries: Vec<_> = (0..num_bboxes)
+            .map(|_| -> Result<_> {
+                let bbox_entry: BBoxEntry = bincode::deserialize_from(&mut cursor)?;
+                Ok(bbox_entry)
+            })
+            .try_collect()?;
+
+        Ok(())
+    })
+    .await?;
+
     Ok(())
 }
 

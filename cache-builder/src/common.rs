@@ -11,11 +11,12 @@ pub use log::{info, warn};
 pub use memmap::MmapOptions;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use safe_transmute::TriviallyTransmutable;
-pub use serde::{Deserialize, Serialize};
+pub use serde::{de::DeserializeOwned, Deserialize, Serialize};
 pub use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     error,
+    io::prelude::*,
     marker::{PhantomData, Unpin},
     mem,
     path::{Path, PathBuf},

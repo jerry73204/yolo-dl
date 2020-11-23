@@ -9,7 +9,7 @@ use typenum::consts::*;
 
 pub const MAGIC: [u8; 8] = [b'a', b'e', b'o', b'n', b'd', b'a', b't', b'a'];
 
-fn nearest_multiple(value: usize, multiple: usize) -> usize {
+pub(crate) fn nearest_multiple(value: usize, multiple: usize) -> usize {
     (value + multiple - 1) & !(multiple - 1)
 }
 
@@ -166,7 +166,7 @@ impl<I> DatasetInit<I> {
                         let chunk = unsafe {
                             let begin = data_offset + index * per_data_size;
                             let end = begin + per_image_size;
-                            debug_assert!(end <= bbox_offset);
+                            assert!(end <= bbox_offset);
                             let slice = &mmap.as_ref()[begin..end];
                             let chunk =
                                 slice::from_raw_parts_mut(slice.as_ptr() as *mut _, per_image_size);
