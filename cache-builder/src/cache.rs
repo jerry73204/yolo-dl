@@ -220,6 +220,112 @@ impl<I> DatasetWriterInit<I> {
     }
 }
 
+#[derive(Debug)]
+pub struct Dataset {
+    pub header: Header,
+    pub classes: IndexMap<usize, String>,
+    pub image_entries: Vec<ImageEntry>,
+    pub bbox_entries: Vec<BBoxEntry>,
+}
+
+impl Dataset {
+    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+
+        // create memory mapped file
+        let mmap = unsafe {
+            let output_file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)?;
+            let mmap = MmapOptions::new().map_mut(&output_file)?;
+            mmap
+        };
+        let mmap_slice = mmap.as_ref();
+        let mut cursor = std::io::Cursor::new(mmap_slice);
+
+        #[derive(Debug, Deserialize)]
+        struct Prefix {
+            header: Header,
+            class_entries: Vec<ClassEntry>,
+            image_entries: Vec<ImageEntry>,
+        }
+
+        let Prefix {
+            header,
+            class_entries,
+            image_entries,
+        } = bincode::deserialize_from(&mut cursor)?;
+
+        // deserialize header
+        let Header {
+            magic,
+            alignment,
+            shape,
+            component_kind,
+            data_offset,
+            bbox_offset,
+        } = header;
+        let component_size = component_kind.component_size();
+
+        // sanity check
+
+        ensure!(magic == MAGIC, "file magic does not match");
+        ensure!(
+            bbox_offset >= data_offset,
+            "assert data_offset ({}) <= bbox_offset ({}) but failed",
+            data_offset,
+            bbox_offset
+        );
+
+        let num_classes = class_entries.len();
+        let classes: IndexMap<_, _> = class_entries
+            .into_iter()
+            .map(|ClassEntry { index, name }| (index as usize, name))
+            .collect();
+        ensure!(classes.len() == num_classes, "duplicated class id found");
+
+        // calculate data and bbox section offsets
+        let per_image_size = {
+            let [c, h, w] = shape;
+            component_size * c as usize * h as usize * w as usize
+        };
+        let per_data_size = utils::nearest_multiple(per_image_size, alignment as usize);
+
+        let diff = (bbox_offset - data_offset) as usize;
+        ensure!(
+            (diff % per_data_size == 0) && (diff / per_data_size == image_entries.len()),
+            "the size of data section does not match the number of images in header"
+        );
+
+        // deserialize bboxes
+        let bbox_ranges = image_entries.iter().scan(0usize, |bbox_index, entry| {
+            let ImageEntry { num_bboxes, .. } = *entry;
+            let begin = *bbox_index;
+            let end = begin + num_bboxes as usize;
+            *bbox_index = end;
+            Some(begin..end)
+        });
+
+        let num_bboxes = bbox_ranges.last().map(|range| range.end).unwrap_or(0);
+
+        cursor.set_position(bbox_offset as u64);
+        let bbox_entries: Vec<_> = (0..num_bboxes)
+            .map(|_| -> Result<_> {
+                let bbox_entry: BBoxEntry = bincode::deserialize_from(&mut cursor)?;
+                Ok(bbox_entry)
+            })
+            .try_collect()?;
+
+        Ok(Self {
+            header,
+            classes,
+            image_entries,
+            bbox_entries,
+        })
+    }
+}
+
 pub struct ImageItem<B, D> {
     pub bboxes: B,
     pub data: D,
@@ -263,7 +369,7 @@ pub struct BBoxEntry {
     pub class: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ComponentKind {
     F32 = 0,
     F64 = 1,

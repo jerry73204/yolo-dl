@@ -3,7 +3,7 @@ mod common;
 pub mod utils;
 
 use crate::{
-    cache::{BBoxEntry, ClassEntry, DatasetWriterInit, Header, ImageEntry, ImageItem},
+    cache::{BBoxEntry, ClassEntry, Dataset, DatasetWriterInit, Header, ImageEntry, ImageItem},
     common::*,
 };
 
@@ -71,120 +71,54 @@ async fn main() -> Result<()> {
 async fn info(args: InfoArgs) -> Result<()> {
     let InfoArgs { cache_file } = args;
 
-    // create memory mapped file
-    let mmap = unsafe {
-        let output_file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&cache_file)?;
-        let mmap = MmapOptions::new().map_mut(&output_file)?;
-        mmap
-    };
+    // load dataset
+    let Dataset {
+        header:
+            Header {
+                magic: _,
+                shape,
+                component_kind,
+                alignment,
+                data_offset,
+                bbox_offset,
+            },
+        classes,
+        image_entries,
+        bbox_entries,
+    } = Dataset::open(cache_file).await?;
 
-    async_std::task::spawn_blocking(move || -> Result<_> {
-        let mmap_slice = mmap.as_ref();
-        let mut cursor = std::io::Cursor::new(mmap_slice);
+    // print classes
+    println!("# header");
 
-        #[derive(Debug, Deserialize)]
-        struct Prefix {
-            header: Header,
-            class_entries: Vec<ClassEntry>,
-            image_entries: Vec<ImageEntry>,
-        }
+    let mut table = Table::new();
+    table.add_row(row!["num_classes", classes.len()]);
+    table.add_row(row!["num_images", image_entries.len()]);
+    table.add_row(row!["num_bboxes", bbox_entries.len()]);
+    table.add_row(row!["shape", format!("{:?}", shape)]);
+    table.add_row(row!["component kind", format!("{:?}", component_kind)]);
+    table.add_row(row!["alignment", alignment]);
+    table.add_row(row!["data_offset", data_offset]);
+    table.add_row(row!["bbox_offset", bbox_offset]);
+    table.printstd();
 
-        let Prefix {
-            header,
-            class_entries,
-            image_entries,
-        } = bincode::deserialize_from(&mut cursor)?;
-
-        // deserialize header
-        let Header {
-            magic,
-            alignment,
-            shape,
-            component_kind,
-            data_offset,
-            bbox_offset,
-        } = header;
-        let component_size = component_kind.component_size();
-
-        // sanity check
-
-        ensure!(magic == cache::MAGIC, "file magic does not match");
-        ensure!(
-            bbox_offset >= data_offset,
-            "assert data_offset ({}) <= bbox_offset ({}) but failed",
-            data_offset,
-            bbox_offset
-        );
-
-        let num_classes = class_entries.len();
-        let classes: IndexMap<_, _> = class_entries
-            .into_iter()
-            .map(|ClassEntry { index, name }| (index, name))
-            .collect();
-        ensure!(classes.len() == num_classes, "duplicated class id found");
-
-        // calculate data and bbox section offsets
-        let per_image_size = {
-            let [c, h, w] = shape;
-            component_size * c as usize * h as usize * w as usize
-        };
-        let per_data_size = utils::nearest_multiple(per_image_size, alignment as usize);
-
-        let diff = (bbox_offset - data_offset) as usize;
-        ensure!(
-            (diff % per_data_size == 0) && (diff / per_data_size == image_entries.len()),
-            "the size of data section does not match the number of images in header"
-        );
-
-        // deserialize bboxes
-        let bbox_ranges = image_entries.iter().scan(0usize, |bbox_index, entry| {
-            let ImageEntry { num_bboxes, .. } = *entry;
-            let begin = *bbox_index;
-            let end = begin + num_bboxes as usize;
-            *bbox_index = end;
-            Some(begin..end)
+    println!();
+    println!("# classes");
+    let table = classes
+        .iter()
+        .fold(Table::new(), |mut table, (index, name)| {
+            table.add_row(row![index, name]);
+            table
         });
+    table.printstd();
 
-        let num_bboxes = bbox_ranges.last().map(|range| range.end).unwrap_or(0);
+    Ok(())
+}
 
-        cursor.set_position(bbox_offset as u64);
-        let bbox_entries: Vec<_> = (0..num_bboxes)
-            .map(|_| -> Result<_> {
-                let bbox_entry: BBoxEntry = bincode::deserialize_from(&mut cursor)?;
-                Ok(bbox_entry)
-            })
-            .try_collect()?;
 
-        // print classes
-        println!("# header");
+        };
 
-        let mut table = Table::new();
-        table.add_row(row!["num_classes", classes.len()]);
-        table.add_row(row!["num_images", image_entries.len()]);
-        table.add_row(row!["num_bboxes", bbox_entries.len()]);
-        table.add_row(row!["shape", format!("{:?}", shape)]);
-        table.add_row(row!["component kind", format!("{:?}", component_kind)]);
-        table.add_row(row!["alignment", alignment]);
-        table.add_row(row!["data_offset", data_offset]);
-        table.add_row(row!["bbox_offset", bbox_offset]);
-        table.printstd();
 
-        println!();
-        println!("# classes");
-        let table = classes
-            .iter()
-            .fold(Table::new(), |mut table, (index, name)| {
-                table.add_row(row![index, name]);
-                table
-            });
-        table.printstd();
 
-        Ok(())
-    })
-    .await?;
 
     Ok(())
 }
