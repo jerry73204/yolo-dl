@@ -213,7 +213,9 @@ impl<I> DatasetWriterInit<I> {
         drop(mmap);
 
         {
-            let mut writer = BufWriter::new(File::open(output_path).await?);
+            let file = File::open(output_path).await?;
+            file.set_len(bbox_offset as u64).await?;
+            let mut writer = BufWriter::new(file);
             writer.seek(SeekFrom::Start(bbox_offset as u64)).await?;
             writer
                 .write_all(&bincode::serialize(&bbox_entries)?)
