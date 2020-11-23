@@ -85,36 +85,46 @@ async fn info(args: InfoArgs) -> Result<()> {
         let mmap_slice = mmap.as_ref();
         let mut cursor = std::io::Cursor::new(mmap_slice);
 
+        #[derive(Debug, Deserialize)]
+        struct Prefix {
+            header: Header,
+            class_entries: Vec<ClassEntry>,
+            image_entries: Vec<ImageEntry>,
+        }
+
+        let Prefix {
+            header,
+            class_entries,
+            image_entries,
+        } = bincode::deserialize_from(&mut cursor)?;
+
         // deserialize header
         let Header {
             magic,
-            num_classes,
-            num_images,
             alignment,
             shape,
             component_kind,
             data_offset,
             bbox_offset,
-        } = bincode::deserialize_from(&mut cursor)?;
+        } = header;
         let component_size = component_kind.component_size();
 
+        // sanity check
+
         ensure!(magic == cache::MAGIC, "file magic does not match");
+        ensure!(
+            bbox_offset >= data_offset,
+            "assert data_offset ({}) <= bbox_offset ({}) but failed",
+            data_offset,
+            bbox_offset
+        );
 
-        // deserialize class entries
-        let classes: IndexMap<_, _> = (0..num_classes)
-            .map(|_| -> Result<_> {
-                let ClassEntry { index, name } = bincode::deserialize_from(&mut cursor)?;
-                Ok((index, name))
-            })
-            .try_collect()?;
-
-        // deserialize image entries
-        let image_entries: Vec<_> = (0..num_images)
-            .map(|_| -> Result<_> {
-                let entry: ImageEntry = bincode::deserialize_from(&mut cursor)?;
-                Ok(entry)
-            })
-            .try_collect()?;
+        let num_classes = class_entries.len();
+        let classes: IndexMap<_, _> = class_entries
+            .into_iter()
+            .map(|ClassEntry { index, name }| (index, name))
+            .collect();
+        ensure!(classes.len() == num_classes, "duplicated class id found");
 
         // calculate data and bbox section offsets
         let per_image_size = {
@@ -123,6 +133,13 @@ async fn info(args: InfoArgs) -> Result<()> {
         };
         let per_data_size = utils::nearest_multiple(per_image_size, alignment as usize);
 
+        let diff = (bbox_offset - data_offset) as usize;
+        ensure!(
+            (diff % per_data_size == 0) && (diff / per_data_size == image_entries.len()),
+            "the size of data section does not match the number of images in header"
+        );
+
+        // deserialize bboxes
         let bbox_ranges = image_entries.iter().scan(0usize, |bbox_index, entry| {
             let ImageEntry { num_bboxes, .. } = *entry;
             let begin = *bbox_index;
@@ -131,7 +148,6 @@ async fn info(args: InfoArgs) -> Result<()> {
             Some(begin..end)
         });
 
-        // deserialize bboxes
         let num_bboxes = bbox_ranges.last().map(|range| range.end).unwrap_or(0);
 
         cursor.set_position(bbox_offset as u64);

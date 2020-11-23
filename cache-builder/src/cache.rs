@@ -60,7 +60,6 @@ impl<I> DatasetWriterInit<I> {
             classes,
             images,
         } = self;
-        let num_classes = classes.len();
         let alignment = alignment.unwrap_or(64);
         let component_kind = C::KIND;
         let component_size = C::SIZE;
@@ -68,8 +67,6 @@ impl<I> DatasetWriterInit<I> {
         // initialize header
         let mut header = Header {
             magic: MAGIC,
-            num_classes: num_classes as u32,
-            num_images: num_images as u32,
             component_kind,
             shape,
             alignment: alignment as u32,
@@ -231,8 +228,6 @@ pub struct ImageItem<B, D> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Header {
     pub magic: [u8; 8],
-    pub num_images: u32,
-    pub num_classes: u32,
     pub component_kind: ComponentKind,
     pub shape: [u32; 3],
     pub alignment: u32,
