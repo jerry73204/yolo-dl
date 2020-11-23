@@ -1,17 +1,12 @@
-use crate::common::*;
+use crate::{common::*, utils};
 use async_std::{
     fs::File,
     io::{BufWriter, SeekFrom},
     path::Path,
 };
 use futures::io::Cursor;
-use typenum::consts::*;
 
 pub const MAGIC: [u8; 8] = [b'a', b'e', b'o', b'n', b'd', b'a', b't', b'a'];
-
-pub(crate) fn nearest_multiple(value: usize, multiple: usize) -> usize {
-    (value + multiple - 1) & !(multiple - 1)
-}
 
 pub trait Component
 where
@@ -33,7 +28,7 @@ impl Component for f64 {
     const KIND: ComponentKind = ComponentKind::F64;
 }
 
-pub struct DatasetInit<I> {
+pub struct DatasetWriterInit<I> {
     pub num_images: usize,
     pub shape: [u32; 3],
     pub alignment: Option<usize>,
@@ -41,7 +36,7 @@ pub struct DatasetInit<I> {
     pub images: I,
 }
 
-impl<I> DatasetInit<I> {
+impl<I> DatasetWriterInit<I> {
     pub async fn write<P, B, D, C, E>(self, output_path: P) -> Result<()>
     where
         P: AsRef<Path>,
@@ -100,14 +95,15 @@ impl<I> DatasetInit<I> {
             let [c, h, w] = shape;
             (component_size as u32 * c * h * w) as usize
         };
-        let per_data_size = { nearest_multiple(per_image_size, alignment) };
+        let per_data_size = { utils::nearest_multiple(per_image_size, alignment) };
         let data_size = per_data_size * num_images as usize;
 
         let header_offset = 0usize;
         let class_entries_offset = header_offset + header_size;
         let image_entries_offset = class_entries_offset + class_entries_size;
-        let data_offset = nearest_multiple(image_entries_offset + image_entries_size, alignment);
-        let bbox_offset = nearest_multiple(data_offset + data_size, alignment);
+        let data_offset =
+            utils::nearest_multiple(image_entries_offset + image_entries_size, alignment);
+        let bbox_offset = utils::nearest_multiple(data_offset + data_size, alignment);
 
         // finish header
         let header = {

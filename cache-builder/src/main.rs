@@ -3,7 +3,7 @@ mod common;
 pub mod utils;
 
 use crate::{
-    cache::{BBoxEntry, ClassEntry, DatasetInit, Header, ImageEntry, ImageItem},
+    cache::{BBoxEntry, ClassEntry, DatasetWriterInit, Header, ImageEntry, ImageItem},
     common::*,
 };
 
@@ -72,7 +72,7 @@ async fn info(args: InfoArgs) -> Result<()> {
     let InfoArgs { cache_file } = args;
 
     // create memory mapped file
-    let mut mmap = unsafe {
+    let mmap = unsafe {
         let output_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -121,6 +121,7 @@ async fn info(args: InfoArgs) -> Result<()> {
             let [c, h, w] = shape;
             component_size * c as usize * h as usize * w as usize
         };
+        let per_data_size = utils::nearest_multiple(per_image_size, alignment as usize);
 
         let bbox_ranges = image_entries.iter().scan(0usize, |bbox_index, entry| {
             let ImageEntry { num_bboxes, .. } = *entry;
@@ -398,7 +399,7 @@ async fn build_iii_dataset(
             .collect();
         let shape = [target_c as u32, target_h as u32, target_w as u32];
 
-        DatasetInit {
+        DatasetWriterInit {
             num_images,
             shape,
             alignment: None,
