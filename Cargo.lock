@@ -193,7 +193,7 @@ dependencies = [
  "async-io",
  "async-mutex",
  "blocking",
- "crossbeam-utils 0.8.0",
+ "crossbeam-utils",
  "futures-channel",
  "futures-core",
  "futures-io",
@@ -429,56 +429,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cache-builder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "approx",
- "argh",
- "arraystring",
- "async-std",
- "bincode",
- "cesu8",
- "chrono",
- "coco",
- "derive_more",
- "futures",
- "glob",
- "image",
- "indexmap",
- "indicatif",
- "itertools 0.9.0",
- "json5",
- "log",
- "memmap",
- "ndarray",
- "noisy_float",
- "num_cpus",
- "par-stream",
- "percent-encoding",
- "pretty_env_logger",
- "prettytable-rs",
- "rand",
- "regex",
- "safe-transmute",
- "serde",
- "serde-big-array",
- "serde-xml-rs",
- "serde_json",
- "tch",
- "tch-goodies",
- "tch-serde",
- "tch-tensor-like",
- "tfrecord",
- "tokio 0.3.4",
- "typenum",
- "unzip-n",
- "uuid",
- "voc-dataset",
- "yolo-dl",
-]
-
-[[package]]
 name = "cache-padded"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -646,7 +596,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dca26ee1f8d361640700bde38b2c37d8c22b3ce2d360e1fc1c74ea4b0aa7d775"
 dependencies = [
  "cfg-if 1.0.0",
- "crossbeam-utils 0.8.0",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -657,7 +607,7 @@ checksum = "94af6efb46fef72616855b036a624cf27ba656ffc9be1b9a3c931cfc7749a9a9"
 dependencies = [
  "cfg-if 1.0.0",
  "crossbeam-epoch",
- "crossbeam-utils 0.8.0",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -668,21 +618,10 @@ checksum = "ec0f606a85340376eef0d6d8fec399e6d4a544d648386c6645eb6d0653b27d9f"
 dependencies = [
  "cfg-if 1.0.0",
  "const_fn",
- "crossbeam-utils 0.8.0",
+ "crossbeam-utils",
  "lazy_static",
  "memoffset",
  "scopeguard",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
-dependencies = [
- "autocfg",
- "cfg-if 0.1.10",
- "lazy_static",
 ]
 
 [[package]]
@@ -1442,6 +1381,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "mmap-dataset"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "approx",
+ "argh",
+ "arraystring",
+ "async-std",
+ "bincode",
+ "cesu8",
+ "chrono",
+ "coco",
+ "derive_more",
+ "futures",
+ "glob",
+ "image",
+ "indexmap",
+ "indicatif",
+ "itertools 0.9.0",
+ "json5",
+ "log",
+ "memmap",
+ "ndarray",
+ "noisy_float",
+ "num_cpus",
+ "par-stream",
+ "percent-encoding",
+ "pretty_env_logger",
+ "prettytable-rs",
+ "rand",
+ "regex",
+ "safe-transmute",
+ "serde",
+ "serde-big-array",
+ "serde-xml-rs",
+ "serde_json",
+ "tch",
+ "tch-goodies",
+ "tch-serde",
+ "tch-tensor-like",
+ "tfrecord",
+ "tokio 0.3.4",
+ "typenum",
+ "unzip-n",
+ "uuid",
+ "voc-dataset",
+ "yolo-dl",
+]
+
+[[package]]
 name = "multimap"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1974,7 +1963,7 @@ checksum = "9ab346ac5921dc62ffa9f89b7a773907511cdfa5490c572ae9be1be33e8afa4a"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-deque",
- "crossbeam-utils 0.8.0",
+ "crossbeam-utils",
  "lazy_static",
  "num_cpus",
 ]
@@ -2040,9 +2029,9 @@ checksum = "194d8e591e405d1eecf28819740abed6d719d1a2db87fc0bcdedee9a26d55560"
 
 [[package]]
 name = "ring"
-version = "0.16.16"
+version = "0.16.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b72b84d47e8ec5a4f2872e8262b8f8256c5be1c938a7d6d3a867a3ba8f722f74"
+checksum = "c5911690c9b773bab7e657471afc207f3827b249a657241327e3544d79bcabdd"
 dependencies = [
  "cc",
  "libc",
@@ -2055,14 +2044,14 @@ dependencies = [
 
 [[package]]
 name = "rust-argon2"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dab61250775933275e84053ac235621dfb739556d5c54a2f2e9313b7cf43a19"
+checksum = "4b18820d944b33caa75a71378964ac46f58517c92b6ae5f762636247c09e78fb"
 dependencies = [
- "base64 0.12.3",
+ "base64 0.13.0",
  "blake2b_simd",
  "constant_time_eq",
- "crossbeam-utils 0.7.2",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -2361,9 +2350,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "443b4178719c5a851e1bde36ce12da21d74a0e60b4d982ec3385a933c812f0f6"
+checksum = "3b4f34193997d92804d359ed09953e25d5138df6bcc055a71bf68ee89fdf9223"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2762,9 +2751,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.7.0"
+version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db8716a166f290ff49dabc18b44aa407cb7c6dbe1aa0971b44b8a24b0ca35aae"
+checksum = "bb0d2e7be6ae3a5fa87eed5fb451aff96f2573d2694942e40543ae0bbe19c796"
 
 [[package]]
 name = "unicode-width"
