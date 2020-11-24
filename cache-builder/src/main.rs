@@ -456,18 +456,32 @@ async fn build_iii_dataset(
                     annotation:
                         voc::Annotation {
                             object,
-                            size: voc::Size { depth: orig_c, .. },
+                            size:
+                                voc::Size {
+                                    depth: orig_c,
+                                    height: orig_h,
+                                    width: orig_w,
+                                },
                             ..
                         },
                     image_file,
                     ..
                 } = sample;
+
                 ensure!(
                     orig_c == target_c,
                     "expcet target number of channels {}, but found {}",
                     target_c,
                     orig_c
                 );
+
+                let scale = (target_h as f64 / orig_h as f64).min(target_w as f64 / orig_w as f64);
+                let (margin_top, margin_left) = {
+                    let (inner_h, inner_w) = (orig_h as f64 * scale, orig_w as f64 * scale);
+                    let margin_top = (target_h as f64 - inner_h) / 2.0;
+                    let margin_left = (target_w as f64 - inner_w) / 2.0;
+                    (margin_top, margin_left)
+                };
 
                 // build bbox entries
                 let bboxes = object.into_iter().filter_map(move |obj| {
@@ -482,10 +496,14 @@ async fn build_iii_dataset(
                             },
                         ..
                     } = obj;
-                    let tlbr = [ymin.raw(), xmin.raw(), ymax.raw(), xmax.raw()];
-                    let class_index = classes.get_index_of(&name)?;
 
-                    // TODO: re-compute bbox range
+                    let tlbr = [
+                        (ymin.raw() * scale + margin_top) / target_h as f64,
+                        (xmin.raw() * scale + margin_left) / target_w as f64,
+                        (ymax.raw() * scale + margin_top) / target_h as f64,
+                        (xmax.raw() * scale + margin_left) / target_w as f64,
+                    ];
+                    let class_index = classes.get_index_of(&name)?;
 
                     Some(BBoxEntry {
                         tlbr,
