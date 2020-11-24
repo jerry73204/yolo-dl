@@ -42,11 +42,11 @@ impl RandomAccessDataset for CachedDataset {
         self.dataset.records().len()
     }
 
-    fn nth(&self, index: usize) -> Box<dyn Future<Output = Result<DataRecord>>> {
+    fn nth(&self, index: usize) -> Pin<Box<dyn Future<Output = Result<DataRecord>> + Send>> {
         let record = self.dataset.records().get(index).cloned();
         let cache_loader = self.cache_loader.clone();
 
-        Box::new(async move {
+        Box::pin(async move {
             let FileRecord { path, bboxes, .. } =
                 &*record.ok_or_else(|| format_err!("invalid index {}", index))?;
 

@@ -21,5 +21,5 @@ where
     Self: GenericDataset,
 {
     fn num_records(&self) -> usize;
-    fn nth(&self, index: usize) -> Box<dyn Future<Output = Result<DataRecord>>>;
+    fn nth(&self, index: usize) -> Pin<Box<dyn Future<Output = Result<DataRecord>> + Send>>;
 }

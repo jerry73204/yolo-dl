@@ -5,13 +5,11 @@ use crate::{
     message::LoggingMessage,
 };
 
-// dataset types
-
 #[derive(Debug)]
 pub struct TrainingStream {
     config: Arc<Config>,
     logging_tx: broadcast::Sender<LoggingMessage>,
-    dataset: Arc<Box<dyn FileDataset>>,
+    dataset: Arc<Box<dyn RandomAccessDataset>>,
 }
 
 impl GenericDataset for TrainingStream {
@@ -24,80 +22,73 @@ impl GenericDataset for TrainingStream {
     }
 }
 
-impl FileDataset for TrainingStream {
-    fn records(&self) -> &[Arc<FileRecord>] {
-        &self.dataset.records()
-    }
-}
+// impl FileDataset for TrainingStream {
+//     fn records(&self) -> &[Arc<FileRecord>] {
+//         &self.dataset.records()
+//     }
+// }
 
 impl TrainingStream {
     pub async fn new(
         config: Arc<Config>,
         logging_tx: broadcast::Sender<LoggingMessage>,
     ) -> Result<Self> {
-        let Config {
-            dataset: DatasetConfig { kind, .. },
-            ..
-        } = &*config;
+        let random_access_dataset: Box<dyn RandomAccessDataset> = {
+            let Config {
+                dataset:
+                    DatasetConfig {
+                        ref kind,
+                        image_size,
+                        ..
+                    },
+                preprocessor:
+                    PreprocessorConfig {
+                        ref cache_dir,
+                        device,
+                        ..
+                    },
+                ..
+            } = *config;
+            let file_dataset: Box<dyn FileDataset> = match kind {
+                DatasetKind::Coco {
+                    dataset_dir,
+                    dataset_name,
+                    ..
+                } => Box::new(CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?),
+                DatasetKind::Voc { dataset_dir, .. } => {
+                    Box::new(VocDataset::load(config.clone(), dataset_dir).await?)
+                }
+                DatasetKind::Iii {
+                    dataset_dir,
+                    blacklist_files,
+                    ..
+                } => Box::new(
+                    IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone()).await?,
+                ),
+            };
 
-        let dataset: Box<dyn FileDataset> = match kind {
-            DatasetKind::Coco {
-                dataset_dir,
-                dataset_name,
-                ..
-            } => Box::new(CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?),
-            DatasetKind::Voc { dataset_dir, .. } => {
-                Box::new(VocDataset::load(config.clone(), dataset_dir).await?)
-            }
-            DatasetKind::Iii {
-                dataset_dir,
-                blacklist_files,
-                ..
-            } => Box::new(
-                IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone()).await?,
-            ),
+            let cached_dataset =
+                CachedDataset::new(Arc::new(file_dataset), cache_dir, image_size.get(), device)
+                    .await?;
+            Box::new(cached_dataset)
         };
 
         Ok(Self {
             config,
             logging_tx,
-            dataset: Arc::new(dataset),
+            dataset: Arc::new(random_access_dataset),
         })
     }
 
     pub async fn train_stream(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
-        let Config {
-            dataset: DatasetConfig { image_size, .. },
-            preprocessor:
-                PreprocessorConfig {
-                    ref cache_dir,
-                    mosaic_prob,
-                    mosaic_margin,
-                    // affine_prob,
-                    // rotate_degrees,
-                    // translation,
-                    // scale,
-                    // shear,
-                    // horizontal_flip,
-                    // vertical_flip,
-                    device,
-                    ..
-                },
-            training: TrainingConfig { batch_size, .. },
-            ..
-        } = *self.config;
-        let batch_size = batch_size.get();
-        let image_size = image_size.get() as i64;
-        let num_records = self.dataset.records().len();
-
-        // repeat records
+        // repeating
         let stream = futures::stream::repeat(()).enumerate();
 
         // sample 4 records per step
         let stream = {
-            let dataset = self.dataset.clone();
+            let num_records = self.dataset.num_records();
 
             stream.flat_map(move |(epoch, ())| {
                 let mut rng = rand::thread_rng();
@@ -110,63 +101,47 @@ impl TrainingStream {
                     })
                     .collect_vec();
 
-                let record_vec = (0..num_records)
+                let indexes_vec = (0..num_records)
                     .map(|_| {
-                        let record_vec = index_iters
+                        let indexes = index_iters
                             .iter_mut()
                             .map(|iter| iter.next().unwrap())
-                            .map(|index| dataset.records()[index].clone())
                             .collect_vec();
-                        (epoch, record_vec)
+                        (epoch, indexes)
                     })
                     .collect_vec();
 
-                futures::stream::iter(record_vec)
+                futures::stream::iter(indexes_vec)
             })
         };
 
         // add step count
         let stream = stream
             .enumerate()
-            .map(|(step, (epoch, record_vec))| Ok((step, epoch, record_vec)));
+            .map(|(step, (epoch, indexes))| Ok((step, epoch, indexes)));
 
         // start of unordered ops
         let stream = stream.try_overflowing_enumerate();
 
         // load and cache images
         let stream = {
-            let cache_loader =
-                Arc::new(CacheLoader::new(&cache_dir, image_size as usize, 3, device).await?);
+            let dataset = self.dataset.clone();
             let logging_tx = self.logging_tx.clone();
 
             stream.try_par_then(None, move |args| {
-                let (index, (step, epoch, record_vec)) = args;
-                let cache_loader = cache_loader.clone();
+                let (index, (step, epoch, record_indexes)) = args;
+                let dataset = dataset.clone();
                 let logging_tx = logging_tx.clone();
                 let mut timing = Timing::new("pipeline");
 
                 async move {
-                    let image_bbox_vec: Vec<_> = stream::iter(record_vec.into_iter())
-                        .par_then(None, move |record| {
-                            let cache_loader = cache_loader.clone();
+                    let image_bbox_vec: Vec<_> = stream::iter(record_indexes.into_iter())
+                        .par_then(None, move |record_index| {
+                            let dataset = dataset.clone();
 
                             async move {
-                                let FileRecord {
-                                    path: ref image_path,
-                                    ref bboxes,
-                                    ..
-                                } = *record;
-
-                                // load cache
-                                let (image, bboxes) = cache_loader
-                                    .load_cache(image_path, bboxes)
-                                    .await
-                                    .with_context(|| {
-                                        format!(
-                                            "failed to load image file {}",
-                                            record.path.display()
-                                        )
-                                    })?;
+                                let DataRecord { image, bboxes } =
+                                    dataset.nth(record_index).await?;
                                 Fallible::Ok((image, bboxes))
                             }
                         })
@@ -193,6 +168,23 @@ impl TrainingStream {
 
         // make mosaic
         let stream = {
+            let Config {
+                preprocessor:
+                    PreprocessorConfig {
+                        mosaic_prob,
+                        mosaic_margin,
+                        /* affine_prob,
+                         * rotate_degrees,
+                         * translation,
+                         * scale,
+                         * shear,
+                         * horizontal_flip,
+                         * vertical_flip, */
+                        ..
+                    },
+                ..
+            } = *self.config;
+
             let mosaic_processor = Arc::new(
                 ParallelMosaicProcessorInit {
                     mosaic_margin: mosaic_margin.raw(),
@@ -283,13 +275,20 @@ impl TrainingStream {
         let stream = stream.try_reorder_enumerated();
 
         // group into chunks
-        let stream = stream.chunks(batch_size).overflowing_enumerate().par_then(
-            None,
-            |(index, results)| async move {
-                let chunk: Vec<_> = results.into_iter().try_collect()?;
-                Fallible::Ok((index, chunk))
-            },
-        );
+        let stream = {
+            let Config {
+                training: TrainingConfig { batch_size, .. },
+                ..
+            } = *self.config;
+
+            stream
+                .chunks(batch_size.get())
+                .overflowing_enumerate()
+                .par_then(None, |(index, results)| async move {
+                    let chunk: Vec<_> = results.into_iter().try_collect()?;
+                    Fallible::Ok((index, chunk))
+                })
+        };
 
         // convert to batched type
         let stream = stream.try_par_then(None, |(index, chunk)| {
