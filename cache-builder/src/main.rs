@@ -242,8 +242,8 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
                 };
 
                 let tensor = if draw_bbox {
-                    let [num_channels, height, width] = shape;
-                    let color = Tensor::zeros(&[num_channels], (Kind::Uint8, Device::Cpu));
+                    let [_channels, height, width] = shape;
+                    let color = Tensor::of_slice(&[255u8, 255, 0]);
 
                     let tensor = bboxes.iter().fold(tensor, |mut tensor, bbox| {
                         let BBoxEntry {
@@ -254,7 +254,7 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
                         let bbox_b = (bbox_b * height as f64) as i64;
                         let bbox_l = (bbox_l * width as f64) as i64;
                         let bbox_r = (bbox_r * width as f64) as i64;
-                        tensor.draw_rect_(bbox_t, bbox_l, bbox_b, bbox_r, 3, &color)
+                        tensor.draw_rect_(bbox_t, bbox_l, bbox_b, bbox_r, 1, &color)
                     });
 
                     tensor
@@ -340,7 +340,7 @@ async fn build_iii_dataset(
 
     // list xml files
     let xml_files = {
-        bar.println("listing annotation files...");
+        bar.println("scanning annotation files...");
         let bar = bar.clone();
         let dataset_dir = dataset_dir.as_ref().to_owned();
 
