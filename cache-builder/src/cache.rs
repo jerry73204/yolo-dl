@@ -360,7 +360,7 @@ impl Dataset {
         })
     }
 
-    pub fn image_iter(&self) -> impl Iterator<Item = (&[u8], &[BBoxEntry])> {
+    pub fn image_iter(&self) -> impl Iterator<Item = (&[u8], &[BBoxEntry])> + ExactSizeIterator {
         let Self {
             bbox_entries,
             data_indexes,

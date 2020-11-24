@@ -3,7 +3,7 @@ mod common;
 pub mod utils;
 
 use crate::{
-    cache::{BBoxEntry, ClassEntry, Dataset, DatasetWriterInit, Header, ImageEntry, ImageItem},
+    cache::{BBoxEntry, ComponentKind, Dataset, DatasetWriterInit, Header, ImageItem},
     common::*,
 };
 
@@ -50,9 +50,9 @@ struct BuildArgs {
 #[derive(Debug, Clone, FromArgs)]
 #[argh(subcommand, name = "extract_image")]
 struct ExtractImageArgs {
-    /// plot bounding boxes on images
-    #[argh(option, default = "false")]
-    pub with_bbox: bool,
+    /// draw bounding boxes on images
+    #[argh(switch)]
+    pub draw_bbox: bool,
     #[argh(positional)]
     pub range: String,
     #[argh(positional)]
@@ -136,55 +136,144 @@ async fn info(args: InfoArgs) -> Result<()> {
 
 async fn extract_images(args: ExtractImageArgs) -> Result<()> {
     let ExtractImageArgs {
-        with_bbox,
+        draw_bbox,
         range,
         cache_file,
         output_dir,
     } = args;
+    let output_dir = Arc::new(output_dir);
 
+    // create output dir
+    async_std::fs::create_dir_all(&*output_dir).await?;
+
+    // load dataset
+    let dataset = Arc::new(Dataset::open(cache_file).await?);
+    let Dataset {
+        header: Header {
+            shape,
+            component_kind,
+            ..
+        },
+        ..
+    } = *dataset;
+    let shape = {
+        let [c, h, w] = shape;
+        [c as i64, h as i64, w as i64]
+    };
+    let num_images = dataset.image_iter().len();
+
+    // update range
     // parse range command line argument
     let (range_begin, range_end) = {
         let range_error = "the range format must be one of .., BEGIN.., ..END, BEGIN..END";
         let mut tokens = range.split("..");
-        let range_begin: Option<usize> = match tokens.next() {
+        let range_begin: usize = match tokens.next() {
             None => {
                 bail!("{}", range_error)
             }
-            Some("") => None,
-            Some(token) => Some(token.parse()?),
+            Some("") => 0,
+            Some(token) => {
+                let value: usize = token.parse()?;
+                ensure!(
+                    value < num_images,
+                    "the start index {} must not reach the number of images {}",
+                    value,
+                    num_images
+                );
+                value
+            }
         };
-        let range_end: Option<usize> = match tokens.next() {
+        let range_end: usize = match tokens.next() {
             None => bail!("{}", range_error),
-            Some("") => None,
-            Some(token) => Some(token.parse()?),
+            Some("") => num_images,
+            Some(token) => {
+                let value: usize = token.parse()?;
+                ensure!(
+                    value <= num_images,
+                    "the index {} must not exceed the number of images {}",
+                    value,
+                    num_images
+                );
+                value
+            }
         };
         ensure!(matches!(tokens.next(), None), "{}", range_error);
-
-        if let (Some(begin), Some(end)) = (range_begin, range_end) {
-            ensure!(begin <= end, "invalid range");
-        }
+        ensure!(range_begin <= range_end, "{} is not a valid range", range);
 
         (range_begin, range_end)
     };
 
-    // load dataset
-    let Dataset {
-        header:
-            Header {
-                magic: _,
-                shape,
-                component_kind,
-                alignment,
-                data_offset,
-                bbox_offset,
-            },
-        classes,
-        image_entries,
-        bbox_entries,
-        ..
-    } = Dataset::open(cache_file).await?;
+    // save images
+    let bar = Arc::new(ProgressBar::new((range_end - range_begin) as u64).with_style(
+        ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+            )
+            .progress_chars("#>-"),
+    ));
+    let bar_clone = bar.clone();
 
-    todo!();
+    stream::iter(range_begin..range_end)
+        .par_map(None, move |index| {
+            let output_dir = output_dir.clone();
+            let dataset = dataset.clone();
+            let bar = bar_clone.clone();
+
+            move || {
+                let (data, bboxes) = dataset.image_iter().nth(index).unwrap();
+
+                let tensor = match component_kind {
+                    ComponentKind::F32 => {
+                        let data: &[f32] = safe_transmute::transmute_many_pedantic(data).unwrap();
+                        Tensor::of_slice(data)
+                            .view(shape)
+                            .g_mul1(255.0)
+                            .to_kind(Kind::Uint8)
+                    }
+                    ComponentKind::F64 => {
+                        let data: &[f64] = safe_transmute::transmute_many_pedantic(data).unwrap();
+                        let tensor = Tensor::of_slice(data);
+                        tensor.view(shape).g_mul1(255.0).to_kind(Kind::Uint8)
+                    }
+                    ComponentKind::U8 => {
+                        let tensor = Tensor::of_slice(data).view(shape);
+                        tensor.view(shape)
+                    }
+                };
+
+                let tensor = if draw_bbox {
+                    let [num_channels, height, width] = shape;
+                    let color = Tensor::zeros(&[num_channels], (Kind::Uint8, Device::Cpu));
+
+                    let tensor = bboxes.iter().fold(tensor, |mut tensor, bbox| {
+                        let BBoxEntry {
+                            tlbr: [bbox_t, bbox_l, bbox_b, bbox_r],
+                            ..
+                        } = *bbox;
+                        let bbox_t = (bbox_t * height as f64) as i64;
+                        let bbox_b = (bbox_b * height as f64) as i64;
+                        let bbox_l = (bbox_l * width as f64) as i64;
+                        let bbox_r = (bbox_r * width as f64) as i64;
+                        tensor.draw_rect_(bbox_t, bbox_l, bbox_b, bbox_r, 3, &color)
+                    });
+
+                    tensor
+                } else {
+                    tensor
+                };
+
+                let output_path = output_dir.join(format!("{}.jpg", index));
+                vision::image::save(&tensor, output_path)?;
+
+                bar.inc(1);
+
+                Fallible::Ok(())
+            }
+        })
+        .try_for_each(|_: ()| async move { Fallible::Ok(()) })
+        .await?;
+
+    bar.finish();
 
     Ok(())
 }
@@ -395,6 +484,8 @@ async fn build_iii_dataset(
                     } = obj;
                     let tlbr = [ymin.raw(), xmin.raw(), ymax.raw(), xmax.raw()];
                     let class_index = classes.get_index_of(&name)?;
+
+                    // TODO: re-compute bbox range
 
                     Some(BBoxEntry {
                         tlbr,
