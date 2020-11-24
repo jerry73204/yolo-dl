@@ -220,12 +220,22 @@ impl<I> DatasetWriterInit<I> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct DataIndex {
+    data_range: Range<usize>,
+    bbox_range: Range<usize>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Dataset {
     pub header: Header,
     pub classes: IndexMap<usize, String>,
     pub image_entries: Vec<ImageEntry>,
     pub bbox_entries: Vec<BBoxEntry>,
+    pub per_image_size: usize,
+    pub per_data_size: usize,
+    data_indexes: Vec<DataIndex>,
+    mmap: Arc<Mmap>,
 }
 
 impl Dataset {
@@ -234,11 +244,8 @@ impl Dataset {
 
         // create memory mapped file
         let mmap = unsafe {
-            let output_file = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(path)?;
-            let mmap = MmapOptions::new().map_mut(&output_file)?;
+            let output_file = std::fs::File::open(path)?;
+            let mmap = MmapOptions::new().map(&output_file)?;
             mmap
         };
         let mmap_slice = mmap.as_ref();
@@ -269,7 +276,6 @@ impl Dataset {
         let component_size = component_kind.component_size();
 
         // sanity check
-
         ensure!(magic == MAGIC, "file magic does not match");
         ensure!(
             bbox_offset >= data_offset,
@@ -317,11 +323,59 @@ impl Dataset {
             })
             .try_collect()?;
 
+        // compute bbox ranges
+        let bbox_indexes_iter = image_entries
+            .iter()
+            .map(|entry| entry.num_bboxes as usize)
+            .scan(0, |bbox_index, num_bboxes| {
+                let begin = *bbox_index;
+                let end = begin + num_bboxes;
+                *bbox_index = end;
+                Some((begin, end))
+            });
+
+        // build data slices per image
+        let data_indexes: Vec<_> = (data_offset..bbox_offset)
+            .step_by(per_data_size)
+            .zip_eq(bbox_indexes_iter)
+            .map(move |(offset, (bbox_begin, bbox_end))| {
+                let data_begin = offset as usize;
+                let data_end = data_begin + per_image_size;
+                DataIndex {
+                    data_range: data_begin..data_end,
+                    bbox_range: bbox_begin..bbox_end,
+                }
+            })
+            .collect();
+
         Ok(Self {
             header,
             classes,
             image_entries,
             bbox_entries,
+            per_image_size,
+            per_data_size,
+            data_indexes,
+            mmap: Arc::new(mmap),
+        })
+    }
+
+    pub fn image_iter(&self) -> impl Iterator<Item = (&[u8], &[BBoxEntry])> {
+        let Self {
+            bbox_entries,
+            data_indexes,
+            mmap,
+            ..
+        } = self;
+
+        data_indexes.iter().map(move |data_index| {
+            let DataIndex {
+                data_range,
+                bbox_range,
+            } = data_index.clone();
+            let data = &mmap.as_ref()[data_range];
+            let bboxes = &bbox_entries[bbox_range];
+            (data, bboxes)
         })
     }
 }

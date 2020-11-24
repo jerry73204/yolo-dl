@@ -8,7 +8,7 @@ pub use indexmap::{IndexMap, IndexSet};
 pub use indicatif::{ProgressBar, ProgressStyle};
 pub use itertools::Itertools;
 pub use log::{info, warn};
-pub use memmap::MmapOptions;
+pub use memmap::{Mmap, MmapOptions};
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use prettytable::{cell, row, Table};
 pub use safe_transmute::TriviallyTransmutable;
@@ -21,8 +21,10 @@ pub use std::{
     convert::TryFrom,
     error,
     io::prelude::*,
+    iter,
     marker::{PhantomData, Unpin},
     mem,
+    ops::Range,
     path::{Path, PathBuf},
     slice,
     sync::Arc,

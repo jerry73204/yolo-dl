@@ -104,6 +104,7 @@ async fn info(args: InfoArgs) -> Result<()> {
         classes,
         image_entries,
         bbox_entries,
+        ..
     } = Dataset::open(cache_file).await?;
 
     // print classes
@@ -180,6 +181,7 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
         classes,
         image_entries,
         bbox_entries,
+        ..
     } = Dataset::open(cache_file).await?;
 
     todo!();
