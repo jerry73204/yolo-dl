@@ -165,7 +165,6 @@ impl<I> DatasetWriterInit<I> {
                             chunk
                         };
                         Cursor::new(chunk).write_all(bytes).await?;
-
                         Fallible::Ok((index, bboxes))
                     }
                 })
@@ -305,23 +304,18 @@ impl Dataset {
         );
 
         // deserialize bboxes
-        let bbox_ranges = image_entries.iter().scan(0usize, |bbox_index, entry| {
-            let ImageEntry { num_bboxes, .. } = *entry;
-            let begin = *bbox_index;
-            let end = begin + num_bboxes as usize;
-            *bbox_index = end;
-            Some(begin..end)
-        });
-
-        let num_bboxes = bbox_ranges.last().map(|range| range.end).unwrap_or(0);
-
         cursor.set_position(bbox_offset as u64);
-        let bbox_entries: Vec<_> = (0..num_bboxes)
-            .map(|_| -> Result<_> {
-                let bbox_entry: BBoxEntry = bincode::deserialize_from(&mut cursor)?;
-                Ok(bbox_entry)
-            })
-            .try_collect()?;
+        let bbox_entries: Vec<BBoxEntry> = bincode::deserialize_from(&mut cursor)?;
+
+        // verify bbox count
+        let num_bboxes: usize = image_entries
+            .iter()
+            .map(|entry| entry.num_bboxes as usize)
+            .sum();
+        ensure!(
+            bbox_entries.len() == num_bboxes,
+            "the number of bounding boxes is not correct"
+        );
 
         // compute bbox ranges
         let bbox_indexes_iter = image_entries
