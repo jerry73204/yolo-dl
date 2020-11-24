@@ -12,6 +12,7 @@ pub struct IiiDataset {
     pub config: Arc<Config>,
     pub samples: Vec<IiiSample>,
     pub classes: IndexSet<String>,
+    pub records: Vec<Arc<FileRecord>>,
 }
 
 impl GenericDataset for IiiDataset {
@@ -19,78 +20,26 @@ impl GenericDataset for IiiDataset {
         III_DEPTH
     }
 
-    fn num_classes(&self) -> usize {
-        self.classes.len()
-    }
+    // fn num_classes(&self) -> usize {
+    //     self.classes.len()
+    // }
 
     fn classes(&self) -> &IndexSet<String> {
         &self.classes
     }
 
-    fn records(&self) -> Result<Vec<Arc<DataRecord>>> {
-        let records: Vec<_> = self
-            .samples
-            .iter()
-            .map(|sample| -> Result<_> {
-                let IiiSample {
-                    image_file,
-                    annotation_file,
-                    annotation,
-                } = sample;
+    // fn records(&self) -> Result<Vec<Arc<FileRecord>>> {
+    //     Ok(self.records.clone())
+    // }
 
-                let size = {
-                    let voc::Size { width, height, .. } = annotation.size;
-                    PixelSize::new(height, width)
-                };
+    // fn num_records(&self) -> usize {
+    //     self.records.len()
+    // }
+}
 
-                let bboxes: Vec<_> = annotation
-                    .object
-                    .iter()
-                    .filter_map(|obj| {
-                        // filter by class list and whitelist
-                        let class_name = &obj.name;
-                        let class_index = self.classes.get_index_of(class_name)?;
-                        if let Some(whitelist) = &self.config.dataset.class_whitelist {
-                            whitelist.get(class_name)?;
-                        }
-                        Some((obj, class_index))
-                    })
-                    .filter_map(|(obj, class_index)| {
-                        let voc::BndBox {
-                            xmin,
-                            ymin,
-                            xmax,
-                            ymax,
-                        } = obj.bndbox;
-                        let bbox = match PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax]) {
-                            Ok(bbox) => bbox,
-                            Err(_err) => {
-                                warn!(
-                                    "failed to parse '{}': invalid bbox {:?}",
-                                    annotation_file.display(),
-                                    [ymin, xmin, ymax, xmax]
-                                );
-                                return None;
-                            }
-                        };
-
-                        let labeled_bbox = LabeledPixelBBox {
-                            bbox,
-                            category_id: class_index,
-                        };
-                        Some(labeled_bbox)
-                    })
-                    .collect();
-
-                Ok(Arc::new(DataRecord {
-                    path: image_file.clone(),
-                    size,
-                    bboxes,
-                }))
-            })
-            .try_collect()?;
-
-        Ok(records)
+impl FileDataset for IiiDataset {
+    fn records(&self) -> &[Arc<FileRecord>] {
+        &self.records
     }
 }
 
@@ -191,10 +140,73 @@ impl IiiDataset {
                 .await?
         };
 
+        // build records
+        let records: Vec<_> = samples
+            .iter()
+            .map(|sample| -> Result<_> {
+                let IiiSample {
+                    image_file,
+                    annotation_file,
+                    annotation,
+                } = sample;
+
+                let size = {
+                    let voc::Size { width, height, .. } = annotation.size;
+                    PixelSize::new(height, width)
+                };
+
+                let bboxes: Vec<_> = annotation
+                    .object
+                    .iter()
+                    .filter_map(|obj| {
+                        // filter by class list and whitelist
+                        let class_name = &obj.name;
+                        let class_index = classes.get_index_of(class_name)?;
+                        if let Some(whitelist) = &config.dataset.class_whitelist {
+                            whitelist.get(class_name)?;
+                        }
+                        Some((obj, class_index))
+                    })
+                    .filter_map(|(obj, class_index)| {
+                        let voc::BndBox {
+                            xmin,
+                            ymin,
+                            xmax,
+                            ymax,
+                        } = obj.bndbox;
+                        let bbox = match PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax]) {
+                            Ok(bbox) => bbox,
+                            Err(_err) => {
+                                warn!(
+                                    "failed to parse '{}': invalid bbox {:?}",
+                                    annotation_file.display(),
+                                    [ymin, xmin, ymax, xmax]
+                                );
+                                return None;
+                            }
+                        };
+
+                        let labeled_bbox = LabeledPixelBBox {
+                            bbox,
+                            category_id: class_index,
+                        };
+                        Some(labeled_bbox)
+                    })
+                    .collect();
+
+                Ok(Arc::new(FileRecord {
+                    path: image_file.clone(),
+                    size,
+                    bboxes,
+                }))
+            })
+            .try_collect()?;
+
         Ok(IiiDataset {
             config,
             samples,
             classes,
+            records,
         })
     }
 }

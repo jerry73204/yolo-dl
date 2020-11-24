@@ -8,7 +8,7 @@ mod util;
 use crate::{
     common::*,
     config::{Config, LoadCheckpoint, TrainingConfig},
-    data::{Dataset, GenericDataset, TrainingRecord},
+    data::{GenericDataset, TrainingRecord, TrainingStream},
     message::LoggingMessage,
     util::{LrScheduler, RateCounter},
 };
@@ -47,12 +47,6 @@ pub async fn main() -> Result<()> {
         std::fs::write(&path, text)?;
     }
 
-    // load dataset
-    info!("loading dataset");
-    let dataset = Dataset::new(config.clone()).await?;
-    let input_channels = dataset.input_channels();
-    let num_classes = dataset.num_classes();
-
     // create channels
     let (logging_tx, logging_rx) = broadcast::channel(2);
     let (data_tx, data_rx) = {
@@ -64,15 +58,20 @@ pub async fn main() -> Result<()> {
         async_std::sync::channel(channel_size)
     };
 
+    // load dataset
+    info!("loading dataset");
+    let dataset = TrainingStream::new(config.clone(), logging_tx.clone()).await?;
+    let input_channels = dataset.input_channels();
+    let num_classes = dataset.classes().len();
+
     // start logger
     let logging_future =
         logging::logging_worker(config.clone(), logging_dir.clone(), logging_rx).await?;
 
     // feeding worker
     let training_data_future = {
-        let logging_tx = logging_tx.clone();
         async_std::task::spawn(async move {
-            let mut train_stream = dataset.train_stream(logging_tx).await?;
+            let mut train_stream = dataset.train_stream().await?;
 
             while let Some(result) = train_stream.next().await {
                 let record = result?;
