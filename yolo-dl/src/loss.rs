@@ -1,6 +1,7 @@
 use crate::{
     common::*,
     model::{InstanceIndex, LayerMeta, YoloOutput},
+    profiling::Timing,
     utils::{Unzip2, Unzip5},
 };
 
@@ -148,28 +149,38 @@ impl YoloLoss {
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
     ) -> YoloLossOutput {
+        let mut timing = Timing::new("loss_function");
+
         // match target bboxes and grids, and group them by detector cells
         // indexed by grid positions
         let target_bboxes = self.match_target_bboxes(&prediction, target);
+        timing.set_record("match_target_bboxes");
 
         // collect selected instances
         let (pred_instances, target_instances) =
             Self::collect_instances(prediction, &target_bboxes);
+        timing.set_record("collect_instances");
 
         // IoU loss
         let (iou_loss, non_reduced_iou_loss) = self.iou_loss(&pred_instances, &target_instances);
+        timing.set_record("iou_loss");
 
         // classification loss
         let classification_loss = self.classification_loss(&pred_instances, &target_instances);
+        timing.set_record("classification_loss");
 
         // objectness loss
         let objectness_loss =
             self.objectness_loss(&prediction, &target_bboxes, &non_reduced_iou_loss);
+        timing.set_record("objectness_loss");
 
         // normalize and balancing
         let loss = self.iou_loss_weight * &iou_loss
             + self.classification_loss_weight * &classification_loss
             + self.objectness_loss_weight * &objectness_loss;
+        timing.set_record("sum_losses");
+
+        timing.report();
 
         YoloLossOutput {
             loss,
