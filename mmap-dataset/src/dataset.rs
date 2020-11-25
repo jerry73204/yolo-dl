@@ -358,7 +358,7 @@ impl Dataset {
         self.data_indexes.len()
     }
 
-    pub fn image_iter(&self) -> impl Iterator<Item = (Tensor, &[BBoxEntry])> {
+    pub fn nth(&self, index: usize) -> Option<(Tensor, &[BBoxEntry])> {
         let Self {
             header:
                 Header {
@@ -376,36 +376,32 @@ impl Dataset {
             [c as i64, h as i64, w as i64]
         };
 
-        let bytes_iter = data_indexes.iter().map(move |data_index| {
-            let DataIndex { data_range, .. } = data_index.clone();
-            let bytes = &mmap.as_ref()[data_range];
-            bytes
-        });
+        let DataIndex {
+            data_range,
+            bbox_range,
+            ..
+        } = data_indexes.get(index)?.clone();
+        let bytes = &mmap.as_ref()[data_range];
+        let bboxes = &bbox_entries[bbox_range];
 
-        let bboxes_iter = data_indexes.iter().map(move |data_index| {
-            let DataIndex { bbox_range, .. } = data_index.clone();
-            let bboxes = &bbox_entries[bbox_range];
-            bboxes
-        });
-
-        let image_iter: Box<dyn Iterator<Item = Tensor>> = match component_kind {
-            ComponentKind::F32 => Box::new(bytes_iter.map(move |bytes| {
+        let image = match component_kind {
+            ComponentKind::F32 => {
                 let values: &[f32] = safe_transmute::transmute_many_pedantic(bytes).unwrap();
                 let image = Tensor::of_slice(values).view(shape);
                 image
-            })),
-            ComponentKind::F64 => Box::new(bytes_iter.map(move |bytes| {
+            }
+            ComponentKind::F64 => {
                 let values: &[f64] = safe_transmute::transmute_many_pedantic(bytes).unwrap();
                 let image = Tensor::of_slice(values).view(shape);
                 image
-            })),
-            ComponentKind::U8 => Box::new(bytes_iter.map(move |bytes| {
+            }
+            ComponentKind::U8 => {
                 let image = Tensor::of_slice(bytes).view(shape);
                 image
-            })),
+            }
         };
 
-        image_iter.zip_eq(bboxes_iter)
+        Some((image, bboxes))
     }
 }
 

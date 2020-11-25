@@ -38,8 +38,7 @@ impl MosaicProcessor {
             let Self { mosaic_margin } = *self;
             let mut rng = StdRng::from_entropy();
 
-            // random select pivot point
-
+            // select pivot point randomly and compute margins per image
             let ranges = {
                 let pivot_row = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin);
                 let pivot_col = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin);

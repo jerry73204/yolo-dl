@@ -216,7 +216,7 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
             let bar = bar_clone.clone();
 
             move || {
-                let (image, bboxes) = dataset.image_iter().nth(index).unwrap();
+                let (image, bboxes) = dataset.nth(index).unwrap();
                 let image = match component_kind {
                     ComponentKind::F32 => image.g_mul1(255.0).to_kind(Kind::Uint8),
                     ComponentKind::F64 => image.g_mul1(255.0).to_kind(Kind::Uint8),

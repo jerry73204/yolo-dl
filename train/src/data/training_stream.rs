@@ -158,6 +158,8 @@ impl TrainingStream {
                 let mut timing = Timing::new("pipeline");
 
                 async move {
+                    timing.set_record("data loading start");
+
                     let image_bbox_vec: Vec<_> = stream::iter(record_indexes.into_iter())
                         .par_then(None, move |record_index| {
                             let dataset = dataset.clone();
@@ -181,7 +183,7 @@ impl TrainingStream {
                     // send to logger
                     {
                         let msg = LoggingMessage::new_images_with_bboxes(
-                            "cache-loader",
+                            "sample-loading",
                             image_bbox_vec
                                 .iter()
                                 .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
@@ -190,7 +192,7 @@ impl TrainingStream {
                         let _ = logging_tx.send(msg);
                     }
 
-                    timing.set_record("cache loader");
+                    timing.set_record("data loading end");
                     Fallible::Ok((index, (step, epoch, image_bbox_vec, timing)))
                 }
             })
@@ -231,12 +233,14 @@ impl TrainingStream {
 
                 async move {
                     let (step, epoch, image_bbox_vec, mut timing) = args;
+                    timing.set_record("mosaic processor start");
 
                     // randomly create mosaic image
                     let (merged_image, merged_bboxes) =
                         if rng.gen_range(0.0, 1.0) <= mosaic_prob.to_f64() {
                             mosaic_processor.forward(image_bbox_vec).await?
                         } else {
+                            // take the first sample and discard others
                             image_bbox_vec.into_iter().next().unwrap()
                         };
 
@@ -249,7 +253,7 @@ impl TrainingStream {
                         let _ = logging_tx.send(msg);
                     }
 
-                    timing.set_record("mosaic processor");
+                    timing.set_record("mosaic processor end");
                     Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image, timing)))
                 }
             })
@@ -258,8 +262,9 @@ impl TrainingStream {
         // add batch dimension
         let stream = stream.try_par_then(None, move |(index, args)| async move {
             let (step, epoch, bboxes, image, mut timing) = args;
+            timing.set_record("batch dimensions start");
             let new_image = image.unsqueeze(0);
-            timing.set_record("batch dimensions");
+            timing.set_record("batch dimensions end");
             Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
         });
 
