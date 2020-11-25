@@ -117,8 +117,12 @@ impl TrainingStream {
         // start of unordered ops
         let stream = stream.try_overflowing_enumerate();
 
-        // load and cache images
+        // load samples and scale bboxes
         let stream = {
+            let Config {
+                preprocessor: PreprocessorConfig { bbox_scaling, .. },
+                ..
+            } = *self.config;
             let dataset = self.dataset.clone();
             let logging_tx = self.logging_tx.clone();
 
@@ -134,8 +138,15 @@ impl TrainingStream {
                             let dataset = dataset.clone();
 
                             async move {
+                                // laod sample
                                 let DataRecord { image, bboxes } =
                                     dataset.nth(record_index).await?;
+
+                                // scale bboxes
+                                let bboxes: Vec<_> = bboxes
+                                    .into_iter()
+                                    .map(|bbox| bbox.scale(bbox_scaling))
+                                    .collect();
                                 Fallible::Ok((image, bboxes))
                             }
                         })

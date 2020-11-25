@@ -20,21 +20,9 @@ impl GenericDataset for IiiDataset {
         III_DEPTH
     }
 
-    // fn num_classes(&self) -> usize {
-    //     self.classes.len()
-    // }
-
     fn classes(&self) -> &IndexSet<String> {
         &self.classes
     }
-
-    // fn records(&self) -> Result<Vec<Arc<FileRecord>>> {
-    //     Ok(self.records.clone())
-    // }
-
-    // fn num_records(&self) -> usize {
-    //     self.records.len()
-    // }
 }
 
 impl FileDataset for IiiDataset {
@@ -53,9 +41,11 @@ impl IiiDataset {
         P: AsRef<Path>,
     {
         let Config {
-            dataset: DatasetConfig { classes_file, .. },
+            dataset: DatasetConfig {
+                ref classes_file, ..
+            },
             ..
-        } = &*config;
+        } = *config;
         let dataset_dir = dataset_dir.as_ref();
 
         // load classes file
@@ -178,7 +168,7 @@ impl IiiDataset {
                             Ok(bbox) => bbox,
                             Err(_err) => {
                                 warn!(
-                                    "failed to parse '{}': invalid bbox {:?}",
+                                    "failed to parse file '{}': invalid bbox {:?}",
                                     annotation_file.display(),
                                     [ymin, xmin, ymax, xmax]
                                 );

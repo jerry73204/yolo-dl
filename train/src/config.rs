@@ -63,6 +63,7 @@ pub struct PreprocessorConfig {
     pub shear: Option<R64>,
     pub horizontal_flip: bool,
     pub vertical_flip: bool,
+    pub bbox_scaling: R64,
     #[serde(with = "tch_serde::serde_device")]
     pub device: Device,
 }
