@@ -22,12 +22,6 @@ impl GenericDataset for TrainingStream {
     }
 }
 
-// impl FileDataset for TrainingStream {
-//     fn records(&self) -> &[Arc<FileRecord>] {
-//         &self.dataset.records()
-//     }
-// }
-
 impl TrainingStream {
     pub async fn new(
         config: Arc<Config>,
@@ -213,7 +207,7 @@ impl TrainingStream {
                     // send to logger
                     {
                         let msg = LoggingMessage::new_images_with_bboxes(
-                            "mosaicache-processor",
+                            "mosaic-processor",
                             vec![(&merged_image, &merged_bboxes)],
                         );
                         let _ = logging_tx.send(msg);
