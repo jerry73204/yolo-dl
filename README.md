@@ -48,10 +48,17 @@ The `--release` option in only needed in production. It gains about 5x performan
 The training process is configured by [yolo-dl/train.json5](yolo-dl/train.json5). Run the command to start training,
 
 ```sh
-cargo run --bin train --release
+cargo run --release --bin train
 ```
 
 If it is configured correctly, it automatically starts from most recent checkpoint file.
+
+### Build Memory-Mapped Dataset
+
+```sh
+cargo run --release --bin mmap-dataset -- \
+    build iii 3x256x256 cfg/iii.class ~/dataset/ntu_delivery iii.mmap
+```
 
 ## Related Projects
 
