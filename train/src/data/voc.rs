@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    config::{Config, DatasetConfig},
+    config::{Config, DatasetConfig, DatasetKind},
 };
 
 #[derive(Debug, Clone)]
@@ -17,21 +17,9 @@ impl GenericDataset for VocDataset {
         3
     }
 
-    // fn num_classes(&self) -> usize {
-    //     self.classes.len()
-    // }
-
     fn classes(&self) -> &IndexSet<String> {
         &self.classes
     }
-
-    // fn records(&self) -> Result<Vec<Arc<FileRecord>>> {
-    //     Ok(self.records.clone())
-    // }
-
-    // fn num_records(&self) -> usize {
-    //     self.records.len()
-    // }
 }
 
 impl FileDataset for VocDataset {
@@ -45,10 +33,17 @@ impl VocDataset {
     where
         P: AsRef<Path>,
     {
-        let Config {
-            dataset: DatasetConfig { classes_file, .. },
-            ..
-        } = &*config;
+        let classes_file = match &*config {
+            Config {
+                dataset:
+                    DatasetConfig {
+                        kind: DatasetKind::Voc { classes_file, .. },
+                        ..
+                    },
+                ..
+            } => classes_file,
+            _ => unreachable!(),
+        };
         let dataset_dir = dataset_dir.as_ref().to_owned();
 
         // load classes file

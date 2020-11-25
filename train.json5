@@ -1,17 +1,18 @@
 {
     "dataset": {
-        "image_size": 256,
-        // "classes_file": "cfg/coco.class",
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         // "kind": {
         //     "type": "Coco",
+        //     "image_size": 256,
         //     "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
         //     "dataset_name": "train2017",
+        //     "classes_file": "cfg/coco.class",
         // },
-        "classes_file": "cfg/iii.class",
         "kind": {
             "type": "Iii",
+            "image_size": 256,
             "dataset_dir": "/home/aeon/dataset/ntu_delivery",
+            "classes_file": "cfg/iii.class",
             "blacklist_files": [
                 "171212/FILE171212-172818F/4012.xml",
                 "171231/FILE171231-072550F/5162.xml",

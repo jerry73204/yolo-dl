@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    config::{Config, DatasetConfig},
+    config::{Config, DatasetConfig, DatasetKind},
 };
 use voc_dataset as voc;
 
@@ -40,12 +40,17 @@ impl IiiDataset {
     where
         P: AsRef<Path>,
     {
-        let Config {
-            dataset: DatasetConfig {
-                ref classes_file, ..
-            },
-            ..
-        } = *config;
+        let classes_file = match &*config {
+            Config {
+                dataset:
+                    DatasetConfig {
+                        kind: DatasetKind::Iii { classes_file, .. },
+                        ..
+                    },
+                ..
+            } => classes_file,
+            _ => unreachable!(),
+        };
         let dataset_dir = dataset_dir.as_ref();
 
         // load classes file

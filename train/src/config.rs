@@ -28,8 +28,6 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetConfig {
-    pub classes_file: PathBuf,
-    pub image_size: NonZeroUsize,
     pub class_whitelist: Option<HashSet<String>>,
     pub kind: DatasetKind,
 }
@@ -38,16 +36,25 @@ pub struct DatasetConfig {
 #[serde(tag = "type")]
 pub enum DatasetKind {
     Coco {
+        classes_file: PathBuf,
+        image_size: NonZeroUsize,
         dataset_dir: PathBuf,
         dataset_name: String,
     },
     Voc {
+        classes_file: PathBuf,
+        image_size: NonZeroUsize,
         dataset_dir: PathBuf,
     },
     Iii {
+        classes_file: PathBuf,
+        image_size: NonZeroUsize,
         dataset_dir: PathBuf,
         #[serde(default = "empty_hashset::<PathBuf>")]
         blacklist_files: HashSet<PathBuf>,
+    },
+    Mmap {
+        dataset_file: PathBuf,
     },
 }
 

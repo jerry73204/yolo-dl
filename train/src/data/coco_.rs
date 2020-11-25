@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    config::{Config, DatasetConfig},
+    config::{Config, DatasetConfig, DatasetKind},
 };
 
 #[derive(Debug, Clone)]
@@ -39,10 +39,18 @@ impl FileDataset for CocoDataset {
 
 impl CocoDataset {
     pub async fn load(config: Arc<Config>, dir: &Path, name: &str) -> Result<CocoDataset> {
-        let Config {
-            dataset: DatasetConfig { classes_file, .. },
-            ..
-        } = &*config;
+        let classes_file = match &*config {
+            Config {
+                dataset:
+                    DatasetConfig {
+                        kind: DatasetKind::Coco { classes_file, .. },
+                        ..
+                    },
+                ..
+            } => classes_file,
+            _ => unreachable!(),
+        };
+
         let classes = load_classes_file(classes_file).await?;
         let dataset = coco::DataSet::load_async(dir, name).await?;
         let category_id_to_classes: HashMap<_, _> = dataset

@@ -43,6 +43,7 @@ serde-xml-rs = "0.4"
 # xz2 = { version = "0.1", features = ["tokio-io", "futures"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 yolo-dl = { version = "0.1", path = "../yolo-dl" }
+mmap-dataset = { version = "0.1", path = "../mmap-dataset" }
 
 [features]
 profiling = ["yolo-dl/profiling"]

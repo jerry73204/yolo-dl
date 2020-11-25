@@ -27,14 +27,9 @@ impl TrainingStream {
         config: Arc<Config>,
         logging_tx: broadcast::Sender<LoggingMessage>,
     ) -> Result<Self> {
-        let random_access_dataset: Box<dyn RandomAccessDataset> = {
+        let dataset = {
             let Config {
-                dataset:
-                    DatasetConfig {
-                        ref kind,
-                        image_size,
-                        ..
-                    },
+                dataset: DatasetConfig { ref kind, .. },
                 preprocessor:
                     PreprocessorConfig {
                         ref cache_dir,
@@ -43,34 +38,64 @@ impl TrainingStream {
                     },
                 ..
             } = *config;
-            let file_dataset: Box<dyn FileDataset> = match kind {
+
+            match kind {
                 DatasetKind::Coco {
                     dataset_dir,
                     dataset_name,
+                    image_size,
                     ..
-                } => Box::new(CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?),
-                DatasetKind::Voc { dataset_dir, .. } => {
-                    Box::new(VocDataset::load(config.clone(), dataset_dir).await?)
+                } => {
+                    let dataset: Box<dyn FileDataset> = Box::new(
+                        CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?,
+                    );
+                    let dataset =
+                        CachedDataset::new(Arc::new(dataset), cache_dir, image_size.get(), device)
+                            .await?;
+                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    dataset
+                }
+                DatasetKind::Voc {
+                    dataset_dir,
+                    image_size,
+                    ..
+                } => {
+                    let dataset: Box<dyn FileDataset> =
+                        Box::new(VocDataset::load(config.clone(), dataset_dir).await?);
+                    let dataset =
+                        CachedDataset::new(Arc::new(dataset), cache_dir, image_size.get(), device)
+                            .await?;
+                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    dataset
                 }
                 DatasetKind::Iii {
                     dataset_dir,
                     blacklist_files,
+                    image_size,
                     ..
-                } => Box::new(
-                    IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone()).await?,
-                ),
-            };
-
-            let cached_dataset =
-                CachedDataset::new(Arc::new(file_dataset), cache_dir, image_size.get(), device)
-                    .await?;
-            Box::new(cached_dataset)
+                } => {
+                    let dataset: Box<dyn FileDataset> = Box::new(
+                        IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone())
+                            .await?,
+                    );
+                    let dataset =
+                        CachedDataset::new(Arc::new(dataset), cache_dir, image_size.get(), device)
+                            .await?;
+                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    dataset
+                }
+                DatasetKind::Mmap { dataset_file, .. } => {
+                    let dataset: Box<dyn RandomAccessDataset> =
+                        Box::new(MmapDataset::load(dataset_file).await?);
+                    dataset
+                }
+            }
         };
 
         Ok(Self {
             config,
             logging_tx,
-            dataset: Arc::new(random_access_dataset),
+            dataset: Arc::new(dataset),
         })
     }
 
