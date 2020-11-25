@@ -156,7 +156,7 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
         let [c, h, w] = shape;
         [c as i64, h as i64, w as i64]
     };
-    let num_images = dataset.image_iter().len();
+    let num_images = dataset.num_images();
 
     // update range
     // parse range command line argument
@@ -216,32 +216,18 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
             let bar = bar_clone.clone();
 
             move || {
-                let (data, bboxes) = dataset.image_iter().nth(index).unwrap();
-
-                let tensor = match component_kind {
-                    ComponentKind::F32 => {
-                        let data: &[f32] = safe_transmute::transmute_many_pedantic(data).unwrap();
-                        Tensor::of_slice(data)
-                            .view(shape)
-                            .g_mul1(255.0)
-                            .to_kind(Kind::Uint8)
-                    }
-                    ComponentKind::F64 => {
-                        let data: &[f64] = safe_transmute::transmute_many_pedantic(data).unwrap();
-                        let tensor = Tensor::of_slice(data);
-                        tensor.view(shape).g_mul1(255.0).to_kind(Kind::Uint8)
-                    }
-                    ComponentKind::U8 => {
-                        let tensor = Tensor::of_slice(data).view(shape);
-                        tensor.view(shape)
-                    }
+                let (image, bboxes) = dataset.image_iter().nth(index).unwrap();
+                let image = match component_kind {
+                    ComponentKind::F32 => image.g_mul1(255.0).to_kind(Kind::Uint8),
+                    ComponentKind::F64 => image.g_mul1(255.0).to_kind(Kind::Uint8),
+                    ComponentKind::U8 => image,
                 };
 
-                let tensor = if draw_bbox {
+                let image = if draw_bbox {
                     let [_channels, height, width] = shape;
                     let color = Tensor::of_slice(&[255u8, 255, 0]);
 
-                    let tensor = bboxes.iter().fold(tensor, |mut tensor, bbox| {
+                    let image = bboxes.iter().fold(image, |mut image, bbox| {
                         let BBoxEntry {
                             tlbr: [bbox_t, bbox_l, bbox_b, bbox_r],
                             ..
@@ -250,16 +236,16 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
                         let bbox_b = (bbox_b * height as f64) as i64;
                         let bbox_l = (bbox_l * width as f64) as i64;
                         let bbox_r = (bbox_r * width as f64) as i64;
-                        tensor.draw_rect_(bbox_t, bbox_l, bbox_b, bbox_r, 1, &color)
+                        image.draw_rect_(bbox_t, bbox_l, bbox_b, bbox_r, 1, &color)
                     });
 
-                    tensor
+                    image
                 } else {
-                    tensor
+                    image
                 };
 
                 let output_path = output_dir.join(format!("{}.jpg", index));
-                vision::image::save(&tensor, output_path)?;
+                vision::image::save(&image, output_path)?;
 
                 bar.inc(1);
 

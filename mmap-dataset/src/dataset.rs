@@ -354,23 +354,58 @@ impl Dataset {
         })
     }
 
-    pub fn image_iter(&self) -> impl Iterator<Item = (&[u8], &[BBoxEntry])> + ExactSizeIterator {
-        let Self {
-            bbox_entries,
-            data_indexes,
-            mmap,
-            ..
-        } = self;
+    pub fn num_images(&self) -> usize {
+        self.data_indexes.len()
+    }
 
-        data_indexes.iter().map(move |data_index| {
-            let DataIndex {
-                data_range,
-                bbox_range,
-            } = data_index.clone();
-            let data = &mmap.as_ref()[data_range];
+    pub fn image_iter(&self) -> impl Iterator<Item = (Tensor, &[BBoxEntry])> {
+        let Self {
+            header:
+                Header {
+                    component_kind,
+                    shape,
+                    ..
+                },
+            ref bbox_entries,
+            ref data_indexes,
+            ref mmap,
+            ..
+        } = *self;
+        let shape = {
+            let [c, h, w] = shape;
+            [c as i64, h as i64, w as i64]
+        };
+
+        let bytes_iter = data_indexes.iter().map(move |data_index| {
+            let DataIndex { data_range, .. } = data_index.clone();
+            let bytes = &mmap.as_ref()[data_range];
+            bytes
+        });
+
+        let bboxes_iter = data_indexes.iter().map(move |data_index| {
+            let DataIndex { bbox_range, .. } = data_index.clone();
             let bboxes = &bbox_entries[bbox_range];
-            (data, bboxes)
-        })
+            bboxes
+        });
+
+        let image_iter: Box<dyn Iterator<Item = Tensor>> = match component_kind {
+            ComponentKind::F32 => Box::new(bytes_iter.map(move |bytes| {
+                let values: &[f32] = safe_transmute::transmute_many_pedantic(bytes).unwrap();
+                let image = Tensor::of_slice(values).view(shape);
+                image
+            })),
+            ComponentKind::F64 => Box::new(bytes_iter.map(move |bytes| {
+                let values: &[f64] = safe_transmute::transmute_many_pedantic(bytes).unwrap();
+                let image = Tensor::of_slice(values).view(shape);
+                image
+            })),
+            ComponentKind::U8 => Box::new(bytes_iter.map(move |bytes| {
+                let image = Tensor::of_slice(bytes).view(shape);
+                image
+            })),
+        };
+
+        image_iter.zip_eq(bboxes_iter)
     }
 }
 
@@ -416,7 +451,7 @@ pub struct BBoxEntry {
     pub class: u32,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ComponentKind {
     F32 = 0,
     F64 = 1,
