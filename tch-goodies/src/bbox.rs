@@ -22,6 +22,17 @@ impl<U> LabeledBBox<R64, U>
 where
     U: Unit,
 {
+    pub fn scale(&self, scale: R64) -> Self {
+        let Self {
+            ref bbox,
+            category_id,
+        } = *self;
+        Self {
+            bbox: bbox.scale(scale),
+            category_id,
+        }
+    }
+
     pub fn to_ratio_bbox(
         &self,
         image_height: usize,
@@ -39,6 +50,16 @@ where
 }
 
 impl LabeledBBox<Ratio, RatioUnit> {
+    pub fn scale(&self, scale: R64) -> Self {
+        let Self {
+            ref bbox,
+            category_id,
+        } = *self;
+        Self {
+            bbox: bbox.scale(scale),
+            category_id,
+        }
+    }
     pub fn crop(&self, tlbr: [Ratio; 4]) -> Option<LabeledRatioBBox> {
         Some(LabeledRatioBBox {
             bbox: self.bbox.crop(tlbr)?,
@@ -137,6 +158,14 @@ where
             ratio_cy, ratio_cx, ratio_h, ratio_w,
         ])?)
     }
+
+    pub fn scale(&self, scale: R64) -> Self {
+        let [cy, cx, h, w] = self.cycxhw;
+        Self {
+            cycxhw: [cy, cx, h * scale, w * scale],
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl BBox<Ratio, RatioUnit> {
@@ -217,16 +246,34 @@ impl BBox<Ratio, RatioUnit> {
         }
     }
 
-    // /// Returns range in tlbr format.
-    // pub fn tlbr(&self) -> [Ratio; 4] {
-    //     let [cy, cx, h, w] = self.cycxhw;
-    //     let t = cy - h / 2.0;
-    //     let l = cx - w / 2.0;
-    //     let b = cy + h / 2.0;
-    //     let r = cx + w / 2.0;
+    pub fn scale(&self, scale: R64) -> Self {
+        let Self {
+            cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
+            ..
+        } = *self;
 
-    //     [t, l, b, r]
-    // }
+        let tmp_h = orig_h.to_r64() * scale.max(R64::new(1.0));
+        let tmp_w = orig_w.to_r64() * scale.max(R64::new(1.0));
+        let new_t = (orig_cy.to_r64() - tmp_h / 2.0).max(R64::new(0.0));
+        let new_b = (orig_cy.to_r64() + tmp_h / 2.0).min(R64::new(1.0));
+        let new_l = (orig_cx.to_r64() - tmp_w / 2.0).max(R64::new(0.0));
+        let new_r = (orig_cx.to_r64() + tmp_w / 2.0).min(R64::new(1.0));
+        let new_cy = (new_t + new_b) / 2.0;
+        let new_cx = (new_l + new_r) / 2.0;
+        let new_h = new_b - new_t;
+        let new_w = new_r - new_l;
+        let cycxhw = [
+            new_cy.try_into().unwrap(),
+            new_cx.try_into().unwrap(),
+            new_h.try_into().unwrap(),
+            new_w.try_into().unwrap(),
+        ];
+
+        Self {
+            cycxhw,
+            _phantom: PhantomData,
+        }
+    }
 
     /// Compute intersection area in cycxhw format.
     pub fn intersect(&self, rhs: &Self) -> Option<[Ratio; 4]> {
