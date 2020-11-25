@@ -32,7 +32,7 @@ pub struct DatasetWriterInit<I> {
     pub num_images: usize,
     pub shape: [u32; 3],
     pub alignment: Option<usize>,
-    pub classes: IndexMap<u32, String>,
+    pub classes: IndexSet<String>,
     pub images: I,
 }
 
@@ -75,7 +75,7 @@ impl<I> DatasetWriterInit<I> {
         };
         let class_entries: Vec<_> = classes
             .into_iter()
-            .map(|(index, name)| ClassEntry { index, name })
+            .map(|name| ClassEntry { name })
             .collect();
         let mut image_entries = vec![ImageEntry::zero(); num_images as usize];
 
@@ -228,7 +228,7 @@ struct DataIndex {
 #[derive(Debug, Clone)]
 pub struct Dataset {
     pub header: Header,
-    pub classes: IndexMap<usize, String>,
+    pub classes: IndexSet<String>,
     pub image_entries: Vec<ImageEntry>,
     pub bbox_entries: Vec<BBoxEntry>,
     pub per_image_size: usize,
@@ -284,9 +284,9 @@ impl Dataset {
         );
 
         let num_classes = class_entries.len();
-        let classes: IndexMap<_, _> = class_entries
+        let classes: IndexSet<_> = class_entries
             .into_iter()
-            .map(|ClassEntry { index, name }| (index as usize, name))
+            .map(|ClassEntry { name }| name)
             .collect();
         ensure!(classes.len() == num_classes, "duplicated class id found");
 
@@ -391,7 +391,6 @@ pub struct Header {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassEntry {
-    pub index: u32,
     #[serde(with = "serde_fixed_length_string")]
     pub name: String,
 }

@@ -120,6 +120,7 @@ async fn info(args: InfoArgs) -> Result<()> {
     println!("# classes");
     let table = classes
         .iter()
+        .enumerate()
         .fold(Table::new(), |mut table, (index, name)| {
             table.add_row(row![index, name]);
             table
@@ -536,18 +537,13 @@ async fn build_iii_dataset(
     };
 
     {
-        let classes: IndexMap<_, _> = classes
-            .iter()
-            .enumerate()
-            .map(|(index, class)| (index as u32, class.clone()))
-            .collect();
         let shape = [target_c as u32, target_h as u32, target_w as u32];
 
         DatasetWriterInit {
             num_images,
             shape,
             alignment: None,
-            classes,
+            classes: classes.as_ref().clone(),
             images: image_stream,
         }
         .write(&output_file)
