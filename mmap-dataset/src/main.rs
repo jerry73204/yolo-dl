@@ -1,10 +1,5 @@
-pub mod cache;
-mod common;
-pub mod utils;
-
-use crate::{
-    cache::{BBoxEntry, ComponentKind, Dataset, DatasetWriterInit, Header, ImageItem},
-    common::*,
+use mmap_dataset::{
+    common::*, BBoxEntry, ComponentKind, Dataset, DatasetWriterInit, Header, ImageItem,
 };
 
 #[derive(Debug, Clone, FromArgs)]

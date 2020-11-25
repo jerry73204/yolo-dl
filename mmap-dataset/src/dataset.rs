@@ -220,7 +220,7 @@ impl<I> DatasetWriterInit<I> {
 }
 
 #[derive(Debug, Clone)]
-pub struct DataIndex {
+struct DataIndex {
     data_range: Range<usize>,
     bbox_range: Range<usize>,
 }

@@ -4,7 +4,7 @@ members = [
     "train",
     "darknet-config",
     "tch-goodies",
-    "cache-builder"
+    "mmap-dataset"
 ]
 
 [profile.release]
