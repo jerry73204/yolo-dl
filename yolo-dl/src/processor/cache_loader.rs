@@ -209,36 +209,29 @@ impl CacheLoader {
         timing.set_record("pad");
 
         // compute new bboxes
-        let output_bboxes: Vec<_> = bboxes
-            .iter()
-            .map(|orig_bbox| -> Result<_> {
-                let LabeledPixelBBox {
-                    bbox:
-                        PixelBBox {
-                            cycxhw: [orig_cy, orig_cx, orig_h, orig_w],
-                            ..
-                        },
-                    category_id,
-                } = *orig_bbox.borrow();
+        let output_bboxes: Vec<_> = {
+            let image_size = R64::new(image_size as f64);
+            bboxes
+                .iter()
+                .map(|orig_bbox| -> Result<_> {
+                    let LabeledPixelBBox {
+                        ref bbox,
+                        category_id,
+                    } = *orig_bbox.borrow();
 
-                let new_cy = orig_cy * resize_ratio + top_pad as f64;
-                let new_cx = orig_cx * resize_ratio + left_pad as f64;
-                let new_h = orig_h * resize_ratio;
-                let new_w = orig_w * resize_ratio;
+                    let [orig_cy, orig_cx, orig_h, orig_w] = bbox.cycxhw();
+                    let new_cy = orig_cy * resize_ratio + top_pad as f64;
+                    let new_cx = orig_cx * resize_ratio + left_pad as f64;
+                    let new_h = orig_h * resize_ratio;
+                    let new_w = orig_w * resize_ratio;
 
-                let bbox = match PixelBBox::from_cycxhw([new_cy, new_cx, new_h, new_w])
-                    .to_ratio_bbox(image_size, image_size)
-                {
-                    Ok(bbox) => bbox,
-                    Err(bbox) => {
-                        warn!("invalid bbox found in '{}'", image_path.display());
-                        bbox
-                    }
-                };
+                    let bbox = PixelBBox::try_from_cycxhw([new_cy, new_cx, new_h, new_w])?
+                        .to_ratio_bbox(image_size, image_size)?;
 
-                Ok(LabeledRatioBBox { bbox, category_id })
-            })
-            .try_collect()?;
+                    Ok(LabeledRatioBBox { bbox, category_id })
+                })
+                .try_collect()?
+        };
 
         timing.set_record("compute bboxes");
 

@@ -250,18 +250,12 @@ pub async fn logging_worker(
                                 };
                                 let mut canvas = image.copy();
                                 for labeled_bbox in bboxes {
-                                    let LabeledRatioBBox {
-                                        bbox:
-                                            RatioBBox {
-                                                cycxhw: [cy, cx, h, w],
-                                                ..
-                                            },
-                                        ..
-                                    } = labeled_bbox;
-                                    let cy = cy.raw();
-                                    let cx = cx.raw();
-                                    let h = h.raw();
-                                    let w = w.raw();
+                                    let LabeledRatioBBox { bbox, .. } = labeled_bbox;
+                                    let [cy, cx, h, w] = bbox.cycxhw();
+                                    let cy = cy.to_f64();
+                                    let cx = cx.to_f64();
+                                    let h = h.to_f64();
+                                    let w = w.to_f64();
 
                                     let top = cy - h / 2.0;
                                     let left = cx - w / 2.0;

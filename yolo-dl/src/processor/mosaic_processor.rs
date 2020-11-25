@@ -57,7 +57,7 @@ impl MosaicProcessor {
                     .zip_eq(ranges.into_iter())
                     .scan(None, |expect_shape, args| {
                         let result = || -> Result<_> {
-                            let ((image, bboxes), [top, bottom, left, right]) = args;
+                            let ((image, bboxes), [margin_t, margin_b, margin_l, margin_r]) = args;
 
                             // ensure image is 3 dimensional
                             let shape = image.size3().with_context(|| {
@@ -75,18 +75,11 @@ impl MosaicProcessor {
                                 None => *expect_shape = Some(shape),
                             }
 
-                            // crop image
-                            let cropped_image = image.f_crop_by_ratio(top, left, bottom, right)?;
-
-                            // crop bbox
-                            let cropped_bboxes = bboxes
-                                .into_iter()
-                                .filter_map(|bbox| {
-                                    bbox.crop(top.into(), bottom.into(), left.into(), right.into())
-                                })
-                                .collect_vec();
-
-                            Ok((cropped_image, cropped_bboxes))
+                            crop_image_bboxes(
+                                &image,
+                                bboxes,
+                                [margin_t, margin_b, margin_l, margin_r],
+                            )
                         }();
 
                         Some(result)
@@ -198,22 +191,9 @@ impl ParallelMosaicProcessor {
         let mut crop_iter = stream::iter(pairs.into_iter().zip_eq(ranges.into_iter())).par_map(
             max_workers,
             |args| {
-                let ((image, bboxes), [top, bottom, left, right]) = args;
+                let ((image, bboxes), [margin_t, margin_b, margin_l, margin_r]) = args;
                 move || -> Result<_> {
-                    tch::no_grad(|| {
-                        // crop image
-                        let cropped_image = image.f_crop_by_ratio(top, left, bottom, right)?;
-
-                        // crop bbox
-                        let cropped_bboxes = bboxes
-                            .into_iter()
-                            .filter_map(|bbox| {
-                                bbox.crop(top.into(), bottom.into(), left.into(), right.into())
-                            })
-                            .collect_vec();
-
-                        Ok((cropped_image, cropped_bboxes))
-                    })
+                    crop_image_bboxes(&image, bboxes, [margin_t, margin_b, margin_l, margin_r])
                 }
             },
         );
@@ -244,4 +224,32 @@ impl ParallelMosaicProcessor {
 
         Ok((merged_image, merged_bboxes))
     }
+}
+
+fn crop_image_bboxes(
+    image: &Tensor,
+    bboxes: impl IntoIterator<Item = LabeledRatioBBox>,
+    tlbr: [f64; 4],
+) -> Result<(Tensor, Vec<LabeledRatioBBox>)> {
+    tch::no_grad(|| {
+        let [margin_t, margin_b, margin_l, margin_r] = tlbr;
+
+        // crop image
+        let cropped_image = image.f_crop_by_ratio(margin_t, margin_l, margin_b, margin_r)?;
+
+        // crop bbox
+        let cropped_bboxes = bboxes
+            .into_iter()
+            .filter_map(|bbox| {
+                bbox.crop([
+                    margin_t.try_into().unwrap(),
+                    margin_l.try_into().unwrap(),
+                    margin_b.try_into().unwrap(),
+                    margin_r.try_into().unwrap(),
+                ])
+            })
+            .collect_vec();
+
+        Ok((cropped_image, cropped_bboxes))
+    })
 }

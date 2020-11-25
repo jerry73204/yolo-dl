@@ -385,7 +385,7 @@ impl YoloLoss {
                         category_id: ratio_bbox.category_id,
                     })
                 };
-                let [grid_cy, grid_cx, grid_h, grid_w] = grid_bbox.bbox.cycxhw;
+                let [grid_cy, grid_cx, grid_h, grid_w] = grid_bbox.bbox.cycxhw();
 
                 // collect neighbor grid indexes
                 let grid_indexes = {
@@ -558,7 +558,7 @@ impl YoloLoss {
             let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = target
                 .values()
                 .map(|bbox| {
-                    let [cy, cx, h, w] = bbox.bbox.cycxhw;
+                    let [cy, cx, h, w] = bbox.bbox.cycxhw();
                     let category_id = bbox.category_id;
                     bbox.category_id;
                     (

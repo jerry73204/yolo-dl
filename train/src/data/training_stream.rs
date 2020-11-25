@@ -187,7 +187,7 @@ impl TrainingStream {
 
             let mosaic_processor = Arc::new(
                 ParallelMosaicProcessorInit {
-                    mosaic_margin: mosaic_margin.raw(),
+                    mosaic_margin: mosaic_margin.to_f64(),
                     max_workers: None,
                 }
                 .build()?,
@@ -204,7 +204,7 @@ impl TrainingStream {
 
                     // randomly create mosaic image
                     let (merged_image, merged_bboxes) =
-                        if rng.gen_range(0.0, 1.0) <= mosaic_prob.raw() {
+                        if rng.gen_range(0.0, 1.0) <= mosaic_prob.to_f64() {
                             mosaic_processor.forward(image_bbox_vec).await?
                         } else {
                             image_bbox_vec.into_iter().next().unwrap()

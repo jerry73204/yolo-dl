@@ -98,39 +98,46 @@ impl CocoDataset {
             .iter()
             .map(|img| (img.id, img))
             .collect();
-        let records = annotations
+        let records: Vec<_> = annotations
             .iter()
             .map(|(_id, ann)| (ann.image_id, ann))
             .into_group_map()
             .into_iter()
-            .map(|(image_id, anns)| {
+            .map(|(image_id, anns)| -> Result<_> {
                 let image = &images[&image_id];
-                let bboxes = anns
+                let bboxes: Vec<_> = anns
                     .into_iter()
-                    .filter_map(|ann| {
+                    .map(|ann| -> Result<_> {
                         // filter by class list and whitelist
                         let category_name = &category_id_to_classes[&ann.category_id];
-                        let class_index = classes.get_index_of(category_name)?;
+                        let class_index = match classes.get_index_of(category_name) {
+                            Some(index) => index,
+                            None => return Ok(None),
+                        };
                         if let Some(whitelist) = &config.dataset.class_whitelist {
-                            whitelist.get(category_name)?;
+                            if let None = whitelist.get(category_name) {
+                                return Ok(None);
+                            }
                         }
 
                         let [l, t, w, h] = ann.bbox;
-                        let bbox = PixelBBox::from_tlhw([t.into(), l.into(), h.into(), w.into()]);
-                        Some(LabeledPixelBBox {
+                        let bbox =
+                            PixelBBox::try_from_tlhw([t.into(), l.into(), h.into(), w.into()])?;
+                        Ok(Some(LabeledPixelBBox {
                             bbox,
                             category_id: class_index,
-                        })
+                        }))
                     })
-                    .collect_vec();
+                    .filter_map(|result| result.transpose())
+                    .try_collect()?;
 
-                Arc::new(FileRecord {
+                Ok(Arc::new(FileRecord {
                     path: dataset.image_dir.join(&image.file_name),
                     size: PixelSize::new(image.height, image.width),
                     bboxes,
-                })
+                }))
             })
-            .collect_vec();
+            .try_collect()?;
 
         Ok(CocoDataset {
             config,
