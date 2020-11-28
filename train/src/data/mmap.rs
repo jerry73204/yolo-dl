@@ -5,12 +5,13 @@ use mmap_dataset::{BBoxEntry, ComponentKind, Header};
 #[derive(Debug)]
 pub struct MmapDataset {
     dataset: Arc<mmap_dataset::Dataset>,
+    device: Device,
 }
 
 impl MmapDataset {
-    pub async fn load(path: impl AsRef<async_std::path::Path>) -> Result<Self> {
+    pub async fn load(path: impl AsRef<async_std::path::Path>, device: Device) -> Result<Self> {
         let dataset = Arc::new(mmap_dataset::Dataset::open(path).await?);
-        Ok(Self { dataset })
+        Ok(Self { dataset, device })
     }
 }
 
@@ -32,6 +33,7 @@ impl RandomAccessDataset for MmapDataset {
 
     fn nth(&self, index: usize) -> Pin<Box<dyn Future<Output = Result<DataRecord>> + Send>> {
         let dataset = self.dataset.clone();
+        let device = self.device;
 
         Box::pin(async move {
             let mut timing = Timing::new("mmap dataset nth");
@@ -50,6 +52,7 @@ impl RandomAccessDataset for MmapDataset {
                 let (image, bboxes) = dataset
                     .nth(index)
                     .ok_or_else(|| format_err!("invalid index {}", index))?;
+                let image = image.to_device(device);
 
                 timing.set_record("get sample");
 

@@ -580,7 +580,6 @@ async fn multi_gpu_training_worker(
             training_timing = Timing::new("training loop");
         }
     }
-    Ok(())
 }
 
 fn single_gpu_training_worker(

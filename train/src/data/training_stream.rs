@@ -84,7 +84,7 @@ impl TrainingStream {
                 }
                 DatasetKind::Mmap { dataset_file, .. } => {
                     let dataset: Box<dyn RandomAccessDataset> =
-                        Box::new(MmapDataset::load(dataset_file).await?);
+                        Box::new(MmapDataset::load(dataset_file, device).await?);
                     dataset
                 }
             }
@@ -101,7 +101,7 @@ impl TrainingStream {
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         // repeating
-        let stream = futures::stream::repeat(()).enumerate();
+        let stream = stream::repeat(()).enumerate();
 
         // sample 4 records per step
         let stream = {
