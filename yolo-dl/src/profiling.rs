@@ -1,5 +1,32 @@
 use crate::common::*;
 
+lazy_static! {
+    static ref PROFILING_CONFIG: ProfilingConfig = {
+        let config: ProfilingConfig = match envy::prefixed("YOLODL_").from_env() {
+            Ok(config) => config,
+            Err(err) => {
+                eprintln!("failed to load profiling environment variables, fallback to default values: {:?}", err);
+                Default::default()
+            }
+        };
+        config
+    };
+    static ref REGISTERED_TIMINGS: DashSet<&'static str> = DashSet::new();
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfilingConfig {
+    pub profiling_whitelist: Option<HashSet<String>>,
+}
+
+impl Default for ProfilingConfig {
+    fn default() -> Self {
+        Self {
+            profiling_whitelist: None,
+        }
+    }
+}
+
 #[cfg(feature = "profiling")]
 #[derive(Debug)]
 pub struct Timing {
@@ -17,6 +44,10 @@ impl Timing {
     pub fn new(name: &'static str) -> Self {
         #[cfg(feature = "profiling")]
         {
+            if REGISTERED_TIMINGS.insert(name) {
+                info!("registered timing profile '{}'", name);
+            }
+
             Self {
                 name,
                 instant: Instant::now(),
@@ -40,17 +71,11 @@ impl Timing {
     pub fn report(&self) {
         #[cfg(feature = "profiling")]
         {
-            let key = "YOLODL_TIMING";
-            let can_report = match env::var(key) {
-                Ok(expect_name) => self.name == expect_name,
-                Err(VarError::NotPresent) => true,
-                Err(VarError::NotUnicode(_)) => {
-                    self.non_unicode_once.call_once(|| {
-                        error!("the value of '{}' is not unicode", key);
-                    });
-                    false
-                }
-            };
+            let can_report = PROFILING_CONFIG
+                .profiling_whitelist
+                .as_ref()
+                .map(|whitelist| whitelist.contains(self.name))
+                .unwrap_or(true);
 
             if can_report {
                 info!("profiling report for '{}'", self.name);

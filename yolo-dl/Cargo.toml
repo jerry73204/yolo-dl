@@ -37,6 +37,9 @@ num_cpus = "1.13"
 immeta = "0.4"
 # xz2 = { version = "0.1", features = ["tokio-io", "futures"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
+lazy_static = "1.4"
+envy = "0.4"
+dashmap = "3.11"
 
 [features]
 profiling = []

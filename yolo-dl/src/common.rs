@@ -4,6 +4,7 @@ pub use argh::FromArgs;
 pub use async_std::sync::RwLock;
 pub use chrono::{DateTime, Local};
 pub use coco::Category;
+pub use dashmap::DashSet;
 pub use futures::{
     future,
     future::FutureExt,
@@ -13,6 +14,7 @@ pub use futures::{
 pub use image::{imageops::FilterType, DynamicImage, FlatSamples, ImageFormat, Pixel};
 pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::{iproduct, izip, Itertools};
+pub use lazy_static::lazy_static;
 pub use log::{error, info, warn};
 pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
