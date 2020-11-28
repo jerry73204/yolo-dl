@@ -47,12 +47,11 @@ impl TrainingStream {
                     image_size,
                     ..
                 } => {
-                    let dataset: Box<dyn FileDataset> = Box::new(
-                        CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?,
-                    );
                     let dataset =
-                        CachedDataset::new(Arc::new(dataset), cache_dir, image_size.get(), device)
-                            .await?;
+                        CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?;
+                    let dataset = SanitizedDataset::new(dataset, out_of_bound_tolerance)?;
+                    let dataset =
+                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
                     dataset
                 }
@@ -61,11 +60,10 @@ impl TrainingStream {
                     image_size,
                     ..
                 } => {
-                    let dataset: Box<dyn FileDataset> =
-                        Box::new(VocDataset::load(config.clone(), dataset_dir).await?);
+                    let dataset = VocDataset::load(config.clone(), dataset_dir).await?;
+                    let dataset = SanitizedDataset::new(dataset, out_of_bound_tolerance)?;
                     let dataset =
-                        CachedDataset::new(Arc::new(dataset), cache_dir, image_size.get(), device)
-                            .await?;
+                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
                     dataset
                 }
@@ -75,13 +73,12 @@ impl TrainingStream {
                     image_size,
                     ..
                 } => {
-                    let dataset: Box<dyn FileDataset> = Box::new(
-                        IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone())
-                            .await?,
-                    );
                     let dataset =
-                        CachedDataset::new(Arc::new(dataset), cache_dir, image_size.get(), device)
+                        IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone())
                             .await?;
+                    let dataset = SanitizedDataset::new(dataset, out_of_bound_tolerance)?;
+                    let dataset =
+                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
                     dataset
                 }

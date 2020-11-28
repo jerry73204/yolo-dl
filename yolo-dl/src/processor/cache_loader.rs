@@ -39,6 +39,7 @@ impl CacheLoader {
     pub async fn load_cache<P, B>(
         &self,
         image_path: P,
+        orig_size: &PixelSize<usize>,
         bboxes: &[B],
     ) -> Result<(Tensor, Vec<LabeledRatioBBox>)>
     where
@@ -54,12 +55,11 @@ impl CacheLoader {
             ..
         } = *self;
         let image_path = image_path.as_ref();
-
-        let (orig_height, orig_width) = {
-            let meta = immeta::load_from_file(image_path)?;
-            let immeta::Dimensions { height, width } = meta.dimensions();
-            (height, width)
-        };
+        let PixelSize {
+            height: orig_h,
+            width: orig_w,
+            ..
+        } = *orig_size;
 
         ensure!(
             image_channels == 3,
@@ -68,10 +68,10 @@ impl CacheLoader {
 
         // compute cache size
         let resize_ratio =
-            (image_size as f64 / orig_height as f64).min(image_size as f64 / orig_width as f64);
-        let cache_height = (orig_height as f64 * resize_ratio) as usize;
-        let cache_width = (orig_width as f64 * resize_ratio) as usize;
-        let cache_components = cache_height * cache_width * image_channels;
+            (image_size as f64 / orig_h as f64).min(image_size as f64 / orig_w as f64);
+        let cache_h = (orig_h as f64 * resize_ratio) as usize;
+        let cache_w = (orig_w as f64 * resize_ratio) as usize;
+        let cache_components = cache_h * cache_w * image_channels;
         let cache_bytes = cache_components * mem::size_of::<f32>();
         let mut timing = Timing::new("cache loader");
 
@@ -80,8 +80,8 @@ impl CacheLoader {
             "{}-{}-{}-{}",
             percent_encoding::utf8_percent_encode(image_path.to_str().unwrap(), NON_ALPHANUMERIC),
             image_channels,
-            cache_height,
-            cache_width,
+            cache_h,
+            cache_w,
         ));
 
         // check if the cache is valid
@@ -107,11 +107,7 @@ impl CacheLoader {
                     (Kind::Float, Device::Cpu),
                 )?
                 .to_device(device)
-                .view_(&[
-                    image_channels as i64,
-                    cache_height as i64,
-                    cache_width as i64,
-                ]);
+                .view_(&[image_channels as i64, cache_h as i64, cache_w as i64]);
 
                 Ok(image)
             })
@@ -125,49 +121,35 @@ impl CacheLoader {
             let image_path = image_path.to_owned();
             let (tensor, buffer, timing_) =
                 async_std::task::spawn_blocking(move || -> Result<_> {
-                    let FlatSamples { samples, .. } = image::io::Reader::open(&image_path)
-                        .with_context(|| format!("failed to open {}", image_path.display()))?
-                        .with_guessed_format()
-                        .with_context(|| {
-                            format!(
-                                "failed to determine the image file format: {}",
-                                image_path.display()
-                            )
-                        })?
-                        .decode()
-                        .with_context(|| {
-                            format!("failed to decode image file: {}", image_path.display())
-                        })?
-                        .resize_exact(
-                            cache_width as u32,
-                            cache_height as u32,
-                            FilterType::CatmullRom,
-                        )
-                        .to_rgb8()
-                        .into_flat_samples();
-                    debug_assert_eq!(samples.len(), cache_height * cache_width * image_channels);
-
-                    timing.set_record("load raw & resize");
-
-                    let tensor = tch::no_grad(|| {
-                        Tensor::of_slice(&samples)
-                            .to_kind(Kind::Float)
-                            .to_device(device)
-                            .g_div1(255.0)
-                            .view([
-                                cache_height as i64,
-                                cache_width as i64,
-                                image_channels as i64,
-                            ])
-                            .permute(&[2, 0, 1])
+                    let image = vision::image::load(image_path)?;
+                    {
+                        let shape = image.size3()?;
+                        let expect_shape = (image_channels as i64, orig_h as i64, orig_w as i64);
+                        ensure!(
+                            shape == expect_shape,
+                            "image size does not match, expect {:?}, but get {:?}",
+                            expect_shape,
+                            shape
+                        );
+                    }
+                    let image = tch::no_grad(|| -> Result<_> {
+                        let image = image
                             .set_requires_grad(false)
-                    });
+                            // resize on cpu before moving to CUDA due to this issue
+                            // https://github.com/LaurentMazare/tch-rs/issues/286
+                            .resize2d_exact(cache_h as i64, cache_w as i64)?
+                            .to_device(device)
+                            .to_kind(Kind::Float)
+                            .g_div1(255.0);
+                        Ok(image)
+                    })?;
+                    timing.set_record("load & resize");
 
                     let mut buffer = vec![0; cache_bytes];
-                    tensor.copy_data_u8(&mut buffer, cache_components);
+                    image.copy_data_u8(&mut buffer, cache_components);
                     timing.set_record("rehape & copy");
 
-                    Ok((tensor, buffer, timing))
+                    Ok((image, buffer, timing))
                 })
                 .await?;
             timing = timing_;
@@ -183,19 +165,14 @@ impl CacheLoader {
         };
 
         // resize and center
-        let top_pad = (image_size - cache_height) / 2;
-        let bottom_pad = image_size - cache_height - top_pad;
-        let left_pad = (image_size - cache_width) / 2;
-        let right_pad = image_size - cache_width - left_pad;
+        let top_pad = (image_size - cache_h) / 2;
+        let bottom_pad = image_size - cache_h - top_pad;
+        let left_pad = (image_size - cache_w) / 2;
+        let right_pad = image_size - cache_w - left_pad;
 
         let output_image = tch::no_grad(|| {
             cached_image
-                .view([
-                    1,
-                    image_channels as i64,
-                    cache_height as i64,
-                    cache_width as i64,
-                ])
+                .view([1, image_channels as i64, cache_h as i64, cache_w as i64])
                 .zero_pad2d(
                     left_pad as i64,
                     right_pad as i64,
@@ -213,22 +190,28 @@ impl CacheLoader {
             let image_size = R64::new(image_size as f64);
             bboxes
                 .iter()
-                .map(|orig_bbox| -> Result<_> {
+                .map(|orig_label| -> Result<_> {
                     let LabeledPixelBBox {
-                        ref bbox,
+                        bbox: ref orig_bbox,
                         category_id,
-                    } = *orig_bbox.borrow();
+                    } = *orig_label.borrow();
 
-                    let [orig_cy, orig_cx, orig_h, orig_w] = bbox.cycxhw();
-                    let new_cy = orig_cy * resize_ratio + top_pad as f64;
-                    let new_cx = orig_cx * resize_ratio + left_pad as f64;
-                    let new_h = orig_h * resize_ratio;
-                    let new_w = orig_w * resize_ratio;
+                    let resized_bbox = {
+                        let [orig_cy, orig_cx, orig_h, orig_w] = orig_bbox.cycxhw();
+                        let resized_cy = orig_cy * resize_ratio + top_pad as f64;
+                        let resized_cx = orig_cx * resize_ratio + left_pad as f64;
+                        let resized_h = orig_h * resize_ratio;
+                        let resized_w = orig_w * resize_ratio;
+                        let resized_bbox = PixelBBox::try_from_cycxhw([
+                            resized_cy, resized_cx, resized_h, resized_w,
+                        ])?;
+                        resized_bbox
+                    };
 
-                    let bbox = PixelBBox::try_from_cycxhw([new_cy, new_cx, new_h, new_w])?
-                        .to_ratio_bbox(image_size, image_size)?;
-
-                    Ok(LabeledRatioBBox { bbox, category_id })
+                    Ok(LabeledRatioBBox {
+                        bbox: resized_bbox.to_ratio_bbox(image_size, image_size)?,
+                        category_id,
+                    })
                 })
                 .try_collect()?
         };
