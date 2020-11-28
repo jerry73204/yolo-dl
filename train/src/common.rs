@@ -1,5 +1,5 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
-pub use approx::abs_diff_eq;
+pub use approx::{abs_diff_eq, AbsDiffEq};
 pub use argh::FromArgs;
 pub use async_std::sync::RwLock;
 pub use chrono::{DateTime, Local};
@@ -18,7 +18,7 @@ pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
-pub use rand::{prelude::*, rngs::StdRng};
+pub use rand::{distributions::Distribution, prelude::*, rngs::StdRng, seq::SliceRandom};
 pub use regex::Regex;
 pub use serde::{
     de::{Error as DeserializeError, Visitor},
@@ -64,7 +64,7 @@ pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
     model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
-    processor::{CacheLoader, ParallelMosaicProcessorInit},
+    processor::{CacheLoader, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
     utils::{Unzip2, Unzip3, Unzip4, Unzip5},
 };

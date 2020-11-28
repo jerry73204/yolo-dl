@@ -44,6 +44,7 @@ serde-xml-rs = "0.4"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 yolo-dl = { version = "0.1", path = "../yolo-dl" }
 mmap-dataset = { version = "0.1", path = "../mmap-dataset" }
+rand_distr = "0.3"
 
 [features]
 profiling = ["yolo-dl/profiling"]

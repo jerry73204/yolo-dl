@@ -61,6 +61,8 @@ pub enum DatasetKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessorConfig {
     pub cache_dir: PathBuf,
+    pub mixup_prob: Ratio,
+    pub cutmix_prob: Ratio,
     pub mosaic_prob: Ratio,
     pub mosaic_margin: Ratio,
     pub affine_prob: Ratio,

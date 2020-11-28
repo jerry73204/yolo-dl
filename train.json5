@@ -80,6 +80,8 @@
     "preprocessor": {
         "cache_dir": "/home/aeon/tmp/yolo-dl-cache",
         "device": "cuda(0)",
+        "mixup_prob": 0.0,
+        "cutmix_prob": 0.0,
         "mosaic_prob": 0.3,
         "mosaic_margin": 0.4,
         "affine_prob": 0.3,

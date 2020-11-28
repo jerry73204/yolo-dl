@@ -196,25 +196,76 @@ impl TrainingStream {
             })
         };
 
-        // make mosaic
+        // random affine
+        warn!("TODO: random affine on bboxes is not implemented");
         let stream = {
             let Config {
                 preprocessor:
                     PreprocessorConfig {
-                        mosaic_prob,
-                        mosaic_margin,
-                        /* affine_prob,
-                         * rotate_degrees,
-                         * translation,
-                         * scale,
-                         * shear,
-                         * horizontal_flip,
-                         * vertical_flip, */
+                        affine_prob,
+                        rotate_degrees,
+                        translation,
+                        scale,
+                        shear,
+                        horizontal_flip,
+                        vertical_flip,
                         ..
                     },
                 ..
             } = *self.config;
 
+            let random_affine = Arc::new(
+                RandomAffineInit {
+                    rotate_radians: rotate_degrees.map(|degrees| degrees.to_radians()),
+                    translation,
+                    scale,
+                    shear,
+                    horizontal_flip,
+                    vertical_flip,
+                }
+                .build()?,
+            );
+
+            stream.try_par_then(None, move |(index, args)| {
+                let random_affine = random_affine.clone();
+                let mut rng = StdRng::from_entropy();
+
+                async move {
+                    let (step, epoch, image_bbox_vec, mut timing) = args;
+                    // let image_bbox_vec = image_bbox_vec.into_iter().map();
+                    Fallible::Ok((index, (step, epoch, image_bbox_vec, timing)))
+                }
+            })
+        };
+
+        // mixup
+        let stream = {
+            #[derive(Debug, Clone, Copy)]
+            enum MixKind {
+                None,
+                MixUp,
+                CutMix,
+                Mosaic,
+            }
+
+            let Config {
+                preprocessor:
+                    PreprocessorConfig {
+                        mixup_prob,
+                        cutmix_prob,
+                        mosaic_prob,
+                        mosaic_margin,
+                        ..
+                    },
+                ..
+            } = *self.config;
+            let mixup_prob = mixup_prob.to_f64();
+            let cutmix_prob = cutmix_prob.to_f64();
+            let mosaic_prob = mosaic_prob.to_f64();
+            ensure!(
+                mixup_prob + cutmix_prob + mosaic_prob <= 1.0 + f64::default_epsilon(),
+                "the sum of mixup, cutmix, mosaic probabilities must not exceed 1.0"
+            );
             let mosaic_processor = Arc::new(
                 ParallelMosaicProcessorInit {
                     mosaic_margin: mosaic_margin.to_f64(),
@@ -233,26 +284,42 @@ impl TrainingStream {
                     let (step, epoch, image_bbox_vec, mut timing) = args;
                     timing.set_record("mosaic processor start");
 
-                    // randomly create mosaic image
-                    let (merged_image, merged_bboxes) =
-                        if rng.gen_range(0.0, 1.0) <= mosaic_prob.to_f64() {
-                            mosaic_processor.forward(image_bbox_vec).await?
-                        } else {
+                    let mix_kind = [
+                        (MixKind::None, 1.0 - mixup_prob - cutmix_prob - mosaic_prob),
+                        (MixKind::MixUp, mixup_prob),
+                        (MixKind::CutMix, cutmix_prob),
+                        (MixKind::Mosaic, mosaic_prob),
+                    ]
+                    .choose_weighted(&mut rng, |(_kind, prob)| *prob)
+                    .unwrap()
+                    .0;
+
+                    let (mixed_image, mixed_bboxes) = match mix_kind {
+                        MixKind::None => {
                             // take the first sample and discard others
                             image_bbox_vec.into_iter().next().unwrap()
-                        };
+                        }
+                        MixKind::MixUp => {
+                            warn!("mixup is not implemented yet");
+                            image_bbox_vec.into_iter().next().unwrap()
+                        }
+                        MixKind::CutMix => {
+                            warn!("cutmix is not implemented yet");
+                            image_bbox_vec.into_iter().next().unwrap()
+                        }
+                        MixKind::Mosaic => mosaic_processor.forward(image_bbox_vec).await?,
+                    };
 
                     // send to logger
-                    {
-                        let msg = LoggingMessage::new_images_with_bboxes(
+                    logging_tx
+                        .send(LoggingMessage::new_images_with_bboxes(
                             "mosaic-processor",
-                            vec![(&merged_image, &merged_bboxes)],
-                        );
-                        let _ = logging_tx.send(msg);
-                    }
+                            vec![(&mixed_image, &mixed_bboxes)],
+                        ))
+                        .unwrap();
 
                     timing.set_record("mosaic processor end");
-                    Fallible::Ok((index, (step, epoch, merged_bboxes, merged_image, timing)))
+                    Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
                 }
             })
         };
@@ -265,44 +332,6 @@ impl TrainingStream {
             timing.set_record("batch dimensions end");
             Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
         });
-
-        // apply random affine
-        // let random_affine = Arc::new(RandomAffine::new(
-        //     rotate_degrees,
-        //     translation,
-        //     scale,
-        //     shear,
-        //     horizontal_flip,
-        //     vertical_flip,
-        // ));
-
-        // warn!("TODO: random affine on bboxes is not implemented");
-        // let stream = stream.try_par_then(None, move |(index, args)| {
-        //     let random_affine = random_affine.clone();
-        //     let mut rng = StdRng::from_entropy();
-
-        //     async move {
-        //         let (step, epoch, bboxes, image, mut timing) = args;
-
-        //         // randomly create mosaic image
-        //         let (new_bboxes, new_image) = if rng.gen_range(0.0, 1.0) <= affine_prob.raw() {
-        //             let new_image = async_std::task::spawn_blocking(move || {
-        //                 random_affine.batch_random_affine(&image)
-        //             })
-        //             .await;
-
-        //             // TODO: random affine on bboxes
-        //             let new_bboxes = bboxes;
-
-        //             (new_bboxes, new_image)
-        //         } else {
-        //             (bboxes, image)
-        //         };
-
-        //         timing.set_record("random affine");
-        //         Fallible::Ok((index, (step, epoch, new_bboxes, new_image, timing)))
-        //     }
-        // });
 
         // reorder items
         let stream = stream.try_reorder_enumerated();
