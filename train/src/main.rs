@@ -247,10 +247,12 @@ async fn multi_gpu_training_worker(
     // training loop
     let mut training_timing = Timing::new("training loop");
 
-    while let Ok(record) = data_rx.recv().await {
+    loop {
+        let record = data_rx.recv().await?;
+
         let TrainingRecord {
             epoch,
-            step: record_step,
+            step: _record_step,
             image,
             bboxes,
         } = record.to_device(master_device);
