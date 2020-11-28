@@ -78,9 +78,12 @@ impl TryFrom<R64> for Ratio {
 
     fn try_from(value: R64) -> Result<Self, Self::Error> {
         ensure!(
-            value.raw() >= 0.0 && value.raw() <= 1.0,
-            "ratio value must be within range [0.0, 1.0]"
+            ((0.0 - f64::default_epsilon())..=(1.0 + f64::default_epsilon()))
+                .contains(&value.raw()),
+            "ratio value must be within range [0.0, 1.0], but get {}",
+            value
         );
+        let value = value.max(R64::new(0.0)).min(R64::new(1.0));
         Ok(Self(value))
     }
 }
