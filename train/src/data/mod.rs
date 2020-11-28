@@ -4,6 +4,7 @@ mod dataset;
 mod iii;
 mod mmap;
 mod record;
+mod sanitized;
 mod training_stream;
 mod voc;
 
@@ -13,5 +14,6 @@ pub use dataset::*;
 pub use iii::*;
 pub use mmap::*;
 pub use record::*;
+pub use sanitized::*;
 pub use training_stream::*;
 pub use voc::*;

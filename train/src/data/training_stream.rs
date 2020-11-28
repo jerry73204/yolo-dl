@@ -33,6 +33,7 @@ impl TrainingStream {
                 preprocessor:
                     PreprocessorConfig {
                         ref cache_dir,
+                        out_of_bound_tolerance,
                         device,
                         ..
                     },

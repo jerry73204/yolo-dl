@@ -71,6 +71,7 @@ pub struct PreprocessorConfig {
     pub horizontal_flip: bool,
     pub vertical_flip: bool,
     pub bbox_scaling: R64,
+    pub out_of_bound_tolerance: R64,
     #[serde(with = "tch_serde::serde_device")]
     pub device: Device,
 }
