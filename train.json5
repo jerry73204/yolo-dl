@@ -90,6 +90,7 @@
         "horizontal_flip": true,
         "vertical_flip": true,
         "bbox_scaling": 1.0,
+        "out_of_bound_tolerance": 10,
     },
     "training": {
         "batch_size": 192,
