@@ -42,7 +42,7 @@ pub use std::{
     marker::PhantomData,
     mem,
     num::NonZeroUsize,
-    ops::{Add, Deref, DerefMut, Div, Mul, Rem, Sub},
+    ops::{Add, Deref, DerefMut, Div, Mul, Range, Rem, Sub},
     path::{Path, PathBuf},
     pin::Pin,
     rc::Rc,
