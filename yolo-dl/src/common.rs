@@ -27,6 +27,7 @@ pub use serde::{
     ser::{Error as SerializeError, SerializeSeq},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+pub use slice_of_array::{SliceFlatExt, SliceNestExt};
 pub use std::{
     borrow::{Borrow, Cow},
     cmp::Ordering,
@@ -64,3 +65,10 @@ pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, mpsc};
 pub use uuid::Uuid;
+
+unzip_n::unzip_n!(pub 2);
+unzip_n::unzip_n!(pub 3);
+unzip_n::unzip_n!(pub 4);
+unzip_n::unzip_n!(pub 5);
+unzip_n::unzip_n!(pub 6);
+unzip_n::unzip_n!(pub 7);

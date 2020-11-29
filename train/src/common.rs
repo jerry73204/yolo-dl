@@ -66,7 +66,13 @@ pub use yolo_dl::{
     model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
     processor::{CacheLoader, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
-    utils::{Unzip2, Unzip3, Unzip4, Unzip5},
 };
 
 pub type Fallible<T> = Result<T, Error>;
+
+unzip_n::unzip_n!(pub 2);
+unzip_n::unzip_n!(pub 3);
+unzip_n::unzip_n!(pub 4);
+unzip_n::unzip_n!(pub 5);
+unzip_n::unzip_n!(pub 6);
+unzip_n::unzip_n!(pub 7);

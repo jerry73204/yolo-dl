@@ -2,7 +2,6 @@ use crate::{
     common::*,
     model::{InstanceIndex, LayerMeta, YoloOutput},
     profiling::Timing,
-    utils::{Unzip2, Unzip5},
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

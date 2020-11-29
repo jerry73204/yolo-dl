@@ -1,5 +1,5 @@
 use super::*;
-use crate::{common::*, utils::Unzip7};
+use crate::common::*;
 
 pub enum YoloModule {
     Single(usize, Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>),
