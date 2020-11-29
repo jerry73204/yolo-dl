@@ -5,6 +5,19 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Corners<T, U>
+where
+    T: Copy,
+    U: Unit,
+{
+    pub tl: [T; 2],
+    pub tr: [T; 2],
+    pub bl: [T; 2],
+    pub br: [T; 2],
+    _phantom: PhantomData<U>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LabeledBBox<T, U>
 where
     T: Copy,
@@ -37,6 +50,13 @@ where
             bbox: bbox.map(f),
             category_id,
         }
+    }
+
+    pub fn corners(&self) -> Corners<T, U>
+    where
+        T: Sub<T, Output = T> + Add<T, Output = T> + Div<f64, Output = T>,
+    {
+        self.bbox.corners()
     }
 }
 
@@ -125,6 +145,20 @@ where
     T: Copy,
     U: Unit,
 {
+    pub fn corners(&self) -> Corners<T, U>
+    where
+        T: Sub<T, Output = T> + Add<T, Output = T> + Div<f64, Output = T>,
+    {
+        let [t, l, b, r] = self.tlbr();
+        Corners {
+            tl: [t, l],
+            tr: [t, r],
+            bl: [b, l],
+            br: [b, r],
+            _phantom: PhantomData,
+        }
+    }
+
     pub fn tlbr(&self) -> [T; 4]
     where
         T: Sub<T, Output = T> + Add<T, Output = T> + Div<f64, Output = T>,
