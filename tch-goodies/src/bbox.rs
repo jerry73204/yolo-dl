@@ -18,6 +18,28 @@ pub type LabeledPixelBBox<T> = LabeledBBox<T, PixelUnit>;
 pub type LabeledGridBBox<T> = LabeledBBox<T, GridUnit>;
 pub type LabeledRatioBBox = LabeledBBox<Ratio, RatioUnit>;
 
+impl<T, U> LabeledBBox<T, U>
+where
+    T: Copy,
+    U: Unit,
+{
+    pub fn map<F, R>(&self, f: F) -> LabeledBBox<R, U>
+    where
+        F: FnMut(T) -> R,
+        R: Copy,
+    {
+        let Self {
+            ref bbox,
+            category_id,
+        } = *self;
+
+        LabeledBBox {
+            bbox: bbox.map(f),
+            category_id,
+        }
+    }
+}
+
 impl<U> LabeledBBox<R64, U>
 where
     U: Unit,
@@ -102,6 +124,18 @@ where
 
     pub fn cycxhw(&self) -> [T; 4] {
         self.cycxhw
+    }
+
+    pub fn map<F, R>(&self, mut f: F) -> BBox<R, U>
+    where
+        F: FnMut(T) -> R,
+        R: Copy,
+    {
+        let [cy, cx, h, w] = self.cycxhw;
+        BBox {
+            cycxhw: [f(cy), f(cx), f(h), f(w)],
+            _phantom: PhantomData,
+        }
     }
 }
 
