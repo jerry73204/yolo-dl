@@ -82,11 +82,26 @@ impl LabeledBBox<Ratio, RatioUnit> {
             category_id,
         }
     }
+
     pub fn crop(&self, tlbr: [Ratio; 4]) -> Option<LabeledRatioBBox> {
         Some(LabeledRatioBBox {
             bbox: self.bbox.crop(tlbr)?,
             category_id: self.category_id,
         })
+    }
+
+    pub fn to_r64_bbox<U>(&self, height: usize, width: usize) -> LabeledBBox<R64, U>
+    where
+        U: Unit,
+    {
+        let Self {
+            ref bbox,
+            category_id,
+        } = *self;
+        LabeledBBox {
+            bbox: bbox.to_r64_bbox(height, width),
+            category_id,
+        }
     }
 }
 
@@ -260,10 +275,12 @@ impl BBox<Ratio, RatioUnit> {
         }
     }
 
-    pub fn to_r64_bbox<U>(&self, height: R64, width: R64) -> BBox<R64, U>
+    pub fn to_r64_bbox<U>(&self, height: usize, width: usize) -> BBox<R64, U>
     where
         U: Unit,
     {
+        let height = R64::new(height as f64);
+        let width = R64::new(width as f64);
         let Self {
             cycxhw: [ratio_cy, ratio_cx, ratio_h, ratio_w],
             ..

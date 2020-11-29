@@ -389,10 +389,10 @@ impl YoloLoss {
 
                 // compute bbox in grid units
                 let grid_bbox = {
-                    let height = R64::new(feature_height as f64);
-                    let width = R64::new(feature_width as f64);
                     Arc::new(LabeledGridBBox {
-                        bbox: ratio_bbox.bbox.to_r64_bbox(height, width),
+                        bbox: ratio_bbox
+                            .bbox
+                            .to_r64_bbox(feature_height as usize, feature_width as usize),
                         category_id: ratio_bbox.category_id,
                     })
                 };
