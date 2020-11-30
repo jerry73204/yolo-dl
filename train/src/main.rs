@@ -441,8 +441,8 @@ async fn multi_gpu_training_worker(
         };
         training_timing.set_record("backward step");
 
-        // compute losses from each job
-        let losses = async_std::task::spawn_blocking(move || -> Result<_> {
+        // average losses among workers
+        let (losses, outputs) = async_std::task::spawn_blocking(move || -> Result<_> {
             let losses = YoloLossOutput::weighted_mean(outputs.iter().map(|output| {
                 (
                     output.losses.to_device(master_device),
@@ -450,10 +450,60 @@ async fn multi_gpu_training_worker(
                 )
             }))?;
 
-            Ok(losses)
+            Ok((losses, outputs))
         })
         .await?;
         training_timing.set_record("compute loss");
+
+        // aggregate worker outputs
+        let (model_output, target_bboxes) = {
+            let (model_output_vec, target_bboxes_vec) = outputs
+                .into_iter()
+                .scan(0, |batch_index_base_mut, worker_output| {
+                    let WorkerOutput {
+                        minibatch_size,
+                        output: model_output,
+                        target_bboxes: orig_target_bboxes,
+                        ..
+                    } = worker_output;
+
+                    // re-index target_bboxes
+                    let batch_index_base = *batch_index_base_mut;
+                    let new_target_bboxes =
+                        orig_target_bboxes
+                            .into_iter()
+                            .map(move |(orig_instance_index, bbox)| {
+                                let InstanceIndex {
+                                    batch_index,
+                                    layer_index,
+                                    anchor_index,
+                                    grid_col,
+                                    grid_row,
+                                } = *orig_instance_index.as_ref();
+                                let new_instance_index = InstanceIndex {
+                                    batch_index: batch_index + batch_index_base,
+                                    layer_index,
+                                    anchor_index,
+                                    grid_col,
+                                    grid_row,
+                                };
+                                (Arc::new(new_instance_index), bbox)
+                            });
+
+                    *batch_index_base_mut += minibatch_size;
+                    Some((model_output, new_target_bboxes))
+                })
+                .unzip_n_vec();
+
+            let model_output = YoloOutput::cat(model_output_vec, master_device)?;
+            let target_bboxes: HashMap<_, _> = target_bboxes_vec.into_iter().flatten().collect();
+
+            assert!(target_bboxes
+                .keys()
+                .all(|index| index.batch_index < model_output.batch_size() as usize));
+
+            (model_output, Arc::new(target_bboxes))
+        };
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
