@@ -494,8 +494,11 @@ impl DetectModule {
                     // compute base flat index
                     let layer_meta = LayerMeta {
                         feature_size: feature_size.to_owned(),
-                        grid_size: PixelSize::new(grid_height, grid_width),
-                        anchors: anchor_sizes.to_owned(),
+                        grid_size: PixelSize::new(R64::new(grid_height), R64::new(grid_width)),
+                        anchors: anchor_sizes
+                            .iter()
+                            .map(|size| size.map(|&val| R64::new(val)))
+                            .collect(),
                         begin_flat_index,
                         end_flat_index,
                     };

@@ -60,7 +60,7 @@ pub struct YoloOutput {
     pub(crate) device: Device,
     pub(crate) layer_meta: Vec<LayerMeta>,
     // below tensors have shape [n_instances, n_outputs] where
-    // - n_instances = (\sum_(1<= i <= n_layers) n_anchors_i x feature_height_i x feature_width_i) x batch_size
+    // - n_instances = (\sum_(1<= i <= n_layers) batch_size x n_anchors_i x feature_height_i x feature_width_i)
     // - n_outputs depends on output kind (cy, cx, height, width, objectness -> 1; classification -> n_classes)
     pub(crate) cy: Tensor,
     pub(crate) cx: Tensor,
@@ -124,14 +124,17 @@ impl YoloOutput {
     }
 }
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
 pub struct LayerMeta {
     /// feature map size in grid units
+    #[tensor_like(clone)]
     pub feature_size: GridSize<i64>,
     /// per grid size in pixel units
-    pub grid_size: PixelSize<f64>,
+    #[tensor_like(clone)]
+    pub grid_size: PixelSize<R64>,
     /// Anchros (height, width) in grid units
-    pub anchors: Vec<GridSize<f64>>,
+    #[tensor_like(clone)]
+    pub anchors: Vec<GridSize<R64>>,
     pub begin_flat_index: i64,
     pub end_flat_index: i64,
 }

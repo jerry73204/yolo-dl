@@ -559,9 +559,9 @@ impl YoloLoss {
                         let grid_h = grid_h.raw();
                         let grid_w = grid_w.raw();
 
-                        grid_h / anchor_height <= self.anchor_scale_thresh
+                        grid_h / anchor_height.raw() <= self.anchor_scale_thresh
                             && anchor_height / grid_h <= self.anchor_scale_thresh
-                            && grid_w / anchor_width <= self.anchor_scale_thresh
+                            && grid_w / anchor_width.raw() <= self.anchor_scale_thresh
                             && anchor_width / grid_w <= self.anchor_scale_thresh
                     })
                     .flat_map(move |(anchor_index, _)| {

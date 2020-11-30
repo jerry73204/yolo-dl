@@ -126,16 +126,16 @@ pub async fn logging_worker(
                                                 ..
                                             } = layer_meta[layer_index];
 
-                                            let target_t = ((target_t.raw() * grid_height) as i64)
+                                            let target_t = ((target_t * grid_height).raw() as i64)
                                                 .max(0)
                                                 .min(image_height - 1);
-                                            let target_b = ((target_b.raw() * grid_height) as i64)
+                                            let target_b = ((target_b * grid_height).raw() as i64)
                                                 .max(0)
                                                 .min(image_height - 1);
-                                            let target_l = ((target_l.raw() * grid_width) as i64)
+                                            let target_l = ((target_l * grid_width).raw() as i64)
                                                 .max(0)
                                                 .min(image_width - 1);
-                                            let target_r = ((target_r.raw() * grid_width) as i64)
+                                            let target_r = ((target_r * grid_width).raw() as i64)
                                                 .max(0)
                                                 .min(image_width - 1);
 
@@ -180,16 +180,16 @@ pub async fn logging_worker(
                                                         b,
                                                         r,
                                                     ) = args;
-                                                    let t = ((t * grid_height) as i64)
+                                                    let t = ((t * grid_height.raw()) as i64)
                                                         .max(0)
                                                         .min(image_height - 1);
-                                                    let b = ((b * grid_height) as i64)
+                                                    let b = ((b * grid_height.raw()) as i64)
                                                         .max(0)
                                                         .min(image_height - 1);
-                                                    let l = ((l * grid_width) as i64)
+                                                    let l = ((l * grid_width.raw()) as i64)
                                                         .max(0)
                                                         .min(image_width - 1);
-                                                    let r = ((r * grid_width) as i64)
+                                                    let r = ((r * grid_width.raw()) as i64)
                                                         .max(0)
                                                         .min(image_width - 1);
                                                     [batch_index as i64, t, l, b, r]
@@ -201,7 +201,6 @@ pub async fn logging_worker(
                                         //     output.classification().index_select(0, &flat_indexes);
                                         // let pred_objectness =
                                         //     output.objectness().index_select(0, &flat_indexes);
-
                                         let _ =
                                             canvas.batch_draw_rect_(&pred_btlbrs, 1, &pred_color);
                                     }
