@@ -71,6 +71,139 @@ pub struct YoloOutput {
 }
 
 impl YoloOutput {
+    pub fn cat<T>(outputs: impl IntoIterator<Item = T>, device: Device) -> Result<Self>
+    where
+        T: Borrow<Self>,
+    {
+        let (
+            image_size_set,
+            batch_size_vec,
+            num_classes_set,
+            layer_meta_set,
+            cy_vec,
+            cx_vec,
+            height_vec,
+            width_vec,
+            objectness_vec,
+            classification_vec,
+        ): (
+            HashSet<PixelSize<i64>>,
+            Vec<i64>,
+            HashSet<i64>,
+            HashSet<Vec<LayerMeta>>,
+            Vec<Tensor>,
+            Vec<Tensor>,
+            Vec<Tensor>,
+            Vec<Tensor>,
+            Vec<Tensor>,
+            Vec<Tensor>,
+        ) = outputs
+            .into_iter()
+            .map(|output| {
+                let YoloOutput {
+                    ref image_size,
+                    batch_size,
+                    num_classes,
+                    ref layer_meta,
+                    ref cy,
+                    ref cx,
+                    ref height,
+                    ref width,
+                    ref objectness,
+                    ref classification,
+                    ..
+                } = *output.borrow();
+
+                (
+                    image_size.clone(),
+                    batch_size,
+                    num_classes,
+                    layer_meta.to_owned(),
+                    cy.to_device(device),
+                    cx.to_device(device),
+                    height.to_device(device),
+                    width.to_device(device),
+                    objectness.to_device(device),
+                    classification.to_device(device),
+                )
+            })
+            .unzip_n();
+
+        let image_size = {
+            ensure!(image_size_set.len() == 1, "image_size must be equal");
+            image_size_set.into_iter().next().unwrap()
+        };
+        let num_classes = {
+            ensure!(num_classes_set.len() == 1, "num_classes must be equal");
+            num_classes_set.into_iter().next().unwrap()
+        };
+        let layer_meta = {
+            ensure!(layer_meta_set.len() == 1, "layer_meta must be equal");
+            layer_meta_set.into_iter().next().unwrap()
+        };
+        let batch_size: i64 = batch_size_vec.into_iter().sum();
+        let cy = Tensor::cat(&cy_vec, 0);
+        let cx = Tensor::cat(&cx_vec, 0);
+        let height = Tensor::cat(&height_vec, 0);
+        let width = Tensor::cat(&width_vec, 0);
+        let objectness = Tensor::cat(&objectness_vec, 0);
+        let classification = Tensor::cat(&classification_vec, 0);
+
+        let flat_index_size: i64 = layer_meta
+            .iter()
+            .map(|meta| {
+                let LayerMeta {
+                    feature_size: GridSize { height, width, .. },
+                    ref anchors,
+                    ..
+                } = *meta;
+                height * width * anchors.len() as i64
+            })
+            .sum();
+        ensure!(
+            cy.size3()? == (batch_size, 1, flat_index_size),
+            "invalid cy shape"
+        );
+        ensure!(
+            cx.size3()? == (batch_size, 1, flat_index_size),
+            "invalid cx shape"
+        );
+        ensure!(
+            height.size3()? == (batch_size, 1, flat_index_size),
+            "invalid height shape"
+        );
+        ensure!(
+            width.size3()? == (batch_size, 1, flat_index_size),
+            "invalid width shape"
+        );
+        ensure!(
+            objectness.size3()? == (batch_size, 1, flat_index_size),
+            "invalid objectness shape"
+        );
+        ensure!(
+            classification.size3()? == (batch_size, num_classes, flat_index_size),
+            "invalid classification shape"
+        );
+
+        Ok(Self {
+            device,
+            image_size,
+            num_classes,
+            layer_meta,
+            batch_size,
+            cy,
+            cx,
+            height,
+            width,
+            objectness,
+            classification,
+        })
+    }
+
+    pub fn batch_size(&self) -> i64 {
+        self.batch_size
+    }
+
     pub fn image_size(&self) -> &PixelSize<i64> {
         &self.image_size
     }
