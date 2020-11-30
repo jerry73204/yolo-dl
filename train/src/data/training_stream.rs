@@ -143,9 +143,19 @@ impl TrainingStream {
         // load samples and scale bboxes
         let stream = {
             let Config {
-                preprocessor: PreprocessorConfig { bbox_scaling, .. },
+                preprocessor:
+                    PreprocessorConfig {
+                        bbox_scaling,
+                        mixup_prob,
+                        cutmix_prob,
+                        mosaic_prob,
+                        ..
+                    },
                 ..
             } = *self.config;
+            let mixup_prob = mixup_prob.to_f64();
+            let cutmix_prob = cutmix_prob.to_f64();
+            let mosaic_prob = mosaic_prob.to_f64();
             let dataset = self.dataset.clone();
             let logging_tx = self.logging_tx.clone();
 
@@ -154,35 +164,52 @@ impl TrainingStream {
                 let dataset = dataset.clone();
                 let logging_tx = logging_tx.clone();
                 let mut timing = Timing::new("pipeline");
+                let mut rng = StdRng::from_entropy();
 
                 async move {
                     timing.set_record("data loading start");
 
-                    let image_bbox_vec: Vec<_> = stream::iter(record_indexes.into_iter())
-                        .par_then(None, move |record_index| {
-                            let dataset = dataset.clone();
+                    // sample mix method
+                    let mix_kind = [
+                        (MixKind::None, 1.0 - mixup_prob - cutmix_prob - mosaic_prob),
+                        (MixKind::MixUp, mixup_prob),
+                        (MixKind::CutMix, cutmix_prob),
+                        (MixKind::Mosaic, mosaic_prob),
+                    ]
+                    .choose_weighted(&mut rng, |(_kind, prob)| *prob)
+                    .unwrap()
+                    .0;
 
-                            async move {
-                                // laod sample
-                                let DataRecord { image, bboxes } =
-                                    dataset.nth(record_index).await?;
+                    // load images
+                    let image_bbox_vec: Vec<_> =
+                        stream::iter(record_indexes.into_iter().take(mix_kind.num_samples()))
+                            .par_then(None, move |record_index| {
+                                let dataset = dataset.clone();
 
-                                // scale bboxes
-                                let bboxes: Vec<_> = bboxes
-                                    .into_iter()
-                                    .map(|bbox| bbox.scale(bbox_scaling))
-                                    .collect();
-                                Fallible::Ok((image, bboxes))
-                            }
-                        })
-                        .try_collect()
-                        .await?;
+                                async move {
+                                    // load sample
+                                    let DataRecord { image, bboxes } =
+                                        dataset.nth(record_index).await?;
+
+                                    // scale bboxes
+                                    let bboxes: Vec<_> = bboxes
+                                        .into_iter()
+                                        .map(|bbox| bbox.scale(bbox_scaling))
+                                        .collect();
+                                    Fallible::Ok((image, bboxes))
+                                }
+                            })
+                            .try_collect()
+                            .await?;
+
+                    // pack into mixed data type
+                    let data = MixData::new(mix_kind, image_bbox_vec).unwrap();
 
                     // send to logger
                     {
                         let msg = LoggingMessage::new_images_with_bboxes(
                             "sample-loading",
-                            image_bbox_vec
+                            data.as_ref()
                                 .iter()
                                 .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
                                 .collect_vec(),
@@ -191,7 +218,7 @@ impl TrainingStream {
                     }
 
                     timing.set_record("data loading end");
-                    Fallible::Ok((index, (step, epoch, image_bbox_vec, timing)))
+                    Fallible::Ok((index, (step, epoch, data, timing)))
                 }
             })
         };
@@ -203,51 +230,82 @@ impl TrainingStream {
                 preprocessor:
                     PreprocessorConfig {
                         affine_prob,
+                        rotate_prob,
                         rotate_degrees,
+                        translation_prob,
                         translation,
+                        scale_prob,
                         scale,
-                        shear,
-                        horizontal_flip,
-                        vertical_flip,
+                        horizontal_flip_prob,
+                        vertical_flip_prob,
                         ..
                     },
                 ..
             } = *self.config;
-
             let random_affine = Arc::new(
                 RandomAffineInit {
+                    rotate_prob,
                     rotate_radians: rotate_degrees.map(|degrees| degrees.to_radians()),
+                    translation_prob,
                     translation,
+                    scale_prob,
                     scale,
-                    shear,
-                    horizontal_flip,
-                    vertical_flip,
+                    horizontal_flip_prob,
+                    vertical_flip_prob,
                 }
                 .build()?,
             );
+            let logging_tx = self.logging_tx.clone();
 
             stream.try_par_then(None, move |(index, args)| {
                 let random_affine = random_affine.clone();
-                let mut rng = StdRng::from_entropy();
+                let logging_tx = logging_tx.clone();
 
                 async move {
-                    let (step, epoch, image_bbox_vec, mut timing) = args;
-                    // let image_bbox_vec = image_bbox_vec.into_iter().map();
-                    Fallible::Ok((index, (step, epoch, image_bbox_vec, timing)))
+                    let (step, epoch, data, mut timing) = args;
+                    timing.set_record("random affine start");
+
+                    let mix_kind = data.kind();
+                    let pairs: Vec<_> = stream::iter(data.into_iter())
+                        .par_map(None, move |(image, bboxes)| {
+                            // TODO: fix cumbersome writing
+                            let random_affine = random_affine.clone();
+                            let mut rng = StdRng::from_entropy();
+
+                            move || -> Result<_> {
+                                let (new_image, new_bboxes) = if rng.gen_bool(affine_prob.to_f64())
+                                {
+                                    random_affine.forward(&image, &bboxes)?
+                                } else {
+                                    (image, bboxes)
+                                };
+                                Ok((new_image, new_bboxes))
+                            }
+                        })
+                        .try_collect()
+                        .await?;
+
+                    let new_data = MixData::new(mix_kind, pairs).unwrap();
+
+                    // send to logger
+                    logging_tx
+                        .send(LoggingMessage::new_images_with_bboxes(
+                            "random-affine",
+                            new_data
+                                .iter()
+                                .map(|(image, bboxes)| (image, bboxes))
+                                .collect_vec(),
+                        ))
+                        .unwrap();
+
+                    timing.set_record("random affine end");
+                    Fallible::Ok((index, (step, epoch, new_data, timing)))
                 }
             })
         };
 
         // mixup
         let stream = {
-            #[derive(Debug, Clone, Copy)]
-            enum MixKind {
-                None,
-                MixUp,
-                CutMix,
-                Mosaic,
-            }
-
             let Config {
                 preprocessor:
                     PreprocessorConfig {
@@ -277,37 +335,28 @@ impl TrainingStream {
 
             stream.try_par_then_unordered(None, move |(index, args)| {
                 let mosaic_processor = mosaic_processor.clone();
-                let mut rng = StdRng::from_entropy();
                 let logging_tx = logging_tx.clone();
 
                 async move {
-                    let (step, epoch, image_bbox_vec, mut timing) = args;
+                    let (step, epoch, data, mut timing) = args;
                     timing.set_record("mosaic processor start");
 
-                    let mix_kind = [
-                        (MixKind::None, 1.0 - mixup_prob - cutmix_prob - mosaic_prob),
-                        (MixKind::MixUp, mixup_prob),
-                        (MixKind::CutMix, cutmix_prob),
-                        (MixKind::Mosaic, mosaic_prob),
-                    ]
-                    .choose_weighted(&mut rng, |(_kind, prob)| *prob)
-                    .unwrap()
-                    .0;
-
-                    let (mixed_image, mixed_bboxes) = match mix_kind {
-                        MixKind::None => {
+                    let (mixed_image, mixed_bboxes) = match data {
+                        MixData::None(pairs) => {
                             // take the first sample and discard others
-                            image_bbox_vec.into_iter().next().unwrap()
+                            Vec::from(pairs).into_iter().next().unwrap()
                         }
-                        MixKind::MixUp => {
+                        MixData::MixUp(pairs) => {
                             warn!("mixup is not implemented yet");
-                            image_bbox_vec.into_iter().next().unwrap()
+                            Vec::from(pairs).into_iter().next().unwrap()
                         }
-                        MixKind::CutMix => {
+                        MixData::CutMix(pairs) => {
                             warn!("cutmix is not implemented yet");
-                            image_bbox_vec.into_iter().next().unwrap()
+                            Vec::from(pairs).into_iter().next().unwrap()
                         }
-                        MixKind::Mosaic => mosaic_processor.forward(image_bbox_vec).await?,
+                        MixData::Mosaic(pairs) => {
+                            mosaic_processor.forward(Vec::from(pairs)).await?
+                        }
                     };
 
                     // send to logger
@@ -427,6 +476,99 @@ impl TrainingStream {
         let stream = stream.try_reorder_enumerated();
 
         Ok(Box::pin(stream))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MixKind {
+    None,
+    MixUp,
+    CutMix,
+    Mosaic,
+}
+
+impl MixKind {
+    pub fn num_samples(&self) -> usize {
+        match self {
+            Self::None => 1,
+            Self::MixUp => 2,
+            Self::CutMix => 2,
+            Self::Mosaic => 4,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum MixData {
+    None([(Tensor, Vec<LabeledRatioBBox>); 1]),
+    MixUp([(Tensor, Vec<LabeledRatioBBox>); 2]),
+    CutMix([(Tensor, Vec<LabeledRatioBBox>); 2]),
+    Mosaic([(Tensor, Vec<LabeledRatioBBox>); 4]),
+}
+
+impl MixData {
+    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<LabeledRatioBBox>)>) -> Result<Self> {
+        let data = (|| {
+            let data = match kind {
+                MixKind::None => Self::None(pairs.try_into()?),
+                MixKind::MixUp => Self::MixUp(pairs.try_into()?),
+                MixKind::CutMix => Self::CutMix(pairs.try_into()?),
+                MixKind::Mosaic => Self::Mosaic(pairs.try_into()?),
+            };
+            Ok(data)
+        })()
+        .map_err(|pairs: Vec<_>| {
+            format_err!(
+                "expect {} pairs, but get {}",
+                kind.num_samples(),
+                pairs.len()
+            )
+        })?;
+        Ok(data)
+    }
+
+    pub fn kind(&self) -> MixKind {
+        match self {
+            Self::None(_) => MixKind::None,
+            Self::MixUp(_) => MixKind::MixUp,
+            Self::CutMix(_) => MixKind::CutMix,
+            Self::Mosaic(_) => MixKind::Mosaic,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<LabeledRatioBBox>)> {
+        match self {
+            Self::None(array) => array.iter(),
+            Self::MixUp(array) => array.iter(),
+            Self::CutMix(array) => array.iter(),
+            Self::Mosaic(array) => array.iter(),
+        }
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<LabeledRatioBBox>)> {
+        Vec::from(self).into_iter()
+    }
+}
+
+impl AsRef<[(Tensor, Vec<LabeledRatioBBox>)]> for MixData {
+    fn as_ref(&self) -> &[(Tensor, Vec<LabeledRatioBBox>)] {
+        match self {
+            Self::None(array) => array.as_ref(),
+            Self::MixUp(array) => array.as_ref(),
+            Self::CutMix(array) => array.as_ref(),
+            Self::Mosaic(array) => array.as_ref(),
+        }
+    }
+}
+
+impl From<MixData> for Vec<(Tensor, Vec<LabeledRatioBBox>)> {
+    fn from(data: MixData) -> Self {
+        match data {
+            MixData::None(array) => array.into(),
+            MixData::MixUp(array) => array.into(),
+            MixData::CutMix(array) => array.into(),
+            MixData::Mosaic(array) => array.into(),
+        }
     }
 }
 
