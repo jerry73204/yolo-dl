@@ -58,6 +58,22 @@ where
     {
         self.bbox.corners()
     }
+
+    pub fn to_unit<V>(&self, h_scale: T, w_scale: T) -> LabeledBBox<T, V>
+    where
+        T: Mul<T, Output = T>,
+        V: Unit,
+    {
+        let Self {
+            ref bbox,
+            category_id,
+        } = *self;
+
+        LabeledBBox {
+            bbox: bbox.to_unit(h_scale, w_scale),
+            category_id,
+        }
+    }
 }
 
 impl<U> LabeledBBox<R64, U>
@@ -183,6 +199,18 @@ where
         let [cy, cx, h, w] = self.cycxhw;
         BBox {
             cycxhw: [f(cy), f(cx), f(h), f(w)],
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn to_unit<V>(&self, h_scale: T, w_scale: T) -> BBox<T, V>
+    where
+        T: Mul<T, Output = T>,
+        V: Unit,
+    {
+        let [cy, cx, h, w] = self.cycxhw;
+        BBox {
+            cycxhw: [cy * h_scale, cx * w_scale, h * h_scale, w * w_scale],
             _phantom: PhantomData,
         }
     }

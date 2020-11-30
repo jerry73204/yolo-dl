@@ -25,6 +25,17 @@ where
             _phantom: PhantomData,
         }
     }
+
+    pub fn map<F, R>(&self, mut f: F) -> Size<R, U>
+    where
+        F: FnMut(&T) -> R,
+    {
+        Size {
+            height: f(&self.height),
+            width: f(&self.width),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 pub type PixelSize<T> = Size<T, PixelUnit>;
