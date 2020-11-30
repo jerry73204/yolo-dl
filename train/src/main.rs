@@ -150,6 +150,7 @@ async fn multi_gpu_training_worker(
         minibatch_size: usize,
         output: YoloOutput,
         losses: YoloLossOutput,
+        target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
         gradients: Vec<Tensor>,
     }
 
@@ -201,7 +202,7 @@ async fn multi_gpu_training_worker(
                     iou_kind: Some(iou_kind),
                     ..Default::default()
                 }
-                .build();
+                .build()?;
                 let optimizer = {
                     let mut opt = nn::Adam {
                         wd: weight_decay.raw(),
@@ -344,12 +345,13 @@ async fn multi_gpu_training_worker(
                                     worker_timing.set_record("forward");
 
                                     // compute loss
-                                    let losses = yolo_loss.forward(&output, &bboxes);
+                                    let (losses, target_bboxes) =
+                                        yolo_loss.forward(&output, &bboxes);
                                     worker_timing.set_record("loss");
 
                                     // compute gradients
                                     optimizer.zero_grad();
-                                    losses.loss.backward();
+                                    losses.total_loss.backward();
                                     worker_timing.set_record("run_backward");
 
                                     let gradients = vs
@@ -367,6 +369,7 @@ async fn multi_gpu_training_worker(
                                         minibatch_size,
                                         output,
                                         losses,
+                                        target_bboxes,
                                         gradients,
                                     }
                                 })
@@ -439,66 +442,17 @@ async fn multi_gpu_training_worker(
         training_timing.set_record("backward step");
 
         // compute losses from each job
-        let losses = async_std::task::spawn_blocking(move || {
-            let (
-                loss_vec,
-                iou_loss_vec,
-                classification_loss_vec,
-                objectness_loss_vec,
-                target_bboxes_vec,
-            ) = outputs
-                .iter()
-                .map(|output| {
-                    let YoloLossOutput {
-                        loss,
-                        iou_loss,
-                        classification_loss,
-                        objectness_loss,
-                        target_bboxes,
-                    } = &output.losses;
-                    let minibatch_size = output.minibatch_size as f64;
-                    (
-                        loss * minibatch_size,
-                        iou_loss * minibatch_size,
-                        classification_loss * minibatch_size,
-                        objectness_loss * minibatch_size,
-                        target_bboxes,
-                    )
-                })
-                .unzip_n_vec();
+        let losses = async_std::task::spawn_blocking(move || -> Result<_> {
+            let losses = YoloLossOutput::weighted_mean(outputs.iter().map(|output| {
+                (
+                    output.losses.to_device(master_device),
+                    output.minibatch_size as f64,
+                )
+            }))?;
 
-            let mean_tensors = |tensors: &[Tensor]| -> Tensor {
-                let mut iter = tensors.iter();
-                let first = iter.next().unwrap().to_device(master_device);
-                iter.fold(first, |lhs, rhs| lhs + rhs.to_device(master_device)) / batch_size as f64
-            };
-
-            let loss = mean_tensors(&loss_vec);
-            let iou_loss = mean_tensors(&iou_loss_vec);
-            let classification_loss = mean_tensors(&classification_loss_vec);
-            let objectness_loss = mean_tensors(&objectness_loss_vec);
-
-            // WARNING: it is incorrect but compiles
-            let target_bboxes: HashMap<_, _> = target_bboxes_vec
-                .into_iter()
-                .flat_map(|bboxes| {
-                    bboxes
-                        .iter()
-                        .map(|(instance_index, bbox)| (instance_index.clone(), bbox.clone()))
-                })
-                .collect();
-
-            let losses = YoloLossOutput {
-                loss,
-                iou_loss,
-                classification_loss,
-                objectness_loss,
-                target_bboxes: Arc::new(target_bboxes),
-            };
-
-            losses
+            Ok(losses)
         })
-        .await;
+        .await?;
         training_timing.set_record("compute loss");
 
         // save checkpoint
@@ -511,7 +465,7 @@ async fn multi_gpu_training_worker(
                     &worker_contexts[0].vs,
                     &checkpoint_dir,
                     training_step,
-                    f64::from(&losses.loss),
+                    f64::from(&losses.total_loss),
                 )?;
 
                 Ok(worker_contexts)
@@ -607,7 +561,7 @@ fn single_gpu_training_worker(
         iou_kind: Some(config.training.iou_kind),
         ..Default::default()
     }
-    .build();
+    .build()?;
     let mut optimizer = {
         let TrainingConfig {
             momentum,
@@ -656,11 +610,11 @@ fn single_gpu_training_worker(
         timing.set_record("forward");
 
         // compute loss
-        let losses = yolo_loss.forward(&output, &bboxes);
+        let (losses, target_bboxes) = yolo_loss.forward(&output, &bboxes);
         timing.set_record("loss");
 
         // optimizer
-        optimizer.backward_step(&losses.loss);
+        optimizer.backward_step(&losses.total_loss);
         timing.set_record("backward");
 
         // print message
@@ -689,7 +643,12 @@ fn single_gpu_training_worker(
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
-            save_checkpoint(&vs, &checkpoint_dir, training_step, f64::from(&losses.loss))?;
+            save_checkpoint(
+                &vs,
+                &checkpoint_dir,
+                training_step,
+                f64::from(&losses.total_loss),
+            )?;
         }
 
         // send to logger
@@ -706,6 +665,7 @@ fn single_gpu_training_worker(
                 &image,
                 &output,
                 &losses,
+                Arc::new(target_bboxes),
             );
             logging_tx
                 .send(msg)

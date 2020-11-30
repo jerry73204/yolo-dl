@@ -17,6 +17,7 @@ pub enum LoggingMessageKind {
         input: Tensor,
         output: YoloOutput,
         losses: YoloLossOutput,
+        target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
     },
     Images {
         images: Vec<Tensor>,
@@ -46,6 +47,7 @@ impl LoggingMessage {
         input: &Tensor,
         output: &YoloOutput,
         losses: &YoloLossOutput,
+        target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
     ) -> Self
     where
         S: Into<Cow<'static, str>>,
@@ -57,6 +59,7 @@ impl LoggingMessage {
                 input: input.shallow_clone(),
                 output: output.shallow_clone(),
                 losses: losses.shallow_clone(),
+                target_bboxes,
             },
         }
     }
@@ -118,11 +121,13 @@ impl Clone for LoggingMessageKind {
                 ref input,
                 ref output,
                 ref losses,
+                ref target_bboxes,
             } => Self::TrainingOutput {
                 step,
                 input: input.shallow_clone(),
                 output: output.shallow_clone(),
                 losses: losses.shallow_clone(),
+                target_bboxes: target_bboxes.clone(),
             },
             Self::Images { ref images } => Self::Images {
                 images: images

@@ -20,12 +20,65 @@ pub enum IoUKind {
 
 #[derive(Debug, TensorLike)]
 pub struct YoloLossOutput {
-    pub loss: Tensor,
+    pub total_loss: Tensor,
     pub iou_loss: Tensor,
     pub classification_loss: Tensor,
     pub objectness_loss: Tensor,
-    #[tensor_like(clone)]
-    pub target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
+    /* #[tensor_like(clone)]
+     * pub target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>, */
+}
+
+impl YoloLossOutput {
+    pub fn weighted_mean<L>(iter: impl IntoIterator<Item = (L, f64)>) -> Result<Self>
+    where
+        L: Borrow<YoloLossOutput>,
+    {
+        let (
+            total_loss_vec,
+            iou_loss_vec,
+            classification_loss_vec,
+            objectness_loss_vec,
+            weight_vec,
+        ) = iter
+            .into_iter()
+            .map(|(loss, weight)| {
+                let YoloLossOutput {
+                    total_loss,
+                    iou_loss,
+                    classification_loss,
+                    objectness_loss,
+                } = loss.borrow();
+
+                (
+                    total_loss * weight,
+                    iou_loss * weight,
+                    classification_loss * weight,
+                    objectness_loss * weight,
+                    weight,
+                )
+            })
+            .unzip_n_vec();
+
+        let weight_iter = weight_vec.iter().cloned();
+
+        let total_loss =
+            Tensor::f_weighted_mean_tensors(total_loss_vec.into_iter().zip(weight_iter.clone()))?;
+        let iou_loss =
+            Tensor::f_weighted_mean_tensors(iou_loss_vec.into_iter().zip(weight_iter.clone()))?;
+        let classification_loss = Tensor::f_weighted_mean_tensors(
+            classification_loss_vec.into_iter().zip(weight_iter.clone()),
+        )?;
+        let objectness_loss = Tensor::f_weighted_mean_tensors(
+            objectness_loss_vec.into_iter().zip(weight_iter.clone()),
+        )?;
+
+        Ok(YoloLossOutput {
+            total_loss,
+            iou_loss,
+            classification_loss,
+            objectness_loss,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -44,7 +97,7 @@ pub struct YoloLossInit {
 }
 
 impl YoloLossInit {
-    pub fn build(self) -> YoloLoss {
+    pub fn build(self) -> Result<YoloLoss> {
         let Self {
             pos_weight,
             reduction,
@@ -69,13 +122,34 @@ impl YoloLossInit {
         let objectness_loss_weight = objectness_loss_weight.unwrap_or(1.0);
         let classification_loss_weight = classification_loss_weight.unwrap_or(0.58);
 
-        assert!(focal_loss_gamma >= 0.0);
-        assert!(smooth_bce_coef >= 0.0 && smooth_bce_coef <= 1.0);
-        assert!(objectness_iou_ratio >= 0.0 && objectness_iou_ratio <= 1.0);
-        assert!(anchor_scale_thresh >= 1.0);
-        assert!(iou_loss_weight >= 0.0);
-        assert!(objectness_loss_weight >= 0.0);
-        assert!(classification_loss_weight >= 0.0);
+        ensure!(
+            focal_loss_gamma >= 0.0,
+            "focal_loss_gamma must be non-negative"
+        );
+        ensure!(
+            smooth_bce_coef >= 0.0 && smooth_bce_coef <= 1.0,
+            "smooth_bce_coef must be in range [0, 1]"
+        );
+        ensure!(
+            objectness_iou_ratio >= 0.0 && objectness_iou_ratio <= 1.0,
+            "objectness_iou_ratio must be in range [0, 1]"
+        );
+        ensure!(
+            anchor_scale_thresh >= 1.0,
+            "anchor_scale_thresh must be greater than or equal to 1"
+        );
+        ensure!(
+            iou_loss_weight >= 0.0,
+            "iou_loss_weight must be non-negative"
+        );
+        ensure!(
+            objectness_loss_weight >= 0.0,
+            "objectness_loss_weight must be non-negative"
+        );
+        ensure!(
+            classification_loss_weight >= 0.0,
+            "classification_loss_weight must be non-negative"
+        );
 
         let bce_class = FocalLossInit {
             pos_weight: pos_weight.as_ref().map(|weight| weight.shallow_clone()),
@@ -93,7 +167,7 @@ impl YoloLossInit {
         }
         .build();
 
-        YoloLoss {
+        Ok(YoloLoss {
             reduction,
             bce_class,
             bce_objectness,
@@ -105,7 +179,7 @@ impl YoloLossInit {
             iou_loss_weight,
             objectness_loss_weight,
             classification_loss_weight,
-        }
+        })
     }
 }
 
@@ -147,7 +221,10 @@ impl YoloLoss {
         &self,
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
-    ) -> YoloLossOutput {
+    ) -> (
+        YoloLossOutput,
+        HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
+    ) {
         let mut timing = Timing::new("loss_function");
 
         // match target bboxes and grids, and group them by detector cells
@@ -174,20 +251,22 @@ impl YoloLoss {
         timing.set_record("objectness_loss");
 
         // normalize and balancing
-        let loss = self.iou_loss_weight * &iou_loss
+        let total_loss = self.iou_loss_weight * &iou_loss
             + self.classification_loss_weight * &classification_loss
             + self.objectness_loss_weight * &objectness_loss;
         timing.set_record("sum_losses");
 
         timing.report();
 
-        YoloLossOutput {
-            loss,
-            iou_loss,
-            classification_loss,
-            objectness_loss,
+        (
+            YoloLossOutput {
+                total_loss,
+                iou_loss,
+                classification_loss,
+                objectness_loss,
+            },
             target_bboxes,
-        }
+        )
     }
 
     fn iou_loss(
@@ -364,7 +443,7 @@ impl YoloLoss {
         &self,
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
-    ) -> Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>> {
+    ) -> HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>> {
         let bbox_iter = target
             .iter()
             .enumerate()
@@ -508,7 +587,7 @@ impl YoloLoss {
             })
             .collect();
 
-        Arc::new(targets)
+        targets
     }
 
     /// Build HashSet of predictions indexed by per-grid position

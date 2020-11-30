@@ -47,7 +47,7 @@ pub async fn logging_worker(
                 LoggingMessageKind::TrainingStep { step, losses } => {
                     let step = step as i64;
                     event_writer
-                        .write_scalar_async(format!("{}-loss", tag), step, losses.loss.into())
+                        .write_scalar_async(format!("{}-loss", tag), step, losses.total_loss.into())
                         .await?;
                     event_writer
                         .write_scalar_async(
@@ -76,6 +76,7 @@ pub async fn logging_worker(
                     input,
                     output,
                     losses,
+                    target_bboxes,
                 } => {
                     if save_images {
                         let mut timing = Timing::new("log training output");
@@ -90,7 +91,6 @@ pub async fn logging_worker(
                                     timing.set_record("to cpu");
 
                                     let mut canvas = input.copy();
-                                    let YoloLossOutput { target_bboxes, .. } = &losses;
                                     let layer_meta = output.layer_meta();
                                     let PixelSize {
                                         height: image_height,

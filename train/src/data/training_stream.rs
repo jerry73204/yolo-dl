@@ -224,7 +224,6 @@ impl TrainingStream {
         };
 
         // random affine
-        warn!("TODO: random affine on bboxes is not implemented");
         let stream = {
             let Config {
                 preprocessor:
