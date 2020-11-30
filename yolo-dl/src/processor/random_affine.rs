@@ -2,23 +2,31 @@ use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RandomAffineInit {
+    pub rotate_prob: Option<Ratio>,
     pub rotate_radians: Option<R64>,
+    pub translation_prob: Option<Ratio>,
     pub translation: Option<R64>,
+    pub scale_prob: Option<Ratio>,
     pub scale: Option<(R64, R64)>,
-    pub shear: Option<R64>,
-    pub horizontal_flip: bool,
-    pub vertical_flip: bool,
+    // pub shear_prob: Option<Ratio>,
+    // pub shear: Option<R64>,
+    pub horizontal_flip_prob: Option<Ratio>,
+    pub vertical_flip_prob: Option<Ratio>,
 }
 
 impl RandomAffineInit {
     pub fn build(self) -> Result<RandomAffine> {
         let Self {
+            rotate_prob,
             rotate_radians,
+            translation_prob,
             translation,
+            scale_prob,
             scale,
-            shear,
-            horizontal_flip,
-            vertical_flip,
+            // shear_prob,
+            // shear,
+            horizontal_flip_prob,
+            vertical_flip_prob,
         } = self;
 
         let rotate_radians = rotate_radians
@@ -41,20 +49,24 @@ impl RandomAffineInit {
                 Ok((lo.raw(), up.raw()))
             })
             .transpose()?;
-        let shear = shear
-            .map(|val| {
-                ensure!(val >= 0.0, "shear must be non-negative");
-                Ok(val.raw())
-            })
-            .transpose()?;
+        // let shear = shear
+        //     .map(|val| {
+        //         ensure!(val >= 0.0, "shear must be non-negative");
+        //         Ok(val.raw())
+        //     })
+        //     .transpose()?;
 
         Ok(RandomAffine {
+            rotate_prob: rotate_prob.as_ref().map(Ratio::to_f64),
             rotate_radians,
+            translation_prob: translation_prob.as_ref().map(Ratio::to_f64),
             translation,
+            scale_prob: scale_prob.as_ref().map(Ratio::to_f64),
             scale,
-            shear,
-            horizontal_flip,
-            vertical_flip,
+            // shear_prob: shear_prob.as_ref().map(Ratio::to_f64),
+            // shear,
+            horizontal_flip_prob: horizontal_flip_prob.as_ref().map(Ratio::to_f64),
+            vertical_flip_prob: vertical_flip_prob.as_ref().map(Ratio::to_f64),
         })
     }
 }
@@ -62,24 +74,32 @@ impl RandomAffineInit {
 impl Default for RandomAffineInit {
     fn default() -> Self {
         Self {
+            rotate_prob: None,
             rotate_radians: None,
+            translation_prob: None,
             translation: None,
+            scale_prob: None,
             scale: None,
-            shear: None,
-            horizontal_flip: false,
-            vertical_flip: false,
+            // shear_prob: None,
+            // shear: None,
+            horizontal_flip_prob: None,
+            vertical_flip_prob: None,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct RandomAffine {
+    rotate_prob: Option<f64>,
     rotate_radians: Option<f64>,
+    translation_prob: Option<f64>,
     translation: Option<f64>,
+    scale_prob: Option<f64>,
     scale: Option<(f64, f64)>,
-    shear: Option<f64>,
-    horizontal_flip: bool,
-    vertical_flip: bool,
+    // shear_prob: Option<f64>,
+    // shear: Option<f64>,
+    horizontal_flip_prob: Option<f64>,
+    vertical_flip_prob: Option<f64>,
 }
 
 impl RandomAffine {
@@ -93,17 +113,21 @@ impl RandomAffine {
             let (channels, height, width) = orig_image.size3()?;
 
             // sample affine transforms per image
+            // the zero point of input space of affine matrix is at image center,
+            // and image height and width takes 2 units
             let transform = {
                 let mut rng = StdRng::from_entropy();
-                let transform = {
-                    let transform = Tensor::eye(3, (Kind::Float, device));
-                    let transform = if self.horizontal_flip {
-                        if rng.gen::<bool>() {
+
+                let transform = Tensor::eye(3, (Kind::Float, Device::Cpu));
+
+                let transform = match self.horizontal_flip_prob {
+                    Some(prob) => {
+                        if rng.gen_bool(prob) {
                             let flip = Tensor::of_slice(
                                 &[
-                                    [-1.0, 0.0, 0.0], // row 1
-                                    [0.0, 1.0, 0.0],  // row 2
-                                    [0.0, 0.0, 1.0],  // row 3
+                                    [-1f32, 0.0, 0.0], // row 1
+                                    [0.0, 1.0, 0.0],   // row 2
+                                    [0.0, 0.0, 1.0],   // row 3
                                 ]
                                 .flat(),
                             )
@@ -113,14 +137,16 @@ impl RandomAffine {
                         } else {
                             transform
                         }
-                    } else {
-                        transform
-                    };
-                    let transform = if self.vertical_flip {
-                        if rng.gen::<bool>() {
+                    }
+                    None => transform,
+                };
+
+                let transform = match self.vertical_flip_prob {
+                    Some(prob) => {
+                        if rng.gen_bool(prob) {
                             let flip = Tensor::of_slice(
                                 &[
-                                    [1.0, 0.0, 0.0],  // row 1
+                                    [1f32, 0.0, 0.0], // row 1
                                     [0.0, -1.0, 0.0], // row 2
                                     [0.0, 0.0, 1.0],  // row 3
                                 ]
@@ -131,11 +157,13 @@ impl RandomAffine {
                         } else {
                             transform
                         }
-                    } else {
-                        transform
-                    };
-                    let transform = match self.scale {
-                        Some((lower, upper)) => {
+                    }
+                    None => transform,
+                };
+
+                let transform = match (self.scale_prob, self.scale) {
+                    (Some(prob), Some((lower, upper))) => {
+                        if rng.gen_bool(prob) {
                             let ratio = rng.gen_range(lower, upper) as f32;
                             let scaling = Tensor::of_slice(
                                 &[
@@ -147,27 +175,37 @@ impl RandomAffine {
                             )
                             .view([3, 3]);
                             scaling.matmul(&transform)
+                        } else {
+                            transform
                         }
-                        None => transform,
-                    };
-                    let transform = match self.shear {
-                        Some(max_shear) => {
-                            let shear = rng.gen_range(-max_shear, max_shear) as f32;
-                            let translation = Tensor::of_slice(
-                                &[
-                                    [1.0 + shear, 0.0, 0.0], // row 1
-                                    [0.0, 1.0 + shear, 0.0], // row 2
-                                    [0.0, 0.0, 1.0],         // row 3
-                                ]
-                                .flat(),
-                            )
-                            .view([3, 3]);
-                            translation.matmul(&transform)
-                        }
-                        None => transform,
-                    };
-                    let transform = match self.rotate_radians {
-                        Some(max_randians) => {
+                    }
+                    _ => transform,
+                };
+
+                // let transform = match (self.shear_prob, self.shear) {
+                //     (Some(prob), Some(max_shear)) => {
+                //         if rng.gen_bool(prob) {
+                //             let shear = rng.gen_range(-max_shear, max_shear) as f32;
+                //             let shear = Tensor::of_slice(
+                //                 &[
+                //                     [1.0 + shear, 0.0, 0.0], // row 1
+                //                     [0.0, 1.0 + shear, 0.0], // row 2
+                //                     [0.0, 0.0, 1.0],         // row 3
+                //                 ]
+                //                 .flat(),
+                //             )
+                //             .view([3, 3]);
+                //             shear.matmul(&transform)
+                //         } else {
+                //             transform
+                //         }
+                //     }
+                //     _ => transform,
+                // };
+
+                let transform = match (self.rotate_prob, self.rotate_radians) {
+                    (Some(prob), Some(max_randians)) => {
+                        if rng.gen_bool(prob) {
                             let angle = rng.gen_range(-max_randians, max_randians);
                             let cos = angle.cos() as f32;
                             let sin = angle.sin() as f32;
@@ -181,17 +219,21 @@ impl RandomAffine {
                             )
                             .view([3, 3]);
                             rotation.matmul(&transform)
+                        } else {
+                            transform
                         }
-                        None => transform,
-                    };
-                    let transform = match self.translation {
-                        Some(max_translation) => {
+                    }
+                    _ => transform,
+                };
+
+                let transform = match (self.translation_prob, self.translation) {
+                    (Some(prob), Some(max_translation)) => {
+                        if rng.gen_bool(prob) {
+                            // whole image height/width takes 2 units, so translations are doubled
                             let horizontal_translation =
-                                (rng.gen_range(-max_translation, max_translation) * height as f64)
-                                    as f32;
+                                (rng.gen_range(-max_translation, max_translation) * 2.0) as f32;
                             let vertical_translation =
-                                (rng.gen_range(-max_translation, max_translation) * width as f64)
-                                    as f32;
+                                (rng.gen_range(-max_translation, max_translation) * 2.0) as f32;
 
                             let translation = Tensor::of_slice(
                                 &[
@@ -203,27 +245,31 @@ impl RandomAffine {
                             )
                             .view([3, 3]);
                             translation.matmul(&transform)
+                        } else {
+                            transform
                         }
-                        None => transform,
-                    };
-
-                    let transform = transform.to_device(device);
-                    transform
+                    }
+                    _ => transform,
                 };
 
                 transform
             };
 
+            // the inverse() runs on CPU due to (maybe) unreported memory leaking issue on GPU
+            let inv_transform = transform.inverse();
+
             // transform image
+            // affine_grid_generator() maps from output coordinates to input coordinates,
+            // hence we pass the inverse matrix here
             let affine_grid = Tensor::affine_grid_generator(
-                &transform.i((0..2, ..)).view([1, 2, 3]), // remove the last row
+                &inv_transform.i((..2, ..)).view([1, 2, 3]), // add batch dimension
                 &[1, channels, height, width],
                 false,
             );
             let new_image = orig_image
                 .view([1, channels, height, width])
                 .grid_sampler(
-                    &affine_grid,
+                    &affine_grid.to_device(device),
                     // See https://github.com/pytorch/pytorch/blob/f597ac6efc70431e66d945c16fa12b767989b032/aten/src/ATen/native/GridSampler.h#L10-L11
                     0,
                     0,
@@ -232,91 +278,114 @@ impl RandomAffine {
                 .view([channels, height, width]);
 
             // transform bboxes
-            let (orig_corners_vec, category_id_vec) = orig_bboxes
-                .into_iter()
-                .map(|label| {
-                    let LabeledPixelBBox {
-                        ref bbox,
-                        category_id,
-                    } = label.to_r64_bbox(height as usize, width as usize);
-                    let [orig_t, orig_l, orig_b, orig_r] = bbox.map(|val| val.raw()).tlbr();
-                    let orig_corners = Tensor::of_slice(
+            let new_bboxes = if !orig_bboxes.is_empty() {
+                let (orig_corners_vec, category_id_vec) = orig_bboxes
+                    .into_iter()
+                    .map(|label| {
+                        let LabeledRatioBBox {
+                            ref bbox,
+                            category_id,
+                        } = *label;
+                        let [orig_t, orig_l, orig_b, orig_r] = bbox.map(|val| val.to_f64()).tlbr();
+                        let orig_t = orig_t as f32;
+                        let orig_l = orig_l as f32;
+                        let orig_b = orig_b as f32;
+                        let orig_r = orig_r as f32;
+
+                        let orig_corners = Tensor::of_slice(
+                            &[
+                                [orig_l, orig_t, 1.0],
+                                [orig_l, orig_b, 1.0],
+                                [orig_r, orig_t, 1.0],
+                                [orig_r, orig_b, 1.0],
+                            ]
+                            .flat(),
+                        )
+                        .view([4, 3]);
+
+                        (orig_corners, category_id)
+                    })
+                    .unzip_n_vec();
+
+                let orig_corners = Tensor::cat(&orig_corners_vec, 0);
+
+                // transform corner points, it runs on CPU
+                let new_corners = {
+                    let coord_change = Tensor::of_slice(
                         &[
-                            [orig_t, orig_l, 1.0],
-                            [orig_t, orig_r, 1.0],
-                            [orig_b, orig_l, 1.0],
-                            [orig_b, orig_r, 1.0],
+                            [2f32, 0.0, -1.0], // row 1
+                            [0.0, 2.0, -1.0],  // row 2
+                            [0.0, 0.0, 1.0],   // row 3
                         ]
                         .flat(),
                     )
-                    .view([4, 3]);
+                    .view([3, 3])
+                    .transpose(0, 1);
 
-                    (orig_corners, category_id)
-                })
-                .unzip_n_vec();
+                    // move center of image to zero position and transpose
+                    let input = orig_corners.matmul(&coord_change);
 
-            let orig_corners = Tensor::cat(&orig_corners_vec, 0);
+                    // transform coordinates
+                    let output = input.matmul(&transform.transpose(0, 1));
 
-            // transform corner points
-            let new_corners = transform
-                .matmul(&orig_corners.transpose(0, 1))
-                .transpose(0, 1);
+                    // move zero position to center of image and transpose
+                    output.matmul(&coord_change.inverse())
+                };
 
-            // merge with category ids
-            let components: Vec<f32> = new_corners.into();
-            let new_corners_slice: &[[f32; 3]] = components.as_slice().nest();
+                // merge with category ids
+                let components: Vec<f32> = new_corners.into();
+                let new_corners_slice: &[[f32; 3]] = components.as_slice().nest();
 
-            let new_bboxes: Vec<_> = new_corners_slice
-                .iter()
-                .chunks(4)
-                .into_iter()
-                .zip_eq(category_id_vec)
-                .filter_map(|(points, category_id)| {
-                    let points: Vec<_> = points
-                        .map(|&[y, x, _]| [R64::new(y as f64), R64::new(x as f64)])
-                        .collect();
-                    let bbox_t = points
-                        .iter()
-                        .map(|&[y, _x]| y)
-                        .min()
-                        .unwrap()
-                        .max(R64::new(0.0));
-                    let bbox_b = points
-                        .iter()
-                        .map(|&[y, _x]| y)
-                        .max()
-                        .unwrap()
-                        .min(R64::new(height as f64));
-                    let bbox_l = points
-                        .iter()
-                        .map(|&[_y, x]| x)
-                        .min()
-                        .unwrap()
-                        .max(R64::new(0.0));
-                    let bbox_r = points
-                        .iter()
-                        .map(|&[_y, x]| x)
-                        .max()
-                        .unwrap()
-                        .min(R64::new(width as f64));
+                let new_bboxes: Vec<_> = new_corners_slice
+                    .iter()
+                    .chunks(4)
+                    .into_iter()
+                    .zip_eq(category_id_vec)
+                    .filter_map(|(points, category_id)| {
+                        let points: Vec<_> = points
+                            .map(|&[x, y, _]| [R64::new(y as f64), R64::new(x as f64)])
+                            .collect();
+                        let bbox_t = points.iter().map(|&[y, _x]| y).min().unwrap();
+                        let bbox_b = points.iter().map(|&[y, _x]| y).max().unwrap();
+                        let bbox_l = points.iter().map(|&[_y, x]| x).min().unwrap();
+                        let bbox_r = points.iter().map(|&[_y, x]| x).max().unwrap();
 
-                    // remove out of bound bboxes
-                    if abs_diff_eq!((bbox_b - bbox_t).raw(), 0.0)
-                        || abs_diff_eq!((bbox_r - bbox_l).raw(), 0.0)
-                    {
-                        return None;
-                    }
+                        // remove out of bound bboxes
+                        if bbox_t >= 1.0 || bbox_b <= 0.0 || bbox_l >= 1.0 || bbox_r <= 0.0 {
+                            return None;
+                        }
 
-                    let new_bbox = LabeledPixelBBox {
-                        bbox: PixelBBox::try_from_tlbr([bbox_t, bbox_l, bbox_b, bbox_r]).unwrap(),
-                        category_id,
-                    }
-                    .to_ratio_bbox(height as usize, width as usize)
-                    .unwrap();
+                        let bbox_t = bbox_t.max(R64::new(0.0));
+                        let bbox_l = bbox_l.max(R64::new(0.0));
+                        let bbox_b = bbox_b.min(R64::new(1.0));
+                        let bbox_r = bbox_r.min(R64::new(1.0));
 
-                    Some(new_bbox)
-                })
-                .collect();
+                        // remove small bboxes
+                        if abs_diff_eq!((bbox_b - bbox_t).raw(), 0.0)
+                            || abs_diff_eq!((bbox_r - bbox_l).raw(), 0.0)
+                        {
+                            return None;
+                        }
+
+                        let new_bbox = LabeledRatioBBox {
+                            bbox: RatioBBox::try_from_tlbr([
+                                Ratio::try_from(bbox_t).unwrap(),
+                                Ratio::try_from(bbox_l).unwrap(),
+                                Ratio::try_from(bbox_b).unwrap(),
+                                Ratio::try_from(bbox_r).unwrap(),
+                            ])
+                            .unwrap(),
+                            category_id,
+                        };
+
+                        Some(new_bbox)
+                    })
+                    .collect();
+
+                new_bboxes
+            } else {
+                vec![]
+            };
 
             Ok((new_image, new_bboxes))
         })
