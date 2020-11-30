@@ -1,6 +1,33 @@
 use crate::common::*;
 
 pub trait TensorExt {
+    fn f_sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Result<Tensor>
+    where
+        T: Borrow<Tensor>,
+    {
+        let mut iter = tensors.into_iter();
+        let first = iter
+            .next()
+            .ok_or_else(|| format_err!("the input iterator must not be empty"))?
+            .borrow()
+            .shallow_clone();
+        let sum = iter.try_fold(first, |lhs, rhs| lhs.f_add(rhs.borrow()))?;
+        Ok(sum)
+    }
+    fn f_weighted_mean_tensors<T>(pairs: impl IntoIterator<Item = (T, f64)>) -> Result<Tensor>
+    where
+        T: Borrow<Tensor>,
+    {
+        let weighted_pairs: Vec<_> = pairs
+            .into_iter()
+            .map(|(tensor, weight)| Fallible::Ok((tensor.borrow().f_mul1(weight)?, weight)))
+            .try_collect()?;
+        let (tensors, weights) = weighted_pairs.into_iter().unzip_n_vec();
+        let sum_tensors = Self::f_sum_tensors(tensors)?;
+        let sum_weights: f64 = weights.iter().cloned().sum();
+        let mean_tensors = sum_tensors.f_div1(sum_weights)?;
+        Ok(mean_tensors)
+    }
     fn f_fill_rect_(
         &mut self,
         top: i64,
@@ -56,6 +83,18 @@ pub trait TensorExt {
     fn f_crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Result<Tensor>;
     fn crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Tensor {
         self.f_crop_by_ratio(top, left, bottom, right).unwrap()
+    }
+    fn sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Tensor
+    where
+        T: Borrow<Tensor>,
+    {
+        Self::f_sum_tensors(tensors).unwrap()
+    }
+    fn weighted_mean_tensors<T>(pairs: impl IntoIterator<Item = (T, f64)>) -> Tensor
+    where
+        T: Borrow<Tensor>,
+    {
+        Self::f_weighted_mean_tensors(pairs).unwrap()
     }
     fn resize2d(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
     fn resize2d_exact(&self, new_height: i64, new_width: i64) -> Result<Tensor>;

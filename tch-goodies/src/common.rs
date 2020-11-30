@@ -11,6 +11,7 @@ pub use serde::{
     de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer,
 };
 pub use std::{
+    borrow::Borrow,
     collections::HashSet,
     convert::{TryFrom, TryInto},
     marker::PhantomData,
@@ -19,5 +20,8 @@ pub use std::{
 pub use tch::{kind::Element, vision, Device, IndexOp, Kind, Tensor};
 pub use tch_tensor_like::TensorLike;
 
+pub type Fallible<T> = Result<T, Error>;
+
+unzip_n::unzip_n!(pub 2);
 unzip_n::unzip_n!(pub 4);
 unzip_n::unzip_n!(pub 10);
