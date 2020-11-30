@@ -526,25 +526,26 @@ async fn multi_gpu_training_worker(
         }
 
         // send to logger
-        {
-            let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
-            logging_tx
-                .send(msg)
-                .map_err(|_err| format_err!("cannot send message to logger"))?;
-        }
-
         // {
-        //     let msg = LoggingMessage::new_training_output(
-        //         "output",
-        //         training_step,
-        //         &image,
-        //         &output,
-        //         &losses,
-        //     );
+        //     let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
         //     logging_tx
         //         .send(msg)
         //         .map_err(|_err| format_err!("cannot send message to logger"))?;
         // }
+
+        {
+            let msg = LoggingMessage::new_training_output(
+                "output",
+                training_step,
+                &image,
+                &model_output,
+                &losses,
+                target_bboxes,
+            );
+            logging_tx
+                .send(msg)
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
+        }
 
         // print message
         rate_counter.add(1.0);

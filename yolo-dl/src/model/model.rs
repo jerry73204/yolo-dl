@@ -59,9 +59,8 @@ pub struct YoloOutput {
     #[tensor_like(copy)]
     pub(crate) device: Device,
     pub(crate) layer_meta: Vec<LayerMeta>,
-    // below tensors have shape [n_instances, n_outputs] where
-    // - n_instances = (\sum_(1<= i <= n_layers) batch_size x n_anchors_i x feature_height_i x feature_width_i)
-    // - n_outputs depends on output kind (cy, cx, height, width, objectness -> 1; classification -> n_classes)
+    // below tensors have shape [batch, entry, flat] where
+    // - flat = \sum_{i is layer_index} (n_anchors_i * feature_height_i * feature_width_i)
     pub(crate) cy: Tensor,
     pub(crate) cx: Tensor,
     pub(crate) height: Tensor,

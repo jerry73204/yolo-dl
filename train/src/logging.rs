@@ -101,9 +101,15 @@ pub async fn logging_worker(
                                     let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
                                     // gather data from each bbox
-                                    let (pred_info, flat_indexes, target_btlbrs) = target_bboxes
+                                    // btlbr = batch + tlbr
+                                    let (
+                                        pred_info,
+                                        batch_indexes_vec,
+                                        flat_indexes_vec,
+                                        target_btlbrs,
+                                    ) = target_bboxes
                                         .iter()
-                                        .map(|(pred_index, target)| -> Result<_> {
+                                        .map(|(pred_index, target_in_grids)| -> Result<_> {
                                             let InstanceIndex {
                                                 batch_index,
                                                 layer_index,
@@ -111,7 +117,7 @@ pub async fn logging_worker(
                                             } = *pred_index.as_ref();
                                             let LabeledGridBBox {
                                                 bbox: target_bbox, ..
-                                            } = target.as_ref();
+                                            } = target_in_grids.as_ref();
                                             let flat_index =
                                                 output.to_flat_index(pred_index.as_ref());
                                             let [target_t, target_l, target_b, target_r] =
@@ -149,6 +155,7 @@ pub async fn logging_worker(
 
                                             Ok((
                                                 (batch_index, grid_height, grid_width),
+                                                batch_index as i64,
                                                 flat_index,
                                                 target_btlbr,
                                             ))
@@ -159,11 +166,25 @@ pub async fn logging_worker(
 
                                     // draw predicted bboxes
                                     {
-                                        let flat_indexes = Tensor::of_slice(&flat_indexes);
-                                        let pred_cy = output.cy().index_select(0, &flat_indexes);
-                                        let pred_cx = output.cx().index_select(0, &flat_indexes);
-                                        let pred_h = output.height().index_select(0, &flat_indexes);
-                                        let pred_w = output.width().index_select(0, &flat_indexes);
+                                        let batch_indexes = Tensor::of_slice(&batch_indexes_vec);
+                                        let flat_indexes = Tensor::of_slice(&flat_indexes_vec);
+
+                                        let pred_cy = output
+                                            .cy()
+                                            .permute(&[0, 2, 1])
+                                            .index(&[&batch_indexes, &flat_indexes]);
+                                        let pred_cx = output
+                                            .cx()
+                                            .permute(&[0, 2, 1])
+                                            .index(&[&batch_indexes, &flat_indexes]);
+                                        let pred_h = output
+                                            .height()
+                                            .permute(&[0, 2, 1])
+                                            .index(&[&batch_indexes, &flat_indexes]);
+                                        let pred_w = output
+                                            .width()
+                                            .permute(&[0, 2, 1])
+                                            .index(&[&batch_indexes, &flat_indexes]);
 
                                         let pred_t: Vec<f64> = (&pred_cy - &pred_h / 2.0).into();
                                         let pred_b: Vec<f64> = (&pred_cy + &pred_h / 2.0).into();
