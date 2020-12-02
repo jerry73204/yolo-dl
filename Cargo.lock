@@ -1674,13 +1674,15 @@ dependencies = [
 
 [[package]]
 name = "par-stream"
-version = "0.1.0"
-source = "git+https://github.com/jerry73204/par-stream.git#7fe0230379290f4ad9bf5a8a424efaa274b2286e"
+version = "0.2.0"
+source = "git+https://github.com/jerry73204/par-stream.git?rev=f9d3c5b17e723f63d2cc1cd96d5c2410e7a5df1d#f9d3c5b17e723f63d2cc1cd96d5c2410e7a5df1d"
 dependencies = [
  "async-std",
+ "derivative",
  "futures",
  "num_cpus",
- "tokio 0.2.23",
+ "pin-project",
+ "tokio 0.3.5",
 ]
 
 [[package]]
@@ -2749,7 +2751,6 @@ dependencies = [
  "bytes",
  "fnv",
  "pin-project-lite 0.1.11",
- "tokio-macros",
 ]
 
 [[package]]
@@ -2760,13 +2761,14 @@ checksum = "a12a3eb39ee2c231be64487f1fcbe726c8f2514876a55480a5ab8559fc374252"
 dependencies = [
  "autocfg",
  "pin-project-lite 0.2.0",
+ "tokio-macros",
 ]
 
 [[package]]
 name = "tokio-macros"
-version = "0.2.6"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
+checksum = "21d30fdbb5dc2d8f91049691aa1a9d4d4ae422a21c334ce8936e5886d30c5c45"
 dependencies = [
  "proc-macro2",
  "quote",
