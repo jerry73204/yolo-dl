@@ -103,6 +103,14 @@ pub trait TensorExt {
     fn hard_swish(&self) -> Tensor;
     fn mish(&self) -> Tensor;
     fn hard_mish(&self) -> Tensor;
+    fn f_rgb_to_hsv(&self) -> Result<Tensor>;
+    fn rgb_to_hsv(&self) -> Tensor {
+        self.f_rgb_to_hsv().unwrap()
+    }
+    fn f_hsv_to_rgb(&self) -> Result<Tensor>;
+    fn hsv_to_rgb(&self) -> Tensor {
+        self.f_hsv_to_rgb().unwrap()
+    }
     // fn normalize_channels(&self) -> Tensor;
     // fn normalize_channels_softmax(&self) -> Tensor;
 }
@@ -573,6 +581,83 @@ impl TensorExt for Tensor {
     // fn normalize_channels_softmax(&self) -> Tensor {
     //     todo!();
     // }
+
+    fn f_rgb_to_hsv(&self) -> Result<Tensor> {
+        let eps = 1e-4;
+        let rgb = self;
+        let (channels, _height, _width) = rgb.size3()?;
+        ensure!(
+            channels == 3,
+            "channel size must be 3, but get {}",
+            channels
+        );
+
+        let red = rgb.select(0, 0);
+        let green = rgb.select(0, 1);
+        let blue = rgb.select(0, 2);
+
+        let (max, argmax) = rgb.max2(0, false);
+        let (min, _argmin) = rgb.min2(0, false);
+        let diff = &max - &min;
+
+        let value = max;
+        let saturation = (&diff / &value).where1(&value.gt(eps), &value.zeros_like());
+
+        let case1 = value.zeros_like();
+        let case2 = (&green - &blue) / &diff;
+        let case3 = (&blue - &red) / &diff + 2.0;
+        let case4 = (&red - &green) / &diff + 4.0;
+
+        let hue = {
+            let hue = case1.where1(
+                &diff.le(eps),
+                &case2.where1(&argmax.eq(0), &case3.where1(&argmax.eq(1), &case4)),
+            );
+            let hue = hue.where1(&hue.ge(0.0), &(&hue + 6.0));
+            let hue = hue / 6.0;
+            hue
+        };
+
+        let hsv = Tensor::stack(&[hue, saturation, value], 0);
+
+        debug_assert!(
+            !bool::from(hsv.isnan().any()),
+            "NaN detected in RGB to HSV conversion"
+        );
+
+        Ok(hsv)
+    }
+
+    fn f_hsv_to_rgb(&self) -> Result<Tensor> {
+        let hsv = self;
+        let (channels, _height, _width) = hsv.size3()?;
+        ensure!(
+            channels == 3,
+            "channel size must be 3, but get {}",
+            channels
+        );
+
+        let hue = hsv.select(0, 0);
+        let saturation = hsv.select(0, 1);
+        let value = hsv.select(0, 2);
+
+        let func = |n: i64| {
+            let k = (&hue + n as f64).fmod(2);
+            &value
+                - &value
+                    * &saturation
+                    * value
+                        .zeros_like()
+                        .max1(&k.min1(&(-&k + 4.0)).clamp_min(1.0))
+        };
+
+        let red = func(5);
+        let green = func(3);
+        let blue = func(1);
+        let rgb = Tensor::stack(&[red, green, blue], 0);
+
+        Ok(rgb)
+    }
 }
 
 pub trait IntoTensor {
