@@ -7,7 +7,7 @@ mod util;
 
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LoggingConfig, TrainingConfig},
+    config::{Config, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig},
     data::{GenericDataset, TrainingRecord, TrainingStream},
     message::LoggingMessage,
     util::{LrScheduler, RateCounter},
@@ -192,8 +192,14 @@ async fn multi_gpu_training_worker(
 
         future::try_join_all(config.training.workers.iter().map(|worker_config| {
             let TrainingConfig {
-                match_grid_method,
-                iou_kind,
+                loss:
+                    LossConfig {
+                        match_grid_method,
+                        iou_kind,
+                        iou_loss_weight,
+                        objectness_loss_weight,
+                        classification_loss_weight,
+                    },
                 momentum,
                 weight_decay,
                 ..
@@ -213,6 +219,9 @@ async fn multi_gpu_training_worker(
                     reduction: Reduction::Mean,
                     match_grid_method: Some(match_grid_method),
                     iou_kind: Some(iou_kind),
+                    iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
+                    objectness_loss_weight: objectness_loss_weight.map(|val| val.raw()),
+                    classification_loss_weight: classification_loss_weight.map(|val| val.raw()),
                     ..Default::default()
                 }
                 .build()?;
@@ -618,8 +627,14 @@ fn single_gpu_training_worker(
                 master_device,
                 initial_step: init_training_step,
                 ref lr_schedule,
-                iou_kind,
-                match_grid_method,
+                loss:
+                    LossConfig {
+                        iou_kind,
+                        match_grid_method,
+                        iou_loss_weight,
+                        objectness_loss_weight,
+                        classification_loss_weight,
+                    },
                 ..
             },
         ..
@@ -635,6 +650,9 @@ fn single_gpu_training_worker(
     let yolo_loss = YoloLossInit {
         match_grid_method: Some(match_grid_method),
         iou_kind: Some(iou_kind),
+        iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
+        objectness_loss_weight: objectness_loss_weight.map(|val| val.raw()),
+        classification_loss_weight: classification_loss_weight.map(|val| val.raw()),
         ..Default::default()
     }
     .build()?;

@@ -100,10 +100,8 @@
         "min_bbox_size": 0.005,
     },
     "training": {
-        "batch_size": 192,
-        "default_minibatch_size": 64,
-        "match_grid_method": "Rect4",
-        "iou_kind": "GIoU",
+        "batch_size": 225,
+        "default_minibatch_size": 75,
         "initial_step": 0,
         "momentum": 0.9,
         "weight_decay": 0.0,
@@ -113,6 +111,13 @@
                 [0, 0.001],
                 [400000, 0.0001],
             ],
+        },
+        "loss": {
+            "match_grid_method": "Rect4",
+            "iou_kind": "GIoU",
+            "iou_loss_weight": 0.05,
+            "objectness_loss_weight": 1.0,
+            "classification_loss_weight": 0.58,
         },
         // "save_checkpoint_steps": 1000,
         "load_checkpoint": {

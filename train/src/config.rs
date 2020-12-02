@@ -88,19 +88,27 @@ pub struct PreprocessorConfig {
 pub struct TrainingConfig {
     pub batch_size: NonZeroUsize,
     pub default_minibatch_size: NonZeroUsize,
-    pub match_grid_method: MatchGrid,
-    pub iou_kind: IoUKind,
     #[serde(default = "default_initial_step")]
     pub initial_step: usize,
     pub lr_schedule: LearningRateSchedule,
     pub momentum: R64,
     pub weight_decay: R64,
+    pub loss: LossConfig,
     pub save_checkpoint_steps: Option<NonZeroUsize>,
     pub load_checkpoint: LoadCheckpoint,
     pub enable_multi_gpu: bool,
     #[serde(with = "tch_serde::serde_device")]
     pub master_device: Device,
     pub workers: Vec<WorkerConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LossConfig {
+    pub match_grid_method: MatchGrid,
+    pub iou_kind: IoUKind,
+    pub iou_loss_weight: Option<R64>,
+    pub objectness_loss_weight: Option<R64>,
+    pub classification_loss_weight: Option<R64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
