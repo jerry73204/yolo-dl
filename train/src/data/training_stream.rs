@@ -1,7 +1,9 @@
 use super::*;
 use crate::{
     common::*,
-    config::{Config, DatasetConfig, DatasetKind, PreprocessorConfig, TrainingConfig},
+    config::{
+        Config, DatasetConfig, DatasetKind, LoggingConfig, PreprocessorConfig, TrainingConfig,
+    },
     message::LoggingMessage,
 };
 

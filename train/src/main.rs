@@ -7,7 +7,7 @@ mod util;
 
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, TrainingConfig},
+    config::{Config, LoadCheckpoint, LoggingConfig, TrainingConfig},
     data::{GenericDataset, TrainingRecord, TrainingStream},
     message::LoggingMessage,
     util::{LrScheduler, RateCounter},
@@ -154,17 +154,30 @@ async fn multi_gpu_training_worker(
         gradients: Vec<Tensor>,
     }
 
-    let init_training_step = config.training.initial_step.unwrap_or(0);
-    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule, init_training_step)?;
+    let Config {
+        training:
+            TrainingConfig {
+                initial_step: init_training_step,
+                ref lr_schedule,
+                master_device,
+                batch_size,
+                default_minibatch_size,
+                save_checkpoint_steps,
+                ..
+            },
+        logging: LoggingConfig {
+            enable_training_output,
+            ..
+        },
+        ..
+    } = *config;
+
+    let default_minibatch_size = default_minibatch_size.get();
+    let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
     let mut training_step = init_training_step;
     let mut rate_counter = RateCounter::with_second_intertal();
-    let master_device = config.training.master_device;
-    let batch_size = config.training.batch_size.get();
-    let default_minibatch_size = config.training.default_minibatch_size.get();
-    let save_checkpoint_steps = config
-        .training
-        .save_checkpoint_steps
-        .map(|steps| steps.get());
+    let batch_size = batch_size.get();
+    let save_checkpoint_steps = save_checkpoint_steps.map(|steps| steps.get());
     let mut init_timing = Timing::new("initialization");
 
     if let None = save_checkpoint_steps {
@@ -455,24 +468,33 @@ async fn multi_gpu_training_worker(
         .await?;
         training_timing.set_record("compute loss");
 
-        // aggregate worker outputs
-        let (model_output, target_bboxes) = {
-            let (model_output_vec, target_bboxes_vec) = outputs
-                .into_iter()
-                .scan(0, |batch_index_base_mut, worker_output| {
-                    let WorkerOutput {
-                        minibatch_size,
-                        output: model_output,
-                        target_bboxes: orig_target_bboxes,
-                        ..
-                    } = worker_output;
+        // send loss to logger
+        logging_tx
+            .send(LoggingMessage::new_training_step(
+                "loss",
+                training_step,
+                &losses,
+            ))
+            .map_err(|_err| format_err!("cannot send message to logger"))?;
 
-                    // re-index target_bboxes
-                    let batch_index_base = *batch_index_base_mut;
-                    let new_target_bboxes =
-                        orig_target_bboxes
-                            .into_iter()
-                            .map(move |(orig_instance_index, bbox)| {
+        // send output to logger
+        if enable_training_output {
+            // aggregate worker outputs
+            let (model_output, target_bboxes) = {
+                let (model_output_vec, target_bboxes_vec) = outputs
+                    .into_iter()
+                    .scan(0, |batch_index_base_mut, worker_output| {
+                        let WorkerOutput {
+                            minibatch_size,
+                            output: model_output,
+                            target_bboxes: orig_target_bboxes,
+                            ..
+                        } = worker_output;
+
+                        // re-index target_bboxes
+                        let batch_index_base = *batch_index_base_mut;
+                        let new_target_bboxes = orig_target_bboxes.into_iter().map(
+                            move |(orig_instance_index, bbox)| {
                                 let InstanceIndex {
                                     batch_index,
                                     layer_index,
@@ -488,22 +510,36 @@ async fn multi_gpu_training_worker(
                                     grid_row,
                                 };
                                 (Arc::new(new_instance_index), bbox)
-                            });
+                            },
+                        );
 
-                    *batch_index_base_mut += minibatch_size;
-                    Some((model_output, new_target_bboxes))
-                })
-                .unzip_n_vec();
+                        *batch_index_base_mut += minibatch_size;
+                        Some((model_output, new_target_bboxes))
+                    })
+                    .unzip_n_vec();
 
-            let model_output = YoloOutput::cat(model_output_vec, master_device)?;
-            let target_bboxes: HashMap<_, _> = target_bboxes_vec.into_iter().flatten().collect();
+                let model_output = YoloOutput::cat(model_output_vec, master_device)?;
+                let target_bboxes: HashMap<_, _> =
+                    target_bboxes_vec.into_iter().flatten().collect();
 
-            assert!(target_bboxes
-                .keys()
-                .all(|index| index.batch_index < model_output.batch_size() as usize));
+                assert!(target_bboxes
+                    .keys()
+                    .all(|index| index.batch_index < model_output.batch_size() as usize));
 
-            (model_output, Arc::new(target_bboxes))
-        };
+                (model_output, Arc::new(target_bboxes))
+            };
+
+            logging_tx
+                .send(LoggingMessage::new_training_output(
+                    "training-output",
+                    training_step,
+                    &image,
+                    &model_output,
+                    &losses,
+                    target_bboxes,
+                ))
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
+        }
 
         // save checkpoint
         if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
@@ -523,28 +559,6 @@ async fn multi_gpu_training_worker(
             .await?;
             worker_contexts = worker_contexts_;
             training_timing.set_record("save checkpoint");
-        }
-
-        // send to logger
-        // {
-        //     let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
-        //     logging_tx
-        //         .send(msg)
-        //         .map_err(|_err| format_err!("cannot send message to logger"))?;
-        // }
-
-        {
-            let msg = LoggingMessage::new_training_output(
-                "output",
-                training_step,
-                &image,
-                &model_output,
-                &losses,
-                target_bboxes,
-            );
-            logging_tx
-                .send(msg)
-                .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
 
         // print message
@@ -598,18 +612,29 @@ fn single_gpu_training_worker(
 ) -> Result<()> {
     warn!(r#"multi-gpu feature is disabled, use "master_device" as default device"#);
 
+    let Config {
+        training:
+            TrainingConfig {
+                master_device,
+                initial_step: init_training_step,
+                ref lr_schedule,
+                iou_kind,
+                match_grid_method,
+                ..
+            },
+        ..
+    } = *config;
+
     // init model
     info!("initializing model");
-    let device = config.training.master_device;
-    let init_training_step = config.training.initial_step.unwrap_or(0);
-    let mut lr_scheduler = LrScheduler::new(&config.training.lr_schedule, init_training_step)?;
+    let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
     let mut training_step = init_training_step;
-    let mut vs = nn::VarStore::new(device);
+    let mut vs = nn::VarStore::new(master_device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
-        match_grid_method: Some(config.training.match_grid_method),
-        iou_kind: Some(config.training.iou_kind),
+        match_grid_method: Some(match_grid_method),
+        iou_kind: Some(iou_kind),
         ..Default::default()
     }
     .build()?;
@@ -650,10 +675,10 @@ fn single_gpu_training_worker(
 
         let TrainingRecord {
             epoch,
-            step: record_step,
+            step: _record_step,
             image,
             bboxes,
-        } = record.to_device(device);
+        } = record.to_device(master_device);
         timing.set_record("to device");
 
         // forward pass

@@ -24,6 +24,7 @@ impl Config {
 pub struct LoggingConfig {
     pub dir: PathBuf,
     pub save_images: bool,
+    pub enable_training_output: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +90,8 @@ pub struct TrainingConfig {
     pub default_minibatch_size: NonZeroUsize,
     pub match_grid_method: MatchGrid,
     pub iou_kind: IoUKind,
-    pub initial_step: Option<usize>,
+    #[serde(default = "default_initial_step")]
+    pub initial_step: usize,
     pub lr_schedule: LearningRateSchedule,
     pub momentum: R64,
     pub weight_decay: R64,
@@ -125,4 +127,9 @@ pub enum LearningRateSchedule {
 
 fn empty_hashset<T>() -> HashSet<T> {
     HashSet::new()
+}
+
+fn default_initial_step() -> usize {
+    info!("use default initail step 0");
+    0
 }
