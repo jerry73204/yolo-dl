@@ -138,7 +138,7 @@ impl TrainingStream {
             .map(|(step, (epoch, indexes))| Ok((step, epoch, indexes)));
 
         // start of unordered ops
-        let stream = stream.try_overflowing_enumerate();
+        let stream = stream.try_wrapping_enumerate();
 
         // load samples and scale bboxes
         let stream = {
@@ -393,7 +393,7 @@ impl TrainingStream {
 
             stream
                 .chunks(batch_size.get())
-                .overflowing_enumerate()
+                .wrapping_enumerate()
                 .par_then(None, |(index, results)| async move {
                     let chunk: Vec<_> = results.into_iter().try_collect()?;
                     Fallible::Ok((index, chunk))

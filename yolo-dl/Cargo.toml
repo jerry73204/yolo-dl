@@ -20,7 +20,7 @@ serde_json = "1.0"
 async-std = { version = "1.7", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1"
-par-stream = { git = "https://github.com/jerry73204/par-stream.git" }
+par-stream = { git = "https://github.com/jerry73204/par-stream.git", rev = "f9d3c5b17e723f63d2cc1cd96d5c2410e7a5df1d" }
 futures = "0.3"
 rand = "0.7"
 percent-encoding = "2.1"

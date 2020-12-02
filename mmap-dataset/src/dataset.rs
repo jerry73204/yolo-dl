@@ -139,7 +139,7 @@ impl<I> DatasetWriterInit<I> {
             let mmap = mmap.clone();
             images
                 .map_err(|err| err.into())
-                .try_overflowing_enumerate()
+                .try_wrapping_enumerate()
                 .try_par_then(None, move |(index, item)| {
                     let mmap = mmap.clone();
                     async move {
