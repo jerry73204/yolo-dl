@@ -76,6 +76,7 @@
     "logging": {
         "dir": "logs-iii",
         "save_images": true,
+        "enable_training_output": true,
     },
     "preprocessor": {
         "cache_dir": "/home/aeon/tmp/yolo-dl-cache",
@@ -96,7 +97,7 @@
         "vertical_flip_prob": 0.0,
         "bbox_scaling": 1.0,
         "out_of_bound_tolerance": 10,
-        "min_bbox_size": 0.05,
+        "min_bbox_size": 0.005,
     },
     "training": {
         "batch_size": 192,
