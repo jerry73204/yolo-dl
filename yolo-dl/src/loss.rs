@@ -623,6 +623,8 @@ impl YoloLoss {
         prediction: &YoloOutput,
         target: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
     ) -> (PredInstances, TargetInstances) {
+        let mut timing = Timing::new("collect_instances");
+
         let device = prediction.device;
         let pred_instances = {
             let (batch_indexes_vec, flat_indexes_vec) = target
@@ -671,7 +673,9 @@ impl YoloLoss {
             }
         };
 
-        let target_instances = {
+        timing.set_record("build prediction instances");
+
+        let target_instances = tch::no_grad(|| {
             let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = target
                 .values()
                 .map(|bbox| {
@@ -687,12 +691,25 @@ impl YoloLoss {
                 })
                 .unzip_n_vec();
 
-            let cy = Tensor::of_slice(&cy_vec).view([-1, 1]).to_device(device);
-            let cx = Tensor::of_slice(&cx_vec).view([-1, 1]).to_device(device);
-            let height = Tensor::of_slice(&h_vec).view([-1, 1]).to_device(device);
-            let width = Tensor::of_slice(&w_vec).view([-1, 1]).to_device(device);
+            let cy = Tensor::of_slice(&cy_vec)
+                .view([-1, 1])
+                .set_requires_grad(false)
+                .to_device(device);
+            let cx = Tensor::of_slice(&cx_vec)
+                .view([-1, 1])
+                .set_requires_grad(false)
+                .to_device(device);
+            let height = Tensor::of_slice(&h_vec)
+                .view([-1, 1])
+                .set_requires_grad(false)
+                .to_device(device);
+            let width = Tensor::of_slice(&w_vec)
+                .view([-1, 1])
+                .set_requires_grad(false)
+                .to_device(device);
             let category_id = Tensor::of_slice(&category_id_vec)
                 .view([-1, 1])
+                .set_requires_grad(false)
                 .to_device(device);
 
             TargetInstances {
@@ -702,7 +719,10 @@ impl YoloLoss {
                 width,
                 sparse_class: category_id,
             }
-        };
+        });
+
+        timing.set_record("build target instances");
+        timing.report();
 
         (pred_instances, target_instances)
     }
