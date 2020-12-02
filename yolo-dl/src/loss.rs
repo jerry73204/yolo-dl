@@ -225,7 +225,7 @@ impl YoloLoss {
         YoloLossOutput,
         HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
     ) {
-        let mut timing = Timing::new("loss_function");
+        let mut timing = Timing::new("loss function");
 
         // match target bboxes and grids, and group them by detector cells
         // indexed by grid positions
@@ -444,155 +444,178 @@ impl YoloLoss {
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
     ) -> HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>> {
-        // iterator of (batch_index, bbox) per target object
-        let target_bbox_iter = target.iter().enumerate().flat_map(|(batch_index, bboxes)| {
-            bboxes.iter().map(move |bbox| {
-                let [_cy, _cx, h, w] = bbox.cycxhw();
-                if abs_diff_eq!(h, 0.0) || abs_diff_eq!(w, 0.0) {
-                    warn!(
+        let target_bboxes: HashMap<_, _> = target
+            .iter()
+            .enumerate()
+            // filter out small bboxes
+            .flat_map(|(batch_index, bboxes)| {
+                bboxes.iter().map(move |bbox| {
+                    let [_cy, _cx, h, w] = bbox.cycxhw();
+                    if abs_diff_eq!(h, 0.0) || abs_diff_eq!(w, 0.0) {
+                        warn!(
                         "The bounding box {:?} is too small. It may cause division by zero error.",
                         bbox
                     );
-                }
-                (batch_index, bbox)
+                    }
+                    (batch_index, bbox)
+                })
             })
-        });
+            // pair up per target bbox and per prediction feature
+            .cartesian_product(prediction.layer_meta.iter().enumerate())
+            // generate neighbor bboxes
+            .map(|args| {
+                // unpack variables
+                let ((batch_index, target_bbox), (layer_index, layer)) = args;
+                let LayerMeta {
+                    feature_size:
+                        GridSize {
+                            height: feature_h,
+                            width: feature_w,
+                            ..
+                        },
+                    ref anchors,
+                    ..
+                } = *layer;
 
-        // pair up each target bbox and each grid
-        let targets: HashMap<_, _> =
-            iproduct!(target_bbox_iter, prediction.layer_meta.iter().enumerate())
-                .flat_map(|args| {
-                    // unpack variables
-                    let ((batch_index, ratio_bbox), (layer_index, layer)) = args;
-                    let LayerMeta {
-                        feature_size:
-                            GridSize {
-                                height: feature_height,
-                                width: feature_width,
-                                ..
-                            },
-                        ref anchors,
-                        ..
-                    } = *layer;
+                // compute bbox in grid units
+                let target_bbox: Arc<LabeledGridBBox<_>> =
+                    Arc::new(target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize));
+                let [target_cy, target_cx, _target_h, _target_w] = target_bbox.cycxhw();
 
-                    // compute bbox in grid units
-                    let grid_bbox: Arc<LabeledGridBBox<_>> = Arc::new(
-                        ratio_bbox.to_r64_bbox(feature_height as usize, feature_width as usize),
-                    );
-                    let [grid_cy, grid_cx, grid_h, grid_w] = grid_bbox.cycxhw();
+                // collect neighbor grid indexes
+                let neighbor_grid_indexes = {
+                    let margin_thresh = 0.5;
+                    let target_row = target_cy.floor().raw() as i64;
+                    let target_col = target_cx.floor().raw() as i64;
+                    debug_assert!(target_row >= 0 && target_col >= 0);
 
-                    // collect neighbor grid indexes
-                    let grid_indexes = {
-                        let margin_thresh = 0.5;
-                        let grid_row = grid_cy.floor().raw() as i64;
-                        let grid_col = grid_cx.floor().raw() as i64;
-                        debug_assert!(grid_row >= 0 && grid_col >= 0);
-
-                        let grid_indexes: Vec<_> = {
-                            let orig_iter = iter::once((grid_row, grid_col));
-                            match self.match_grid_method {
-                                MatchGrid::Rect2 => {
-                                    let top_iter = if grid_cy % 1.0 < margin_thresh && grid_row > 0
-                                    {
-                                        Some((grid_row - 1, grid_col))
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter();
-                                    let left_iter = if grid_cx < margin_thresh && grid_col > 0 {
-                                        Some((grid_row, grid_col - 1))
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter();
-
-                                    orig_iter.chain(top_iter).chain(left_iter).collect()
+                    let grid_indexes: Vec<_> = {
+                        let orig_iter = iter::once((target_row, target_col));
+                        match self.match_grid_method {
+                            MatchGrid::Rect2 => {
+                                let top_iter = if target_cy % 1.0 < margin_thresh && target_row > 0
+                                {
+                                    Some((target_row - 1, target_col))
+                                } else {
+                                    None
                                 }
-                                MatchGrid::Rect4 => {
-                                    let top_iter = if grid_cy % 1.0 < margin_thresh && grid_row > 0
-                                    {
-                                        Some((grid_row - 1, grid_col))
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter();
-                                    let left_iter = if grid_cx < margin_thresh && grid_col > 0 {
-                                        Some((grid_row, grid_col - 1))
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter();
-                                    let bottom_iter = if grid_cy % 1.0 > (1.0 - margin_thresh)
-                                        && grid_row <= feature_height - 2
-                                    {
-                                        Some((grid_row + 1, grid_col))
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter();
-                                    let right_iter = if grid_cx % 1.0 > (1.0 - margin_thresh)
-                                        && grid_col <= feature_width - 2
-                                    {
-                                        Some((grid_row, grid_col + 1))
-                                    } else {
-                                        None
-                                    }
-                                    .into_iter();
-
-                                    orig_iter
-                                        .chain(top_iter)
-                                        .chain(left_iter)
-                                        .chain(bottom_iter)
-                                        .chain(right_iter)
-                                        .collect()
+                                .into_iter();
+                                let left_iter = if target_cx < margin_thresh && target_col > 0 {
+                                    Some((target_row, target_col - 1))
+                                } else {
+                                    None
                                 }
+                                .into_iter();
+
+                                orig_iter.chain(top_iter).chain(left_iter).collect()
                             }
-                        };
+                            MatchGrid::Rect4 => {
+                                let top_iter = if target_cy % 1.0 < margin_thresh && target_row > 0
+                                {
+                                    Some((target_row - 1, target_col))
+                                } else {
+                                    None
+                                }
+                                .into_iter();
+                                let left_iter = if target_cx < margin_thresh && target_col > 0 {
+                                    Some((target_row, target_col - 1))
+                                } else {
+                                    None
+                                }
+                                .into_iter();
+                                let bottom_iter = if target_cy % 1.0 > (1.0 - margin_thresh)
+                                    && target_row <= feature_h - 2
+                                {
+                                    Some((target_row + 1, target_col))
+                                } else {
+                                    None
+                                }
+                                .into_iter();
+                                let right_iter = if target_cx % 1.0 > (1.0 - margin_thresh)
+                                    && target_col <= feature_w - 2
+                                {
+                                    Some((target_row, target_col + 1))
+                                } else {
+                                    None
+                                }
+                                .into_iter();
 
-                        grid_indexes
+                                orig_iter
+                                    .chain(top_iter)
+                                    .chain(left_iter)
+                                    .chain(bottom_iter)
+                                    .chain(right_iter)
+                                    .collect()
+                            }
+                        }
                     };
 
-                    anchors
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .filter(move |(_index, anchor_size)| {
-                            // filter by anchor sizes
-                            let GridSize {
-                                height: anchor_height,
-                                width: anchor_width,
-                                ..
-                            } = *anchor_size;
+                    grid_indexes
+                };
 
-                            grid_h / anchor_height <= self.anchor_scale_thresh
-                                && anchor_height / grid_h <= self.anchor_scale_thresh
-                                && grid_w / anchor_width <= self.anchor_scale_thresh
-                                && anchor_width / grid_w <= self.anchor_scale_thresh
-                        })
-                        .flat_map(move |(anchor_index, _)| {
-                            let grid_bbox = grid_bbox.clone();
-                            let targets: Vec<_> = grid_indexes
-                                .iter()
-                                .cloned()
-                                .map(move |(grid_row, grid_col)| {
-                                    let index = Arc::new(InstanceIndex {
-                                        batch_index,
-                                        layer_index,
-                                        anchor_index: anchor_index as i64,
-                                        grid_row,
-                                        grid_col,
-                                    });
+                (
+                    batch_index,
+                    layer_index,
+                    target_bbox,
+                    neighbor_grid_indexes,
+                    anchors,
+                )
+            })
+            // pair each target bbox with each anchor
+            .flat_map(|args| {
+                let (batch_index, layer_index, target_bbox, neighbor_grid_indexes, anchors) = args;
+                let [_target_cy, _target_cx, target_h, target_w] = target_bbox.cycxhw();
 
-                                    (index, grid_bbox.clone())
-                                })
-                                .collect();
+                // pair up anchors and neighbor grid indexes
+                anchors
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .filter_map(move |(anchor_index, anchor_size)| {
+                        // filter by anchor sizes
+                        let GridSize {
+                            height: anchor_h,
+                            width: anchor_w,
+                            ..
+                        } = anchor_size;
 
-                            targets
-                        })
-                })
-                .collect();
+                        if target_h / anchor_h <= self.anchor_scale_thresh
+                            && anchor_h / target_h <= self.anchor_scale_thresh
+                            && target_w / anchor_w <= self.anchor_scale_thresh
+                            && anchor_w / target_w <= self.anchor_scale_thresh
+                        {
+                            Some(anchor_index)
+                        } else {
+                            None
+                        }
+                    })
+                    .cartesian_product(neighbor_grid_indexes.into_iter())
+                    .map(move |(anchor_index, (grid_row, grid_col))| {
+                        let instance_index = Arc::new(InstanceIndex {
+                            batch_index,
+                            layer_index,
+                            anchor_index: anchor_index as i64,
+                            grid_row,
+                            grid_col,
+                        });
 
-        targets
+                        (instance_index, target_bbox.clone())
+                    })
+            })
+            // group up target bboxes which snap to the same grid position
+            .into_group_map()
+            .into_iter()
+            // build 1-to-1 correspondence of target bboxes and instance indexes
+            .scan(
+                rand::thread_rng(),
+                |rng, (instance_index, target_bboxes)| {
+                    let target_bbox = target_bboxes.choose(rng).unwrap().clone();
+                    Some((instance_index, target_bbox))
+                },
+            )
+            .collect();
+
+        target_bboxes
     }
 
     /// Build HashSet of predictions indexed by per-grid position
@@ -654,7 +677,6 @@ impl YoloLoss {
                 .map(|bbox| {
                     let [cy, cx, h, w] = bbox.bbox.cycxhw();
                     let category_id = bbox.category_id;
-                    bbox.category_id;
                     (
                         cy.raw() as f32,
                         cx.raw() as f32,

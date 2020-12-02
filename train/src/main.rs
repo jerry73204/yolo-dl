@@ -333,7 +333,7 @@ async fn multi_gpu_training_worker(
                             let outputs = jobs
                                 .into_iter()
                                 .map(|job| {
-                                    let mut worker_timing = Timing::new("worker");
+                                    let mut worker_timing = Timing::new("training worker");
 
                                     let WorkerContext {
                                         device,
@@ -365,7 +365,7 @@ async fn multi_gpu_training_worker(
                                     // compute gradients
                                     optimizer.zero_grad();
                                     losses.total_loss.backward();
-                                    worker_timing.set_record("run_backward");
+                                    worker_timing.set_record("backward");
 
                                     let gradients = vs
                                         .trainable_variables()
