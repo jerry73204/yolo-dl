@@ -36,6 +36,17 @@ where
     T: Copy,
     U: Unit,
 {
+    pub fn cycxhw(&self) -> [T; 4] {
+        self.bbox.cycxhw()
+    }
+
+    pub fn tlbr(&self) -> [T; 4]
+    where
+        T: Sub<T, Output = T> + Add<T, Output = T> + Div<f64, Output = T>,
+    {
+        self.bbox.tlbr()
+    }
+
     pub fn map<F, R>(&self, f: F) -> LabeledBBox<R, U>
     where
         F: FnMut(T) -> R,
