@@ -34,6 +34,7 @@ impl TrainingStream {
                     PreprocessorConfig {
                         ref cache_dir,
                         out_of_bound_tolerance,
+                        min_bbox_size,
                         device,
                         ..
                     },
@@ -49,7 +50,8 @@ impl TrainingStream {
                 } => {
                     let dataset =
                         CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?;
-                    let dataset = SanitizedDataset::new(dataset, out_of_bound_tolerance)?;
+                    let dataset =
+                        SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
@@ -61,7 +63,8 @@ impl TrainingStream {
                     ..
                 } => {
                     let dataset = VocDataset::load(config.clone(), dataset_dir).await?;
-                    let dataset = SanitizedDataset::new(dataset, out_of_bound_tolerance)?;
+                    let dataset =
+                        SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
@@ -76,7 +79,8 @@ impl TrainingStream {
                     let dataset =
                         IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone())
                             .await?;
-                    let dataset = SanitizedDataset::new(dataset, out_of_bound_tolerance)?;
+                    let dataset =
+                        SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
