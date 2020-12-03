@@ -593,8 +593,8 @@ impl DetectModule {
                                     Tensor::arange(feature_height, (Kind::Float, device)),
                                     Tensor::arange(feature_width, (Kind::Float, device)),
                                 ]);
-                                // corresponds to (batch x entry x anchor x height x width)
-                                Tensor::stack(&[&grids[0], &grids[1]], 2).view([
+                                // corresponds to (batch * entry * anchor * height * width)
+                                Tensor::stack(&[&grids[0], &grids[1]], 0).view([
                                     1,
                                     2,
                                     1,
