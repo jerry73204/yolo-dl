@@ -381,6 +381,7 @@ async fn multi_gpu_training_worker(
                                         .iter()
                                         .map(|tensor| tensor.grad() * minibatch_size as f64)
                                         .collect_vec();
+                                    optimizer.zero_grad();
                                     worker_timing.set_record("extract gradients");
 
                                     worker_timing.report();
