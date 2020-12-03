@@ -24,8 +24,6 @@ pub struct YoloLossOutput {
     pub iou_loss: Tensor,
     pub classification_loss: Tensor,
     pub objectness_loss: Tensor,
-    /* #[tensor_like(clone)]
-     * pub target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>, */
 }
 
 impl YoloLossOutput {
@@ -316,6 +314,11 @@ impl YoloLoss {
         let intersect_w = (&intersect_r - &intersect_l).clamp_min(0.0);
         let intersect_area = &intersect_h * &intersect_w;
 
+        debug_assert!(
+            bool::from(intersect_h.ge(0.0).all()) && bool::from(intersect_w.ge(0.0).all()),
+            "negative bbox height or width detected"
+        );
+
         // compute IoU
         let union_area = &pred_area + &target_area - &intersect_area + epsilon;
         let iou = &intersect_area / &union_area;
@@ -329,6 +332,11 @@ impl YoloLoss {
                 let outer_r = pred_r.max1(&target_r);
                 let outer_h = &outer_b - &outer_t;
                 let outer_w = &outer_r - &outer_l;
+
+                debug_assert!(
+                    bool::from(outer_h.ge(0.0).all()) && bool::from(outer_w.ge(0.0).all()),
+                    "negative bbox height or width detected"
+                );
 
                 match self.iou_kind {
                     IoUKind::GIoU => {

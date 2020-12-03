@@ -78,18 +78,25 @@ pub async fn logging_worker(
                     losses,
                     target_bboxes,
                 } => {
-                    if save_images {
-                        let mut timing = Timing::new("log training output");
+                    let mut timing = Timing::new("log training output");
+                    let step = step as i64;
 
-                        let (canvas, mut timing) =
-                            async_std::task::spawn_blocking(move || -> Result<_> {
-                                tch::no_grad(|| -> Result<_> {
-                                    let input = input.to_device(Device::Cpu);
-                                    let output = output.to_device(Device::Cpu);
-                                    let losses = losses.to_device(Device::Cpu);
+                    // compute statistics and plot image
+                    let (losses, cy_mean, cx_mean, h_mean, w_mean, canvas, mut timing) =
+                        async_std::task::spawn_blocking(move || -> Result<_> {
+                            tch::no_grad(|| -> Result<_> {
+                                // let output = output.to_device(Device::Cpu);
+                                // let losses = losses.to_device(Device::Cpu);
 
-                                    timing.set_record("to cpu");
+                                // log statistics
+                                let cy_mean = f32::from(output.cy().mean(Kind::Float));
+                                let cx_mean = f32::from(output.cx().mean(Kind::Float));
+                                let h_mean = f32::from(output.height().mean(Kind::Float));
+                                let w_mean = f32::from(output.width().mean(Kind::Float));
 
+                                timing.set_record("compute_statistics");
+
+                                let canvas = if save_images {
                                     let mut canvas = input.copy();
                                     let layer_meta = output.layer_meta();
                                     let PixelSize {
@@ -230,19 +237,73 @@ pub async fn logging_worker(
                                     let _ =
                                         canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
 
-                                    timing.set_record("draw");
-                                    Ok((canvas, timing))
-                                })
+                                    timing.set_record("draw bboxes");
+                                    Some(canvas)
+                                } else {
+                                    None
+                                };
+
+                                Ok((losses, cy_mean, cx_mean, h_mean, w_mean, canvas, timing))
                             })
-                            .await?;
+                        })
+                        .await?;
 
+                    // log losses
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}/loss/total-loss", tag),
+                            step,
+                            losses.total_loss.into(),
+                        )
+                        .await?;
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}/loss/iou_loss", tag),
+                            step,
+                            losses.iou_loss.into(),
+                        )
+                        .await?;
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}/loss/classification_loss", tag),
+                            step,
+                            losses.classification_loss.into(),
+                        )
+                        .await?;
+                    event_writer
+                        .write_scalar_async(
+                            format!("{}/loss/objectness_loss", tag),
+                            step,
+                            losses.objectness_loss.into(),
+                        )
+                        .await?;
+
+                    // log statistics
+
+                    event_writer
+                        .write_scalar_async(format!("{}/stat/cy_mean", tag), step, cy_mean)
+                        .await?;
+                    event_writer
+                        .write_scalar_async(format!("{}/stat/cx_mean", tag), step, cx_mean)
+                        .await?;
+                    event_writer
+                        .write_scalar_async(format!("{}/stat/h_mean", tag), step, h_mean)
+                        .await?;
+                    event_writer
+                        .write_scalar_async(format!("{}/stat/w_mean", tag), step, w_mean)
+                        .await?;
+
+                    // write images
+
+                    if let Some(canvas) = canvas {
                         event_writer
-                            .write_image_list_async(tag, step as i64, canvas)
+                            .write_image_list_async(format!("{}/image/bboxes", tag), step, canvas)
                             .await?;
 
-                        timing.set_record("write");
-                        timing.report();
+                        timing.set_record("write events");
                     }
+
+                    timing.report();
                 }
                 LoggingMessageKind::Images { images } => {
                     if save_images {

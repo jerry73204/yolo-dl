@@ -414,7 +414,7 @@ async fn multi_gpu_training_worker(
         training_timing.set_record("forward step");
 
         // backward step
-        let outputs = {
+        let worker_outputs = {
             let (worker_contexts_, outputs) = async_std::task::spawn_blocking(move || {
                 tch::no_grad(|| {
                     // aggregate gradients
@@ -464,33 +464,24 @@ async fn multi_gpu_training_worker(
         training_timing.set_record("backward step");
 
         // average losses among workers
-        let (losses, outputs) = async_std::task::spawn_blocking(move || -> Result<_> {
-            let losses = YoloLossOutput::weighted_mean(outputs.iter().map(|output| {
+        let (losses, worker_outputs) = async_std::task::spawn_blocking(move || -> Result<_> {
+            let losses = YoloLossOutput::weighted_mean(worker_outputs.iter().map(|output| {
                 (
                     output.losses.to_device(master_device),
                     output.minibatch_size as f64,
                 )
             }))?;
 
-            Ok((losses, outputs))
+            Ok((losses, worker_outputs))
         })
         .await?;
         training_timing.set_record("compute loss");
-
-        // send loss to logger
-        logging_tx
-            .send(LoggingMessage::new_training_step(
-                "loss",
-                training_step,
-                &losses,
-            ))
-            .map_err(|_err| format_err!("cannot send message to logger"))?;
 
         // send output to logger
         if enable_training_output {
             // aggregate worker outputs
             let (model_output, target_bboxes) = {
-                let (model_output_vec, target_bboxes_vec) = outputs
+                let (model_output_vec, target_bboxes_vec) = worker_outputs
                     .into_iter()
                     .scan(0, |batch_index_base_mut, worker_output| {
                         let WorkerOutput {
@@ -546,6 +537,14 @@ async fn multi_gpu_training_worker(
                     &model_output,
                     &losses,
                     target_bboxes,
+                ))
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
+        } else {
+            logging_tx
+                .send(LoggingMessage::new_training_step(
+                    "loss",
+                    training_step,
+                    &losses,
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
