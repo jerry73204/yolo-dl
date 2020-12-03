@@ -267,6 +267,8 @@ async fn multi_gpu_training_worker(
 
     init_timing.report();
 
+    info!("initialization finished, start training");
+
     // training loop
     let mut training_timing = Timing::new("training loop");
 
@@ -417,7 +419,7 @@ async fn multi_gpu_training_worker(
         // backward step
         let worker_outputs = {
             let (worker_contexts_, outputs) = async_std::task::spawn_blocking(move || {
-                tch::no_grad(|| {
+                let (worker_contexts, outputs) = tch::no_grad(|| {
                     // aggregate gradients
                     let sum_gradients = {
                         let mut gradients_iter = outputs.iter().map(|output| &output.gradients);
@@ -454,8 +456,10 @@ async fn multi_gpu_training_worker(
                             });
                         optimizer.step();
                     }
+
                     (worker_contexts, outputs)
-                })
+                });
+                (worker_contexts, outputs)
             })
             .await;
             worker_contexts = worker_contexts_;
@@ -637,6 +641,10 @@ fn single_gpu_training_worker(
                     },
                 ..
             },
+        logging: LoggingConfig {
+            enable_training_output,
+            ..
+        },
         ..
     } = *config;
 
@@ -746,23 +754,24 @@ fn single_gpu_training_worker(
         }
 
         // send to logger
-        {
-            let msg = LoggingMessage::new_training_step("loss", training_step, &losses);
+        if enable_training_output {
             logging_tx
-                .send(msg)
+                .send(LoggingMessage::new_training_output(
+                    "training-output",
+                    training_step,
+                    &image,
+                    &output,
+                    &losses,
+                    Arc::new(target_bboxes),
+                ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
-        }
-        {
-            let msg = LoggingMessage::new_training_output(
-                "output",
-                training_step,
-                &image,
-                &output,
-                &losses,
-                Arc::new(target_bboxes),
-            );
+        } else {
             logging_tx
-                .send(msg)
+                .send(LoggingMessage::new_training_step(
+                    "loss",
+                    training_step,
+                    &losses,
+                ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         }
 
