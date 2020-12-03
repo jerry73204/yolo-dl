@@ -452,6 +452,8 @@ impl YoloLoss {
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
     ) -> HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>> {
+        let snap_thresh = 0.5;
+
         let target_bboxes: HashMap<_, _> = target
             .iter()
             .enumerate()
@@ -492,7 +494,6 @@ impl YoloLoss {
 
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes = {
-                    let margin_thresh = 0.5;
                     let target_row = target_cy.floor().raw() as i64;
                     let target_col = target_cx.floor().raw() as i64;
                     debug_assert!(target_row >= 0 && target_col >= 0);
@@ -501,14 +502,13 @@ impl YoloLoss {
                         let orig_iter = iter::once((target_row, target_col));
                         match self.match_grid_method {
                             MatchGrid::Rect2 => {
-                                let top_iter = if target_cy % 1.0 < margin_thresh && target_row > 0
-                                {
+                                let top_iter = if target_cy % 1.0 < snap_thresh && target_row > 0 {
                                     Some((target_row - 1, target_col))
                                 } else {
                                     None
                                 }
                                 .into_iter();
-                                let left_iter = if target_cx < margin_thresh && target_col > 0 {
+                                let left_iter = if target_cx < snap_thresh && target_col > 0 {
                                     Some((target_row, target_col - 1))
                                 } else {
                                     None
@@ -518,20 +518,19 @@ impl YoloLoss {
                                 orig_iter.chain(top_iter).chain(left_iter).collect()
                             }
                             MatchGrid::Rect4 => {
-                                let top_iter = if target_cy % 1.0 < margin_thresh && target_row > 0
-                                {
+                                let top_iter = if target_cy % 1.0 < snap_thresh && target_row > 0 {
                                     Some((target_row - 1, target_col))
                                 } else {
                                     None
                                 }
                                 .into_iter();
-                                let left_iter = if target_cx < margin_thresh && target_col > 0 {
+                                let left_iter = if target_cx < snap_thresh && target_col > 0 {
                                     Some((target_row, target_col - 1))
                                 } else {
                                     None
                                 }
                                 .into_iter();
-                                let bottom_iter = if target_cy % 1.0 > (1.0 - margin_thresh)
+                                let bottom_iter = if target_cy % 1.0 > (1.0 - snap_thresh)
                                     && target_row <= feature_h - 2
                                 {
                                     Some((target_row + 1, target_col))
@@ -539,7 +538,7 @@ impl YoloLoss {
                                     None
                                 }
                                 .into_iter();
-                                let right_iter = if target_cx % 1.0 > (1.0 - margin_thresh)
+                                let right_iter = if target_cx % 1.0 > (1.0 - snap_thresh)
                                     && target_col <= feature_w - 2
                                 {
                                     Some((target_row, target_col + 1))
@@ -622,6 +621,15 @@ impl YoloLoss {
                 },
             )
             .collect();
+
+        debug_assert!(target_bboxes.iter().all(|(instance_index, bbox)| {
+            let InstanceIndex {
+                grid_row, grid_col, ..
+            } = **instance_index;
+            let [cy, cx, _h, _w] = bbox.cycxhw();
+            (grid_row as f64 - cy.raw()).abs() <= 1.0 + snap_thresh
+                && (grid_col as f64 - cx.raw()).abs() <= 1.0 + snap_thresh
+        }));
 
         target_bboxes
     }
