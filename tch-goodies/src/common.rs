@@ -14,6 +14,7 @@ pub use std::{
     borrow::Borrow,
     collections::HashSet,
     convert::{TryFrom, TryInto},
+    fmt::{self, Display, Formatter},
     marker::PhantomData,
     ops::{Add, Deref, Div, Mul, Range, RangeInclusive, Sub},
 };

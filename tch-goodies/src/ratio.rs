@@ -211,3 +211,9 @@ impl PartialEq<f64> for Ratio {
         self.0.raw().eq(rhs)
     }
 }
+
+impl Display for Ratio {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        self.to_f64().fmt(f)
+    }
+}
