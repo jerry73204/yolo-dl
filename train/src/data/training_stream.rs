@@ -316,6 +316,7 @@ impl TrainingStream {
                         cutmix_prob,
                         mosaic_prob,
                         mosaic_margin,
+                        min_bbox_size,
                         ..
                     },
                 ..
@@ -361,6 +362,19 @@ impl TrainingStream {
                             mosaic_processor.forward(Vec::from(pairs)).await?
                         }
                     };
+
+                    // filter out small bboxes after mixing
+                    let mixed_bboxes: Vec<_> = mixed_bboxes
+                        .into_iter()
+                        .filter_map(|bbox| {
+                            let [_cy, _cx, h, w] = bbox.cycxhw();
+                            if h >= min_bbox_size && w >= min_bbox_size {
+                                Some(bbox)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
 
                     // send to logger
                     logging_tx
