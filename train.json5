@@ -75,8 +75,9 @@
     },
     "logging": {
         "dir": "logs-iii",
-        "save_images": true,
+        "enable_images": true,
         "enable_training_output": true,
+        "enable_debug_stat": true,
     },
     "preprocessor": {
         "cache_dir": "/home/aeon/tmp/yolo-dl-cache",

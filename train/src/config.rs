@@ -23,8 +23,9 @@ impl Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
     pub dir: PathBuf,
-    pub save_images: bool,
+    pub enable_images: bool,
     pub enable_training_output: bool,
+    pub enable_debug_stat: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

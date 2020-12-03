@@ -11,7 +11,12 @@ pub async fn logging_worker(
     mut rx: broadcast::Receiver<LoggingMessage>,
 ) -> Result<impl Future<Output = Result<()>> + Send> {
     let Config {
-        logging: LoggingConfig { save_images, .. },
+        logging:
+            LoggingConfig {
+                enable_images,
+                enable_debug_stat,
+                ..
+            },
         ..
     } = *config;
 
@@ -82,21 +87,23 @@ pub async fn logging_worker(
                     let step = step as i64;
 
                     // compute statistics and plot image
-                    let (losses, cy_mean, cx_mean, h_mean, w_mean, canvas, mut timing) =
+                    let (losses, debug_stat, canvas, mut timing) =
                         async_std::task::spawn_blocking(move || -> Result<_> {
                             tch::no_grad(|| -> Result<_> {
-                                // let output = output.to_device(Device::Cpu);
-                                // let losses = losses.to_device(Device::Cpu);
-
                                 // log statistics
-                                let cy_mean = f32::from(output.cy().mean(Kind::Float));
-                                let cx_mean = f32::from(output.cx().mean(Kind::Float));
-                                let h_mean = f32::from(output.height().mean(Kind::Float));
-                                let w_mean = f32::from(output.width().mean(Kind::Float));
+                                let debug_stat = if enable_debug_stat {
+                                    let cy_mean = f32::from(output.cy().mean(Kind::Float));
+                                    let cx_mean = f32::from(output.cx().mean(Kind::Float));
+                                    let h_mean = f32::from(output.height().mean(Kind::Float));
+                                    let w_mean = f32::from(output.width().mean(Kind::Float));
+                                    Some((cy_mean, cx_mean, h_mean, w_mean))
+                                } else {
+                                    None
+                                };
 
                                 timing.set_record("compute_statistics");
 
-                                let canvas = if save_images {
+                                let canvas = if enable_images {
                                     let mut canvas = input.copy();
                                     let layer_meta = output.layer_meta();
                                     let PixelSize {
@@ -243,7 +250,7 @@ pub async fn logging_worker(
                                     None
                                 };
 
-                                Ok((losses, cy_mean, cx_mean, h_mean, w_mean, canvas, timing))
+                                Ok((losses, debug_stat, canvas, timing))
                             })
                         })
                         .await?;
@@ -278,23 +285,23 @@ pub async fn logging_worker(
                         )
                         .await?;
 
-                    // log statistics
-
-                    event_writer
-                        .write_scalar_async(format!("{}/stat/cy_mean", tag), step, cy_mean)
-                        .await?;
-                    event_writer
-                        .write_scalar_async(format!("{}/stat/cx_mean", tag), step, cx_mean)
-                        .await?;
-                    event_writer
-                        .write_scalar_async(format!("{}/stat/h_mean", tag), step, h_mean)
-                        .await?;
-                    event_writer
-                        .write_scalar_async(format!("{}/stat/w_mean", tag), step, w_mean)
-                        .await?;
+                    // log debug statistics
+                    if let Some((cy_mean, cx_mean, h_mean, w_mean)) = debug_stat {
+                        event_writer
+                            .write_scalar_async(format!("{}/stat/cy_mean", tag), step, cy_mean)
+                            .await?;
+                        event_writer
+                            .write_scalar_async(format!("{}/stat/cx_mean", tag), step, cx_mean)
+                            .await?;
+                        event_writer
+                            .write_scalar_async(format!("{}/stat/h_mean", tag), step, h_mean)
+                            .await?;
+                        event_writer
+                            .write_scalar_async(format!("{}/stat/w_mean", tag), step, w_mean)
+                            .await?;
+                    }
 
                     // write images
-
                     if let Some(canvas) = canvas {
                         event_writer
                             .write_image_list_async(format!("{}/image/bboxes", tag), step, canvas)
@@ -306,7 +313,7 @@ pub async fn logging_worker(
                     timing.report();
                 }
                 LoggingMessageKind::Images { images } => {
-                    if save_images {
+                    if enable_images {
                         for (index, image) in images.into_iter().enumerate() {
                             event_writer
                                 .write_image_async(format!("{}/{}", tag, index), debug_step, image)
@@ -316,7 +323,7 @@ pub async fn logging_worker(
                     }
                 }
                 LoggingMessageKind::ImagesWithBBoxes { tuples } => {
-                    if save_images {
+                    if enable_images {
                         let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
 
                         let image_vec: Vec<_> = tuples
