@@ -11,6 +11,7 @@ pub use futures::{
     stream::{self, Stream, StreamExt, TryStreamExt},
     AsyncWriteExt,
 };
+pub use getset::{CopyGetters, Getters};
 pub use image::{imageops::FilterType, DynamicImage, FlatSamples, ImageFormat, Pixel};
 pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::{iproduct, izip, Itertools};

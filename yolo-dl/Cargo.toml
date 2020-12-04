@@ -41,6 +41,7 @@ lazy_static = "1.4"
 envy = "0.4"
 dashmap = "3.11"
 slice-of-array = "0.2"
+getset = "0.1"
 
 [features]
 profiling = []

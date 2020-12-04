@@ -51,21 +51,32 @@ pub struct Layer {
     pub(crate) anchors_opt: Option<Vec<(usize, usize)>>,
 }
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, CopyGetters, Getters, TensorLike)]
 pub struct YoloOutput {
+    #[getset(get = "pub")]
     pub(crate) image_size: PixelSize<i64>,
+    #[getset(get_copy = "pub")]
     pub(crate) batch_size: i64,
+    #[getset(get_copy = "pub")]
     pub(crate) num_classes: i64,
     #[tensor_like(copy)]
+    #[getset(get_copy = "pub")]
     pub(crate) device: Device,
+    #[getset(get = "pub")]
     pub(crate) layer_meta: Vec<LayerMeta>,
     // below tensors have shape [batch, entry, flat] where
     // - flat = \sum_{i is layer_index} (n_anchors_i * feature_height_i * feature_width_i)
+    #[getset(get = "pub")]
     pub(crate) cy: Tensor,
+    #[getset(get = "pub")]
     pub(crate) cx: Tensor,
+    #[getset(get = "pub")]
     pub(crate) height: Tensor,
+    #[getset(get = "pub")]
     pub(crate) width: Tensor,
+    #[getset(get = "pub")]
     pub(crate) objectness: Tensor,
+    #[getset(get = "pub")]
     pub(crate) classification: Tensor,
 }
 
@@ -197,42 +208,6 @@ impl YoloOutput {
             objectness,
             classification,
         })
-    }
-
-    pub fn batch_size(&self) -> i64 {
-        self.batch_size
-    }
-
-    pub fn image_size(&self) -> &PixelSize<i64> {
-        &self.image_size
-    }
-
-    pub fn layer_meta(&self) -> &[LayerMeta] {
-        &self.layer_meta
-    }
-
-    pub fn cy(&self) -> &Tensor {
-        &self.cy
-    }
-
-    pub fn cx(&self) -> &Tensor {
-        &self.cx
-    }
-
-    pub fn height(&self) -> &Tensor {
-        &self.height
-    }
-
-    pub fn width(&self) -> &Tensor {
-        &self.width
-    }
-
-    pub fn classification(&self) -> &Tensor {
-        &self.classification
-    }
-
-    pub fn objectness(&self) -> &Tensor {
-        &self.objectness
     }
 
     pub fn to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
