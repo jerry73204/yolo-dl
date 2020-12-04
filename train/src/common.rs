@@ -58,7 +58,7 @@ pub use tch_goodies::{
     PixelSize, Ratio, RatioBBox, TensorExt,
 };
 pub use tch_tensor_like::TensorLike;
-pub use tfrecord::EventWriterInit;
+pub use tfrecord::{EventWriter, EventWriterInit};
 pub use tokio::sync::{broadcast, mpsc};
 pub use uuid::Uuid;
 pub use yolo_dl::{
