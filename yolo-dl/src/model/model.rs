@@ -170,6 +170,7 @@ impl YoloOutput {
                 height * width * anchors.len() as i64
             })
             .sum();
+
         ensure!(
             cy.size3()? == (batch_size, 1, flat_index_size),
             "invalid cy shape"
@@ -231,17 +232,17 @@ impl YoloOutput {
                         ..
                     },
                 anchors,
-                begin_flat_index,
+                flat_index_range,
                 ..
             },
         ) = self
             .layer_meta
             .iter()
             .enumerate()
-            .find(|(_layer_index, meta)| flat_index < meta.end_flat_index)?;
+            .find(|(_layer_index, meta)| flat_index < meta.flat_index_range.end)?;
 
         // flat_index = begin_flat_index + col + row * (width + anchor_index * height)
-        let remainder = flat_index - begin_flat_index;
+        let remainder = flat_index - flat_index_range.start;
         let grid_col = remainder % feature_w;
         let grid_row = remainder / feature_w % feature_h;
         let anchor_index = remainder / feature_w / feature_h;
@@ -269,14 +270,92 @@ impl YoloOutput {
         } = *instance_index;
 
         let LayerMeta {
-            begin_flat_index,
+            ref flat_index_range,
             feature_size: GridSize { height, width, .. },
             ..
         } = self.layer_meta[layer_index];
 
-        let flat_index = begin_flat_index + grid_col + width * (grid_row + height * anchor_index);
+        let flat_index =
+            flat_index_range.start + grid_col + width * (grid_row + height * anchor_index);
 
         flat_index
+    }
+
+    pub fn feature_maps(&self) -> Vec<FeatureMap> {
+        let Self {
+            batch_size,
+            num_classes,
+            ref layer_meta,
+            ..
+        } = *self;
+
+        let feature_maps =
+            layer_meta
+                .iter()
+                .enumerate()
+                .map(|(layer_index, meta)| {
+                    let LayerMeta {
+                        feature_size:
+                            GridSize {
+                                height: feature_h,
+                                width: feature_w,
+                                ..
+                            },
+                        ref anchors,
+                        ref flat_index_range,
+                        ..
+                    } = *meta;
+                    let num_anchors = anchors.len() as i64;
+
+                    let cy_map = self.cy.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let cx_map = self.cx.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let h_map = self.height.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let w_map = self.width.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let objectness_map = self
+                        .objectness
+                        .i((.., .., flat_index_range.clone()))
+                        .view([batch_size, 1, num_anchors, feature_h, feature_w]);
+                    let classification_map = self
+                        .classification
+                        .i((.., .., flat_index_range.clone()))
+                        .view([batch_size, num_classes, num_anchors, feature_h, feature_w]);
+
+                    FeatureMap {
+                        cy: cy_map,
+                        cx: cx_map,
+                        h: h_map,
+                        w: w_map,
+                        objectness: objectness_map,
+                        classification: classification_map,
+                    }
+                })
+                .collect_vec();
+
+        feature_maps
     }
 }
 
@@ -291,8 +370,19 @@ pub struct LayerMeta {
     /// Anchros (height, width) in grid units
     #[tensor_like(clone)]
     pub anchors: Vec<GridSize<R64>>,
-    pub begin_flat_index: i64,
-    pub end_flat_index: i64,
+    #[tensor_like(clone)]
+    pub flat_index_range: Range<i64>,
+}
+
+#[derive(Debug, TensorLike)]
+pub struct FeatureMap {
+    // tensors have shape [batch, entry, anchor, height, width]
+    pub cy: Tensor,
+    pub cx: Tensor,
+    pub h: Tensor,
+    pub w: Tensor,
+    pub objectness: Tensor,
+    pub classification: Tensor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]

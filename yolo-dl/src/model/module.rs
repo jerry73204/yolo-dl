@@ -486,6 +486,59 @@ impl DetectModule {
                 let grid_height = image_size.height as f64 / feature_height as f64;
                 let grid_width = image_size.width as f64 / feature_width as f64;
 
+                // transform outputs
+                let (cy, cx, h, w, objectness, classification) = {
+                    // convert shape to [batch_size, n_entries, n_anchors, height, width]
+                    let outputs = xs.view([
+                        batch_size,
+                        num_entries,
+                        num_anchors,
+                        feature_height,
+                        feature_width,
+                    ]);
+
+                    // positions in grid units
+                    let (cy_map, cx_map, h_map, w_map) = {
+                        let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
+
+                        let position =
+                            sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
+                        let cy_map = position.i((.., 0..1, .., .., ..));
+                        let cx_map = position.i((.., 1..2, .., .., ..));
+
+                        // bbox sizes in grid units
+                        let size = sigmoid.i((.., 2..4, .., .., ..)).pow(2.0) * anchor_sizes_grid;
+                        let h_map = size.i((.., 0..1, .., .., ..));
+                        let w_map = size.i((.., 1..2, .., .., ..));
+
+                        (cy_map, cx_map, h_map, w_map)
+                    };
+
+                    // objectness
+                    let objectness_map = outputs.i((.., 4..5, .., .., ..));
+
+                    // sparse classification
+                    let classification_map = outputs.i((.., 5.., .., .., ..));
+
+                    let cy_flat = cy_map.view([batch_size, 1, -1]);
+                    let cx_flat = cx_map.view([batch_size, 1, -1]);
+                    let h_flat = h_map.view([batch_size, 1, -1]);
+                    let w_flat = w_map.view([batch_size, 1, -1]);
+                    let objectness_flat = objectness_map.view([batch_size, 1, -1]);
+                    let classification_flat =
+                        classification_map.view([batch_size, num_classes, -1]);
+
+                    (
+                        cy_flat,
+                        cx_flat,
+                        h_flat,
+                        w_flat,
+                        objectness_flat,
+                        classification_flat,
+                    )
+                };
+
+                // save feature anchors and shapes
                 let layer_meta = {
                     let begin_flat_index = *base_flat_index;
                     *base_flat_index += num_anchors * feature_height * feature_width;
@@ -499,54 +552,11 @@ impl DetectModule {
                             .iter()
                             .map(|size| size.map(|&val| R64::new(val)))
                             .collect(),
-                        begin_flat_index,
-                        end_flat_index,
+                        // begin_flat_index,
+                        // end_flat_index,
+                        flat_index_range: begin_flat_index..end_flat_index,
                     };
                     layer_meta
-                };
-
-                // transform outputs
-                let (cy, cx, h, w, objectness, classification) = {
-                    // convert shape to [batch_size, n_entries, n_anchors, height, width]
-                    let outputs = xs.view([
-                        batch_size,
-                        num_entries,
-                        num_anchors,
-                        feature_height,
-                        feature_width,
-                    ]);
-
-                    // positions in grid units
-                    let (cy, cx, h, w) = {
-                        let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
-
-                        let position =
-                            sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
-                        let cy = position.i((.., 0..1, .., .., ..));
-                        let cx = position.i((.., 1..2, .., .., ..));
-
-                        // bbox sizes in grid units
-                        let size = sigmoid.i((.., 2..4, .., .., ..)).pow(2.0) * anchor_sizes_grid;
-                        let h = size.i((.., 0..1, .., .., ..));
-                        let w = size.i((.., 1..2, .., .., ..));
-
-                        (cy, cx, h, w)
-                    };
-
-                    // objectness
-                    let objectness = outputs.i((.., 4..5, .., .., ..));
-
-                    // sparse classification
-                    let classification = outputs.i((.., 5.., .., .., ..));
-
-                    let cy = cy.view([batch_size, 1, -1]);
-                    let cx = cx.view([batch_size, 1, -1]);
-                    let h = h.view([batch_size, 1, -1]);
-                    let w = w.view([batch_size, 1, -1]);
-                    let objectness = objectness.reshape(&[batch_size, 1, -1]);
-                    let classification = classification.reshape(&[batch_size, num_classes, -1]);
-
-                    (cy, cx, h, w, objectness, classification)
                 };
 
                 Some((cy, cx, h, w, objectness, classification, layer_meta))
