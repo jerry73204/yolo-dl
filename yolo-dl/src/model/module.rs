@@ -581,13 +581,13 @@ impl DetectModule {
         let anchors_list = self.anchors_list.clone();
 
         self.cache.entry(image_size.to_owned()).or_insert_with(|| {
-            let positions_grids = {
-                tensors
-                    .iter()
-                    .map(|xs| {
-                        let (_bsize, _channels, feature_height, feature_width) =
-                            xs.size4().unwrap();
-                        tch::no_grad(|| {
+            tch::no_grad(|| {
+                let positions_grids = {
+                    tensors
+                        .iter()
+                        .map(|xs| {
+                            let (_bsize, _channels, feature_height, feature_width) =
+                                xs.size4().unwrap();
                             let grid = {
                                 let grids = Tensor::meshgrid(&[
                                     Tensor::arange(feature_height, (Kind::Float, device)),
@@ -604,73 +604,87 @@ impl DetectModule {
                             };
                             grid.set_requires_grad(false)
                         })
-                    })
-                    .collect_vec()
-            };
+                        .collect_vec()
+                };
 
-            let anchor_sizes_list = {
-                anchors_list
-                    .iter()
-                    .zip_eq(tensors.iter().cloned())
-                    .map(|(anchors, xs)| {
-                        let (_bsize, _channels, feature_height, feature_width) =
-                            xs.size4().unwrap();
+                let anchor_sizes_list: Vec<Vec<GridSize<f64>>> = {
+                    let PixelSize {
+                        height: image_h,
+                        width: image_w,
+                        ..
+                    } = *image_size;
 
-                        // gride size in pixels
-                        let grid_height = image_size.height as f64 / feature_height as f64;
-                        let grid_width = image_size.width as f64 / feature_width as f64;
+                    anchors_list
+                        .iter()
+                        .zip_eq(tensors.iter().cloned())
+                        .map(|(anchors, xs)| {
+                            let (_bsize, _channels, feature_h, feature_w) = xs.size4().unwrap();
 
-                        anchors
-                            .iter()
-                            .cloned()
-                            .map(|pixel_size| {
-                                let PixelSize {
-                                    height: pixel_height,
-                                    width: pixel_width,
-                                    ..
-                                } = pixel_size;
-                                GridSize::new(
-                                    pixel_height as f64 / grid_height,
-                                    pixel_width as f64 / grid_width,
-                                )
-                            })
-                            .collect_vec()
-                    })
-                    .collect_vec()
-            };
+                            // gride size in pixels
+                            let grid_h = image_h as f64 / feature_h as f64;
+                            let grid_w = image_w as f64 / feature_w as f64;
 
-            let anchor_sizes_grids = {
-                anchor_sizes_list
-                    .iter()
-                    .map(|anchor_sizes| {
-                        let num_anchors = anchor_sizes.len();
-                        let components = anchor_sizes
-                            .iter()
-                            .cloned()
-                            .flat_map(|anchor_size| {
-                                let GridSize {
-                                    height: anchor_height,
-                                    width: anchor_width,
-                                    ..
-                                } = anchor_size;
-                                vec![anchor_height as f32, anchor_width as f32]
-                            })
-                            .collect_vec();
+                            // convert anchor sizes into grid units
+                            anchors
+                                .iter()
+                                .cloned()
+                                .map(|anchor_size| {
+                                    let PixelSize {
+                                        height: anchor_h,
+                                        width: anchor_w,
+                                        ..
+                                    } = anchor_size;
+                                    GridSize::new(
+                                        anchor_h as f64 / grid_h,
+                                        anchor_w as f64 / grid_w,
+                                    )
+                                })
+                                .collect_vec()
+                        })
+                        .collect_vec()
+                };
 
-                        Tensor::of_slice(&components)
-                            .to_device(device)
-                            // corresponds to (batch x entry x anchor x height x width)
+                let anchor_sizes_grids = {
+                    anchor_sizes_list
+                        .iter()
+                        .map(|anchor_sizes| {
+                            let num_anchors = anchor_sizes.len();
+                            let (anchor_h_vec, anchor_w_vec) = anchor_sizes
+                                .iter()
+                                .cloned()
+                                .map(|anchor_size| {
+                                    let GridSize {
+                                        height: anchor_h,
+                                        width: anchor_w,
+                                        ..
+                                    } = anchor_size;
+                                    (anchor_h as f32, anchor_w as f32)
+                                })
+                                .unzip_n_vec();
+
+                            let grid = Tensor::stack(
+                                &[
+                                    Tensor::of_slice(&anchor_h_vec),
+                                    Tensor::of_slice(&anchor_w_vec),
+                                ],
+                                0,
+                            )
+                            // corresponds to (batch * entry * anchor * height * width)
                             .view([1, 2, num_anchors as i64, 1, 1])
                             .set_requires_grad(false)
-                    })
-                    .collect_vec()
-            };
+                            .to_device(device);
 
-            DetectModuleCache {
-                positions_grids,
-                anchor_sizes_list,
-                anchor_sizes_grids,
-            }
+                            grid
+                        })
+                        .collect_vec()
+                };
+
+                DetectModuleCache {
+                    positions_grids,
+                    anchor_sizes_list,
+                    anchor_sizes_grids,
+                }
+            })
         })
     }
 }
