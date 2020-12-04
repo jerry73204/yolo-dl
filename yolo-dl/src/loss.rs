@@ -414,31 +414,37 @@ impl YoloLoss {
     ) -> Tensor {
         let device = prediction.device;
         let batch_size = prediction.batch_size;
-        let (batch_indexes_vec, flat_indexes_vec) = target_bboxes
-            .keys()
-            .map(|instance_index| {
-                let batch_index = instance_index.batch_index as i64;
-                let flat_index = prediction.to_flat_index(instance_index);
-                (batch_index, flat_index)
-            })
-            .unzip_n_vec();
-
-        let batch_indexes = Tensor::of_slice(&batch_indexes_vec).to_device(device);
-        let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
 
         let pred_objectness = &prediction.objectness;
-        let target_objectness = {
-            let target = pred_objectness.full_like(0.0);
-            let values = &non_reduced_iou_loss.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
-                + (1.0 - self.objectness_iou_ratio);
+        let target_objectness = tch::no_grad(|| {
+            let (batch_indexes_vec, flat_indexes_vec) = target_bboxes
+                .keys()
+                .map(|instance_index| {
+                    let batch_index = instance_index.batch_index as i64;
+                    let flat_index = prediction.instance_to_flat_index(instance_index);
+                    (batch_index, flat_index)
+                })
+                .unzip_n_vec();
 
-            let _ = target.permute(&[0, 2, 1]).index_put_(
-                &[&batch_indexes, &flat_indexes],
-                &values,
-                false,
-            );
-            target
-        };
+            let batch_indexes = Tensor::of_slice(&batch_indexes_vec).to_device(device);
+            let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
+
+            let target_objectness = {
+                let target = pred_objectness.zeros_like();
+                let values = &non_reduced_iou_loss.detach().clamp(0.0, 1.0)
+                    * self.objectness_iou_ratio
+                    + (1.0 - self.objectness_iou_ratio);
+
+                let _ = target.permute(&[0, 2, 1]).index_put_(
+                    &[&batch_indexes, &flat_indexes],
+                    &values,
+                    false,
+                );
+                target
+            };
+
+            target_objectness
+        });
 
         self.bce_objectness.forward(
             &pred_objectness.view([batch_size, -1]),
@@ -647,7 +653,7 @@ impl YoloLoss {
                 .keys()
                 .map(|instance_index| {
                     let batch_index = instance_index.batch_index as i64;
-                    let flat_index = prediction.to_flat_index(instance_index);
+                    let flat_index = prediction.instance_to_flat_index(instance_index);
                     (batch_index, flat_index)
                 })
                 .unzip_n_vec();

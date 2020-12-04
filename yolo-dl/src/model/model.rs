@@ -210,7 +210,7 @@ impl YoloOutput {
         })
     }
 
-    pub fn to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
+    pub fn instance_to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
         let InstanceIndex {
             layer_index,
             anchor_index,
