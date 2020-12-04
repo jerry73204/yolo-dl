@@ -45,13 +45,13 @@ impl YoloLossOutput {
                     iou_loss,
                     classification_loss,
                     objectness_loss,
-                } = loss.borrow();
+                } = loss.borrow().shallow_clone();
 
                 (
-                    total_loss * weight,
-                    iou_loss * weight,
-                    classification_loss * weight,
-                    objectness_loss * weight,
+                    total_loss,
+                    iou_loss,
+                    classification_loss,
+                    objectness_loss,
                     weight,
                 )
             })
