@@ -138,7 +138,7 @@ impl LoggingWorker {
         let step = step as i64;
 
         // compute statistics and plot image
-        let (losses, debug_stat, bbox_image, mut timing) =
+        let (losses, debug_stat, bbox_image, objectness_image, mut timing) =
             async_std::task::spawn_blocking(move || -> Result<_> {
                 tch::no_grad(|| -> Result<_> {
                     // log statistics
@@ -287,15 +287,41 @@ impl LoggingWorker {
                         None
                     };
 
-                    // let objectness_image = if enable_images {
-                    //     // TODO
+                    let objectness_image = if enable_images {
+                        let batch_size = output.batch_size();
+                        let PixelSize {
+                            height: input_h,
+                            width: input_w,
+                            ..
+                        } = *output.image_size();
 
-                    //     Some(())
-                    // } else {
-                    //     None
-                    // };
+                        let objectness_maps: Vec<_> = output
+                            .feature_maps()
+                            .into_iter()
+                            .map(|feature_map| feature_map.objectness)
+                            .zip_eq(output.layer_meta().iter())
+                            .map(|(objectness_map, meta)| {
+                                let num_anchors = meta.anchors.len() as i64;
+                                objectness_map
+                                    .copy()
+                                    .resize_(&[batch_size, 1, num_anchors, input_h, input_w])
+                                    .view([batch_size, num_anchors, input_h, input_w])
+                            })
+                            .collect();
 
-                    Ok((losses, debug_stat, bbox_image, timing))
+                        // concatenate at "anchor" dimension, and find the max over that dimension
+                        let (objectness_image, _argmax) =
+                            Tensor::cat(&objectness_maps, 1).max2(1, true);
+                        debug_assert!(
+                            objectness_image.size4()? == (batch_size, 1, input_h, input_w)
+                        );
+
+                        Some(objectness_image)
+                    } else {
+                        None
+                    };
+
+                    Ok((losses, debug_stat, bbox_image, objectness_image, timing))
                 })
             })
             .await?;
@@ -350,6 +376,14 @@ impl LoggingWorker {
         if let Some(bbox_image) = bbox_image {
             self.event_writer
                 .write_image_list_async(format!("{}/image/bboxes", tag), step, bbox_image)
+                .await?;
+
+            timing.set_record("write events");
+        }
+
+        if let Some(objectness_image) = objectness_image {
+            self.event_writer
+                .write_image_list_async(format!("{}/image/objectness", tag), step, objectness_image)
                 .await?;
 
             timing.set_record("write events");
