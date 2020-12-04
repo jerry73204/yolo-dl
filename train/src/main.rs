@@ -309,32 +309,36 @@ async fn multi_gpu_training_worker(
         // forward step
         let outputs = {
             // distribute tasks to each worker
-            let num_workers = worker_contexts.len();
-            let mut batch_index = 0;
-            let mut jobs = (0..num_workers).map(|_| vec![]).collect_vec();
+            let jobs = {
+                let num_workers = worker_contexts.len();
+                let mut batch_index = 0;
+                let mut jobs = (0..num_workers).map(|_| vec![]).collect_vec();
 
-            for (job_index, context) in worker_contexts.iter().cycle().enumerate() {
-                let worker_index = job_index % num_workers;
-                let batch_begin = batch_index;
-                let batch_end = (batch_begin + context.minibatch_size).min(batch_size);
-                let minibatch_size = batch_end - batch_begin;
-                debug_assert!(minibatch_size > 0);
+                for (job_index, context) in worker_contexts.iter().cycle().enumerate() {
+                    let worker_index = job_index % num_workers;
+                    let batch_begin = batch_index;
+                    let batch_end = (batch_begin + context.minibatch_size).min(batch_size);
+                    let minibatch_size = batch_end - batch_begin;
+                    debug_assert!(minibatch_size > 0);
 
-                let mini_image = image.narrow(0, batch_begin as i64, minibatch_size as i64);
-                let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
+                    let mini_image = image.narrow(0, batch_begin as i64, minibatch_size as i64);
+                    let mini_bboxes = bboxes[batch_begin..batch_end].to_owned();
 
-                jobs[worker_index].push(WorkerJob {
-                    job_index,
-                    minibatch_size,
-                    image: mini_image,
-                    bboxes: mini_bboxes,
-                });
+                    jobs[worker_index].push(WorkerJob {
+                        job_index,
+                        minibatch_size,
+                        image: mini_image,
+                        bboxes: mini_bboxes,
+                    });
 
-                batch_index = batch_end;
-                if batch_index == batch_size {
-                    break;
+                    batch_index = batch_end;
+                    if batch_index == batch_size {
+                        break;
+                    }
                 }
-            }
+
+                jobs
+            };
 
             // run tasks
             let (worker_contexts_, outputs_per_worker) =
@@ -480,6 +484,7 @@ async fn multi_gpu_training_worker(
             Ok((losses, worker_outputs))
         })
         .await?;
+
         training_timing.set_record("compute loss");
 
         // send output to logger
@@ -656,6 +661,7 @@ fn single_gpu_training_worker(
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
+        reduction: Reduction::Mean,
         match_grid_method: Some(match_grid_method),
         iou_kind: Some(iou_kind),
         iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
