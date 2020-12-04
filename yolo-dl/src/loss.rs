@@ -394,14 +394,14 @@ impl YoloLoss {
         let device = pred_class.device();
 
         // convert sparse index to dense one-hot-like
-        let target_class_dense = {
+        let target_class_dense = tch::no_grad(|| {
             let target_class_sparse = &target_instances.sparse_class;
             let pos_values = Tensor::full(&target_class_sparse.size(), pos, (Kind::Float, device));
             let target = pred_class
                 .full_like(neg)
-                .scatter(0, &target_class_sparse, &pos_values);
+                .scatter_(1, &target_class_sparse, &pos_values);
             target
-        };
+        });
 
         self.bce_class.forward(&pred_class, &target_class_dense)
     }
