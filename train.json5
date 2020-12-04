@@ -1,21 +1,23 @@
 {
     "dataset": {
-        // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
-        // "kind": {
-        //     "type": "Coco",
-        //     "image_size": 256,
-        //     "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
-        //     "dataset_name": "train2017",
-        //     "classes_file": "cfg/coco.class",
-        // },
+        "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "kind": {
-            "type": "Mmap",
-            "dataset_file": "iii.mmap",
+            "type": "Coco",
+            "image_size": 256,
+            "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
+            "dataset_name": "train2017",
+            "classes_file": "cfg/coco.class",
         },
+        // "kind": {
+        //     "type": "Mmap",
+        //     "dataset_file": "iii.mmap",
+        // },
         // "kind": {
         //     "type": "Iii",
         //     "image_size": 256,
-        //     "dataset_dir": "/home/aeon/dataset/ntu_delivery",
+        //     "dataset_dir": "/home/aeon/dataset/iii-small",
+        //     // "dataset_dir": "/home/aeon/dataset/iii-volume-1",
+        //     // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery",
         //     "classes_file": "cfg/iii.class",
         //     "blacklist_files": [
         //         "171212/FILE171212-172818F/4012.xml",
@@ -74,14 +76,13 @@
         // },
     },
     "logging": {
-        "dir": "logs-iii",
-        "enable_images": true,
-        "enable_training_output": true,
-        "enable_debug_stat": true,
+        "dir": "logs-coco",
+        "enable_images": false,
+        "enable_training_output": false,
+        "enable_debug_stat": false,
     },
     "preprocessor": {
-        "cache_dir": "/home/aeon/tmp/yolo-dl-cache",
-        // "cache_dir": "/mnt/external4/aeon/yolo-dl-cache",
+        "cache_dir": "/home/aeon/yolo-dl-cache",
         "device": "cuda(0)",
         "mixup_prob": 0.0,
         "cutmix_prob": 0.0,
@@ -101,32 +102,36 @@
         "min_bbox_size": 0.005,
     },
     "training": {
-        "batch_size": 225,
-        "default_minibatch_size": 75,
+        "batch_size": 192,
+        "default_minibatch_size": 64,
         "initial_step": 0,
         "momentum": 0.9,
-        "weight_decay": 0.0,
+        "weight_decay": 0.0005,
         "lr_schedule": {
             "type": "StepWise",
             "steps": [
-                [0, 0.001],
-                [400000, 0.0001],
+                [0, 0.1],
+                [400000, 0.001],
+                [450000, 0.0001],
             ],
         },
         "loss": {
             "match_grid_method": "Rect4",
-            "iou_kind": "GIoU",
+            "iou_kind": "DIoU",
             "iou_loss_weight": 0.05,
             "objectness_loss_weight": 1.0,
             "classification_loss_weight": 0.58,
         },
-        // "save_checkpoint_steps": 1000,
+        "save_checkpoint_steps": 1000,
         "load_checkpoint": {
             "type": "FromRecent",
         },
         "enable_multi_gpu": true,
-        "master_device": "cuda(1)",
+        "master_device": "cuda(3)",
         "workers": [
+            // {
+            //     "device": "cuda(0)"
+            // },
             {
                 "device": "cuda(1)"
             },
