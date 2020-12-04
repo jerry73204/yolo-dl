@@ -400,6 +400,22 @@ impl YoloLoss {
             let target = pred_class
                 .full_like(neg)
                 .scatter_(1, &target_class_sparse, &pos_values);
+
+            // TODO: write a fast debug assertion
+            // debug_assert!({
+            //     Vec::<i64>::from(target_class_sparse)
+            //         .into_iter()
+            //         .enumerate()
+            //         .all(|(instance_index, class_index)| {
+            //             let mut row = vec![neg; num_classes as usize];
+            //             row[class_index as usize] = pos;
+            //             let expect_row = Tensor::of_slice(&row).to_device(device);
+            //             let tested_row = target.select(0, instance_index as i64);
+            //             let error = f64::from((&expect_row - &tested_row).pow(2).sum(Kind::Float));
+            //             error < f64::default_epsilon()
+            //         })
+            // });
+
             target
         });
 
