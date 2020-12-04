@@ -210,6 +210,55 @@ impl YoloOutput {
         })
     }
 
+    pub fn flat_to_instance_index(
+        &self,
+        batch_index: usize,
+        flat_index: i64,
+    ) -> Option<InstanceIndex> {
+        let Self { batch_size, .. } = *self;
+
+        if batch_index as i64 >= batch_size || flat_index < 0 {
+            return None;
+        }
+
+        let (
+            layer_index,
+            LayerMeta {
+                feature_size:
+                    GridSize {
+                        height: feature_h,
+                        width: feature_w,
+                        ..
+                    },
+                anchors,
+                begin_flat_index,
+                ..
+            },
+        ) = self
+            .layer_meta
+            .iter()
+            .enumerate()
+            .find(|(_layer_index, meta)| flat_index < meta.end_flat_index)?;
+
+        // flat_index = begin_flat_index + col + row * (width + anchor_index * height)
+        let remainder = flat_index - begin_flat_index;
+        let grid_col = remainder % feature_w;
+        let grid_row = remainder / feature_w % feature_h;
+        let anchor_index = remainder / feature_w / feature_h;
+
+        if anchor_index >= anchors.len() as i64 {
+            return None;
+        }
+
+        Some(InstanceIndex {
+            batch_index,
+            layer_index,
+            anchor_index,
+            grid_row,
+            grid_col,
+        })
+    }
+
     pub fn instance_to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
         let InstanceIndex {
             layer_index,
