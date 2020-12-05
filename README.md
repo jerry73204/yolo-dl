@@ -22,7 +22,7 @@ Install either by system package manager or by `pip3 install --user torch torchv
 
 ### Development Environment
 
-The environment variables enable verbose messaging from program.
+The environment variables enable verbose messaging from program. You can copy them to your `.bashrc` or `.zshrc`.
 
 ```sh
 export RUST_BACKTRACE=1  // show backtrace when panic
@@ -52,6 +52,14 @@ cargo run --release --bin train
 ```
 
 If it is configured correctly, it automatically starts from most recent checkpoint file.
+
+### Profiling
+
+To profile the training performance, you can enable the `profiling` feature to print verbose timing of each stage.
+
+```sh
+cargo run --release --bin train --features profiling --manifest-path train/Cargo.toml
+```
 
 ### Build Memory-Mapped Dataset
 
