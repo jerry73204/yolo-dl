@@ -132,6 +132,9 @@
             "classification_loss_weight": 0.58,
         },
         "save_checkpoint_steps": 1000,
+        // "load_checkpoint": {
+        //     "type": "Disabled",
+        // },
         "load_checkpoint": {
             "type": "FromRecent",
         },

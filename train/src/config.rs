@@ -179,7 +179,6 @@ mod serde_vec_device {
         D: Deserializer<'de>,
     {
         let devices = Vec::<DeviceWrapper>::deserialize(deserializer)?;
-        let num_devices = devices.len();
         let devices: Vec<_> = devices
             .into_iter()
             .map(|DeviceWrapper(device)| device)
