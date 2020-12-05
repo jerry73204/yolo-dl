@@ -102,8 +102,17 @@
         "min_bbox_size": 0.005,
     },
     "training": {
+        // "batch_size": 64,
+        // "device_config": {
+        //     "type": "SingleDevice",
+        //     "device": "cuda(3)"
+        // },
         "batch_size": 192,
-        "default_minibatch_size": 64,
+        "device_config": {
+            "type": "MultiDevice",
+            "minibatch_size": 64,
+            "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
+        },
         "initial_step": 0,
         "momentum": 0.9,
         "weight_decay": 0.0005,
@@ -126,21 +135,5 @@
         "load_checkpoint": {
             "type": "FromRecent",
         },
-        "enable_multi_gpu": true,
-        "master_device": "cuda(3)",
-        "workers": [
-            // {
-            //     "device": "cuda(0)"
-            // },
-            {
-                "device": "cuda(1)"
-            },
-            {
-                "device": "cuda(2)"
-            },
-            {
-                "device": "cuda(3)"
-            },
-        ]
     },
 }

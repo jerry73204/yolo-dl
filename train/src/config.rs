@@ -92,7 +92,6 @@ pub struct PreprocessorConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingConfig {
     pub batch_size: NonZeroUsize,
-    pub default_minibatch_size: NonZeroUsize,
     #[serde(default = "default_initial_step")]
     pub initial_step: usize,
     pub lr_schedule: LearningRateSchedule,
@@ -101,10 +100,7 @@ pub struct TrainingConfig {
     pub loss: LossConfig,
     pub save_checkpoint_steps: Option<NonZeroUsize>,
     pub load_checkpoint: LoadCheckpoint,
-    pub enable_multi_gpu: bool,
-    #[serde(with = "tch_serde::serde_device")]
-    pub master_device: Device,
-    pub workers: Vec<WorkerConfig>,
+    pub device_config: DeviceConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +110,23 @@ pub struct LossConfig {
     pub iou_loss_weight: Option<R64>,
     pub objectness_loss_weight: Option<R64>,
     pub classification_loss_weight: Option<R64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum DeviceConfig {
+    SingleDevice {
+        #[serde(with = "tch_serde::serde_device")]
+        device: Device,
+    },
+    MultiDevice {
+        minibatch_size: NonZeroUsize,
+        #[serde(with = "serde_vec_device")]
+        devices: Vec<Device>,
+    },
+    NonUniformMultiDevice {
+        devices: Vec<WorkerConfig>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,7 +141,7 @@ pub enum LoadCheckpoint {
 pub struct WorkerConfig {
     #[serde(with = "tch_serde::serde_device")]
     pub device: Device,
-    pub minibatch_size: Option<NonZeroUsize>,
+    pub minibatch_size: NonZeroUsize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,4 +158,32 @@ fn empty_hashset<T>() -> HashSet<T> {
 fn default_initial_step() -> usize {
     info!("use default initail step 0");
     0
+}
+
+mod serde_vec_device {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    struct DeviceWrapper(#[serde(with = "tch_serde::serde_device")] Device);
+
+    pub fn serialize<S>(devices: &Vec<Device>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let devices: Vec<_> = devices.iter().cloned().map(DeviceWrapper).collect();
+        devices.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Device>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let devices = Vec::<DeviceWrapper>::deserialize(deserializer)?;
+        let num_devices = devices.len();
+        let devices: Vec<_> = devices
+            .into_iter()
+            .map(|DeviceWrapper(device)| device)
+            .collect();
+        Ok(devices)
+    }
 }

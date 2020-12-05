@@ -7,7 +7,10 @@ mod util;
 
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig},
+    config::{
+        Config, DeviceConfig, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig,
+        WorkerConfig,
+    },
     data::{GenericDataset, TrainingRecord, TrainingStream},
     message::LoggingMessage,
     util::{LrScheduler, RateCounter},
@@ -50,10 +53,10 @@ pub async fn main() -> Result<()> {
     // create channels
     let (logging_tx, logging_rx) = broadcast::channel(2);
     let (data_tx, data_rx) = {
-        let channel_size = if config.training.enable_multi_gpu {
-            config.training.workers.len() * 2
-        } else {
-            2
+        let channel_size = match &config.training.device_config {
+            DeviceConfig::SingleDevice { .. } => 2,
+            DeviceConfig::MultiDevice { devices, .. } => devices.len() * 2,
+            DeviceConfig::NonUniformMultiDevice { devices, .. } => devices.len() * 2,
         };
         async_std::sync::channel(channel_size)
     };
@@ -89,28 +92,79 @@ pub async fn main() -> Result<()> {
         let logging_dir = logging_dir.clone();
         let checkpoint_dir = checkpoint_dir.clone();
 
-        if config.training.enable_multi_gpu {
-            async_std::task::spawn(multi_gpu_training_worker(
-                config,
-                logging_dir,
-                checkpoint_dir,
-                input_channels,
-                num_classes,
-                data_rx,
-                logging_tx,
-            ))
-        } else {
-            async_std::task::spawn_blocking(move || {
-                single_gpu_training_worker(
-                    config,
-                    logging_dir,
-                    checkpoint_dir,
-                    input_channels,
-                    num_classes,
-                    data_rx,
-                    logging_tx,
-                )
-            })
+        async move {
+            match config.training.device_config {
+                DeviceConfig::SingleDevice { device } => {
+                    async_std::task::spawn_blocking(move || {
+                        single_gpu_training_worker(
+                            config,
+                            logging_dir,
+                            checkpoint_dir,
+                            input_channels,
+                            num_classes,
+                            data_rx,
+                            logging_tx,
+                            device,
+                        )
+                    })
+                    .await?;
+                }
+                DeviceConfig::MultiDevice {
+                    minibatch_size,
+                    ref devices,
+                } => {
+                    let minibatch_size = minibatch_size.get();
+                    let workers: Vec<_> = devices
+                        .iter()
+                        .cloned()
+                        .map(|device| (device, minibatch_size))
+                        .collect();
+
+                    async_std::task::spawn(async move {
+                        multi_gpu_training_worker(
+                            config,
+                            logging_dir,
+                            checkpoint_dir,
+                            input_channels,
+                            num_classes,
+                            data_rx,
+                            logging_tx,
+                            &workers,
+                        )
+                        .await
+                    })
+                    .await?;
+                }
+                DeviceConfig::NonUniformMultiDevice { ref devices } => {
+                    let workers: Vec<_> = devices
+                        .iter()
+                        .map(|conf| {
+                            let WorkerConfig {
+                                minibatch_size,
+                                device,
+                            } = *conf;
+                            (device, minibatch_size.get())
+                        })
+                        .collect();
+
+                    async_std::task::spawn(async move {
+                        multi_gpu_training_worker(
+                            config,
+                            logging_dir,
+                            checkpoint_dir,
+                            input_channels,
+                            num_classes,
+                            data_rx,
+                            logging_tx,
+                            &workers,
+                        )
+                        .await
+                    })
+                    .await?;
+                }
+            }
+
+            Fallible::Ok(())
         }
     };
 
@@ -127,7 +181,10 @@ async fn multi_gpu_training_worker(
     num_classes: usize,
     data_rx: async_std::sync::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
+    workers: &[(Device, usize)],
 ) -> Result<()> {
+    // types
+
     struct WorkerContext {
         device: Device,
         minibatch_size: usize,
@@ -154,14 +211,18 @@ async fn multi_gpu_training_worker(
         gradients: Vec<Tensor>,
     }
 
+    // initialization
+    info!(
+        "use device configuration (device, minibatch_size): {:?}",
+        workers
+    );
+
     let Config {
         training:
             TrainingConfig {
                 initial_step: init_training_step,
                 ref lr_schedule,
-                master_device,
                 batch_size,
-                default_minibatch_size,
                 save_checkpoint_steps,
                 ..
             },
@@ -171,8 +232,9 @@ async fn multi_gpu_training_worker(
         },
         ..
     } = *config;
-
-    let default_minibatch_size = default_minibatch_size.get();
+    let (master_device, _) = *workers
+        .get(0)
+        .ok_or_else(|| format_err!("workers list cannot be empty"))?;
     let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
     let mut training_step = init_training_step;
     let mut rate_counter = RateCounter::with_second_intertal();
@@ -190,7 +252,7 @@ async fn multi_gpu_training_worker(
     let mut worker_contexts = {
         let init_lr = lr_scheduler.next();
 
-        future::try_join_all(config.training.workers.iter().map(|worker_config| {
+        future::try_join_all(workers.iter().cloned().map(|(device, minibatch_size)| {
             let TrainingConfig {
                 loss:
                     LossConfig {
@@ -204,14 +266,8 @@ async fn multi_gpu_training_worker(
                 weight_decay,
                 ..
             } = config.training;
-            let worker_config = worker_config.clone();
 
             async_std::task::spawn_blocking(move || {
-                let device = worker_config.device;
-                let minibatch_size = worker_config
-                    .minibatch_size
-                    .map(|size| size.get())
-                    .unwrap_or(default_minibatch_size);
                 let vs = nn::VarStore::new(device);
                 let root = vs.root();
                 let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
@@ -627,13 +683,13 @@ fn single_gpu_training_worker(
     num_classes: usize,
     data_rx: async_std::sync::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
+    device: Device,
 ) -> Result<()> {
-    warn!(r#"multi-gpu feature is disabled, use "master_device" as default device"#);
+    info!("use single device {:?}", device);
 
     let Config {
         training:
             TrainingConfig {
-                master_device,
                 initial_step: init_training_step,
                 ref lr_schedule,
                 loss:
@@ -657,7 +713,7 @@ fn single_gpu_training_worker(
     info!("initializing model");
     let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
     let mut training_step = init_training_step;
-    let mut vs = nn::VarStore::new(master_device);
+    let mut vs = nn::VarStore::new(device);
     let root = vs.root();
     let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
     let yolo_loss = YoloLossInit {
@@ -710,7 +766,7 @@ fn single_gpu_training_worker(
             step: _record_step,
             image,
             bboxes,
-        } = record.to_device(master_device);
+        } = record.to_device(device);
         timing.set_record("to device");
 
         // forward pass
