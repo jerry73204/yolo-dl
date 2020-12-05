@@ -499,15 +499,13 @@ impl DetectModule {
 
                     // positions in grid units
                     let (cy_map, cx_map, h_map, w_map) = {
-                        let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
-
-                        let position =
-                            sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
+                        let position = outputs.i((.., 0..2, .., .., ..)) + positions_grid;
                         let cy_map = position.i((.., 0..1, .., .., ..));
                         let cx_map = position.i((.., 1..2, .., .., ..));
 
                         // bbox sizes in grid units
-                        let size = sigmoid.i((.., 2..4, .., .., ..)).pow(2.0) * anchor_sizes_grid;
+                        let size =
+                            (outputs.i((.., 2..4, .., .., ..)).exp() + 0.5) * anchor_sizes_grid;
                         let h_map = size.i((.., 0..1, .., .., ..));
                         let w_map = size.i((.., 1..2, .., .., ..));
 
