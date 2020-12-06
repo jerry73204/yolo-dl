@@ -28,17 +28,18 @@ impl LrScheduler {
                     "the steps must start from zero"
                 );
 
-                steps.iter().fold(Ok(None), |result, (curr_step, lr)| {
-                    let prev_step = result?;
-                    if let Some(prev_step) = prev_step {
-                        ensure!(curr_step > prev_step, "the steps must be monotonic");
-                    }
-                    ensure!(lr.raw() > 0.0, "lr must be positive");
-                    Ok(Some(curr_step))
-                })?;
+                steps
+                    .iter()
+                    .try_fold(None, |prev_step, (curr_step, lr)| -> Result<_> {
+                        if let Some(prev_step) = prev_step {
+                            ensure!(curr_step > prev_step, "the steps must be monotonic");
+                        }
+                        ensure!(lr.raw() > 0.0, "learning rate must be positive");
+                        Ok(Some(curr_step))
+                    })?;
 
                 Self::StepWise {
-                    lr_cache: steps[1].1.raw(),
+                    lr_cache: steps[0].1.raw(),
                     step: 0,
                     index: 0,
                     steps: steps.clone(),
