@@ -313,13 +313,6 @@ impl YoloLoss {
         let intersect_w = (&intersect_r - &intersect_l).clamp_min(0.0);
         let intersect_area = &intersect_h * &intersect_w;
 
-        // assert!(bool::from(intersect_t.isfinite().all()));
-        // assert!(bool::from(intersect_l.isfinite().all()));
-        // assert!(bool::from(intersect_b.isfinite().all()));
-        // assert!(bool::from(intersect_r.isfinite().all()));
-        // assert!(bool::from(intersect_h.isfinite().all()));
-        // assert!(bool::from(intersect_w.isfinite().all()));
-
         debug_assert!(
             bool::from(intersect_h.ge(0.0).all()) && bool::from(intersect_w.ge(0.0).all()),
             "negative bbox height or width detected"

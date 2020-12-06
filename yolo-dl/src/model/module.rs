@@ -497,8 +497,6 @@ impl DetectModule {
                         feature_width,
                     ]);
 
-                    debug_assert!(tch::no_grad(|| bool::from(outputs.isfinite().all())));
-
                     // positions in grid units
                     let (cy_map, cx_map, h_map, w_map) = {
                         let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
@@ -513,19 +511,6 @@ impl DetectModule {
                         let h_map = size.i((.., 0..1, .., .., ..));
                         let w_map = size.i((.., 1..2, .., .., ..));
 
-                        debug_assert!(tch::no_grad(|| bool::from(
-                            outputs.i((.., 2..4, .., .., ..)).isfinite().all()
-                        )));
-                        debug_assert!(tch::no_grad(|| bool::from(
-                            outputs.i((.., 2..4, .., .., ..)).exp().isfinite().all()
-                        )));
-                        debug_assert!(tch::no_grad(|| bool::from(
-                            anchor_sizes_grid.isfinite().all()
-                        )));
-
-                        debug_assert!(tch::no_grad(|| bool::from(position.isfinite().all())));
-                        debug_assert!(tch::no_grad(|| bool::from(size.isfinite().all())));
-
                         (cy_map, cx_map, h_map, w_map)
                     };
 
@@ -534,9 +519,6 @@ impl DetectModule {
 
                     // sparse classification
                     let classification_map = outputs.i((.., 5.., .., .., ..));
-
-                    debug_assert!(tch::no_grad(|| bool::from(objectness_map.isfinite().all())
-                        && bool::from(classification_map.isfinite().all())));
 
                     let cy_flat = cy_map.view([batch_size, 1, -1]);
                     let cx_flat = cx_map.view([batch_size, 1, -1]);
