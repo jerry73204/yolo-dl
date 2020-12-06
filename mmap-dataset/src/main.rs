@@ -164,9 +164,7 @@ async fn extract_images(args: ExtractImageArgs) -> Result<()> {
         let range_error = "the range format must be one of .., BEGIN.., ..END, BEGIN..END";
         let mut tokens = range.split("..");
         let range_begin: usize = match tokens.next() {
-            None => {
-                bail!("{}", range_error)
-            }
+            None => bail!("{}", range_error),
             Some("") => 0,
             Some(token) => {
                 let value: usize = token.parse()?;

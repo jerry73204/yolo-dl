@@ -65,12 +65,10 @@ impl MosaicProcessor {
 
                             // check if every image have identical shape
                             match expect_shape.as_ref() {
-                                Some(expect_shape) => {
-                                    ensure!(
-                                        *expect_shape == shape,
-                                        "images must have identical shape"
-                                    )
-                                }
+                                Some(expect_shape) => ensure!(
+                                    *expect_shape == shape,
+                                    "images must have identical shape"
+                                ),
                                 None => *expect_shape = Some(shape),
                             }
 
