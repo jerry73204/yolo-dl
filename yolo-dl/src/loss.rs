@@ -236,7 +236,7 @@ impl YoloLoss {
         timing.set_record("collect_instances");
 
         // IoU loss
-        let (iou_loss, non_reduced_iou_loss) = self.iou_loss(&pred_instances, &target_instances);
+        let (iou_loss, iou_values) = self.iou_loss(&pred_instances, &target_instances);
         timing.set_record("iou_loss");
 
         // classification loss
@@ -244,8 +244,7 @@ impl YoloLoss {
         timing.set_record("classification_loss");
 
         // objectness loss
-        let objectness_loss =
-            self.objectness_loss(&prediction, &target_bboxes, &non_reduced_iou_loss);
+        let objectness_loss = self.objectness_loss(&prediction, &target_bboxes, &iou_values);
         timing.set_record("objectness_loss");
 
         // normalize and balancing
@@ -323,7 +322,7 @@ impl YoloLoss {
         let union_area = &pred_area + &target_area - &intersect_area + epsilon;
         let iou = &intersect_area / &union_area;
 
-        let iou_variant = match self.iou_kind {
+        let iou_values = match self.iou_kind {
             IoUKind::IoU => iou,
             _ => {
                 let outer_t = pred_t.min1(&target_t);
@@ -370,15 +369,17 @@ impl YoloLoss {
         };
 
         // IoU loss
-        let iou_loss: Tensor = 1.0 - iou_variant;
-        let reduced_iou_loss = match self.reduction {
-            Reduction::None => iou_loss.shallow_clone(),
-            Reduction::Mean => iou_loss.mean(Kind::Float),
-            Reduction::Sum => iou_loss.sum(Kind::Float),
-            _ => panic!("reduction {:?} is not supported", self.reduction),
+        let iou_loss = {
+            let iou_loss: Tensor = 1.0 - &iou_values;
+            match self.reduction {
+                Reduction::None => iou_loss.shallow_clone(),
+                Reduction::Mean => iou_loss.mean(Kind::Float),
+                Reduction::Sum => iou_loss.sum(Kind::Float),
+                _ => panic!("reduction {:?} is not supported", self.reduction),
+            }
         };
 
-        (reduced_iou_loss, iou_loss)
+        (iou_loss, iou_values)
     }
 
     fn classification_loss(
@@ -436,7 +437,7 @@ impl YoloLoss {
         &self,
         prediction: &YoloOutput,
         target_bboxes: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
-        non_reduced_iou_loss: &Tensor,
+        iou_values: &Tensor,
     ) -> Tensor {
         let device = prediction.device;
         let batch_size = prediction.batch_size;
@@ -457,8 +458,7 @@ impl YoloLoss {
 
             let target_objectness = {
                 let target = pred_objectness.zeros_like();
-                let values = &non_reduced_iou_loss.detach().clamp(0.0, 1.0)
-                    * self.objectness_iou_ratio
+                let values = &iou_values.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
                     + (1.0 - self.objectness_iou_ratio);
 
                 let _ = target.permute(&[0, 2, 1]).index_put_(
