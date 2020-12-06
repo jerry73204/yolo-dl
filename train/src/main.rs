@@ -543,6 +543,15 @@ async fn multi_gpu_training_worker(
 
         training_timing.set_record("compute loss");
 
+        // check NaN and infinite number
+        tch::no_grad(|| {
+            ensure!(
+                bool::from(losses.total_loss.isfinite()),
+                "non-finite loss detected"
+            );
+            Ok(())
+        })?;
+
         // send output to logger
         if enable_training_output {
             // aggregate worker outputs
