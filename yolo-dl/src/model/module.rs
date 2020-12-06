@@ -505,7 +505,7 @@ impl DetectModule {
 
                         // bbox sizes in grid units
                         let size =
-                            (outputs.i((.., 2..4, .., .., ..)).exp() + 0.5) * anchor_sizes_grid;
+                            outputs.i((.., 2..4, .., .., ..)).exp() * 0.5 * anchor_sizes_grid;
                         let h_map = size.i((.., 0..1, .., .., ..));
                         let w_map = size.i((.., 1..2, .., .., ..));
 
