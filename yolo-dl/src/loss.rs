@@ -390,7 +390,7 @@ impl YoloLoss {
         let pos = 1.0 - 0.5 * self.smooth_bce_coef;
         let neg = 1.0 - pos;
         let pred_class = &pred_instances.dense_class;
-        let (_num_instances, _num_classes) = pred_class.size2().unwrap();
+        let (num_instances, num_classes) = pred_class.size2().unwrap();
         let device = pred_class.device();
 
         // convert sparse index to dense one-hot-like
@@ -401,20 +401,30 @@ impl YoloLoss {
                 .full_like(neg)
                 .scatter_(1, &target_class_sparse, &pos_values);
 
-            // TODO: write a fast debug assertion
-            // debug_assert!({
-            //     Vec::<i64>::from(target_class_sparse)
-            //         .into_iter()
-            //         .enumerate()
-            //         .all(|(instance_index, class_index)| {
-            //             let mut row = vec![neg; num_classes as usize];
-            //             row[class_index as usize] = pos;
-            //             let expect_row = Tensor::of_slice(&row).to_device(device);
-            //             let tested_row = target.select(0, instance_index as i64);
-            //             let error = f64::from((&expect_row - &tested_row).pow(2).sum(Kind::Float));
-            //             error < f64::default_epsilon()
-            //         })
-            // });
+            debug_assert!({
+                let sparse_class_array: ArrayD<i64> =
+                    (&target_instances.sparse_class).try_into().unwrap();
+                let target_array: ArrayD<f32> = (&target).try_into().unwrap();
+                let expected_array = Array2::<f32>::from_shape_fn(
+                    [num_instances as usize, num_classes as usize],
+                    |(row, col)| {
+                        let class_index = sparse_class_array[[row, 0]];
+                        if class_index as usize == col {
+                            pos as f32
+                        } else {
+                            neg as f32
+                        }
+                    },
+                )
+                .into_dyn();
+
+                let mse = (target_array - expected_array)
+                    .map(|diff| diff.powi(2))
+                    .mean()
+                    .unwrap();
+
+                abs_diff_eq!(mse, 0.0)
+            });
 
             target
         });
