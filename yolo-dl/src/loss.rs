@@ -469,6 +469,31 @@ impl YoloLoss {
                 target
             };
 
+            debug_assert!({
+                let (batch_size, _num_entries, num_instances) = pred_objectness.size3().unwrap();
+                let target_array: ArrayD<f32> = (&target_objectness).try_into().unwrap();
+                let iou_loss_array: ArrayD<f32> = iou_values.try_into().unwrap();
+                let mut expect_array =
+                    Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
+                target_bboxes
+                    .keys()
+                    .enumerate()
+                    .for_each(|(index, instance_index)| {
+                        let batch_index = instance_index.batch_index as i64;
+                        let flat_index = prediction.instance_to_flat_index(instance_index);
+                        expect_array[[batch_index as usize, 0, flat_index as usize]] =
+                            iou_loss_array[[index, 0]].clamp(0.0, 1.0)
+                                * self.objectness_iou_ratio as f32
+                                + (1.0 - self.objectness_iou_ratio) as f32;
+                    });
+
+                let mse = (target_array - expect_array)
+                    .map(|val| val.powi(2))
+                    .mean()
+                    .unwrap();
+                abs_diff_eq!(mse, 0.0)
+            });
+
             target_objectness
         });
 
