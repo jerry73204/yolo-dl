@@ -560,19 +560,19 @@ where
     Ok(classes)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn resize_test() -> Result<()> {
-        let image_file = "/home/aeon/dataset/ntu_delivery/171207/FILE171207-095406F/10148.jpg";
-        let (target_h, target_w) = (256, 256);
-        let image = vision::image::load(image_file)?
-            .to_device(Device::Cpu)
-            .resize2d_letterbox(target_h, target_w)?
-            .to_kind(Kind::Float)
-            .g_div1(255.0);
-        Ok(())
-    }
-}
+//     #[test]
+//     fn resize_test() -> Result<()> {
+//         let image_file = "/home/aeon/dataset/ntu_delivery/171207/FILE171207-095406F/10148.jpg";
+//         let (target_h, target_w) = (256, 256);
+//         let image = vision::image::load(image_file)?
+//             .to_device(Device::Cpu)
+//             .resize2d_letterbox(target_h, target_w)?
+//             .to_kind(Kind::Float)
+//             .g_div1(255.0);
+//         Ok(())
+//     }
+// }
