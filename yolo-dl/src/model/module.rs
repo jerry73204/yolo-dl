@@ -644,6 +644,7 @@ impl DetectModule {
                                         width: anchor_w,
                                         ..
                                     } = anchor_size;
+
                                     GridSize::new(
                                         anchor_h as f64 / grid_h,
                                         anchor_w as f64 / grid_w,

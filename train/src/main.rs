@@ -429,7 +429,7 @@ async fn multi_gpu_training_worker(
                                     worker_timing.set_record("forward");
 
                                     // compute loss
-                                    let (losses, target_bboxes) =
+                                    let (losses, loss_auxiliary) =
                                         yolo_loss.forward(&output, &bboxes);
                                     worker_timing.set_record("loss");
 
@@ -454,7 +454,7 @@ async fn multi_gpu_training_worker(
                                         minibatch_size,
                                         output,
                                         losses,
-                                        target_bboxes,
+                                        target_bboxes: loss_auxiliary.target_bboxes,
                                         gradients,
                                     }
                                 })
@@ -783,7 +783,7 @@ fn single_gpu_training_worker(
         timing.set_record("forward");
 
         // compute loss
-        let (losses, target_bboxes) = yolo_loss.forward(&output, &bboxes);
+        let (losses, loss_auxiliary) = yolo_loss.forward(&output, &bboxes);
         timing.set_record("loss");
 
         // optimizer
@@ -833,7 +833,7 @@ fn single_gpu_training_worker(
                     &image,
                     &output,
                     &losses,
-                    Arc::new(target_bboxes),
+                    Arc::new(loss_auxiliary.target_bboxes),
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         } else {

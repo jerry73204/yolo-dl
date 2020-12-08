@@ -293,7 +293,7 @@ impl YoloOutput {
             layer_meta
                 .iter()
                 .enumerate()
-                .map(|(layer_index, meta)| {
+                .map(|(_layer_index, meta)| {
                     let LayerMeta {
                         feature_size:
                             GridSize {

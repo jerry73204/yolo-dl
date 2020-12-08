@@ -86,6 +86,7 @@ pub struct YoloLossInit {
     pub focal_loss_gamma: Option<f64>,
     pub match_grid_method: Option<MatchGrid>,
     pub iou_kind: Option<IoUKind>,
+    pub iou_threshold: Option<R64>,
     pub smooth_bce_coef: Option<f64>,
     pub objectness_iou_ratio: Option<f64>,
     pub anchor_scale_thresh: Option<f64>,
@@ -102,6 +103,7 @@ impl YoloLossInit {
             focal_loss_gamma,
             match_grid_method,
             iou_kind,
+            iou_threshold,
             smooth_bce_coef,
             objectness_iou_ratio,
             anchor_scale_thresh,
@@ -112,7 +114,8 @@ impl YoloLossInit {
 
         let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
         let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
-        let iou_kind = iou_kind.unwrap_or(IoUKind::GIoU);
+        let iou_kind = iou_kind.unwrap_or(IoUKind::DIoU);
+        let iou_threshold = iou_threshold.map(|val| val.raw()).unwrap_or(0.5);
         let smooth_bce_coef = smooth_bce_coef.unwrap_or(0.01);
         let objectness_iou_ratio = objectness_iou_ratio.unwrap_or(1.0);
         let anchor_scale_thresh = anchor_scale_thresh.unwrap_or(4.0);
@@ -140,6 +143,7 @@ impl YoloLossInit {
             iou_loss_weight >= 0.0,
             "iou_loss_weight must be non-negative"
         );
+        ensure!(iou_threshold >= 0.0, "iou_threshold must be non-negative");
         ensure!(
             objectness_loss_weight >= 0.0,
             "objectness_loss_weight must be non-negative"
@@ -171,6 +175,7 @@ impl YoloLossInit {
             bce_objectness,
             match_grid_method,
             iou_kind,
+            iou_threshold,
             smooth_bce_coef,
             objectness_iou_ratio,
             anchor_scale_thresh,
@@ -189,6 +194,7 @@ impl Default for YoloLossInit {
             focal_loss_gamma: None,
             match_grid_method: None,
             iou_kind: None,
+            iou_threshold: None,
             smooth_bce_coef: None,
             objectness_iou_ratio: None,
             anchor_scale_thresh: None,
@@ -206,6 +212,7 @@ pub struct YoloLoss {
     bce_objectness: FocalLoss,
     match_grid_method: MatchGrid,
     iou_kind: IoUKind,
+    iou_threshold: f64,
     smooth_bce_coef: f64,
     objectness_iou_ratio: f64,
     anchor_scale_thresh: f64,
@@ -219,10 +226,7 @@ impl YoloLoss {
         &self,
         prediction: &YoloOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
-    ) -> (
-        YoloLossOutput,
-        HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
-    ) {
+    ) -> (YoloLossOutput, YoloLossAuxiliary) {
         let mut timing = Timing::new("loss function");
 
         // match target bboxes and grids, and group them by detector cells
@@ -236,7 +240,7 @@ impl YoloLoss {
         timing.set_record("collect_instances");
 
         // IoU loss
-        let (iou_loss, iou_values) = self.iou_loss(&pred_instances, &target_instances);
+        let (iou_loss, iou_score) = self.iou_loss(&pred_instances, &target_instances);
         timing.set_record("iou_loss");
 
         // classification loss
@@ -244,7 +248,7 @@ impl YoloLoss {
         timing.set_record("classification_loss");
 
         // objectness loss
-        let objectness_loss = self.objectness_loss(&prediction, &target_bboxes, &iou_values);
+        let objectness_loss = self.objectness_loss(&prediction, &target_bboxes, &iou_score);
         timing.set_record("objectness_loss");
 
         // normalize and balancing
@@ -262,7 +266,10 @@ impl YoloLoss {
                 classification_loss,
                 objectness_loss,
             },
-            target_bboxes,
+            YoloLossAuxiliary {
+                target_bboxes,
+                iou_score,
+            },
         )
     }
 
@@ -322,7 +329,7 @@ impl YoloLoss {
         let union_area = &pred_area + &target_area - &intersect_area + epsilon;
         let iou = &intersect_area / &union_area;
 
-        let iou_values = match self.iou_kind {
+        let iou_score = match self.iou_kind {
             IoUKind::IoU => iou,
             _ => {
                 let outer_t = pred_t.min1(&target_t);
@@ -370,7 +377,7 @@ impl YoloLoss {
 
         // IoU loss
         let iou_loss = {
-            let iou_loss: Tensor = 1.0 - &iou_values;
+            let iou_loss: Tensor = 1.0 - &iou_score;
             match self.reduction {
                 Reduction::None => iou_loss.shallow_clone(),
                 Reduction::Mean => iou_loss.mean(Kind::Float),
@@ -379,7 +386,7 @@ impl YoloLoss {
             }
         };
 
-        (iou_loss, iou_values)
+        (iou_loss, iou_score)
     }
 
     fn classification_loss(
@@ -437,7 +444,7 @@ impl YoloLoss {
         &self,
         prediction: &YoloOutput,
         target_bboxes: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
-        iou_values: &Tensor,
+        iou_score: &Tensor,
     ) -> Tensor {
         let device = prediction.device;
         let batch_size = prediction.batch_size;
@@ -458,7 +465,7 @@ impl YoloLoss {
 
             let target_objectness = {
                 let target = pred_objectness.zeros_like();
-                let values = &iou_values.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
+                let values = &iou_score.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
                     + (1.0 - self.objectness_iou_ratio);
 
                 let _ = target.permute(&[0, 2, 1]).index_put_(
@@ -472,7 +479,7 @@ impl YoloLoss {
             debug_assert!({
                 let (batch_size, _num_entries, num_instances) = pred_objectness.size3().unwrap();
                 let target_array: ArrayD<f32> = (&target_objectness).try_into().unwrap();
-                let iou_loss_array: ArrayD<f32> = iou_values.try_into().unwrap();
+                let iou_loss_array: ArrayD<f32> = iou_score.try_into().unwrap();
                 let mut expect_array =
                     Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
                 target_bboxes
@@ -799,6 +806,12 @@ impl YoloLoss {
 
         (pred_instances, target_instances)
     }
+}
+
+#[derive(Debug)]
+pub struct YoloLossAuxiliary {
+    pub target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
+    pub iou_score: Tensor,
 }
 
 #[derive(Debug)]
