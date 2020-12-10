@@ -7,9 +7,9 @@ use crate::{
     },
     darknet::{self, DarknetModel},
     model::{
-        BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, LayerBase, LayerPosition,
-        LayerPositionSet, MaxPoolLayerBase, ModelBase, RouteLayerBase, ShapeList,
-        ShortcutLayerBase, UpSampleLayerBase, YoloLayerBase,
+        BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, GaussianYoloLayerBase,
+        LayerBase, LayerPosition, LayerPositionSet, MaxPoolLayerBase, ModelBase, RouteLayerBase,
+        ShapeList, ShortcutLayerBase, UpSampleLayerBase, YoloLayerBase,
     },
 };
 use tch::{nn, Kind, Tensor};
@@ -151,6 +151,9 @@ mod tch_model {
                         darknet::Layer::Yolo(conf) => {
                             YoloLayer::new(path, conf, num_classes)?.into()
                         }
+                        darknet::Layer::GaussianYolo(conf) => {
+                            GaussianYoloLayer::new(path, conf, num_classes)?.into()
+                        }
                     };
 
                     collected.insert(layer_index, layer);
@@ -289,8 +292,9 @@ mod layer {
         Shortcut(ShortcutLayer),
         MaxPool(MaxPoolLayer),
         UpSample(UpSampleLayer),
-        Yolo(YoloLayer),
         BatchNorm(BatchNormLayer),
+        Yolo(YoloLayer),
+        GaussianYolo(GaussianYoloLayer),
     }
 
     impl Layer {
@@ -302,8 +306,9 @@ mod layer {
                 Self::Shortcut(layer) => ShapeList::MultipleHwc(layer.base.input_shape.clone()),
                 Self::MaxPool(layer) => ShapeList::SingleHwc(layer.base.input_shape),
                 Self::UpSample(layer) => ShapeList::SingleHwc(layer.base.input_shape),
-                Self::Yolo(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
                 Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
+                Self::Yolo(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
+                Self::GaussianYolo(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
             }
         }
 
@@ -315,8 +320,9 @@ mod layer {
                 Self::Shortcut(layer) => Shape::Hwc(layer.base.output_shape),
                 Self::MaxPool(layer) => Shape::Hwc(layer.base.output_shape),
                 Self::UpSample(layer) => Shape::Hwc(layer.base.output_shape),
-                Self::Yolo(layer) => Shape::Hwc(layer.base.inout_shape),
                 Self::BatchNorm(layer) => Shape::Hwc(layer.base.inout_shape),
+                Self::Yolo(layer) => Shape::Hwc(layer.base.inout_shape),
+                Self::GaussianYolo(layer) => Shape::Hwc(layer.base.inout_shape),
             }
         }
 
@@ -330,8 +336,9 @@ mod layer {
                 }
                 Self::MaxPool(layer) => LayerPositionSet::Single(layer.base.from_indexes),
                 Self::UpSample(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::Yolo(layer) => LayerPositionSet::Single(layer.base.from_indexes),
                 Self::BatchNorm(layer) => LayerPositionSet::Single(layer.base.from_indexes),
+                Self::Yolo(layer) => LayerPositionSet::Single(layer.base.from_indexes),
+                Self::GaussianYolo(layer) => LayerPositionSet::Single(layer.base.from_indexes),
             }
         }
 
@@ -343,8 +350,9 @@ mod layer {
                 Layer::Shortcut(layer) => layer.forward(xs.multiple().unwrap()).into(),
                 Layer::MaxPool(layer) => layer.forward(xs.single().unwrap()).into(),
                 Layer::UpSample(layer) => layer.forward(xs.single().unwrap()).into(),
-                Layer::Yolo(layer) => layer.forward(xs.single().unwrap())?.into(),
                 Layer::BatchNorm(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
+                Layer::Yolo(layer) => layer.forward(xs.single().unwrap())?.into(),
+                Layer::GaussianYolo(layer) => layer.forward(xs.single().unwrap())?.into(),
             };
             Ok(output)
         }
@@ -362,6 +370,11 @@ mod layer {
     declare_tch_layer!(MaxPoolLayer, MaxPoolLayerBase, MaxPoolWeights);
     declare_tch_layer!(UpSampleLayer, UpSampleLayerBase, UpSampleWeights);
     declare_tch_layer!(YoloLayer, YoloLayerBase, YoloWeights);
+    declare_tch_layer!(
+        GaussianYoloLayer,
+        GaussianYoloLayerBase,
+        GaussianYoloWeights
+    );
 
     impl From<ConnectedLayer> for Layer {
         fn from(from: ConnectedLayer) -> Self {
@@ -408,6 +421,12 @@ mod layer {
     impl From<YoloLayer> for Layer {
         fn from(from: YoloLayer) -> Self {
             Self::Yolo(from)
+        }
+    }
+
+    impl From<GaussianYoloLayer> for Layer {
+        fn from(from: GaussianYoloLayer) -> Self {
+            Self::GaussianYolo(from)
         }
     }
 
@@ -1147,6 +1166,28 @@ mod layer {
             self.weights.cache.as_ref().unwrap().shallow_clone()
         }
     }
+
+    impl GaussianYoloLayer {
+        pub fn new<'p>(
+            _path: impl Borrow<nn::Path<'p>>,
+            from: &darknet::GaussianYoloLayer,
+            num_classes: u64,
+        ) -> Result<Self> {
+            let weights = GaussianYoloWeights {
+                num_classes: num_classes as i64,
+                cache: None,
+            };
+
+            Ok(Self {
+                base: from.base.clone(),
+                weights,
+            })
+        }
+
+        pub fn forward(&mut self, input: &Tensor) -> Result<DenseDetection> {
+            todo!();
+        }
+    }
 }
 
 mod weights {
@@ -1208,6 +1249,12 @@ mod weights {
 
     #[derive(Debug)]
     pub struct YoloWeights {
+        pub num_classes: i64,
+        pub cache: Option<YoloCache>,
+    }
+
+    #[derive(Debug)]
+    pub struct GaussianYoloWeights {
         pub num_classes: i64,
         pub cache: Option<YoloCache>,
     }

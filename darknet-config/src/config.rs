@@ -4,7 +4,7 @@ pub use batch_norm_config::*;
 pub use connected_config::*;
 pub use convolutional_config::*;
 pub use darknet_config::*;
-// pub use gaussian_yolo_config::*;
+pub use gaussian_yolo_config::*;
 pub use items::*;
 pub use max_pool_config::*;
 pub use misc::*;
@@ -13,10 +13,6 @@ pub use route_config::*;
 pub use shortcut_config::*;
 pub use up_sample_config::*;
 pub use yolo_config::*;
-
-pub trait LayerConfigEx {
-    fn common(&self) -> &CommonLayerOptions;
-}
 
 mod darknet_config {
     use super::*;
@@ -316,6 +312,85 @@ mod darknet_config {
                         Item::Shortcut(layer) => LayerConfig::Shortcut(layer),
                         Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
                         Item::UpSample(layer) => LayerConfig::UpSample(layer),
+                        Item::GaussianYolo(layer) => {
+                            let RawGaussianYoloConfig {
+                                classes,
+                                num,
+                                mask,
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                uc_normalizer,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                map,
+                                anchors,
+                                common,
+                            } = layer;
+
+                            let mask = mask.unwrap_or_else(|| IndexSet::new());
+                            let anchors = match (num, anchors) {
+                                (0, None) => vec![],
+                                (_, None) => bail!("num and length of anchors mismatch"),
+                                (_, Some(anchors)) => {
+                                    ensure!(
+                                        anchors.len() == num as usize,
+                                        "num and length of anchors mismatch"
+                                    );
+                                    let anchors: Vec<_> = mask
+                                        .into_iter()
+                                        .map(|index| -> Result<_> {
+                                            Ok(anchors.get(index as usize).ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?.clone())
+                                        })
+                                        .try_collect()?;
+                                    anchors
+                                }
+                            };
+
+                            LayerConfig::GaussianYolo(GaussianYoloConfig {
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                uc_normalizer,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                map,
+                                anchors,
+                                common,
+                            })
+                        }
                         Item::Yolo(layer) => {
                             let RawYoloConfig {
                                 classes,
@@ -354,6 +429,7 @@ mod darknet_config {
                                 common,
                             } = layer;
 
+                            let mask = mask.unwrap_or_else(|| IndexSet::new());
                             let anchors = match (num, anchors) {
                                 (0, None) => vec![],
                                 (_, None) => bail!("num and length of anchors mismatch"),
@@ -362,22 +438,15 @@ mod darknet_config {
                                         anchors.len() == num as usize,
                                         "num and length of anchors mismatch"
                                     );
+                                    let anchors: Vec<_> = mask
+                                        .into_iter()
+                                        .map(|index| -> Result<_> {
+                                            Ok(anchors.get(index as usize).ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?.clone())
+                                        })
+                                        .try_collect()?;
                                     anchors
                                 }
                             };
-
-                            let mask = mask.unwrap_or_else(|| IndexSet::new());
-                            ensure!(
-                                mask.iter()
-                                    .cloned()
-                                    .all(|index| (index as usize) < anchors.len()),
-                                "mask index exceeds total number of anchors"
-                            );
-
-                            let anchors: Vec<_> = mask
-                                .into_iter()
-                                .map(|index| anchors[index as usize].clone())
-                                .collect();
 
                             LayerConfig::Yolo(YoloConfig {
                                 max_boxes,
@@ -440,23 +509,26 @@ mod darknet_config {
         MaxPool(MaxPoolConfig),
         #[serde(rename = "upsample")]
         UpSample(UpSampleConfig),
-        #[serde(rename = "yolo")]
-        Yolo(YoloConfig),
         #[serde(rename = "batchnorm")]
         BatchNorm(BatchNormConfig),
+        #[serde(rename = "yolo")]
+        Yolo(YoloConfig),
+        #[serde(rename = "Gaussian_yolo")]
+        GaussianYolo(GaussianYoloConfig),
     }
 
-    impl LayerConfigEx for LayerConfig {
-        fn common(&self) -> &CommonLayerOptions {
+    impl LayerConfig {
+        pub fn common(&self) -> &CommonLayerOptions {
             match self {
-                LayerConfig::Connected(layer) => layer.common(),
-                LayerConfig::Convolutional(layer) => layer.common(),
-                LayerConfig::Route(layer) => layer.common(),
-                LayerConfig::Shortcut(layer) => layer.common(),
-                LayerConfig::MaxPool(layer) => layer.common(),
-                LayerConfig::UpSample(layer) => layer.common(),
-                LayerConfig::Yolo(layer) => layer.common(),
-                LayerConfig::BatchNorm(layer) => layer.common(),
+                LayerConfig::Connected(layer) => &layer.common,
+                LayerConfig::Convolutional(layer) => &layer.common,
+                LayerConfig::Route(layer) => &layer.common,
+                LayerConfig::Shortcut(layer) => &layer.common,
+                LayerConfig::MaxPool(layer) => &layer.common,
+                LayerConfig::UpSample(layer) => &layer.common,
+                LayerConfig::BatchNorm(layer) => &layer.common,
+                LayerConfig::Yolo(layer) => &layer.common,
+                LayerConfig::GaussianYolo(layer) => &layer.common,
             }
         }
     }
@@ -655,12 +727,6 @@ mod connected_config {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
-
-    impl LayerConfigEx for ConnectedConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
-    }
 }
 
 mod convolutional_config {
@@ -709,12 +775,6 @@ mod convolutional_config {
             let out_h = (h + 2 * padding - size) / stride_y + 1;
             let out_w = (w + 2 * padding - size) / stride_x + 1;
             [out_h, out_w, filters]
-        }
-    }
-
-    impl LayerConfigEx for ConvolutionalConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
         }
     }
 
@@ -985,12 +1045,6 @@ mod route_config {
         }
     }
 
-    impl LayerConfigEx for RouteConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
-    }
-
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct RawRouteConfig {
@@ -1040,12 +1094,6 @@ mod shortcut_config {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
-
-    impl LayerConfigEx for ShortcutConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
-    }
 }
 
 mod max_pool_config {
@@ -1081,12 +1129,6 @@ mod max_pool_config {
             let out_c = in_c;
 
             [out_h, out_w, out_c]
-        }
-    }
-
-    impl LayerConfigEx for MaxPoolConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
         }
     }
 
@@ -1196,12 +1238,6 @@ mod up_sample_config {
             [out_h, out_w, out_c]
         }
     }
-
-    impl LayerConfigEx for UpSampleConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
-    }
 }
 
 mod batch_norm_config {
@@ -1211,12 +1247,6 @@ mod batch_norm_config {
     pub struct BatchNormConfig {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
-    }
-
-    impl LayerConfigEx for BatchNormConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
     }
 }
 
@@ -1257,12 +1287,6 @@ mod yolo_config {
         pub iou_loss: IouLoss,
         pub nms_kind: NmsKind,
         pub common: CommonLayerOptions,
-    }
-
-    impl LayerConfigEx for YoloConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
@@ -1337,69 +1361,106 @@ mod yolo_config {
     }
 }
 
-// mod gaussian_yolo_config {
-//     use super::*;
+mod gaussian_yolo_config {
+    use super::*;
 
-//     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-//     #[derivative(Hash)]
-//     pub struct RawGaussianYoloConfig {
-//         #[serde(default = "defaults::classes")]
-//         pub classes: u64,
-//         #[serde(rename = "max", default = "defaults::max_boxes")]
-//         pub max_boxes: u64,
-//         #[serde(default = "defaults::num")]
-//         pub num: u64,
-//         #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
-//         #[serde(with = "serde_mask", default)]
-//         pub mask: Option<IndexSet<u64>>,
-//         pub max_delta: Option<R64>,
-//         #[serde(with = "serde_opt_vec_u64", default)]
-//         pub counters_per_class: Option<Vec<u64>>,
-//         #[serde(default = "defaults::yolo_label_smooth_eps")]
-//         pub label_smooth_eps: R64,
-//         #[serde(default = "defaults::scale_x_y")]
-//         pub scale_x_y: R64,
-//         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
-//         pub objectness_smooth: bool,
-//         #[serde(default = "defaults::uc_normalizer")]
-//         pub uc_normalizer: R64,
-//         #[serde(default = "defaults::iou_normalizer")]
-//         pub iou_normalizer: R64,
-//         #[serde(default = "defaults::obj_normalizer")]
-//         pub obj_normalizer: R64,
-//         #[serde(default = "defaults::cls_normalizer")]
-//         pub cls_normalizer: R64,
-//         #[serde(default = "defaults::delta_normalizer")]
-//         pub delta_normalizer: R64,
-//         #[serde(default = "defaults::iou_loss")]
-//         pub iou_loss: IouLoss,
-//         #[serde(default = "defaults::iou_thresh_kind")]
-//         pub iou_thresh_kind: IouThreshold,
-//         #[serde(default = "defaults::beta_nms")]
-//         pub beta_nms: R64,
-//         #[serde(default = "defaults::nms_kind")]
-//         pub nms_kind: NmsKind,
-//         #[serde(default = "defaults::yolo_point")]
-//         pub yolo_point: YoloPoint,
-//         #[serde(default = "defaults::jitter")]
-//         pub jitter: R64,
-//         #[serde(default = "defaults::resize")]
-//         pub resize: R64,
-//         #[serde(default = "defaults::ignore_thresh")]
-//         pub ignore_thresh: R64,
-//         #[serde(default = "defaults::truth_thresh")]
-//         pub truth_thresh: R64,
-//         #[serde(default = "defaults::iou_thresh")]
-//         pub iou_thresh: R64,
-//         #[serde(default = "defaults::random")]
-//         pub random: R64,
-//         pub map: Option<PathBuf>,
-//         #[serde(with = "serde_anchors", default)]
-//         pub anchors: Option<Vec<(u64, u64)>>,
-//         #[serde(flatten)]
-//         pub common: CommonLayerOptions,
-//     }
-// }
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
+    pub struct GaussianYoloConfig {
+        pub max_boxes: u64,
+        pub max_delta: Option<R64>,
+        pub counters_per_class: Option<Vec<u64>>,
+        pub label_smooth_eps: R64,
+        pub scale_x_y: R64,
+        pub objectness_smooth: bool,
+        pub uc_normalizer: R64,
+        pub iou_normalizer: R64,
+        pub obj_normalizer: R64,
+        pub cls_normalizer: R64,
+        pub delta_normalizer: R64,
+        pub iou_thresh_kind: IouThreshold,
+        pub beta_nms: R64,
+        pub jitter: R64,
+        pub resize: R64,
+        // pub focal_loss: bool,
+        pub ignore_thresh: R64,
+        pub truth_thresh: R64,
+        pub iou_thresh: R64,
+        pub random: R64,
+        // pub track_history_size: u64,
+        // pub sim_thresh: R64,
+        // pub dets_for_track: u64,
+        // pub dets_for_show: u64,
+        // pub track_ciou_norm: R64,
+        // pub embedding_layer: Option<LayerIndex>,
+        pub map: Option<PathBuf>,
+        pub anchors: Vec<(u64, u64)>,
+        pub yolo_point: YoloPoint,
+        pub iou_loss: IouLoss,
+        pub nms_kind: NmsKind,
+        pub common: CommonLayerOptions,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
+    pub struct RawGaussianYoloConfig {
+        #[serde(default = "defaults::classes")]
+        pub classes: u64,
+        #[serde(rename = "max", default = "defaults::max_boxes")]
+        pub max_boxes: u64,
+        #[serde(default = "defaults::num")]
+        pub num: u64,
+        #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
+        #[serde(with = "serde_mask", default)]
+        pub mask: Option<IndexSet<u64>>,
+        pub max_delta: Option<R64>,
+        #[serde(with = "serde_opt_vec_u64", default)]
+        pub counters_per_class: Option<Vec<u64>>,
+        #[serde(default = "defaults::yolo_label_smooth_eps")]
+        pub label_smooth_eps: R64,
+        #[serde(default = "defaults::scale_x_y")]
+        pub scale_x_y: R64,
+        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        pub objectness_smooth: bool,
+        #[serde(default = "defaults::uc_normalizer")]
+        pub uc_normalizer: R64,
+        #[serde(default = "defaults::iou_normalizer")]
+        pub iou_normalizer: R64,
+        #[serde(default = "defaults::obj_normalizer")]
+        pub obj_normalizer: R64,
+        #[serde(default = "defaults::cls_normalizer")]
+        pub cls_normalizer: R64,
+        #[serde(default = "defaults::delta_normalizer")]
+        pub delta_normalizer: R64,
+        #[serde(default = "defaults::iou_loss")]
+        pub iou_loss: IouLoss,
+        #[serde(default = "defaults::iou_thresh_kind")]
+        pub iou_thresh_kind: IouThreshold,
+        #[serde(default = "defaults::beta_nms")]
+        pub beta_nms: R64,
+        #[serde(default = "defaults::nms_kind")]
+        pub nms_kind: NmsKind,
+        #[serde(default = "defaults::yolo_point")]
+        pub yolo_point: YoloPoint,
+        #[serde(default = "defaults::jitter")]
+        pub jitter: R64,
+        #[serde(default = "defaults::resize")]
+        pub resize: R64,
+        #[serde(default = "defaults::ignore_thresh")]
+        pub ignore_thresh: R64,
+        #[serde(default = "defaults::truth_thresh")]
+        pub truth_thresh: R64,
+        #[serde(default = "defaults::iou_thresh")]
+        pub iou_thresh: R64,
+        #[serde(default = "defaults::random")]
+        pub random: R64,
+        pub map: Option<PathBuf>,
+        #[serde(with = "serde_anchors", default)]
+        pub anchors: Option<Vec<(u64, u64)>>,
+        #[serde(flatten)]
+        pub common: CommonLayerOptions,
+    }
+}
 
 mod items {
     use super::*;
@@ -1420,10 +1481,12 @@ mod items {
         MaxPool(MaxPoolConfig),
         #[serde(rename = "upsample")]
         UpSample(UpSampleConfig),
-        #[serde(rename = "yolo")]
-        Yolo(RawYoloConfig),
         #[serde(rename = "batchnorm")]
         BatchNorm(BatchNormConfig),
+        #[serde(rename = "Gaussian_yolo")]
+        GaussianYolo(RawGaussianYoloConfig),
+        #[serde(rename = "yolo")]
+        Yolo(RawYoloConfig),
     }
 
     impl From<DarknetConfig> for Vec<Item> {
@@ -1676,6 +1739,7 @@ mod items {
                         LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
                         LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
                         LayerConfig::UpSample(layer) => Item::UpSample(layer),
+                        LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
                         LayerConfig::Yolo(orig_layer) => {
                             let YoloConfig {
                                 max_boxes,
@@ -1776,7 +1840,94 @@ mod items {
                                 common,
                             })
                         }
-                        LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
+                        LayerConfig::GaussianYolo(orig_layer) => {
+                            let GaussianYoloConfig {
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                uc_normalizer,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                map,
+                                anchors: local_anchors,
+                                common,
+                            } = orig_layer;
+
+                            // build mask list
+                            let mask: IndexSet<_> = {
+                                let num_anchors = local_anchors.len();
+                                let mask_begin = *mask_count;
+                                let mask_end = mask_begin + num_anchors;
+
+                                // update counter
+                                *mask_count += num_anchors;
+
+                                (mask_begin..mask_end).map(|index| index as u64).collect()
+                            };
+
+                            // make sure mask indexes are valid
+                            assert!(
+                                mask.iter()
+                                    .cloned()
+                                    .all(|index| (index as usize) < global_anchors.len()),
+                                "mask indexes must not exceed total number of anchors"
+                            );
+
+                            let num = global_anchors.len() as u64;
+                            let mask = if mask.is_empty() { None } else { Some(mask) };
+                            let anchors = if global_anchors.is_empty() {
+                                None
+                            } else {
+                                Some(global_anchors.clone())
+                            };
+
+                            Item::GaussianYolo(RawGaussianYoloConfig {
+                                classes,
+                                num,
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                uc_normalizer,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                map,
+                                mask,
+                                anchors,
+                                common,
+                            })
+                        }
                     };
                     Some(item)
                 }))
@@ -2347,9 +2498,9 @@ mod defaults {
         R64::new(1.0)
     }
 
-    // pub fn uc_normalizer() -> R64 {
-    //     R64::new(1.0)
-    // }
+    pub fn uc_normalizer() -> R64 {
+        R64::new(1.0)
+    }
 
     pub fn iou_normalizer() -> R64 {
         R64::new(0.75)

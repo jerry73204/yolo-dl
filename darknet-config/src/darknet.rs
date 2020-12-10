@@ -5,9 +5,9 @@ use crate::{
         ShortcutConfig, WeightsType,
     },
     model::{
-        BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, LayerBase,
-        MaxPoolLayerBase, ModelBase, RouteLayerBase, ShortcutLayerBase, UpSampleLayerBase,
-        YoloLayerBase,
+        BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, GaussianYoloLayerBase,
+        LayerBase, MaxPoolLayerBase, ModelBase, RouteLayerBase, ShortcutLayerBase,
+        UpSampleLayerBase, YoloLayerBase,
     },
 };
 
@@ -53,6 +53,9 @@ mod model {
                                 Layer::BatchNorm(BatchNormLayer::new(base))
                             }
                             LayerBase::Yolo(base) => Layer::Yolo(YoloLayer { base: base.clone() }),
+                            LayerBase::GaussianYolo(base) => {
+                                Layer::GaussianYolo(GaussianYoloLayer { base: base.clone() })
+                            }
                         };
 
                         Ok((layer_index, layer))
@@ -162,8 +165,9 @@ mod layer {
         Shortcut(ShortcutLayer),
         MaxPool(MaxPoolLayer),
         UpSample(UpSampleLayer),
-        Yolo(YoloLayer),
         BatchNorm(BatchNormLayer),
+        Yolo(YoloLayer),
+        GaussianYolo(GaussianYoloLayer),
     }
 
     impl Layer {
@@ -175,8 +179,9 @@ mod layer {
                 Self::Shortcut(layer) => layer.load_weights(reader),
                 Self::MaxPool(_layer) => Ok(()),
                 Self::UpSample(_layer) => Ok(()),
-                Self::Yolo(_layer) => Ok(()),
                 Self::BatchNorm(layer) => layer.load_weights(reader),
+                Self::Yolo(_layer) => Ok(()),
+                Self::GaussianYolo(_layer) => Ok(()),
             }
         }
     }
@@ -193,6 +198,7 @@ mod layer {
     declare_darknet_layer!(MaxPoolLayer, MaxPoolLayerBase);
     declare_darknet_layer!(UpSampleLayer, UpSampleLayerBase);
     declare_darknet_layer!(YoloLayer, YoloLayerBase);
+    declare_darknet_layer!(GaussianYoloLayer, GaussianYoloLayerBase);
 
     impl ConnectedLayer {
         pub fn new(base: &ConnectedLayerBase) -> Self {

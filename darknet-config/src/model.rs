@@ -1,9 +1,9 @@
 use crate::{
     common::*,
     config::{
-        BatchNormConfig, ConnectedConfig, ConvolutionalConfig, DarknetConfig, LayerConfig,
-        LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig, UpSampleConfig,
-        YoloConfig,
+        BatchNormConfig, ConnectedConfig, ConvolutionalConfig, DarknetConfig, GaussianYoloConfig,
+        LayerConfig, LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig,
+        UpSampleConfig, YoloConfig,
     },
     utils::DisplayAsDebug,
 };
@@ -49,6 +49,7 @@ impl ModelBase {
                     | LayerConfig::BatchNorm(_)
                     | LayerConfig::MaxPool(_)
                     | LayerConfig::UpSample(_)
+                    | LayerConfig::GaussianYolo(_)
                     | LayerConfig::Yolo(_) => {
                         if layer_index == 0 {
                             LayerPositionSet::Single(LayerPosition::Input)
@@ -306,6 +307,21 @@ impl ModelBase {
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
+                        LayerConfig::GaussianYolo(conf) => {
+                            let [in_h, in_w, in_c] = hwc_input_shape(from_index)
+                                .ok_or_else(|| format_err!("invalid shape"))?;
+                            let GaussianYoloConfig {
+                                anchors, ..
+                            } = conf;
+
+                            // [batch, anchor, entry, h, w]
+                            let num_anchors = anchors.len() as u64;
+                            ensure!(in_c == num_anchors * (num_classes + 4 + 1), "the output channels and yolo input channels mismatch");
+
+                            let input_shape = [in_h, in_w, in_c];
+                            let output_shape = input_shape;
+                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                        }
                     };
 
                     collected.insert(*layer_index, (input_shape, output_shape));
@@ -415,6 +431,17 @@ impl ModelBase {
                                 inout_shape: input_shape,
                             })
                         }
+                        LayerConfig::GaussianYolo(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            debug_assert_eq!(input_shape, output_shape);
+
+                            LayerBase::GaussianYolo(GaussianYoloLayerBase {
+                                config: conf,
+                                from_indexes: from_indexes.single().unwrap(),
+                                inout_shape: input_shape,
+                            })
+                        }
                     };
 
                     Ok((layer_index, layer))
@@ -442,6 +469,7 @@ impl ModelBase {
                     LayerBase::Route(_) => "route",
                     LayerBase::UpSample(_) => "up_sample",
                     LayerBase::Yolo(_) => "yolo",
+                    LayerBase::GaussianYolo(_) => "gaussian_yolo",
                 };
 
                 debug!(
@@ -599,8 +627,9 @@ pub enum LayerBase {
     Shortcut(ShortcutLayerBase),
     MaxPool(MaxPoolLayerBase),
     UpSample(UpSampleLayerBase),
-    Yolo(YoloLayerBase),
     BatchNorm(BatchNormLayerBase),
+    Yolo(YoloLayerBase),
+    GaussianYolo(GaussianYoloLayerBase),
 }
 
 impl LayerBase {
@@ -612,8 +641,9 @@ impl LayerBase {
             Self::Shortcut(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),
             Self::MaxPool(layer) => ShapeList::SingleHwc(layer.input_shape),
             Self::UpSample(layer) => ShapeList::SingleHwc(layer.input_shape),
-            Self::Yolo(layer) => ShapeList::SingleHwc(layer.inout_shape),
             Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.inout_shape),
+            Self::Yolo(layer) => ShapeList::SingleHwc(layer.inout_shape),
+            Self::GaussianYolo(layer) => ShapeList::SingleHwc(layer.inout_shape),
         }
     }
 
@@ -625,8 +655,9 @@ impl LayerBase {
             Self::Shortcut(layer) => Shape::Hwc(layer.output_shape),
             Self::MaxPool(layer) => Shape::Hwc(layer.output_shape),
             Self::UpSample(layer) => Shape::Hwc(layer.output_shape),
-            Self::Yolo(layer) => Shape::Hwc(layer.inout_shape),
             Self::BatchNorm(layer) => Shape::Hwc(layer.inout_shape),
+            Self::Yolo(layer) => Shape::Hwc(layer.inout_shape),
+            Self::GaussianYolo(layer) => Shape::Hwc(layer.inout_shape),
         }
     }
 
@@ -638,8 +669,9 @@ impl LayerBase {
             Self::Shortcut(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
             Self::MaxPool(layer) => LayerPositionSet::Single(layer.from_indexes),
             Self::UpSample(layer) => LayerPositionSet::Single(layer.from_indexes),
-            Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
             Self::BatchNorm(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::GaussianYolo(layer) => LayerPositionSet::Single(layer.from_indexes),
         }
     }
 }
@@ -704,12 +736,12 @@ declare_layer_base_inout_shape!(
     [u64; 3]
 );
 declare_layer_base_single_shape!(YoloLayerBase, YoloConfig, LayerPosition, [u64; 3]);
-// declare_layer_base_single_shape!(
-//     GaussianYoloLayerBase,
-//     GaussianYoloConfig,
-//     LayerPosition,
-//     [u64; 3]
-// );
+declare_layer_base_single_shape!(
+    GaussianYoloLayerBase,
+    GaussianYoloConfig,
+    LayerPosition,
+    [u64; 3]
+);
 declare_layer_base_single_shape!(BatchNormLayerBase, BatchNormConfig, LayerPosition, [u64; 3]);
 
 impl From<ConnectedLayerBase> for LayerBase {
