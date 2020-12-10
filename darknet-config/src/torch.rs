@@ -93,7 +93,7 @@ mod tch_model {
 
     #[derive(Debug)]
     pub struct TchModel {
-        pub base: Graph,
+        pub graph: Graph,
         pub layers: IndexMap<usize, Layer>,
     }
 
@@ -123,7 +123,7 @@ mod tch_model {
         ) -> Result<Self> {
             let path = path.borrow();
             let DarknetModel {
-                base:
+                graph:
                     Graph {
                         net:
                             NetConfig {
@@ -162,7 +162,7 @@ mod tch_model {
             )?;
 
             Ok(Self {
-                base: model.base.clone(),
+                graph: model.graph.clone(),
                 layers,
             })
         }

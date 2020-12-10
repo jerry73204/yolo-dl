@@ -19,15 +19,15 @@ mod model {
 
     #[derive(Debug, Clone)]
     pub struct DarknetModel {
-        pub base: Graph,
+        pub graph: Graph,
         pub layers: IndexMap<usize, Layer>,
     }
 
     impl DarknetModel {
-        pub fn new(model_base: &Graph) -> Result<Self> {
+        pub fn new(graph: &Graph) -> Result<Self> {
             // aggregate all computed features
             let layers: IndexMap<_, _> = {
-                model_base
+                graph
                     .layers
                     .iter()
                     .map(|(&layer_index, layer_base)| -> Result<_> {
@@ -57,7 +57,7 @@ mod model {
             };
 
             Ok(Self {
-                base: model_base.clone(),
+                graph: graph.clone(),
                 layers,
             })
         }
@@ -107,8 +107,8 @@ mod model {
             .map_err(|err| format_err!("failed to parse weight file: {:?}", err))?;
 
             // update network parameters
-            self.base.seen = seen;
-            self.base.cur_iteration = self.base.net.iteration(seen);
+            self.graph.seen = seen;
+            self.graph.cur_iteration = self.graph.net.iteration(seen);
 
             // load weights
             {
