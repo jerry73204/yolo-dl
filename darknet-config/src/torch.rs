@@ -1,9 +1,9 @@
 use crate::{
     common::*,
     config::{
-        Activation, CompoundNetConfig, CompoundYoloConfig, ConnectedConfig, ConvolutionalConfig,
-        DarknetConfig, MaxPoolConfig, RouteConfig, Shape, ShortcutConfig, UpSampleConfig,
-        WeightsNormalization, WeightsType,
+        Activation, ConnectedConfig, ConvolutionalConfig, DarknetConfig, MaxPoolConfig, NetConfig,
+        RouteConfig, Shape, ShortcutConfig, UpSampleConfig, WeightsNormalization, WeightsType,
+        YoloConfig,
     },
     darknet::{self, DarknetModel},
     model::{
@@ -11,7 +11,6 @@ use crate::{
         LayerPositionSet, MaxPoolLayerBase, ModelBase, RouteLayerBase, ShapeList,
         ShortcutLayerBase, UpSampleLayerBase, YoloLayerBase,
     },
-    utils::Unzip7,
 };
 use tch::{nn, Kind, Tensor};
 
@@ -127,7 +126,7 @@ mod tch_model {
                 base:
                     ModelBase {
                         net:
-                            CompoundNetConfig {
+                            NetConfig {
                                 classes: num_classes,
                                 ..
                             },
@@ -1056,7 +1055,7 @@ mod layer {
             let Self {
                 base:
                     YoloLayerBase {
-                        config: CompoundYoloConfig { ref anchors, .. },
+                        config: YoloConfig { ref anchors, .. },
                         ..
                     },
                 weights: YoloWeights { num_classes, .. },

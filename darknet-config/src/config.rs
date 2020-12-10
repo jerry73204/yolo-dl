@@ -1,373 +1,170 @@
-use crate::{common::*, utils::Unzip2};
+use crate::common::*;
 
+pub use batch_norm_config::*;
+pub use connected_config::*;
+pub use convolutional_config::*;
+pub use darknet_config::*;
+// pub use gaussian_yolo_config::*;
 pub use items::*;
+pub use max_pool_config::*;
+pub use misc::*;
+pub use net_config::*;
+pub use route_config::*;
+pub use shortcut_config::*;
+pub use up_sample_config::*;
+pub use yolo_config::*;
 
 pub trait LayerConfigEx {
     fn common(&self) -> &CommonLayerOptions;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "Vec<Item>", into = "Vec<Item>")]
-pub struct DarknetConfig {
-    pub net: CompoundNetConfig,
-    pub layers: Vec<LayerConfig>,
-}
-
-impl DarknetConfig {
-    pub fn load<P>(config_file: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        Ok(Self::from_str(&fs::read_to_string(config_file)?)?)
-    }
-
-    pub fn to_string(&self) -> Result<String> {
-        Ok(serde_ini::to_string(self)?)
-    }
-}
-
-impl FromStr for DarknetConfig {
-    type Err = Error;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Ok(serde_ini::from_str(text)?)
-    }
-}
-
-impl TryFrom<Vec<Item>> for DarknetConfig {
-    type Error = anyhow::Error;
-
-    fn try_from(items: Vec<Item>) -> Result<Self, Self::Error> {
-        // ensure only the first item is "net" item
-        {
-            let mut iter = items.iter();
-            ensure!(
-                matches!(iter.next(), Some(Item::Net(_))),
-                "the first item must be [net]"
-            );
-            ensure!(
-                iter.all(|item| !matches!(item, Item::Net(_))),
-                "net item must be the first item"
-            );
-        };
-
-        // extract global options from yolo item
-        let classes = {
-            let (classes_vec, anchors_vec) = items
-                .iter()
-                .filter_map(|item| match item {
-                    Item::Yolo(yolo) => Some(yolo),
-                    _ => None,
-                })
-                .map(|yolo| {
-                    let YoloConfig {
-                        classes,
-                        ref anchors,
-                        ..
-                    } = *yolo;
-
-                    (classes, anchors)
-                })
-                .unzip_n_vec();
-
-            let classes = {
-                let classes_set: HashSet<_> = classes_vec.iter().cloned().collect();
-                ensure!(
-                    classes_set.len() == 1,
-                    "the classes of every yolo layer must be equal"
-                );
-                classes_vec[0]
-            };
-
-            {
-                let anchors_set: HashSet<_> = anchors_vec.iter().collect();
-                ensure!(
-                    anchors_set.len() == 1,
-                    "the anchors of every yolo layer must be equal"
-                );
-            }
-
-            classes
-        };
-
-        let mut items_iter = items.into_iter();
-
-        // build net item
-        let net = {
-            let net = match items_iter.next().unwrap() {
-                Item::Net(net) => net,
-                _ => unreachable!(),
-            };
-
-            let NetConfig {
-                max_batches,
-                batch,
-                learning_rate,
-                learning_rate_min,
-                sgdr_cycle,
-                sgdr_mult,
-                momentum,
-                decay,
-                subdivisions,
-                time_steps,
-                track,
-                augment_speed,
-                sequential_subdivisions,
-                try_fix_nan,
-                loss_scale,
-                dynamic_minibatch,
-                optimized_memory,
-                workspace_size_limit_mb,
-                adam,
-                input_size,
-                max_crop,
-                min_crop,
-                flip,
-                blur,
-                gaussian_noise,
-                mixup,
-                cutmux,
-                mosaic,
-                letter_box,
-                mosaic_bound,
-                contrastive,
-                contrastive_jit_flip,
-                contrastive_color,
-                unsupervised,
-                label_smooth_eps,
-                resize_step,
-                attention,
-                adversarial_lr,
-                max_chart_loss,
-                angle,
-                aspect,
-                saturation,
-                exposure,
-                hue,
-                power,
-                policy,
-                burn_in,
-            } = net;
-
-            CompoundNetConfig {
-                max_batches,
-                batch,
-                learning_rate,
-                learning_rate_min,
-                sgdr_cycle,
-                sgdr_mult,
-                momentum,
-                decay,
-                subdivisions,
-                time_steps,
-                track,
-                augment_speed,
-                sequential_subdivisions,
-                try_fix_nan,
-                loss_scale,
-                dynamic_minibatch,
-                optimized_memory,
-                workspace_size_limit_mb,
-                adam,
-                input_size,
-                max_crop,
-                min_crop,
-                flip,
-                blur,
-                gaussian_noise,
-                mixup,
-                cutmux,
-                mosaic,
-                letter_box,
-                mosaic_bound,
-                contrastive,
-                contrastive_jit_flip,
-                contrastive_color,
-                unsupervised,
-                label_smooth_eps,
-                resize_step,
-                attention,
-                adversarial_lr,
-                max_chart_loss,
-                angle,
-                aspect,
-                saturation,
-                exposure,
-                hue,
-                power,
-                policy,
-                burn_in,
-                classes,
-            }
-        };
-
-        // build layers
-        let layers: Vec<_> = items_iter
-            .map(|item| {
-                let layer = match item {
-                    Item::Connected(layer) => LayerConfig::Connected(layer),
-                    Item::Convolutional(layer) => LayerConfig::Convolutional(layer),
-                    Item::Route(layer) => LayerConfig::Route(layer),
-                    Item::Shortcut(layer) => LayerConfig::Shortcut(layer),
-                    Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
-                    Item::UpSample(layer) => LayerConfig::UpSample(layer),
-                    Item::Yolo(layer) => {
-                        let YoloConfig {
-                            mask,
-                            max_boxes,
-                            max_delta,
-                            counters_per_class,
-                            label_smooth_eps,
-                            scale_x_y,
-                            objectness_smooth,
-                            iou_normalizer,
-                            obj_normalizer,
-                            cls_normalizer,
-                            delta_normalizer,
-                            iou_loss,
-                            iou_thresh_kind,
-                            beta_nms,
-                            nms_kind,
-                            yolo_point,
-                            jitter,
-                            resize,
-                            focal_loss,
-                            ignore_thresh,
-                            truth_thresh,
-                            iou_thresh,
-                            random,
-                            track_history_size,
-                            sim_thresh,
-                            dets_for_track,
-                            dets_for_show,
-                            track_ciou_norm,
-                            embedding_layer,
-                            map,
-                            anchors,
-                            common,
-                            ..
-                        } = layer;
-
-                        let anchors: Vec<_> = mask
-                            .into_iter()
-                            .map(|index| anchors[index as usize].clone())
-                            .collect();
-
-                        LayerConfig::Yolo(CompoundYoloConfig {
-                            max_boxes,
-                            max_delta,
-                            counters_per_class,
-                            label_smooth_eps,
-                            scale_x_y,
-                            objectness_smooth,
-                            iou_normalizer,
-                            obj_normalizer,
-                            cls_normalizer,
-                            delta_normalizer,
-                            iou_loss,
-                            iou_thresh_kind,
-                            beta_nms,
-                            nms_kind,
-                            yolo_point,
-                            jitter,
-                            resize,
-                            focal_loss,
-                            ignore_thresh,
-                            truth_thresh,
-                            iou_thresh,
-                            random,
-                            track_history_size,
-                            sim_thresh,
-                            dets_for_track,
-                            dets_for_show,
-                            track_ciou_norm,
-                            embedding_layer,
-                            map,
-                            anchors,
-                            common,
-                        })
-                    }
-                    Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
-                    Item::Net(_layer) => bail!("the 'net' layer must appear in the first section"),
-                };
-                Ok(layer)
-            })
-            .try_collect()?;
-
-        Ok(Self { net, layers })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum LayerConfig {
-    #[serde(rename = "connected")]
-    Connected(ConnectedConfig),
-    #[serde(rename = "convolutional")]
-    Convolutional(ConvolutionalConfig),
-    #[serde(rename = "route")]
-    Route(RouteConfig),
-    #[serde(rename = "shortcut")]
-    Shortcut(ShortcutConfig),
-    #[serde(rename = "maxpool")]
-    MaxPool(MaxPoolConfig),
-    #[serde(rename = "upsample")]
-    UpSample(UpSampleConfig),
-    #[serde(rename = "yolo")]
-    Yolo(CompoundYoloConfig),
-    #[serde(rename = "batchnorm")]
-    BatchNorm(BatchNormConfig),
-}
-
-impl LayerConfigEx for LayerConfig {
-    fn common(&self) -> &CommonLayerOptions {
-        match self {
-            LayerConfig::Connected(layer) => layer.common(),
-            LayerConfig::Convolutional(layer) => layer.common(),
-            LayerConfig::Route(layer) => layer.common(),
-            LayerConfig::Shortcut(layer) => layer.common(),
-            LayerConfig::MaxPool(layer) => layer.common(),
-            LayerConfig::UpSample(layer) => layer.common(),
-            LayerConfig::Yolo(layer) => layer.common(),
-            LayerConfig::BatchNorm(layer) => layer.common(),
-        }
-    }
-}
-
-mod items {
+mod darknet_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub enum Item {
-        #[serde(rename = "net")]
-        Net(NetConfig),
-        #[serde(rename = "connected")]
-        Connected(ConnectedConfig),
-        #[serde(rename = "convolutional")]
-        Convolutional(ConvolutionalConfig),
-        #[serde(rename = "route")]
-        Route(RouteConfig),
-        #[serde(rename = "shortcut")]
-        Shortcut(ShortcutConfig),
-        #[serde(rename = "maxpool")]
-        MaxPool(MaxPoolConfig),
-        #[serde(rename = "upsample")]
-        UpSample(UpSampleConfig),
-        #[serde(rename = "yolo")]
-        Yolo(YoloConfig),
-        #[serde(rename = "batchnorm")]
-        BatchNorm(BatchNormConfig),
+    #[serde(try_from = "Vec<Item>", into = "Vec<Item>")]
+    pub struct DarknetConfig {
+        pub net: NetConfig,
+        pub layers: Vec<LayerConfig>,
     }
 
-    impl From<DarknetConfig> for Vec<Item> {
-        fn from(config: DarknetConfig) -> Self {
-            let DarknetConfig {
-                net: orig_net,
-                layers: orig_layers,
-            } = config;
+    impl DarknetConfig {
+        pub fn load<P>(config_file: P) -> Result<Self>
+        where
+            P: AsRef<Path>,
+        {
+            Ok(Self::from_str(&fs::read_to_string(config_file)?)?)
+        }
 
-            // extract global options that will be placed into yolo layers
-            let (net, classes) = {
-                let CompoundNetConfig {
+        pub fn to_string(&self) -> Result<String> {
+            Ok(serde_ini::to_string(self)?)
+        }
+    }
+
+    impl FromStr for DarknetConfig {
+        type Err = Error;
+
+        fn from_str(text: &str) -> Result<Self, Self::Err> {
+            Ok(serde_ini::from_str(text)?)
+        }
+    }
+
+    impl TryFrom<Vec<Item>> for DarknetConfig {
+        type Error = anyhow::Error;
+
+        fn try_from(items: Vec<Item>) -> Result<Self, Self::Error> {
+            // ensure only the first item is "net" item
+            {
+                let mut iter = items.iter();
+                ensure!(
+                    matches!(iter.next(), Some(Item::Net(_))),
+                    "the first item must be [net]"
+                );
+                ensure!(
+                    iter.all(|item| !matches!(item, Item::Net(_))),
+                    "net item must be the first item"
+                );
+            };
+
+            // extract global options from yolo item
+            let classes = {
+                let (classes_vec, anchors_vec) = items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Item::Yolo(yolo) => Some(yolo),
+                        _ => None,
+                    })
+                    .map(|yolo| {
+                        let SerializedYoloConfig {
+                            classes,
+                            ref anchors,
+                            ..
+                        } = *yolo;
+
+                        (classes, anchors)
+                    })
+                    .unzip_n_vec();
+
+                let classes = {
+                    let classes_set: HashSet<_> = classes_vec.iter().cloned().collect();
+                    ensure!(
+                        classes_set.len() == 1,
+                        "the classes of every yolo layer must be equal"
+                    );
+                    classes_vec[0]
+                };
+
+                {
+                    let anchors_set: HashSet<_> = anchors_vec.iter().collect();
+                    ensure!(
+                        anchors_set.len() == 1,
+                        "the anchors of every yolo layer must be equal"
+                    );
+                }
+
+                classes
+            };
+
+            let mut items_iter = items.into_iter();
+
+            // build net item
+            let net = {
+                let net = match items_iter.next().unwrap() {
+                    Item::Net(net) => net,
+                    _ => unreachable!(),
+                };
+
+                let SerializedNetConfig {
+                    max_batches,
+                    batch,
+                    learning_rate,
+                    learning_rate_min,
+                    sgdr_cycle,
+                    sgdr_mult,
+                    momentum,
+                    decay,
+                    subdivisions,
+                    time_steps,
+                    track,
+                    augment_speed,
+                    sequential_subdivisions,
+                    try_fix_nan,
+                    loss_scale,
+                    dynamic_minibatch,
+                    optimized_memory,
+                    workspace_size_limit_mb,
+                    adam,
+                    input_size,
+                    max_crop,
+                    min_crop,
+                    flip,
+                    blur,
+                    gaussian_noise,
+                    mixup,
+                    cutmux,
+                    mosaic,
+                    letter_box,
+                    mosaic_bound,
+                    contrastive,
+                    contrastive_jit_flip,
+                    contrastive_color,
+                    unsupervised,
+                    label_smooth_eps,
+                    resize_step,
+                    attention,
+                    adversarial_lr,
+                    max_chart_loss,
+                    angle,
+                    aspect,
+                    saturation,
+                    exposure,
+                    hue,
+                    power,
+                    policy,
+                    burn_in,
+                } = net;
+
+                NetConfig {
                     max_batches,
                     batch,
                     learning_rate,
@@ -416,175 +213,149 @@ mod items {
                     policy,
                     burn_in,
                     classes,
-                } = orig_net;
-                let net = NetConfig {
-                    max_batches,
-                    batch,
-                    learning_rate,
-                    learning_rate_min,
-                    sgdr_cycle,
-                    sgdr_mult,
-                    momentum,
-                    decay,
-                    subdivisions,
-                    time_steps,
-                    track,
-                    augment_speed,
-                    sequential_subdivisions,
-                    try_fix_nan,
-                    loss_scale,
-                    dynamic_minibatch,
-                    optimized_memory,
-                    workspace_size_limit_mb,
-                    adam,
-                    input_size,
-                    max_crop,
-                    min_crop,
-                    flip,
-                    blur,
-                    gaussian_noise,
-                    mixup,
-                    cutmux,
-                    mosaic,
-                    letter_box,
-                    mosaic_bound,
-                    contrastive,
-                    contrastive_jit_flip,
-                    contrastive_color,
-                    unsupervised,
-                    label_smooth_eps,
-                    resize_step,
-                    attention,
-                    adversarial_lr,
-                    max_chart_loss,
-                    angle,
-                    aspect,
-                    saturation,
-                    exposure,
-                    hue,
-                    power,
-                    policy,
-                    burn_in,
-                };
-
-                (net, classes)
+                }
             };
 
-            let global_anchors: Vec<_> = orig_layers
-                .iter()
-                .filter_map(|layer| match layer {
-                    LayerConfig::Yolo(yolo) => Some(yolo),
-                    _ => None,
-                })
-                .flat_map(|yolo| {
-                    let CompoundYoloConfig { anchors, .. } = yolo;
-                    anchors.iter().cloned()
-                })
-                .collect();
-
-            let items: Vec<_> = iter::once(Item::Net(net))
-                .chain(orig_layers.into_iter().scan(0, |mask_count, layer| {
-                    let item = match layer {
-                        LayerConfig::Connected(layer) => Item::Connected(layer),
-                        LayerConfig::Convolutional(layer) => Item::Convolutional(layer),
-                        LayerConfig::Route(layer) => Item::Route(layer),
-                        LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
-                        LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
-                        LayerConfig::UpSample(layer) => Item::UpSample(layer),
-                        LayerConfig::Yolo(orig_layer) => {
-                            let CompoundYoloConfig {
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                focal_loss,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                track_history_size,
-                                sim_thresh,
-                                dets_for_track,
-                                dets_for_show,
-                                track_ciou_norm,
-                                embedding_layer,
-                                map,
-                                anchors: local_anchors,
-                                common,
-                            } = orig_layer;
-
-                            // build mask list
-                            let mask: IndexSet<_> = {
-                                let num_anchors = local_anchors.len();
-                                let mask_begin = *mask_count;
-                                let mask_end = mask_begin + num_anchors;
-
-                                // update counter
-                                *mask_count += num_anchors;
-
-                                (mask_begin..mask_end).map(|index| index as u64).collect()
-                            };
-
-                            Item::Yolo(YoloConfig {
-                                classes,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                focal_loss,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                track_history_size,
-                                sim_thresh,
-                                dets_for_track,
-                                dets_for_show,
-                                track_ciou_norm,
-                                embedding_layer,
-                                map,
+            // build layers
+            let layers: Vec<_> = items_iter
+                .map(|item| {
+                    let layer = match item {
+                        Item::Connected(layer) => LayerConfig::Connected(layer),
+                        Item::Convolutional(layer) => LayerConfig::Convolutional(layer),
+                        Item::Route(layer) => LayerConfig::Route(layer),
+                        Item::Shortcut(layer) => LayerConfig::Shortcut(layer),
+                        Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
+                        Item::UpSample(layer) => LayerConfig::UpSample(layer),
+                        Item::Yolo(layer) => {
+                            let SerializedYoloConfig {
                                 mask,
-                                anchors: global_anchors.clone(),
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                focal_loss,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                track_history_size,
+                                sim_thresh,
+                                dets_for_track,
+                                dets_for_show,
+                                track_ciou_norm,
+                                embedding_layer,
+                                map,
+                                anchors,
+                                common,
+                                ..
+                            } = layer;
+
+                            let anchors: Vec<_> = mask
+                                .into_iter()
+                                .map(|index| anchors[index as usize].clone())
+                                .collect();
+
+                            LayerConfig::Yolo(YoloConfig {
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                focal_loss,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                track_history_size,
+                                sim_thresh,
+                                dets_for_track,
+                                dets_for_show,
+                                track_ciou_norm,
+                                embedding_layer,
+                                map,
+                                anchors,
                                 common,
                             })
                         }
-                        LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
+                        Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
+                        Item::Net(_layer) => {
+                            bail!("the 'net' layer must appear in the first section")
+                        }
                     };
-                    Some(item)
-                }))
-                .collect();
-            items
+                    Ok(layer)
+                })
+                .try_collect()?;
+
+            Ok(Self { net, layers })
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct CompoundNetConfig {
+    pub enum LayerConfig {
+        #[serde(rename = "connected")]
+        Connected(ConnectedConfig),
+        #[serde(rename = "convolutional")]
+        Convolutional(ConvolutionalConfig),
+        #[serde(rename = "route")]
+        Route(RouteConfig),
+        #[serde(rename = "shortcut")]
+        Shortcut(ShortcutConfig),
+        #[serde(rename = "maxpool")]
+        MaxPool(MaxPoolConfig),
+        #[serde(rename = "upsample")]
+        UpSample(UpSampleConfig),
+        #[serde(rename = "yolo")]
+        Yolo(YoloConfig),
+        #[serde(rename = "batchnorm")]
+        BatchNorm(BatchNormConfig),
+    }
+
+    impl LayerConfigEx for LayerConfig {
+        fn common(&self) -> &CommonLayerOptions {
+            match self {
+                LayerConfig::Connected(layer) => layer.common(),
+                LayerConfig::Convolutional(layer) => layer.common(),
+                LayerConfig::Route(layer) => layer.common(),
+                LayerConfig::Shortcut(layer) => layer.common(),
+                LayerConfig::MaxPool(layer) => layer.common(),
+                LayerConfig::UpSample(layer) => layer.common(),
+                LayerConfig::Yolo(layer) => layer.common(),
+                LayerConfig::BatchNorm(layer) => layer.common(),
+            }
+        }
+    }
+}
+
+mod net_config {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct NetConfig {
         pub max_batches: u64,
         pub batch: u64,
         pub learning_rate: R64,
@@ -635,7 +406,7 @@ mod items {
         pub classes: u64,
     }
 
-    impl CompoundNetConfig {
+    impl NetConfig {
         pub fn iteration(&self, seen: u64) -> u64 {
             seen / (self.batch * self.subdivisions)
         }
@@ -643,7 +414,7 @@ mod items {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(try_from = "RawNetConfig", into = "RawNetConfig")]
-    pub struct NetConfig {
+    pub struct SerializedNetConfig {
         pub max_batches: u64,
         pub batch: u64,
         pub learning_rate: R64,
@@ -693,13 +464,13 @@ mod items {
         pub burn_in: u64,
     }
 
-    impl NetConfig {
+    impl SerializedNetConfig {
         pub fn iteration(&self, seen: u64) -> u64 {
             seen / (self.batch * self.subdivisions)
         }
     }
 
-    impl TryFrom<RawNetConfig> for NetConfig {
+    impl TryFrom<RawNetConfig> for SerializedNetConfig {
         type Error = Error;
 
         fn try_from(raw: RawNetConfig) -> Result<Self, Self::Error> {
@@ -1011,9 +782,9 @@ mod items {
         pub gamma: R64,
     }
 
-    impl From<NetConfig> for RawNetConfig {
-        fn from(net: NetConfig) -> Self {
-            let NetConfig {
+    impl From<SerializedNetConfig> for RawNetConfig {
+        fn from(net: SerializedNetConfig) -> Self {
+            let SerializedNetConfig {
                 max_batches,
                 batch,
                 learning_rate,
@@ -1229,6 +1000,10 @@ mod items {
             }
         }
     }
+}
+
+mod connected_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct ConnectedConfig {
@@ -1247,6 +1022,10 @@ mod items {
             &self.common
         }
     }
+}
+
+mod convolutional_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(try_from = "RawConvolutionalConfig", into = "RawConvolutionalConfig")]
@@ -1530,6 +1309,10 @@ mod items {
             }
         }
     }
+}
+
+mod route_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
@@ -1599,6 +1382,10 @@ mod items {
             }
         }
     }
+}
+
+mod shortcut_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
@@ -1620,6 +1407,10 @@ mod items {
             &self.common
         }
     }
+}
+
+mod max_pool_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(from = "RawMaxPoolConfig", into = "RawMaxPoolConfig")]
@@ -1736,6 +1527,10 @@ mod items {
             }
         }
     }
+}
+
+mod up_sample_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct UpSampleConfig {
@@ -1768,10 +1563,30 @@ mod items {
             &self.common
         }
     }
+}
+
+mod batch_norm_config {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct BatchNormConfig {
+        #[serde(flatten)]
+        pub common: CommonLayerOptions,
+    }
+
+    impl LayerConfigEx for BatchNormConfig {
+        fn common(&self) -> &CommonLayerOptions {
+            &self.common
+        }
+    }
+}
+
+mod yolo_config {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub struct CompoundYoloConfig {
+    pub struct YoloConfig {
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
         pub counters_per_class: Option<Vec<u64>>,
@@ -1805,7 +1620,7 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl LayerConfigEx for CompoundYoloConfig {
+    impl LayerConfigEx for YoloConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
@@ -1814,7 +1629,7 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[serde(try_from = "RawYoloConfig", into = "RawYoloConfig")]
     #[derivative(Hash)]
-    pub struct YoloConfig {
+    pub struct SerializedYoloConfig {
         pub classes: u64,
         #[derivative(Hash(hash_with = "hash_vec_indexset::<u64, _>"))]
         pub mask: IndexSet<u64>,
@@ -1851,7 +1666,7 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl TryFrom<RawYoloConfig> for YoloConfig {
+    impl TryFrom<RawYoloConfig> for SerializedYoloConfig {
         type Error = Error;
 
         fn try_from(from: RawYoloConfig) -> Result<Self, Self::Error> {
@@ -1950,7 +1765,7 @@ mod items {
         }
     }
 
-    impl LayerConfigEx for YoloConfig {
+    impl LayerConfigEx for SerializedYoloConfig {
         fn common(&self) -> &CommonLayerOptions {
             &self.common
         }
@@ -2027,9 +1842,9 @@ mod items {
         pub common: CommonLayerOptions,
     }
 
-    impl From<YoloConfig> for RawYoloConfig {
-        fn from(from: YoloConfig) -> Self {
-            let YoloConfig {
+    impl From<SerializedYoloConfig> for RawYoloConfig {
+        fn from(from: SerializedYoloConfig) -> Self {
+            let SerializedYoloConfig {
                 classes,
                 mask,
                 max_boxes,
@@ -2119,18 +1934,269 @@ mod items {
             }
         }
     }
+}
+
+// mod gaussian_yolo_config {
+//     use super::*;
+
+//     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+//     #[derivative(Hash)]
+//     pub struct GaussianYoloConfig {}
+// }
+
+mod items {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct BatchNormConfig {
-        #[serde(flatten)]
-        pub common: CommonLayerOptions,
+    pub enum Item {
+        #[serde(rename = "net")]
+        Net(SerializedNetConfig),
+        #[serde(rename = "connected")]
+        Connected(ConnectedConfig),
+        #[serde(rename = "convolutional")]
+        Convolutional(ConvolutionalConfig),
+        #[serde(rename = "route")]
+        Route(RouteConfig),
+        #[serde(rename = "shortcut")]
+        Shortcut(ShortcutConfig),
+        #[serde(rename = "maxpool")]
+        MaxPool(MaxPoolConfig),
+        #[serde(rename = "upsample")]
+        UpSample(UpSampleConfig),
+        #[serde(rename = "yolo")]
+        Yolo(SerializedYoloConfig),
+        #[serde(rename = "batchnorm")]
+        BatchNorm(BatchNormConfig),
     }
 
-    impl LayerConfigEx for BatchNormConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
+    impl From<DarknetConfig> for Vec<Item> {
+        fn from(config: DarknetConfig) -> Self {
+            let DarknetConfig {
+                net: orig_net,
+                layers: orig_layers,
+            } = config;
+
+            // extract global options that will be placed into yolo layers
+            let (net, classes) = {
+                let NetConfig {
+                    max_batches,
+                    batch,
+                    learning_rate,
+                    learning_rate_min,
+                    sgdr_cycle,
+                    sgdr_mult,
+                    momentum,
+                    decay,
+                    subdivisions,
+                    time_steps,
+                    track,
+                    augment_speed,
+                    sequential_subdivisions,
+                    try_fix_nan,
+                    loss_scale,
+                    dynamic_minibatch,
+                    optimized_memory,
+                    workspace_size_limit_mb,
+                    adam,
+                    input_size,
+                    max_crop,
+                    min_crop,
+                    flip,
+                    blur,
+                    gaussian_noise,
+                    mixup,
+                    cutmux,
+                    mosaic,
+                    letter_box,
+                    mosaic_bound,
+                    contrastive,
+                    contrastive_jit_flip,
+                    contrastive_color,
+                    unsupervised,
+                    label_smooth_eps,
+                    resize_step,
+                    attention,
+                    adversarial_lr,
+                    max_chart_loss,
+                    angle,
+                    aspect,
+                    saturation,
+                    exposure,
+                    hue,
+                    power,
+                    policy,
+                    burn_in,
+                    classes,
+                } = orig_net;
+                let net = SerializedNetConfig {
+                    max_batches,
+                    batch,
+                    learning_rate,
+                    learning_rate_min,
+                    sgdr_cycle,
+                    sgdr_mult,
+                    momentum,
+                    decay,
+                    subdivisions,
+                    time_steps,
+                    track,
+                    augment_speed,
+                    sequential_subdivisions,
+                    try_fix_nan,
+                    loss_scale,
+                    dynamic_minibatch,
+                    optimized_memory,
+                    workspace_size_limit_mb,
+                    adam,
+                    input_size,
+                    max_crop,
+                    min_crop,
+                    flip,
+                    blur,
+                    gaussian_noise,
+                    mixup,
+                    cutmux,
+                    mosaic,
+                    letter_box,
+                    mosaic_bound,
+                    contrastive,
+                    contrastive_jit_flip,
+                    contrastive_color,
+                    unsupervised,
+                    label_smooth_eps,
+                    resize_step,
+                    attention,
+                    adversarial_lr,
+                    max_chart_loss,
+                    angle,
+                    aspect,
+                    saturation,
+                    exposure,
+                    hue,
+                    power,
+                    policy,
+                    burn_in,
+                };
+
+                (net, classes)
+            };
+
+            let global_anchors: Vec<_> = orig_layers
+                .iter()
+                .filter_map(|layer| match layer {
+                    LayerConfig::Yolo(yolo) => Some(yolo),
+                    _ => None,
+                })
+                .flat_map(|yolo| {
+                    let YoloConfig { anchors, .. } = yolo;
+                    anchors.iter().cloned()
+                })
+                .collect();
+
+            let items: Vec<_> = iter::once(Item::Net(net))
+                .chain(orig_layers.into_iter().scan(0, |mask_count, layer| {
+                    let item = match layer {
+                        LayerConfig::Connected(layer) => Item::Connected(layer),
+                        LayerConfig::Convolutional(layer) => Item::Convolutional(layer),
+                        LayerConfig::Route(layer) => Item::Route(layer),
+                        LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
+                        LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
+                        LayerConfig::UpSample(layer) => Item::UpSample(layer),
+                        LayerConfig::Yolo(orig_layer) => {
+                            let YoloConfig {
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                focal_loss,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                track_history_size,
+                                sim_thresh,
+                                dets_for_track,
+                                dets_for_show,
+                                track_ciou_norm,
+                                embedding_layer,
+                                map,
+                                anchors: local_anchors,
+                                common,
+                            } = orig_layer;
+
+                            // build mask list
+                            let mask: IndexSet<_> = {
+                                let num_anchors = local_anchors.len();
+                                let mask_begin = *mask_count;
+                                let mask_end = mask_begin + num_anchors;
+
+                                // update counter
+                                *mask_count += num_anchors;
+
+                                (mask_begin..mask_end).map(|index| index as u64).collect()
+                            };
+
+                            Item::Yolo(SerializedYoloConfig {
+                                classes,
+                                max_boxes,
+                                max_delta,
+                                counters_per_class,
+                                label_smooth_eps,
+                                scale_x_y,
+                                objectness_smooth,
+                                iou_normalizer,
+                                obj_normalizer,
+                                cls_normalizer,
+                                delta_normalizer,
+                                iou_loss,
+                                iou_thresh_kind,
+                                beta_nms,
+                                nms_kind,
+                                yolo_point,
+                                jitter,
+                                resize,
+                                focal_loss,
+                                ignore_thresh,
+                                truth_thresh,
+                                iou_thresh,
+                                random,
+                                track_history_size,
+                                sim_thresh,
+                                dets_for_track,
+                                dets_for_show,
+                                track_ciou_norm,
+                                embedding_layer,
+                                map,
+                                mask,
+                                anchors: global_anchors.clone(),
+                                common,
+                            })
+                        }
+                        LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
+                    };
+                    Some(item)
+                }))
+                .collect();
+            items
         }
     }
+}
+
+mod misc {
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct CommonLayerOptions {
@@ -2501,22 +2567,6 @@ mod defaults {
         false
     }
 
-    pub fn groups() -> u64 {
-        1
-    }
-
-    pub fn stride() -> u64 {
-        1
-    }
-
-    pub fn dilation() -> u64 {
-        1
-    }
-
-    pub fn angle() -> R64 {
-        R64::new(15.0)
-    }
-
     pub fn max_batches() -> u64 {
         0
     }
@@ -2561,10 +2611,6 @@ mod defaults {
         2
     }
 
-    pub fn loss_scale() -> R64 {
-        R64::new(1.0)
-    }
-
     pub fn workspace_size_limit_mb() -> u64 {
         1024
     }
@@ -2579,6 +2625,26 @@ mod defaults {
 
     pub fn eps() -> R64 {
         R64::new(0.000001)
+    }
+
+    pub fn groups() -> u64 {
+        1
+    }
+
+    pub fn stride() -> u64 {
+        1
+    }
+
+    pub fn dilation() -> u64 {
+        1
+    }
+
+    pub fn angle() -> R64 {
+        R64::new(15.0)
+    }
+
+    pub fn loss_scale() -> R64 {
+        R64::new(1.0)
     }
 
     pub fn mixup() -> MixUp {

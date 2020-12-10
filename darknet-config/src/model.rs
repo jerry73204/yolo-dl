@@ -1,9 +1,9 @@
 use crate::{
     common::*,
     config::{
-        BatchNormConfig, CompoundNetConfig, CompoundYoloConfig, ConnectedConfig,
-        ConvolutionalConfig, DarknetConfig, LayerConfig, LayerIndex, MaxPoolConfig, RouteConfig,
-        Shape, ShortcutConfig, UpSampleConfig,
+        BatchNormConfig, ConnectedConfig, ConvolutionalConfig, DarknetConfig, LayerConfig,
+        LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape, ShortcutConfig, UpSampleConfig,
+        YoloConfig,
     },
     utils::DisplayAsDebug,
 };
@@ -12,7 +12,7 @@ use crate::{
 pub struct ModelBase {
     pub seen: u64,
     pub cur_iteration: u64,
-    pub net: CompoundNetConfig,
+    pub net: NetConfig,
     pub layers: IndexMap<usize, LayerBase>,
 }
 
@@ -30,7 +30,7 @@ impl ModelBase {
         // load config file
         let DarknetConfig {
             net:
-                CompoundNetConfig {
+                NetConfig {
                     input_size: model_input_shape,
                     classes: num_classes,
                     ..
@@ -294,7 +294,7 @@ impl ModelBase {
                         LayerConfig::Yolo(conf) => {
                             let [in_h, in_w, in_c] = hwc_input_shape(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
-                            let CompoundYoloConfig {
+                            let YoloConfig {
                                 anchors, ..
                             } = conf;
 
@@ -703,7 +703,13 @@ declare_layer_base_inout_shape!(
     [u64; 3],
     [u64; 3]
 );
-declare_layer_base_single_shape!(YoloLayerBase, CompoundYoloConfig, LayerPosition, [u64; 3]);
+declare_layer_base_single_shape!(YoloLayerBase, YoloConfig, LayerPosition, [u64; 3]);
+// declare_layer_base_single_shape!(
+//     GaussianYoloLayerBase,
+//     GaussianYoloConfig,
+//     LayerPosition,
+//     [u64; 3]
+// );
 declare_layer_base_single_shape!(BatchNormLayerBase, BatchNormConfig, LayerPosition, [u64; 3]);
 
 impl From<ConnectedLayerBase> for LayerBase {

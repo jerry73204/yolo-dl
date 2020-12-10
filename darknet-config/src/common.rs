@@ -44,3 +44,7 @@ pub use tch_goodies::{
 };
 pub use tch_tensor_like::TensorLike;
 pub use unzip_n::unzip_n;
+
+unzip_n!(pub 2);
+unzip_n!(pub 3);
+unzip_n!(pub 7);

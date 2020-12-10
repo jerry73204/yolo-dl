@@ -29,7 +29,3 @@ where
         self.0.fmt(f)
     }
 }
-
-unzip_n!(pub 2);
-unzip_n!(pub 3);
-unzip_n!(pub 7);
