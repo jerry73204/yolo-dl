@@ -1918,17 +1918,20 @@ mod items {
                 (net, classes)
             };
 
-            // FIXME
             let global_anchors: Vec<_> = orig_layers
                 .iter()
                 .filter_map(|layer| match layer {
-                    LayerConfig::Yolo(yolo) => Some(yolo),
+                    LayerConfig::Yolo(yolo) => {
+                        let YoloConfig { anchors, .. } = yolo;
+                        Some(anchors)
+                    }
+                    LayerConfig::GaussianYolo(yolo) => {
+                        let GaussianYoloConfig { anchors, .. } = yolo;
+                        Some(anchors)
+                    }
                     _ => None,
                 })
-                .flat_map(|yolo| {
-                    let YoloConfig { anchors, .. } = yolo;
-                    anchors.iter().cloned()
-                })
+                .flat_map(|anchors| anchors.iter().cloned())
                 .collect();
 
             let items: Vec<_> = {
