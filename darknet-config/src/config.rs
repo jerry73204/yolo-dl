@@ -4,6 +4,7 @@ pub use batch_norm_config::*;
 pub use connected_config::*;
 pub use convolutional_config::*;
 pub use darknet_config::*;
+pub use dropout_config::*;
 pub use gaussian_yolo_config::*;
 pub use items::*;
 pub use max_pool_config::*;
@@ -320,6 +321,8 @@ mod darknet_config {
                         Item::Shortcut(layer) => LayerConfig::Shortcut(layer),
                         Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
                         Item::UpSample(layer) => LayerConfig::UpSample(layer),
+                        Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
+                        Item::Dropout(layer) => LayerConfig::Dropout(layer),
                         Item::GaussianYolo(layer) => {
                             let RawGaussianYoloConfig {
                                 classes,
@@ -490,7 +493,6 @@ mod darknet_config {
                                 common,
                             })
                         }
-                        Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
                         Item::Net(_layer) => {
                             bail!("the 'net' layer must appear in the first section")
                         }
@@ -519,6 +521,8 @@ mod darknet_config {
         UpSample(UpSampleConfig),
         #[serde(rename = "batchnorm")]
         BatchNorm(BatchNormConfig),
+        #[serde(rename = "dropout")]
+        Dropout(DropoutConfig),
         #[serde(rename = "yolo")]
         Yolo(YoloConfig),
         #[serde(rename = "Gaussian_yolo")]
@@ -535,6 +539,7 @@ mod darknet_config {
                 LayerConfig::MaxPool(layer) => &layer.common,
                 LayerConfig::UpSample(layer) => &layer.common,
                 LayerConfig::BatchNorm(layer) => &layer.common,
+                LayerConfig::Dropout(layer) => &layer.common,
                 LayerConfig::Yolo(layer) => &layer.common,
                 LayerConfig::GaussianYolo(layer) => &layer.common,
             }
@@ -1470,6 +1475,90 @@ mod gaussian_yolo_config {
     }
 }
 
+mod dropout_config {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(try_from = "RawDropoutConfig", into = "RawDropoutConfig")]
+    pub struct DropoutConfig {
+        pub probability: R64,
+        pub dropblock: DropBlock,
+        pub common: CommonLayerOptions,
+    }
+
+    impl TryFrom<RawDropoutConfig> for DropoutConfig {
+        type Error = Error;
+
+        fn try_from(from: RawDropoutConfig) -> Result<Self, Self::Error> {
+            let RawDropoutConfig {
+                probability,
+                dropblock,
+                dropblock_size_rel,
+                dropblock_size_abs,
+                common,
+            } = from;
+
+            let dropblock = match (dropblock, dropblock_size_rel, dropblock_size_abs) {
+                (false, None, None) => DropBlock::None,
+                (false, _, _) => bail!("neigher dropblock_size_rel nor dropblock_size_abs should be specified when dropblock is disabled"),
+                (true, None, None) => bail!("dropblock is enabled, but none of dropblock_size_rel and dropblock_size_abs is specified"),
+                (true, Some(val), None) => DropBlock::Relative(val),
+                (true, None, Some(val)) => DropBlock::Absolute(val),
+                (true, Some(_), Some(_)) => bail!("dropblock_size_rel and dropblock_size_abs cannot be specified together"),
+            };
+
+            Ok(Self {
+                probability,
+                dropblock,
+                common,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct RawDropoutConfig {
+        #[serde(default = "defaults::probability")]
+        pub probability: R64,
+        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        pub dropblock: bool,
+        pub dropblock_size_rel: Option<R64>,
+        pub dropblock_size_abs: Option<R64>,
+        #[serde(flatten)]
+        pub common: CommonLayerOptions,
+    }
+
+    impl From<DropoutConfig> for RawDropoutConfig {
+        fn from(from: DropoutConfig) -> Self {
+            let DropoutConfig {
+                probability,
+                dropblock,
+                common,
+            } = from;
+
+            let (dropblock, dropblock_size_rel, dropblock_size_abs) = match dropblock {
+                DropBlock::None => (false, None, None),
+                DropBlock::Relative(val) => (false, Some(val), None),
+                DropBlock::Absolute(val) => (false, None, Some(val)),
+            };
+
+            Self {
+                probability,
+                dropblock,
+                dropblock_size_rel,
+                dropblock_size_abs,
+                common,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum DropBlock {
+        None,
+        Absolute(R64),
+        Relative(R64),
+    }
+}
+
 mod items {
     use super::*;
 
@@ -1491,6 +1580,8 @@ mod items {
         UpSample(UpSampleConfig),
         #[serde(rename = "batchnorm")]
         BatchNorm(BatchNormConfig),
+        #[serde(rename = "dropout")]
+        Dropout(DropoutConfig),
         #[serde(rename = "Gaussian_yolo")]
         GaussianYolo(RawGaussianYoloConfig),
         #[serde(rename = "yolo")]
@@ -1748,6 +1839,7 @@ mod items {
                         LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
                         LayerConfig::UpSample(layer) => Item::UpSample(layer),
                         LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
+                        LayerConfig::Dropout(layer) => Item::Dropout(layer),
                         LayerConfig::Yolo(orig_layer) => {
                             let YoloConfig {
                                 max_boxes,
@@ -2600,6 +2692,10 @@ mod defaults {
 
     pub fn learning_scale_scale() -> R64 {
         R64::new(1.0)
+    }
+
+    pub fn probability() -> R64 {
+        R64::new(0.2)
     }
 }
 
