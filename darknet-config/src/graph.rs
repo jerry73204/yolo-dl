@@ -3,7 +3,7 @@ use crate::{
     config::{
         BatchNormConfig, ConnectedConfig, ConvolutionalConfig, DarknetConfig, DropoutConfig,
         GaussianYoloConfig, LayerConfig, LayerIndex, MaxPoolConfig, NetConfig, RouteConfig, Shape,
-        ShortcutConfig, UpSampleConfig, YoloConfig,
+        ShortcutConfig, SoftmaxConfig, UpSampleConfig, YoloConfig,
     },
     utils::DisplayAsDebug,
 };
@@ -50,6 +50,7 @@ impl Graph {
                     | LayerConfig::MaxPool(_)
                     | LayerConfig::UpSample(_)
                     | LayerConfig::Dropout(_)
+                    | LayerConfig::Softmax(_)
                     | LayerConfig::GaussianYolo(_)
                     | LayerConfig::Yolo(_) => {
                         if layer_index == 0 {
@@ -273,6 +274,12 @@ impl Graph {
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
+                        LayerConfig::Softmax(_conf) => {
+                            let input_shape = hwc_input_shape(from_index)
+                                .ok_or_else(|| format_err!("invalid shape"))?;
+                            let output_shape = input_shape;
+                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                        }
                         LayerConfig::Route(conf) => {
                             let RouteConfig { group, .. } = conf;
 
@@ -438,6 +445,17 @@ impl Graph {
                                 inout_shape: input_shape,
                             })
                         }
+                        LayerConfig::Softmax(conf) => {
+                            let input_shape = input_shape.single_hwc().unwrap();
+                            let output_shape = output_shape.hwc().unwrap();
+                            debug_assert_eq!(input_shape, output_shape);
+
+                            Node::Softmax(SoftmaxNode {
+                                config: conf,
+                                from_indexes: from_indexes.single().unwrap(),
+                                inout_shape: input_shape,
+                            })
+                        }
                         LayerConfig::Yolo(conf) => {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
@@ -487,6 +505,7 @@ impl Graph {
                     Node::MaxPool(_) => "max_pool",
                     Node::Route(_) => "route",
                     Node::UpSample(_) => "up_sample",
+                    Node::Softmax(_) => "softmax",
                     Node::Yolo(_) => "yolo",
                     Node::GaussianYolo(_) => "gaussian_yolo",
                 };
@@ -648,6 +667,7 @@ pub enum Node {
     UpSample(UpSampleNode),
     BatchNorm(BatchNormNode),
     Dropout(DropoutNode),
+    Softmax(SoftmaxNode),
     Yolo(YoloNode),
     GaussianYolo(GaussianYoloNode),
 }
@@ -663,6 +683,7 @@ impl Node {
             Self::UpSample(layer) => ShapeList::SingleHwc(layer.input_shape),
             Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.inout_shape),
             Self::Dropout(layer) => ShapeList::SingleHwc(layer.inout_shape),
+            Self::Softmax(layer) => ShapeList::SingleHwc(layer.inout_shape),
             Self::Yolo(layer) => ShapeList::SingleHwc(layer.inout_shape),
             Self::GaussianYolo(layer) => ShapeList::SingleHwc(layer.inout_shape),
         }
@@ -678,6 +699,7 @@ impl Node {
             Self::UpSample(layer) => Shape::Hwc(layer.output_shape),
             Self::BatchNorm(layer) => Shape::Hwc(layer.inout_shape),
             Self::Dropout(layer) => Shape::Hwc(layer.inout_shape),
+            Self::Softmax(layer) => Shape::Hwc(layer.inout_shape),
             Self::Yolo(layer) => Shape::Hwc(layer.inout_shape),
             Self::GaussianYolo(layer) => Shape::Hwc(layer.inout_shape),
         }
@@ -693,6 +715,7 @@ impl Node {
             Self::UpSample(layer) => LayerPositionSet::Single(layer.from_indexes),
             Self::BatchNorm(layer) => LayerPositionSet::Single(layer.from_indexes),
             Self::Dropout(layer) => LayerPositionSet::Single(layer.from_indexes),
+            Self::Softmax(layer) => LayerPositionSet::Single(layer.from_indexes),
             Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
             Self::GaussianYolo(layer) => LayerPositionSet::Single(layer.from_indexes),
         }
@@ -767,6 +790,7 @@ declare_layer_base_single_shape!(
 );
 declare_layer_base_single_shape!(BatchNormNode, BatchNormConfig, LayerPosition, [u64; 3]);
 declare_layer_base_single_shape!(DropoutNode, DropoutConfig, LayerPosition, [u64; 3]);
+declare_layer_base_single_shape!(SoftmaxNode, SoftmaxConfig, LayerPosition, [u64; 3]);
 
 impl From<ConnectedNode> for Node {
     fn from(from: ConnectedNode) -> Self {

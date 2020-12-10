@@ -12,6 +12,7 @@ pub use misc::*;
 pub use net_config::*;
 pub use route_config::*;
 pub use shortcut_config::*;
+pub use softmax_config::*;
 pub use up_sample_config::*;
 pub use yolo_config::*;
 
@@ -19,7 +20,7 @@ mod darknet_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "Vec<Item>", into = "Vec<Item>")]
+    #[serde(try_from = "Vec<Item>")]
     pub struct DarknetConfig {
         pub net: NetConfig,
         pub layers: Vec<LayerConfig>,
@@ -323,6 +324,7 @@ mod darknet_config {
                         Item::UpSample(layer) => LayerConfig::UpSample(layer),
                         Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
                         Item::Dropout(layer) => LayerConfig::Dropout(layer),
+                        Item::Softmax(layer) => LayerConfig::Softmax(layer.try_into()?),
                         Item::GaussianYolo(layer) => {
                             let RawGaussianYoloConfig {
                                 classes,
@@ -523,6 +525,8 @@ mod darknet_config {
         BatchNorm(BatchNormConfig),
         #[serde(rename = "dropout")]
         Dropout(DropoutConfig),
+        #[serde(rename = "dropout")]
+        Softmax(SoftmaxConfig),
         #[serde(rename = "yolo")]
         Yolo(YoloConfig),
         #[serde(rename = "Gaussian_yolo")]
@@ -540,6 +544,7 @@ mod darknet_config {
                 LayerConfig::UpSample(layer) => &layer.common,
                 LayerConfig::BatchNorm(layer) => &layer.common,
                 LayerConfig::Dropout(layer) => &layer.common,
+                LayerConfig::Softmax(layer) => &layer.common,
                 LayerConfig::Yolo(layer) => &layer.common,
                 LayerConfig::GaussianYolo(layer) => &layer.common,
             }
@@ -1559,6 +1564,98 @@ mod dropout_config {
     }
 }
 
+mod softmax_config {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct SoftmaxConfig {
+        pub groups: u64,
+        pub temperature: R64,
+        pub tree: Option<(PathBuf, Tree)>,
+        pub spatial: R64,
+        pub noloss: bool,
+        pub common: CommonLayerOptions,
+    }
+
+    impl TryFrom<RawSoftmaxConfig> for SoftmaxConfig {
+        type Error = Error;
+
+        fn try_from(from: RawSoftmaxConfig) -> Result<Self, Self::Error> {
+            let RawSoftmaxConfig {
+                groups,
+                temperature,
+                tree_file,
+                spatial,
+                noloss,
+                common,
+            } = from;
+
+            let tree = tree_file
+                .map(|path| -> Result<_> {
+                    unimplemented!();
+                })
+                .transpose()?;
+
+            Ok(Self {
+                groups,
+                temperature,
+                tree,
+                spatial,
+                noloss,
+                common,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct RawSoftmaxConfig {
+        #[serde(default = "defaults::softmax_groups")]
+        pub groups: u64,
+        #[serde(default = "defaults::temperature")]
+        pub temperature: R64,
+        pub tree_file: Option<PathBuf>,
+        #[serde(default = "defaults::spatial")]
+        pub spatial: R64,
+        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        pub noloss: bool,
+        #[serde(flatten)]
+        pub common: CommonLayerOptions,
+    }
+
+    impl TryFrom<SoftmaxConfig> for RawSoftmaxConfig {
+        type Error = Error;
+
+        fn try_from(from: SoftmaxConfig) -> Result<Self, Self::Error> {
+            let SoftmaxConfig {
+                groups,
+                temperature,
+                tree,
+                spatial,
+                noloss,
+                common,
+            } = from;
+
+            let tree_file = tree
+                .map(|(path, tree)| -> Result<_> {
+                    unimplemented!();
+                })
+                .transpose()?;
+
+            Ok(Self {
+                groups,
+                temperature,
+                tree_file,
+                spatial,
+                noloss,
+                common,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct Tree {}
+}
+
 mod items {
     use super::*;
 
@@ -1582,14 +1679,18 @@ mod items {
         BatchNorm(BatchNormConfig),
         #[serde(rename = "dropout")]
         Dropout(DropoutConfig),
+        #[serde(rename = "softmax")]
+        Softmax(RawSoftmaxConfig),
         #[serde(rename = "Gaussian_yolo")]
         GaussianYolo(RawGaussianYoloConfig),
         #[serde(rename = "yolo")]
         Yolo(RawYoloConfig),
     }
 
-    impl From<DarknetConfig> for Vec<Item> {
-        fn from(config: DarknetConfig) -> Self {
+    impl TryFrom<DarknetConfig> for Vec<Item> {
+        type Error = Error;
+
+        fn try_from(config: DarknetConfig) -> Result<Self, Self::Error> {
             let DarknetConfig {
                 net: orig_net,
                 layers: orig_layers,
@@ -1817,6 +1918,7 @@ mod items {
                 (net, classes)
             };
 
+            // FIXME
             let global_anchors: Vec<_> = orig_layers
                 .iter()
                 .filter_map(|layer| match layer {
@@ -1829,210 +1931,217 @@ mod items {
                 })
                 .collect();
 
-            let items: Vec<_> = iter::once(Item::Net(net))
-                .chain(orig_layers.into_iter().scan(0, |mask_count, layer| {
-                    let item = match layer {
-                        LayerConfig::Connected(layer) => Item::Connected(layer),
-                        LayerConfig::Convolutional(layer) => Item::Convolutional(layer),
-                        LayerConfig::Route(layer) => Item::Route(layer),
-                        LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
-                        LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
-                        LayerConfig::UpSample(layer) => Item::UpSample(layer),
-                        LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
-                        LayerConfig::Dropout(layer) => Item::Dropout(layer),
-                        LayerConfig::Yolo(orig_layer) => {
-                            let YoloConfig {
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                focal_loss,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                track_history_size,
-                                sim_thresh,
-                                dets_for_track,
-                                dets_for_show,
-                                track_ciou_norm,
-                                embedding_layer,
-                                map,
-                                anchors: local_anchors,
-                                common,
-                            } = orig_layer;
+            let items: Vec<_> = {
+                let mut mask_count = 0;
 
-                            // build mask list
-                            let mask: IndexSet<_> = {
-                                let num_anchors = local_anchors.len();
-                                let mask_begin = *mask_count;
-                                let mask_end = mask_begin + num_anchors;
+                iter::once(Ok(Item::Net(net)))
+                    .chain(orig_layers.into_iter().map(|layer| -> Result<_> {
+                        let item = match layer {
+                            LayerConfig::Connected(layer) => Item::Connected(layer),
+                            LayerConfig::Convolutional(layer) => Item::Convolutional(layer),
+                            LayerConfig::Route(layer) => Item::Route(layer),
+                            LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
+                            LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
+                            LayerConfig::UpSample(layer) => Item::UpSample(layer),
+                            LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
+                            LayerConfig::Dropout(layer) => Item::Dropout(layer),
+                            LayerConfig::Softmax(layer) => Item::Softmax(layer.try_into()?),
+                            LayerConfig::Yolo(orig_layer) => {
+                                let YoloConfig {
+                                    max_boxes,
+                                    max_delta,
+                                    counters_per_class,
+                                    label_smooth_eps,
+                                    scale_x_y,
+                                    objectness_smooth,
+                                    iou_normalizer,
+                                    obj_normalizer,
+                                    cls_normalizer,
+                                    delta_normalizer,
+                                    iou_loss,
+                                    iou_thresh_kind,
+                                    beta_nms,
+                                    nms_kind,
+                                    yolo_point,
+                                    jitter,
+                                    resize,
+                                    focal_loss,
+                                    ignore_thresh,
+                                    truth_thresh,
+                                    iou_thresh,
+                                    random,
+                                    track_history_size,
+                                    sim_thresh,
+                                    dets_for_track,
+                                    dets_for_show,
+                                    track_ciou_norm,
+                                    embedding_layer,
+                                    map,
+                                    anchors: local_anchors,
+                                    common,
+                                } = orig_layer;
 
-                                // update counter
-                                *mask_count += num_anchors;
+                                // build mask list
+                                let mask: IndexSet<_> = {
+                                    let num_anchors = local_anchors.len();
+                                    let mask_begin = mask_count;
+                                    let mask_end = mask_begin + num_anchors;
 
-                                (mask_begin..mask_end).map(|index| index as u64).collect()
-                            };
+                                    // update counter
+                                    mask_count += num_anchors;
 
-                            // make sure mask indexes are valid
-                            assert!(
-                                mask.iter()
-                                    .cloned()
-                                    .all(|index| (index as usize) < global_anchors.len()),
-                                "mask indexes must not exceed total number of anchors"
-                            );
+                                    (mask_begin..mask_end).map(|index| index as u64).collect()
+                                };
 
-                            let num = global_anchors.len() as u64;
-                            let mask = if mask.is_empty() { None } else { Some(mask) };
-                            let anchors = if global_anchors.is_empty() {
-                                None
-                            } else {
-                                Some(global_anchors.clone())
-                            };
+                                // make sure mask indexes are valid
+                                assert!(
+                                    mask.iter()
+                                        .cloned()
+                                        .all(|index| (index as usize) < global_anchors.len()),
+                                    "mask indexes must not exceed total number of anchors"
+                                );
 
-                            Item::Yolo(RawYoloConfig {
-                                classes,
-                                num,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                focal_loss,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                track_history_size,
-                                sim_thresh,
-                                dets_for_track,
-                                dets_for_show,
-                                track_ciou_norm,
-                                embedding_layer,
-                                map,
-                                mask,
-                                anchors,
-                                common,
-                            })
-                        }
-                        LayerConfig::GaussianYolo(orig_layer) => {
-                            let GaussianYoloConfig {
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                uc_normalizer,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                map,
-                                anchors: local_anchors,
-                                common,
-                            } = orig_layer;
+                                let num = global_anchors.len() as u64;
+                                let mask = if mask.is_empty() { None } else { Some(mask) };
+                                let anchors = if global_anchors.is_empty() {
+                                    None
+                                } else {
+                                    Some(global_anchors.clone())
+                                };
 
-                            // build mask list
-                            let mask: IndexSet<_> = {
-                                let num_anchors = local_anchors.len();
-                                let mask_begin = *mask_count;
-                                let mask_end = mask_begin + num_anchors;
+                                Item::Yolo(RawYoloConfig {
+                                    classes,
+                                    num,
+                                    max_boxes,
+                                    max_delta,
+                                    counters_per_class,
+                                    label_smooth_eps,
+                                    scale_x_y,
+                                    objectness_smooth,
+                                    iou_normalizer,
+                                    obj_normalizer,
+                                    cls_normalizer,
+                                    delta_normalizer,
+                                    iou_loss,
+                                    iou_thresh_kind,
+                                    beta_nms,
+                                    nms_kind,
+                                    yolo_point,
+                                    jitter,
+                                    resize,
+                                    focal_loss,
+                                    ignore_thresh,
+                                    truth_thresh,
+                                    iou_thresh,
+                                    random,
+                                    track_history_size,
+                                    sim_thresh,
+                                    dets_for_track,
+                                    dets_for_show,
+                                    track_ciou_norm,
+                                    embedding_layer,
+                                    map,
+                                    mask,
+                                    anchors,
+                                    common,
+                                })
+                            }
+                            LayerConfig::GaussianYolo(orig_layer) => {
+                                let GaussianYoloConfig {
+                                    max_boxes,
+                                    max_delta,
+                                    counters_per_class,
+                                    label_smooth_eps,
+                                    scale_x_y,
+                                    objectness_smooth,
+                                    uc_normalizer,
+                                    iou_normalizer,
+                                    obj_normalizer,
+                                    cls_normalizer,
+                                    delta_normalizer,
+                                    iou_loss,
+                                    iou_thresh_kind,
+                                    beta_nms,
+                                    nms_kind,
+                                    yolo_point,
+                                    jitter,
+                                    resize,
+                                    ignore_thresh,
+                                    truth_thresh,
+                                    iou_thresh,
+                                    random,
+                                    map,
+                                    anchors: local_anchors,
+                                    common,
+                                } = orig_layer;
 
-                                // update counter
-                                *mask_count += num_anchors;
+                                // build mask list
+                                let mask: IndexSet<_> = {
+                                    let num_anchors = local_anchors.len();
+                                    let mask_begin = mask_count;
+                                    let mask_end = mask_begin + num_anchors;
 
-                                (mask_begin..mask_end).map(|index| index as u64).collect()
-                            };
+                                    // update counter
+                                    mask_count += num_anchors;
 
-                            // make sure mask indexes are valid
-                            assert!(
-                                mask.iter()
-                                    .cloned()
-                                    .all(|index| (index as usize) < global_anchors.len()),
-                                "mask indexes must not exceed total number of anchors"
-                            );
+                                    (mask_begin..mask_end).map(|index| index as u64).collect()
+                                };
 
-                            let num = global_anchors.len() as u64;
-                            let mask = if mask.is_empty() { None } else { Some(mask) };
-                            let anchors = if global_anchors.is_empty() {
-                                None
-                            } else {
-                                Some(global_anchors.clone())
-                            };
+                                // make sure mask indexes are valid
+                                assert!(
+                                    mask.iter()
+                                        .cloned()
+                                        .all(|index| (index as usize) < global_anchors.len()),
+                                    "mask indexes must not exceed total number of anchors"
+                                );
 
-                            Item::GaussianYolo(RawGaussianYoloConfig {
-                                classes,
-                                num,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                uc_normalizer,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                map,
-                                mask,
-                                anchors,
-                                common,
-                            })
-                        }
-                    };
-                    Some(item)
-                }))
-                .collect();
-            items
+                                let num = global_anchors.len() as u64;
+                                let mask = if mask.is_empty() { None } else { Some(mask) };
+                                let anchors = if global_anchors.is_empty() {
+                                    None
+                                } else {
+                                    Some(global_anchors.clone())
+                                };
+
+                                Item::GaussianYolo(RawGaussianYoloConfig {
+                                    classes,
+                                    num,
+                                    max_boxes,
+                                    max_delta,
+                                    counters_per_class,
+                                    label_smooth_eps,
+                                    scale_x_y,
+                                    objectness_smooth,
+                                    uc_normalizer,
+                                    iou_normalizer,
+                                    obj_normalizer,
+                                    cls_normalizer,
+                                    delta_normalizer,
+                                    iou_loss,
+                                    iou_thresh_kind,
+                                    beta_nms,
+                                    nms_kind,
+                                    yolo_point,
+                                    jitter,
+                                    resize,
+                                    ignore_thresh,
+                                    truth_thresh,
+                                    iou_thresh,
+                                    random,
+                                    map,
+                                    mask,
+                                    anchors,
+                                    common,
+                                })
+                            }
+                        };
+
+                        Ok(item)
+                    }))
+                    .try_collect()?
+            };
+
+            Ok(items)
         }
     }
 }
@@ -2696,6 +2805,18 @@ mod defaults {
 
     pub fn probability() -> R64 {
         R64::new(0.2)
+    }
+
+    pub fn softmax_groups() -> u64 {
+        1
+    }
+
+    pub fn temperature() -> R64 {
+        R64::new(1.0)
+    }
+
+    pub fn spatial() -> R64 {
+        R64::new(0.0)
     }
 }
 
