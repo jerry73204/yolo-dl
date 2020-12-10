@@ -67,17 +67,25 @@ mod darknet_config {
                 let (classes_vec, anchors_vec) = items
                     .iter()
                     .filter_map(|item| match item {
-                        Item::Yolo(yolo) => Some(yolo),
-                        _ => None,
-                    })
-                    .map(|yolo| {
-                        let RawYoloConfig {
-                            classes,
-                            ref anchors,
-                            ..
-                        } = *yolo;
+                        Item::Yolo(yolo) => {
+                            let RawYoloConfig {
+                                classes,
+                                ref anchors,
+                                ..
+                            } = *yolo;
 
-                        (classes, anchors)
+                            Some((classes, anchors))
+                        }
+                        Item::GaussianYolo(yolo) => {
+                            let RawGaussianYoloConfig {
+                                classes,
+                                ref anchors,
+                                ..
+                            } = *yolo;
+
+                            Some((classes, anchors))
+                        }
+                        _ => None,
                     })
                     .unzip_n_vec();
 
