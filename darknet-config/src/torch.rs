@@ -6,10 +6,10 @@ use crate::{
         YoloConfig,
     },
     darknet::{self, DarknetModel},
-    model::{
-        BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, GaussianYoloLayerBase,
-        LayerBase, LayerPosition, LayerPositionSet, MaxPoolLayerBase, ModelBase, RouteLayerBase,
-        ShapeList, ShortcutLayerBase, UpSampleLayerBase, YoloLayerBase,
+    graph::{
+        BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, LayerPosition,
+        LayerPositionSet, MaxPoolNode, Node, RouteNode, ShapeList, ShortcutNode, UpSampleNode,
+        YoloNode,
     },
 };
 use tch::{nn, Kind, Tensor};
@@ -93,7 +93,7 @@ mod tch_model {
 
     #[derive(Debug)]
     pub struct TchModel {
-        pub base: ModelBase,
+        pub base: Graph,
         pub layers: IndexMap<usize, Layer>,
     }
 
@@ -124,7 +124,7 @@ mod tch_model {
             let path = path.borrow();
             let DarknetModel {
                 base:
-                    ModelBase {
+                    Graph {
                         net:
                             NetConfig {
                                 classes: num_classes,
@@ -358,23 +358,15 @@ mod layer {
         }
     }
 
-    declare_tch_layer!(ConnectedLayer, ConnectedLayerBase, ConnectedWeights);
-    declare_tch_layer!(
-        ConvolutionalLayer,
-        ConvolutionalLayerBase,
-        ConvolutionalWeights
-    );
-    declare_tch_layer!(BatchNormLayer, BatchNormLayerBase, BatchNormWeights);
-    declare_tch_layer!(ShortcutLayer, ShortcutLayerBase, ShortcutWeights);
-    declare_tch_layer!(RouteLayer, RouteLayerBase, RouteWeights);
-    declare_tch_layer!(MaxPoolLayer, MaxPoolLayerBase, MaxPoolWeights);
-    declare_tch_layer!(UpSampleLayer, UpSampleLayerBase, UpSampleWeights);
-    declare_tch_layer!(YoloLayer, YoloLayerBase, YoloWeights);
-    declare_tch_layer!(
-        GaussianYoloLayer,
-        GaussianYoloLayerBase,
-        GaussianYoloWeights
-    );
+    declare_tch_layer!(ConnectedLayer, ConnectedNode, ConnectedWeights);
+    declare_tch_layer!(ConvolutionalLayer, ConvolutionalNode, ConvolutionalWeights);
+    declare_tch_layer!(BatchNormLayer, BatchNormNode, BatchNormWeights);
+    declare_tch_layer!(ShortcutLayer, ShortcutNode, ShortcutWeights);
+    declare_tch_layer!(RouteLayer, RouteNode, RouteWeights);
+    declare_tch_layer!(MaxPoolLayer, MaxPoolNode, MaxPoolWeights);
+    declare_tch_layer!(UpSampleLayer, UpSampleNode, UpSampleWeights);
+    declare_tch_layer!(YoloLayer, YoloNode, YoloWeights);
+    declare_tch_layer!(GaussianYoloLayer, GaussianYoloNode, GaussianYoloWeights);
 
     impl From<ConnectedLayer> for Layer {
         fn from(from: ConnectedLayer) -> Self {
@@ -438,7 +430,7 @@ mod layer {
             let path = path.borrow();
             let darknet::ConnectedLayer {
                 base:
-                    ConnectedLayerBase {
+                    ConnectedNode {
                         input_shape,
                         output_shape,
                         ..
@@ -511,7 +503,7 @@ mod layer {
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
                 base:
-                    ConnectedLayerBase {
+                    ConnectedNode {
                         config: ConnectedConfig { activation, .. },
                         ..
                     },
@@ -542,7 +534,7 @@ mod layer {
             let path = path.borrow();
             let darknet::ConvolutionalLayer {
                 base:
-                    ConvolutionalLayerBase {
+                    ConvolutionalNode {
                         ref config,
                         input_shape,
                         output_shape,
@@ -670,7 +662,7 @@ mod layer {
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
                 base:
-                    ConvolutionalLayerBase {
+                    ConvolutionalNode {
                         config: ConvolutionalConfig { activation, .. },
                         ..
                     },
@@ -698,7 +690,7 @@ mod layer {
             let path = path.borrow();
             let darknet::BatchNormLayer {
                 base:
-                    BatchNormLayerBase {
+                    BatchNormNode {
                         inout_shape: [_h, _w, in_c],
                         ..
                     },
@@ -756,7 +748,7 @@ mod layer {
             let path = path.borrow();
             let darknet::ShortcutLayer {
                 base:
-                    ShortcutLayerBase {
+                    ShortcutNode {
                         ref from_indexes,
                         ref input_shape,
                         output_shape,
@@ -816,7 +808,7 @@ mod layer {
         {
             let Self {
                 base:
-                    ShortcutLayerBase {
+                    ShortcutNode {
                         config:
                             ShortcutConfig {
                                 weights_normalization,
@@ -905,7 +897,7 @@ mod layer {
         ) -> Result<Self> {
             let darknet::RouteLayer {
                 base:
-                    RouteLayerBase {
+                    RouteNode {
                         config: RouteConfig { group, .. },
                         ref input_shape,
                         ..
@@ -964,7 +956,7 @@ mod layer {
         ) -> Result<Self> {
             let darknet::MaxPoolLayer {
                 base:
-                    MaxPoolLayerBase {
+                    MaxPoolNode {
                         config:
                             MaxPoolConfig {
                                 stride_x,
@@ -1025,7 +1017,7 @@ mod layer {
         ) -> Result<Self> {
             let darknet::UpSampleLayer {
                 base:
-                    UpSampleLayerBase {
+                    UpSampleNode {
                         output_shape: [out_h, out_w, _c],
                         ..
                     },
@@ -1073,7 +1065,7 @@ mod layer {
             } = self.cache(input);
             let Self {
                 base:
-                    YoloLayerBase {
+                    YoloNode {
                         config: YoloConfig { ref anchors, .. },
                         ..
                     },

@@ -4,10 +4,9 @@ use crate::{
         BatchNormConfig, CommonLayerOptions, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
         ShortcutConfig, WeightsType,
     },
-    model::{
-        BatchNormLayerBase, ConnectedLayerBase, ConvolutionalLayerBase, GaussianYoloLayerBase,
-        LayerBase, MaxPoolLayerBase, ModelBase, RouteLayerBase, ShortcutLayerBase,
-        UpSampleLayerBase, YoloLayerBase,
+    graph::{
+        BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, MaxPoolNode,
+        Node, RouteNode, ShortcutNode, UpSampleNode, YoloNode,
     },
 };
 
@@ -20,12 +19,12 @@ mod model {
 
     #[derive(Debug, Clone)]
     pub struct DarknetModel {
-        pub base: ModelBase,
+        pub base: Graph,
         pub layers: IndexMap<usize, Layer>,
     }
 
     impl DarknetModel {
-        pub fn new(model_base: &ModelBase) -> Result<Self> {
+        pub fn new(model_base: &Graph) -> Result<Self> {
             // aggregate all computed features
             let layers: IndexMap<_, _> = {
                 model_base
@@ -33,27 +32,21 @@ mod model {
                     .iter()
                     .map(|(&layer_index, layer_base)| -> Result<_> {
                         let layer = match layer_base {
-                            LayerBase::Connected(base) => {
-                                Layer::Connected(ConnectedLayer::new(base))
-                            }
-                            LayerBase::Convolutional(base) => {
+                            Node::Connected(base) => Layer::Connected(ConnectedLayer::new(base)),
+                            Node::Convolutional(base) => {
                                 Layer::Convolutional(ConvolutionalLayer::new(base, layer_index)?)
                             }
-                            LayerBase::Route(base) => {
-                                Layer::Route(RouteLayer { base: base.clone() })
-                            }
-                            LayerBase::Shortcut(base) => Layer::Shortcut(ShortcutLayer::new(base)),
-                            LayerBase::MaxPool(base) => {
+                            Node::Route(base) => Layer::Route(RouteLayer { base: base.clone() }),
+                            Node::Shortcut(base) => Layer::Shortcut(ShortcutLayer::new(base)),
+                            Node::MaxPool(base) => {
                                 Layer::MaxPool(MaxPoolLayer { base: base.clone() })
                             }
-                            LayerBase::UpSample(base) => {
+                            Node::UpSample(base) => {
                                 Layer::UpSample(UpSampleLayer { base: base.clone() })
                             }
-                            LayerBase::BatchNorm(base) => {
-                                Layer::BatchNorm(BatchNormLayer::new(base))
-                            }
-                            LayerBase::Yolo(base) => Layer::Yolo(YoloLayer { base: base.clone() }),
-                            LayerBase::GaussianYolo(base) => {
+                            Node::BatchNorm(base) => Layer::BatchNorm(BatchNormLayer::new(base)),
+                            Node::Yolo(base) => Layer::Yolo(YoloLayer { base: base.clone() }),
+                            Node::GaussianYolo(base) => {
                                 Layer::GaussianYolo(GaussianYoloLayer { base: base.clone() })
                             }
                         };
@@ -74,12 +67,12 @@ mod model {
             P: AsRef<Path>,
         {
             let config = DarknetConfig::load(config_file)?;
-            let base = ModelBase::from_config(&config)?;
+            let base = Graph::from_config(&config)?;
             Self::new(&base)
         }
 
         pub fn from_config(config: &DarknetConfig) -> Result<Self> {
-            let base = ModelBase::from_config(config)?;
+            let base = Graph::from_config(config)?;
             Self::new(&base)
         }
 
@@ -186,23 +179,19 @@ mod layer {
         }
     }
 
-    declare_darknet_layer!(ConnectedLayer, ConnectedLayerBase, ConnectedWeights);
-    declare_darknet_layer!(
-        ConvolutionalLayer,
-        ConvolutionalLayerBase,
-        ConvolutionalWeights
-    );
-    declare_darknet_layer!(BatchNormLayer, BatchNormLayerBase, BatchNormWeights);
-    declare_darknet_layer!(ShortcutLayer, ShortcutLayerBase, ShortcutWeights);
-    declare_darknet_layer!(RouteLayer, RouteLayerBase);
-    declare_darknet_layer!(MaxPoolLayer, MaxPoolLayerBase);
-    declare_darknet_layer!(UpSampleLayer, UpSampleLayerBase);
-    declare_darknet_layer!(YoloLayer, YoloLayerBase);
-    declare_darknet_layer!(GaussianYoloLayer, GaussianYoloLayerBase);
+    declare_darknet_layer!(ConnectedLayer, ConnectedNode, ConnectedWeights);
+    declare_darknet_layer!(ConvolutionalLayer, ConvolutionalNode, ConvolutionalWeights);
+    declare_darknet_layer!(BatchNormLayer, BatchNormNode, BatchNormWeights);
+    declare_darknet_layer!(ShortcutLayer, ShortcutNode, ShortcutWeights);
+    declare_darknet_layer!(RouteLayer, RouteNode);
+    declare_darknet_layer!(MaxPoolLayer, MaxPoolNode);
+    declare_darknet_layer!(UpSampleLayer, UpSampleNode);
+    declare_darknet_layer!(YoloLayer, YoloNode);
+    declare_darknet_layer!(GaussianYoloLayer, GaussianYoloNode);
 
     impl ConnectedLayer {
-        pub fn new(base: &ConnectedLayerBase) -> Self {
-            let ConnectedLayerBase {
+        pub fn new(base: &ConnectedNode) -> Self {
+            let ConnectedNode {
                 config: ConnectedConfig {
                     batch_normalize, ..
                 },
@@ -240,7 +229,7 @@ mod layer {
         ) -> Result<()> {
             let Self {
                 base:
-                    ConnectedLayerBase {
+                    ConnectedNode {
                         config:
                             ConnectedConfig {
                                 common:
@@ -288,8 +277,8 @@ mod layer {
     }
 
     impl ConvolutionalLayer {
-        pub fn new(base: &ConvolutionalLayerBase, layer_index: usize) -> Result<Self> {
-            let ConvolutionalLayerBase {
+        pub fn new(base: &ConvolutionalNode, layer_index: usize) -> Result<Self> {
+            let ConvolutionalNode {
                 config:
                     ConvolutionalConfig {
                         share_index,
@@ -347,7 +336,7 @@ mod layer {
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
                 base:
-                    ConvolutionalLayerBase {
+                    ConvolutionalNode {
                         config:
                             ConvolutionalConfig {
                                 groups,
@@ -403,7 +392,7 @@ mod layer {
     }
 
     impl BatchNormLayer {
-        pub fn new(base: &BatchNormLayerBase) -> Self {
+        pub fn new(base: &BatchNormNode) -> Self {
             let [_h, _w, channels] = base.inout_shape;
             let channels = channels as usize;
 
@@ -428,7 +417,7 @@ mod layer {
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
                 base:
-                    BatchNormLayerBase {
+                    BatchNormNode {
                         config:
                             BatchNormConfig {
                                 common: CommonLayerOptions { dont_load, .. },
@@ -460,8 +449,8 @@ mod layer {
     }
 
     impl ShortcutLayer {
-        pub fn new(base: &ShortcutLayerBase) -> Self {
-            let ShortcutLayerBase {
+        pub fn new(base: &ShortcutNode) -> Self {
+            let ShortcutNode {
                 config:
                     ShortcutConfig {
                         weights_type,
@@ -498,7 +487,7 @@ mod layer {
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
                 base:
-                    ShortcutLayerBase {
+                    ShortcutNode {
                         config:
                             ShortcutConfig {
                                 common: CommonLayerOptions { dont_load, .. },

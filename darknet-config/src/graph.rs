@@ -9,14 +9,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct ModelBase {
+pub struct Graph {
     pub seen: u64,
     pub cur_iteration: u64,
     pub net: NetConfig,
-    pub layers: IndexMap<usize, LayerBase>,
+    pub layers: IndexMap<usize, Node>,
 }
 
-impl ModelBase {
+impl Graph {
     pub fn from_config_file<P>(config_file: P) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -348,7 +348,7 @@ impl ModelBase {
                             let input_shape = input_shape.single_flat().unwrap();
                             let output_shape = output_shape.flat().unwrap();
 
-                            LayerBase::Connected(ConnectedLayerBase {
+                            Node::Connected(ConnectedNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
@@ -359,7 +359,7 @@ impl ModelBase {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
 
-                            LayerBase::Convolutional(ConvolutionalLayerBase {
+                            Node::Convolutional(ConvolutionalNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
@@ -370,7 +370,7 @@ impl ModelBase {
                             let input_shape = input_shape.multiple_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
 
-                            LayerBase::Route(RouteLayerBase {
+                            Node::Route(RouteNode {
                                 config: conf,
                                 from_indexes: from_indexes.multiple().unwrap(),
                                 input_shape,
@@ -381,7 +381,7 @@ impl ModelBase {
                             let input_shape = input_shape.multiple_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
 
-                            LayerBase::Shortcut(ShortcutLayerBase {
+                            Node::Shortcut(ShortcutNode {
                                 config: conf,
                                 from_indexes: from_indexes.multiple().unwrap(),
                                 input_shape,
@@ -391,7 +391,7 @@ impl ModelBase {
                         LayerConfig::MaxPool(conf) => {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
-                            LayerBase::MaxPool(MaxPoolLayerBase {
+                            Node::MaxPool(MaxPoolNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
@@ -402,7 +402,7 @@ impl ModelBase {
                             let input_shape = input_shape.single_hwc().unwrap();
                             let output_shape = output_shape.hwc().unwrap();
 
-                            LayerBase::UpSample(UpSampleLayerBase {
+                            Node::UpSample(UpSampleNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 input_shape,
@@ -414,7 +414,7 @@ impl ModelBase {
                             let output_shape = output_shape.hwc().unwrap();
                             debug_assert_eq!(input_shape, output_shape);
 
-                            LayerBase::BatchNorm(BatchNormLayerBase {
+                            Node::BatchNorm(BatchNormNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 inout_shape: input_shape,
@@ -425,7 +425,7 @@ impl ModelBase {
                             let output_shape = output_shape.hwc().unwrap();
                             debug_assert_eq!(input_shape, output_shape);
 
-                            LayerBase::Yolo(YoloLayerBase {
+                            Node::Yolo(YoloNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 inout_shape: input_shape,
@@ -436,7 +436,7 @@ impl ModelBase {
                             let output_shape = output_shape.hwc().unwrap();
                             debug_assert_eq!(input_shape, output_shape);
 
-                            LayerBase::GaussianYolo(GaussianYoloLayerBase {
+                            Node::GaussianYolo(GaussianYoloNode {
                                 config: conf,
                                 from_indexes: from_indexes.single().unwrap(),
                                 inout_shape: input_shape,
@@ -461,15 +461,15 @@ impl ModelBase {
             (0..num_layers).for_each(|layer_index| {
                 let layer = &layers[&layer_index];
                 let kind = match layer {
-                    LayerBase::Convolutional(_) => "conv",
-                    LayerBase::Connected(_) => "connected",
-                    LayerBase::BatchNorm(_) => "batch_norm",
-                    LayerBase::Shortcut(_) => "shortcut",
-                    LayerBase::MaxPool(_) => "max_pool",
-                    LayerBase::Route(_) => "route",
-                    LayerBase::UpSample(_) => "up_sample",
-                    LayerBase::Yolo(_) => "yolo",
-                    LayerBase::GaussianYolo(_) => "gaussian_yolo",
+                    Node::Convolutional(_) => "conv",
+                    Node::Connected(_) => "connected",
+                    Node::BatchNorm(_) => "batch_norm",
+                    Node::Shortcut(_) => "shortcut",
+                    Node::MaxPool(_) => "max_pool",
+                    Node::Route(_) => "route",
+                    Node::UpSample(_) => "up_sample",
+                    Node::Yolo(_) => "yolo",
+                    Node::GaussianYolo(_) => "gaussian_yolo",
                 };
 
                 debug!(
@@ -620,19 +620,19 @@ impl Display for ShapeList {
 // layer
 
 #[derive(Debug, Clone)]
-pub enum LayerBase {
-    Connected(ConnectedLayerBase),
-    Convolutional(ConvolutionalLayerBase),
-    Route(RouteLayerBase),
-    Shortcut(ShortcutLayerBase),
-    MaxPool(MaxPoolLayerBase),
-    UpSample(UpSampleLayerBase),
-    BatchNorm(BatchNormLayerBase),
-    Yolo(YoloLayerBase),
-    GaussianYolo(GaussianYoloLayerBase),
+pub enum Node {
+    Connected(ConnectedNode),
+    Convolutional(ConvolutionalNode),
+    Route(RouteNode),
+    Shortcut(ShortcutNode),
+    MaxPool(MaxPoolNode),
+    UpSample(UpSampleNode),
+    BatchNorm(BatchNormNode),
+    Yolo(YoloNode),
+    GaussianYolo(GaussianYoloNode),
 }
 
-impl LayerBase {
+impl Node {
     pub fn input_shape(&self) -> ShapeList {
         match self {
             Self::Connected(layer) => ShapeList::SingleFlat(layer.input_shape),
@@ -699,100 +699,100 @@ macro_rules! declare_layer_base_single_shape {
     };
 }
 
-declare_layer_base_inout_shape!(ConnectedLayerBase, ConnectedConfig, LayerPosition, u64, u64);
+declare_layer_base_inout_shape!(ConnectedNode, ConnectedConfig, LayerPosition, u64, u64);
 declare_layer_base_inout_shape!(
-    ConvolutionalLayerBase,
+    ConvolutionalNode,
     ConvolutionalConfig,
     LayerPosition,
     [u64; 3],
     [u64; 3]
 );
 declare_layer_base_inout_shape!(
-    RouteLayerBase,
+    RouteNode,
     RouteConfig,
     IndexSet<LayerPosition>,
     Vec<[u64; 3]>,
     [u64; 3]
 );
 declare_layer_base_inout_shape!(
-    ShortcutLayerBase,
+    ShortcutNode,
     ShortcutConfig,
     IndexSet<LayerPosition>,
     Vec<[u64; 3]>,
     [u64; 3]
 );
 declare_layer_base_inout_shape!(
-    MaxPoolLayerBase,
+    MaxPoolNode,
     MaxPoolConfig,
     LayerPosition,
     [u64; 3],
     [u64; 3]
 );
 declare_layer_base_inout_shape!(
-    UpSampleLayerBase,
+    UpSampleNode,
     UpSampleConfig,
     LayerPosition,
     [u64; 3],
     [u64; 3]
 );
-declare_layer_base_single_shape!(YoloLayerBase, YoloConfig, LayerPosition, [u64; 3]);
+declare_layer_base_single_shape!(YoloNode, YoloConfig, LayerPosition, [u64; 3]);
 declare_layer_base_single_shape!(
-    GaussianYoloLayerBase,
+    GaussianYoloNode,
     GaussianYoloConfig,
     LayerPosition,
     [u64; 3]
 );
-declare_layer_base_single_shape!(BatchNormLayerBase, BatchNormConfig, LayerPosition, [u64; 3]);
+declare_layer_base_single_shape!(BatchNormNode, BatchNormConfig, LayerPosition, [u64; 3]);
 
-impl From<ConnectedLayerBase> for LayerBase {
-    fn from(from: ConnectedLayerBase) -> Self {
+impl From<ConnectedNode> for Node {
+    fn from(from: ConnectedNode) -> Self {
         Self::Connected(from)
     }
 }
 
-impl From<ConvolutionalLayerBase> for LayerBase {
-    fn from(from: ConvolutionalLayerBase) -> Self {
+impl From<ConvolutionalNode> for Node {
+    fn from(from: ConvolutionalNode) -> Self {
         Self::Convolutional(from)
     }
 }
 
-impl From<RouteLayerBase> for LayerBase {
-    fn from(from: RouteLayerBase) -> Self {
+impl From<RouteNode> for Node {
+    fn from(from: RouteNode) -> Self {
         Self::Route(from)
     }
 }
 
-impl From<ShortcutLayerBase> for LayerBase {
-    fn from(from: ShortcutLayerBase) -> Self {
+impl From<ShortcutNode> for Node {
+    fn from(from: ShortcutNode) -> Self {
         Self::Shortcut(from)
     }
 }
 
-impl From<MaxPoolLayerBase> for LayerBase {
-    fn from(from: MaxPoolLayerBase) -> Self {
+impl From<MaxPoolNode> for Node {
+    fn from(from: MaxPoolNode) -> Self {
         Self::MaxPool(from)
     }
 }
 
-impl From<UpSampleLayerBase> for LayerBase {
-    fn from(from: UpSampleLayerBase) -> Self {
+impl From<UpSampleNode> for Node {
+    fn from(from: UpSampleNode) -> Self {
         Self::UpSample(from)
     }
 }
 
-impl From<YoloLayerBase> for LayerBase {
-    fn from(from: YoloLayerBase) -> Self {
+impl From<YoloNode> for Node {
+    fn from(from: YoloNode) -> Self {
         Self::Yolo(from)
     }
 }
 
-impl From<BatchNormLayerBase> for LayerBase {
-    fn from(from: BatchNormLayerBase) -> Self {
+impl From<BatchNormNode> for Node {
+    fn from(from: BatchNormNode) -> Self {
         Self::BatchNorm(from)
     }
 }
 
-// impl ConvolutionalLayerBase {
+// impl ConvolutionalNode {
 //     pub fn weights_shape(&self) -> [u64; 4] {
 //         let Self {
 //             config:
