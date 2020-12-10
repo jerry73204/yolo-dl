@@ -75,7 +75,7 @@ mod darknet_config {
                         _ => None,
                     })
                     .map(|yolo| {
-                        let SerializedYoloConfig {
+                        let RawYoloConfig {
                             classes,
                             ref anchors,
                             ..
@@ -114,7 +114,7 @@ mod darknet_config {
                     _ => unreachable!(),
                 };
 
-                let SerializedNetConfig {
+                let RawNetConfig {
                     max_batches,
                     batch,
                     learning_rate,
@@ -134,7 +134,13 @@ mod darknet_config {
                     optimized_memory,
                     workspace_size_limit_mb,
                     adam,
-                    input_size,
+                    b1,
+                    b2,
+                    eps,
+                    width,
+                    height,
+                    channels,
+                    inputs,
                     max_crop,
                     min_crop,
                     flip,
@@ -162,7 +168,91 @@ mod darknet_config {
                     power,
                     policy,
                     burn_in,
+                    step,
+                    scale,
+                    steps,
+                    scales,
+                    seq_scales,
+                    gamma,
                 } = net;
+
+                let sgdr_cycle = sgdr_cycle.unwrap_or(max_batches);
+                let sequential_subdivisions = sequential_subdivisions.unwrap_or(subdivisions);
+                let adam = if adam {
+                    Some(Adam { b1, b2, eps })
+                } else {
+                    None
+                };
+                let max_crop = max_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0) * 2);
+                let min_crop = min_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0));
+                let input_size = match (inputs, height, width, channels) {
+                    (Some(inputs), None, None, None) => Shape::Flat(inputs.get()),
+                    (None, Some(height), Some(width), Some(channels)) => {
+                        Shape::Hwc([height.get(), width.get(), channels.get()])
+                    }
+                    _ => bail!("either inputs or height/width/channels must be specified"),
+                };
+                let policy = match policy {
+                    PolicyKind::Random => Policy::Random,
+                    PolicyKind::Poly => Policy::Poly,
+                    PolicyKind::Constant => Policy::Constant,
+                    PolicyKind::Step => Policy::Step { step, scale },
+                    PolicyKind::Exp => Policy::Exp { gamma },
+                    PolicyKind::Sigmoid => Policy::Sigmoid { gamma, step },
+                    PolicyKind::Steps => {
+                        let steps = steps.ok_or_else(|| {
+                            format_err!("steps must be specified for step policy")
+                        })?;
+                        let scales = {
+                            let scales = scales.ok_or_else(|| {
+                                format_err!("scales must be specified for step policy")
+                            })?;
+                            ensure!(
+                                steps.len() == scales.len(),
+                                "the length of steps and scales must be equal"
+                            );
+                            scales
+                        };
+                        let seq_scales = {
+                            let seq_scales =
+                                seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
+                            ensure!(
+                                steps.len() == seq_scales.len(),
+                                "the length of steps and seq_scales must be equal"
+                            );
+                            seq_scales
+                        };
+
+                        Policy::Steps {
+                            steps,
+                            scales,
+                            seq_scales,
+                        }
+                    }
+                    PolicyKind::Sgdr => match (steps, scales, seq_scales) {
+                        (Some(steps), scales, seq_scales) => {
+                            let scales = scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
+                            let seq_scales =
+                                seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
+                            ensure!(
+                                steps.len() == scales.len(),
+                                "the length of steps and scales must be equal"
+                            );
+                            ensure!(
+                                steps.len() == seq_scales.len(),
+                                "the length of steps and seq_scales must be equal"
+                            );
+
+                            Policy::SgdrCustom {
+                                steps,
+                                scales,
+                                seq_scales,
+                            }
+                        }
+                        (None, None, None) => Policy::Sgdr,
+                        _ => bail!("either none or at least steps must be specifeid"),
+                    },
+                };
 
                 NetConfig {
                     max_batches,
@@ -227,7 +317,9 @@ mod darknet_config {
                         Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
                         Item::UpSample(layer) => LayerConfig::UpSample(layer),
                         Item::Yolo(layer) => {
-                            let SerializedYoloConfig {
+                            let RawYoloConfig {
+                                classes,
+                                num,
                                 mask,
                                 max_boxes,
                                 max_delta,
@@ -260,8 +352,27 @@ mod darknet_config {
                                 map,
                                 anchors,
                                 common,
-                                ..
                             } = layer;
+
+                            let anchors = match (num, anchors) {
+                                (0, None) => vec![],
+                                (_, None) => bail!("num and length of anchors mismatch"),
+                                (_, Some(anchors)) => {
+                                    ensure!(
+                                        anchors.len() == num as usize,
+                                        "num and length of anchors mismatch"
+                                    );
+                                    anchors
+                                }
+                            };
+
+                            let mask = mask.unwrap_or_else(|| IndexSet::new());
+                            ensure!(
+                                mask.iter()
+                                    .cloned()
+                                    .all(|index| (index as usize) < anchors.len()),
+                                "mask index exceeds total number of anchors"
+                            );
 
                             let anchors: Vec<_> = mask
                                 .into_iter()
@@ -413,259 +524,6 @@ mod net_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawNetConfig", into = "RawNetConfig")]
-    pub struct SerializedNetConfig {
-        pub max_batches: u64,
-        pub batch: u64,
-        pub learning_rate: R64,
-        pub learning_rate_min: R64,
-        pub sgdr_cycle: u64,
-        pub sgdr_mult: u64,
-        pub momentum: R64,
-        pub decay: R64,
-        pub subdivisions: u64,
-        pub time_steps: u64,
-        pub track: u64,
-        pub augment_speed: u64,
-        pub sequential_subdivisions: u64,
-        pub try_fix_nan: bool,
-        pub loss_scale: R64,
-        pub dynamic_minibatch: bool,
-        pub optimized_memory: bool,
-        pub workspace_size_limit_mb: u64,
-        pub adam: Option<Adam>,
-        pub input_size: Shape,
-        pub max_crop: u64,
-        pub min_crop: u64,
-        pub flip: bool,
-        pub blur: bool,
-        pub gaussian_noise: bool,
-        pub mixup: MixUp,
-        pub cutmux: bool,
-        pub mosaic: bool,
-        pub letter_box: bool,
-        pub mosaic_bound: bool,
-        pub contrastive: bool,
-        pub contrastive_jit_flip: bool,
-        pub contrastive_color: bool,
-        pub unsupervised: bool,
-        pub label_smooth_eps: R64,
-        pub resize_step: u64,
-        pub attention: bool,
-        pub adversarial_lr: R64,
-        pub max_chart_loss: R64,
-        pub angle: R64,
-        pub aspect: R64,
-        pub saturation: R64,
-        pub exposure: R64,
-        pub hue: R64,
-        pub power: R64,
-        pub policy: Policy,
-        pub burn_in: u64,
-    }
-
-    impl SerializedNetConfig {
-        pub fn iteration(&self, seen: u64) -> u64 {
-            seen / (self.batch * self.subdivisions)
-        }
-    }
-
-    impl TryFrom<RawNetConfig> for SerializedNetConfig {
-        type Error = Error;
-
-        fn try_from(raw: RawNetConfig) -> Result<Self, Self::Error> {
-            let RawNetConfig {
-                max_batches,
-                batch,
-                learning_rate,
-                learning_rate_min,
-                sgdr_cycle,
-                sgdr_mult,
-                momentum,
-                decay,
-                subdivisions,
-                time_steps,
-                track,
-                augment_speed,
-                sequential_subdivisions,
-                try_fix_nan,
-                loss_scale,
-                dynamic_minibatch,
-                optimized_memory,
-                workspace_size_limit_mb,
-                adam,
-                b1,
-                b2,
-                eps,
-                width,
-                height,
-                channels,
-                inputs,
-                max_crop,
-                min_crop,
-                flip,
-                blur,
-                gaussian_noise,
-                mixup,
-                cutmux,
-                mosaic,
-                letter_box,
-                mosaic_bound,
-                contrastive,
-                contrastive_jit_flip,
-                contrastive_color,
-                unsupervised,
-                label_smooth_eps,
-                resize_step,
-                attention,
-                adversarial_lr,
-                max_chart_loss,
-                angle,
-                aspect,
-                saturation,
-                exposure,
-                hue,
-                power,
-                policy,
-                burn_in,
-                step,
-                scale,
-                steps,
-                scales,
-                seq_scales,
-                gamma,
-            } = raw;
-
-            let sgdr_cycle = sgdr_cycle.unwrap_or(max_batches);
-            let sequential_subdivisions = sequential_subdivisions.unwrap_or(subdivisions);
-            let adam = if adam {
-                Some(Adam { b1, b2, eps })
-            } else {
-                None
-            };
-            let max_crop = max_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0) * 2);
-            let min_crop = min_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0));
-            let input_size = match (inputs, height, width, channels) {
-                (Some(inputs), None, None, None) => Shape::Flat(inputs.get()),
-                (None, Some(height), Some(width), Some(channels)) => {
-                    Shape::Hwc([height.get(), width.get(), channels.get()])
-                }
-                _ => bail!("either inputs or height/width/channels must be specified"),
-            };
-            let policy = match policy {
-                PolicyKind::Random => Policy::Random,
-                PolicyKind::Poly => Policy::Poly,
-                PolicyKind::Constant => Policy::Constant,
-                PolicyKind::Step => Policy::Step { step, scale },
-                PolicyKind::Exp => Policy::Exp { gamma },
-                PolicyKind::Sigmoid => Policy::Sigmoid { gamma, step },
-                PolicyKind::Steps => {
-                    let steps = steps
-                        .ok_or_else(|| format_err!("steps must be specified for step policy"))?;
-                    let scales = {
-                        let scales = scales.ok_or_else(|| {
-                            format_err!("scales must be specified for step policy")
-                        })?;
-                        ensure!(
-                            steps.len() == scales.len(),
-                            "the length of steps and scales must be equal"
-                        );
-                        scales
-                    };
-                    let seq_scales = {
-                        let seq_scales =
-                            seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
-                        ensure!(
-                            steps.len() == seq_scales.len(),
-                            "the length of steps and seq_scales must be equal"
-                        );
-                        seq_scales
-                    };
-
-                    Policy::Steps {
-                        steps,
-                        scales,
-                        seq_scales,
-                    }
-                }
-                PolicyKind::Sgdr => match (steps, scales, seq_scales) {
-                    (Some(steps), scales, seq_scales) => {
-                        let scales = scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
-                        let seq_scales =
-                            seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
-                        ensure!(
-                            steps.len() == scales.len(),
-                            "the length of steps and scales must be equal"
-                        );
-                        ensure!(
-                            steps.len() == seq_scales.len(),
-                            "the length of steps and seq_scales must be equal"
-                        );
-
-                        Policy::SgdrCustom {
-                            steps,
-                            scales,
-                            seq_scales,
-                        }
-                    }
-                    (None, None, None) => Policy::Sgdr,
-                    _ => bail!("either none or at least steps must be specifeid"),
-                },
-            };
-
-            Ok(Self {
-                max_batches,
-                batch,
-                learning_rate,
-                learning_rate_min,
-                sgdr_cycle,
-                sgdr_mult,
-                momentum,
-                decay,
-                subdivisions,
-                time_steps,
-                track,
-                augment_speed,
-                sequential_subdivisions,
-                try_fix_nan,
-                loss_scale,
-                dynamic_minibatch,
-                optimized_memory,
-                workspace_size_limit_mb,
-                adam,
-                input_size,
-                max_crop,
-                min_crop,
-                flip,
-                blur,
-                gaussian_noise,
-                mixup,
-                cutmux,
-                mosaic,
-                letter_box,
-                mosaic_bound,
-                contrastive,
-                contrastive_jit_flip,
-                contrastive_color,
-                unsupervised,
-                label_smooth_eps,
-                resize_step,
-                attention,
-                adversarial_lr,
-                max_chart_loss,
-                angle,
-                aspect,
-                saturation,
-                exposure,
-                hue,
-                power,
-                policy,
-                burn_in,
-            })
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct RawNetConfig {
         #[serde(default = "defaults::max_batches")]
         pub max_batches: u64,
@@ -780,225 +638,6 @@ mod net_config {
         pub seq_scales: Option<Vec<R64>>,
         #[serde(default = "defaults::gamma")]
         pub gamma: R64,
-    }
-
-    impl From<SerializedNetConfig> for RawNetConfig {
-        fn from(net: SerializedNetConfig) -> Self {
-            let SerializedNetConfig {
-                max_batches,
-                batch,
-                learning_rate,
-                learning_rate_min,
-                sgdr_cycle,
-                sgdr_mult,
-                momentum,
-                decay,
-                subdivisions,
-                time_steps,
-                track,
-                augment_speed,
-                sequential_subdivisions,
-                try_fix_nan,
-                loss_scale,
-                dynamic_minibatch,
-                optimized_memory,
-                workspace_size_limit_mb,
-                adam,
-                input_size,
-                max_crop,
-                min_crop,
-                flip,
-                blur,
-                gaussian_noise,
-                mixup,
-                cutmux,
-                mosaic,
-                letter_box,
-                mosaic_bound,
-                contrastive,
-                contrastive_jit_flip,
-                contrastive_color,
-                unsupervised,
-                label_smooth_eps,
-                resize_step,
-                attention,
-                adversarial_lr,
-                max_chart_loss,
-                angle,
-                aspect,
-                saturation,
-                exposure,
-                hue,
-                power,
-                policy,
-                burn_in,
-            } = net;
-
-            let (adam, b1, b2, eps) = match adam {
-                Some(Adam { b1, b2, eps }) => (true, b1, b2, eps),
-                None => (false, defaults::b1(), defaults::b2(), defaults::eps()),
-            };
-            let (inputs, height, width, channels) = match input_size {
-                Shape::Hwc([height, width, channels]) => {
-                    (None, Some(height), Some(width), Some(channels))
-                }
-                Shape::Flat(inputs) => (Some(inputs), None, None, None),
-            };
-
-            let (policy, step, scale, steps, scales, seq_scales, gamma) = match policy {
-                Policy::Random => (
-                    PolicyKind::Random,
-                    defaults::step(),
-                    defaults::scale(),
-                    None,
-                    None,
-                    None,
-                    defaults::gamma(),
-                ),
-                Policy::Poly => (
-                    PolicyKind::Poly,
-                    defaults::step(),
-                    defaults::scale(),
-                    None,
-                    None,
-                    None,
-                    defaults::gamma(),
-                ),
-                Policy::Constant => (
-                    PolicyKind::Constant,
-                    defaults::step(),
-                    defaults::scale(),
-                    None,
-                    None,
-                    None,
-                    defaults::gamma(),
-                ),
-                Policy::Step { step, scale } => (
-                    PolicyKind::Step,
-                    step,
-                    scale,
-                    None,
-                    None,
-                    None,
-                    defaults::gamma(),
-                ),
-                Policy::Exp { gamma } => (
-                    PolicyKind::Exp,
-                    defaults::step(),
-                    defaults::scale(),
-                    None,
-                    None,
-                    None,
-                    gamma,
-                ),
-                Policy::Sigmoid { gamma, step } => (
-                    PolicyKind::Sigmoid,
-                    step,
-                    defaults::scale(),
-                    None,
-                    None,
-                    None,
-                    gamma,
-                ),
-                Policy::Steps {
-                    steps,
-                    scales,
-                    seq_scales,
-                } => (
-                    PolicyKind::Steps,
-                    defaults::step(),
-                    defaults::scale(),
-                    Some(steps),
-                    Some(scales),
-                    Some(seq_scales),
-                    defaults::gamma(),
-                ),
-                Policy::Sgdr => (
-                    PolicyKind::Sgdr,
-                    defaults::step(),
-                    defaults::scale(),
-                    None,
-                    None,
-                    None,
-                    defaults::gamma(),
-                ),
-                Policy::SgdrCustom {
-                    steps,
-                    scales,
-                    seq_scales,
-                } => (
-                    PolicyKind::Sgdr,
-                    defaults::step(),
-                    defaults::scale(),
-                    Some(steps),
-                    Some(scales),
-                    Some(seq_scales),
-                    defaults::gamma(),
-                ),
-            };
-
-            Self {
-                max_batches,
-                batch,
-                learning_rate,
-                learning_rate_min,
-                sgdr_cycle: Some(sgdr_cycle),
-                sgdr_mult,
-                momentum,
-                decay,
-                subdivisions,
-                time_steps,
-                track,
-                augment_speed,
-                sequential_subdivisions: Some(sequential_subdivisions),
-                try_fix_nan,
-                loss_scale,
-                dynamic_minibatch,
-                optimized_memory,
-                workspace_size_limit_mb,
-                adam,
-                b1,
-                b2,
-                eps,
-                width: width.map(|w| NonZeroU64::new(w).unwrap()),
-                height: height.map(|h| NonZeroU64::new(h).unwrap()),
-                channels: channels.map(|c| NonZeroU64::new(c).unwrap()),
-                inputs: inputs.map(|i| NonZeroU64::new(i).unwrap()),
-                max_crop: Some(max_crop),
-                min_crop: Some(min_crop),
-                flip,
-                blur,
-                gaussian_noise,
-                mixup,
-                cutmux,
-                mosaic,
-                letter_box,
-                mosaic_bound,
-                contrastive,
-                contrastive_jit_flip,
-                contrastive_color,
-                unsupervised,
-                label_smooth_eps,
-                resize_step,
-                attention,
-                adversarial_lr,
-                max_chart_loss,
-                angle,
-                aspect,
-                saturation,
-                exposure,
-                hue,
-                power,
-                policy,
-                burn_in,
-                step,
-                scale,
-                steps,
-                scales,
-                seq_scales,
-                gamma,
-            }
-        }
     }
 }
 
@@ -1627,151 +1266,6 @@ mod yolo_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[serde(try_from = "RawYoloConfig", into = "RawYoloConfig")]
-    #[derivative(Hash)]
-    pub struct SerializedYoloConfig {
-        pub classes: u64,
-        #[derivative(Hash(hash_with = "hash_vec_indexset::<u64, _>"))]
-        pub mask: IndexSet<u64>,
-        pub max_boxes: u64,
-        pub max_delta: Option<R64>,
-        pub counters_per_class: Option<Vec<u64>>,
-        pub label_smooth_eps: R64,
-        pub scale_x_y: R64,
-        pub objectness_smooth: bool,
-        pub iou_normalizer: R64,
-        pub obj_normalizer: R64,
-        pub cls_normalizer: R64,
-        pub delta_normalizer: R64,
-        pub iou_loss: IouLoss,
-        pub iou_thresh_kind: IouThreshold,
-        pub beta_nms: R64,
-        pub nms_kind: NmsKind,
-        pub yolo_point: YoloPoint,
-        pub jitter: R64,
-        pub resize: R64,
-        pub focal_loss: bool,
-        pub ignore_thresh: R64,
-        pub truth_thresh: R64,
-        pub iou_thresh: R64,
-        pub random: R64,
-        pub track_history_size: u64,
-        pub sim_thresh: R64,
-        pub dets_for_track: u64,
-        pub dets_for_show: u64,
-        pub track_ciou_norm: R64,
-        pub embedding_layer: Option<LayerIndex>,
-        pub map: Option<PathBuf>,
-        pub anchors: Vec<(u64, u64)>,
-        pub common: CommonLayerOptions,
-    }
-
-    impl TryFrom<RawYoloConfig> for SerializedYoloConfig {
-        type Error = Error;
-
-        fn try_from(from: RawYoloConfig) -> Result<Self, Self::Error> {
-            let RawYoloConfig {
-                classes,
-                num,
-                mask,
-                max_boxes,
-                max_delta,
-                counters_per_class,
-                label_smooth_eps,
-                scale_x_y,
-                objectness_smooth,
-                iou_normalizer,
-                obj_normalizer,
-                cls_normalizer,
-                delta_normalizer,
-                iou_loss,
-                iou_thresh_kind,
-                beta_nms,
-                nms_kind,
-                yolo_point,
-                jitter,
-                resize,
-                focal_loss,
-                ignore_thresh,
-                truth_thresh,
-                iou_thresh,
-                random,
-                track_history_size,
-                sim_thresh,
-                dets_for_track,
-                dets_for_show,
-                track_ciou_norm,
-                embedding_layer,
-                map,
-                anchors,
-                common,
-            } = from;
-
-            let anchors = match (num, anchors) {
-                (0, None) => vec![],
-                (_, None) => bail!("num and length of anchors mismatch"),
-                (_, Some(anchors)) => {
-                    ensure!(
-                        anchors.len() == num as usize,
-                        "num and length of anchors mismatch"
-                    );
-                    anchors
-                }
-            };
-
-            let mask = mask.unwrap_or_else(|| IndexSet::new());
-            ensure!(
-                mask.iter()
-                    .cloned()
-                    .all(|index| (index as usize) < anchors.len()),
-                "mask index exceeds total number of anchors"
-            );
-
-            Ok(Self {
-                classes,
-                mask,
-                max_boxes,
-                max_delta,
-                counters_per_class,
-                label_smooth_eps,
-                scale_x_y,
-                objectness_smooth,
-                iou_normalizer,
-                obj_normalizer,
-                cls_normalizer,
-                delta_normalizer,
-                iou_loss,
-                iou_thresh_kind,
-                beta_nms,
-                nms_kind,
-                yolo_point,
-                jitter,
-                resize,
-                focal_loss,
-                ignore_thresh,
-                truth_thresh,
-                iou_thresh,
-                random,
-                track_history_size,
-                sim_thresh,
-                dets_for_track,
-                dets_for_show,
-                track_ciou_norm,
-                embedding_layer,
-                map,
-                anchors,
-                common,
-            })
-        }
-    }
-
-    impl LayerConfigEx for SerializedYoloConfig {
-        fn common(&self) -> &CommonLayerOptions {
-            &self.common
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct RawYoloConfig {
         #[serde(default = "defaults::classes")]
@@ -1841,99 +1335,6 @@ mod yolo_config {
         #[serde(flatten)]
         pub common: CommonLayerOptions,
     }
-
-    impl From<SerializedYoloConfig> for RawYoloConfig {
-        fn from(from: SerializedYoloConfig) -> Self {
-            let SerializedYoloConfig {
-                classes,
-                mask,
-                max_boxes,
-                max_delta,
-                counters_per_class,
-                label_smooth_eps,
-                scale_x_y,
-                objectness_smooth,
-                iou_normalizer,
-                obj_normalizer,
-                cls_normalizer,
-                delta_normalizer,
-                iou_loss,
-                iou_thresh_kind,
-                beta_nms,
-                nms_kind,
-                yolo_point,
-                jitter,
-                resize,
-                focal_loss,
-                ignore_thresh,
-                truth_thresh,
-                iou_thresh,
-                random,
-                track_history_size,
-                sim_thresh,
-                dets_for_track,
-                dets_for_show,
-                track_ciou_norm,
-                embedding_layer,
-                map,
-                anchors,
-                common,
-            } = from;
-
-            // make sure mask indexes are valid
-            assert!(
-                mask.iter()
-                    .cloned()
-                    .all(|index| (index as usize) < anchors.len()),
-                "mask indexes must not exceed total number of anchors"
-            );
-
-            let num = anchors.len() as u64;
-            let mask = if mask.is_empty() { None } else { Some(mask) };
-            let anchors = if anchors.is_empty() {
-                None
-            } else {
-                Some(anchors)
-            };
-
-            Self {
-                classes,
-                num,
-                mask,
-                max_boxes,
-                max_delta,
-                counters_per_class,
-                label_smooth_eps,
-                scale_x_y,
-                objectness_smooth,
-                iou_normalizer,
-                obj_normalizer,
-                cls_normalizer,
-                delta_normalizer,
-                iou_loss,
-                iou_thresh_kind,
-                beta_nms,
-                nms_kind,
-                yolo_point,
-                jitter,
-                resize,
-                focal_loss,
-                ignore_thresh,
-                truth_thresh,
-                iou_thresh,
-                random,
-                track_history_size,
-                sim_thresh,
-                dets_for_track,
-                dets_for_show,
-                track_ciou_norm,
-                embedding_layer,
-                map,
-                anchors,
-                common,
-            }
-        }
-    }
 }
 
 // mod gaussian_yolo_config {
@@ -1941,7 +1342,63 @@ mod yolo_config {
 
 //     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
 //     #[derivative(Hash)]
-//     pub struct GaussianYoloConfig {}
+//     pub struct RawGaussianYoloConfig {
+//         #[serde(default = "defaults::classes")]
+//         pub classes: u64,
+//         #[serde(rename = "max", default = "defaults::max_boxes")]
+//         pub max_boxes: u64,
+//         #[serde(default = "defaults::num")]
+//         pub num: u64,
+//         #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
+//         #[serde(with = "serde_mask", default)]
+//         pub mask: Option<IndexSet<u64>>,
+//         pub max_delta: Option<R64>,
+//         #[serde(with = "serde_opt_vec_u64", default)]
+//         pub counters_per_class: Option<Vec<u64>>,
+//         #[serde(default = "defaults::yolo_label_smooth_eps")]
+//         pub label_smooth_eps: R64,
+//         #[serde(default = "defaults::scale_x_y")]
+//         pub scale_x_y: R64,
+//         #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+//         pub objectness_smooth: bool,
+//         #[serde(default = "defaults::uc_normalizer")]
+//         pub uc_normalizer: R64,
+//         #[serde(default = "defaults::iou_normalizer")]
+//         pub iou_normalizer: R64,
+//         #[serde(default = "defaults::obj_normalizer")]
+//         pub obj_normalizer: R64,
+//         #[serde(default = "defaults::cls_normalizer")]
+//         pub cls_normalizer: R64,
+//         #[serde(default = "defaults::delta_normalizer")]
+//         pub delta_normalizer: R64,
+//         #[serde(default = "defaults::iou_loss")]
+//         pub iou_loss: IouLoss,
+//         #[serde(default = "defaults::iou_thresh_kind")]
+//         pub iou_thresh_kind: IouThreshold,
+//         #[serde(default = "defaults::beta_nms")]
+//         pub beta_nms: R64,
+//         #[serde(default = "defaults::nms_kind")]
+//         pub nms_kind: NmsKind,
+//         #[serde(default = "defaults::yolo_point")]
+//         pub yolo_point: YoloPoint,
+//         #[serde(default = "defaults::jitter")]
+//         pub jitter: R64,
+//         #[serde(default = "defaults::resize")]
+//         pub resize: R64,
+//         #[serde(default = "defaults::ignore_thresh")]
+//         pub ignore_thresh: R64,
+//         #[serde(default = "defaults::truth_thresh")]
+//         pub truth_thresh: R64,
+//         #[serde(default = "defaults::iou_thresh")]
+//         pub iou_thresh: R64,
+//         #[serde(default = "defaults::random")]
+//         pub random: R64,
+//         pub map: Option<PathBuf>,
+//         #[serde(with = "serde_anchors", default)]
+//         pub anchors: Option<Vec<(u64, u64)>>,
+//         #[serde(flatten)]
+//         pub common: CommonLayerOptions,
+//     }
 // }
 
 mod items {
@@ -1950,7 +1407,7 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum Item {
         #[serde(rename = "net")]
-        Net(SerializedNetConfig),
+        Net(RawNetConfig),
         #[serde(rename = "connected")]
         Connected(ConnectedConfig),
         #[serde(rename = "convolutional")]
@@ -1964,7 +1421,7 @@ mod items {
         #[serde(rename = "upsample")]
         UpSample(UpSampleConfig),
         #[serde(rename = "yolo")]
-        Yolo(SerializedYoloConfig),
+        Yolo(RawYoloConfig),
         #[serde(rename = "batchnorm")]
         BatchNorm(BatchNormConfig),
     }
@@ -2028,12 +1485,117 @@ mod items {
                     burn_in,
                     classes,
                 } = orig_net;
-                let net = SerializedNetConfig {
+
+                let (adam, b1, b2, eps) = match adam {
+                    Some(Adam { b1, b2, eps }) => (true, b1, b2, eps),
+                    None => (false, defaults::b1(), defaults::b2(), defaults::eps()),
+                };
+
+                let (inputs, height, width, channels) = match input_size {
+                    Shape::Hwc([height, width, channels]) => {
+                        (None, Some(height), Some(width), Some(channels))
+                    }
+                    Shape::Flat(inputs) => (Some(inputs), None, None, None),
+                };
+
+                let (policy, step, scale, steps, scales, seq_scales, gamma) = match policy {
+                    Policy::Random => (
+                        PolicyKind::Random,
+                        defaults::step(),
+                        defaults::scale(),
+                        None,
+                        None,
+                        None,
+                        defaults::gamma(),
+                    ),
+                    Policy::Poly => (
+                        PolicyKind::Poly,
+                        defaults::step(),
+                        defaults::scale(),
+                        None,
+                        None,
+                        None,
+                        defaults::gamma(),
+                    ),
+                    Policy::Constant => (
+                        PolicyKind::Constant,
+                        defaults::step(),
+                        defaults::scale(),
+                        None,
+                        None,
+                        None,
+                        defaults::gamma(),
+                    ),
+                    Policy::Step { step, scale } => (
+                        PolicyKind::Step,
+                        step,
+                        scale,
+                        None,
+                        None,
+                        None,
+                        defaults::gamma(),
+                    ),
+                    Policy::Exp { gamma } => (
+                        PolicyKind::Exp,
+                        defaults::step(),
+                        defaults::scale(),
+                        None,
+                        None,
+                        None,
+                        gamma,
+                    ),
+                    Policy::Sigmoid { gamma, step } => (
+                        PolicyKind::Sigmoid,
+                        step,
+                        defaults::scale(),
+                        None,
+                        None,
+                        None,
+                        gamma,
+                    ),
+                    Policy::Steps {
+                        steps,
+                        scales,
+                        seq_scales,
+                    } => (
+                        PolicyKind::Steps,
+                        defaults::step(),
+                        defaults::scale(),
+                        Some(steps),
+                        Some(scales),
+                        Some(seq_scales),
+                        defaults::gamma(),
+                    ),
+                    Policy::Sgdr => (
+                        PolicyKind::Sgdr,
+                        defaults::step(),
+                        defaults::scale(),
+                        None,
+                        None,
+                        None,
+                        defaults::gamma(),
+                    ),
+                    Policy::SgdrCustom {
+                        steps,
+                        scales,
+                        seq_scales,
+                    } => (
+                        PolicyKind::Sgdr,
+                        defaults::step(),
+                        defaults::scale(),
+                        Some(steps),
+                        Some(scales),
+                        Some(seq_scales),
+                        defaults::gamma(),
+                    ),
+                };
+
+                let net = RawNetConfig {
                     max_batches,
                     batch,
                     learning_rate,
                     learning_rate_min,
-                    sgdr_cycle,
+                    sgdr_cycle: Some(sgdr_cycle),
                     sgdr_mult,
                     momentum,
                     decay,
@@ -2041,16 +1603,22 @@ mod items {
                     time_steps,
                     track,
                     augment_speed,
-                    sequential_subdivisions,
+                    sequential_subdivisions: Some(sequential_subdivisions),
                     try_fix_nan,
                     loss_scale,
                     dynamic_minibatch,
                     optimized_memory,
                     workspace_size_limit_mb,
                     adam,
-                    input_size,
-                    max_crop,
-                    min_crop,
+                    b1,
+                    b2,
+                    eps,
+                    width: width.map(|w| NonZeroU64::new(w).unwrap()),
+                    height: height.map(|h| NonZeroU64::new(h).unwrap()),
+                    channels: channels.map(|c| NonZeroU64::new(c).unwrap()),
+                    inputs: inputs.map(|i| NonZeroU64::new(i).unwrap()),
+                    max_crop: Some(max_crop),
+                    min_crop: Some(min_crop),
                     flip,
                     blur,
                     gaussian_noise,
@@ -2076,6 +1644,12 @@ mod items {
                     power,
                     policy,
                     burn_in,
+                    step,
+                    scale,
+                    steps,
+                    scales,
+                    seq_scales,
+                    gamma,
                 };
 
                 (net, classes)
@@ -2149,8 +1723,25 @@ mod items {
                                 (mask_begin..mask_end).map(|index| index as u64).collect()
                             };
 
-                            Item::Yolo(SerializedYoloConfig {
+                            // make sure mask indexes are valid
+                            assert!(
+                                mask.iter()
+                                    .cloned()
+                                    .all(|index| (index as usize) < global_anchors.len()),
+                                "mask indexes must not exceed total number of anchors"
+                            );
+
+                            let num = global_anchors.len() as u64;
+                            let mask = if mask.is_empty() { None } else { Some(mask) };
+                            let anchors = if global_anchors.is_empty() {
+                                None
+                            } else {
+                                Some(global_anchors.clone())
+                            };
+
+                            Item::Yolo(RawYoloConfig {
                                 classes,
+                                num,
                                 max_boxes,
                                 max_delta,
                                 counters_per_class,
@@ -2181,7 +1772,7 @@ mod items {
                                 embedding_layer,
                                 map,
                                 mask,
-                                anchors: global_anchors.clone(),
+                                anchors,
                                 common,
                             })
                         }
@@ -2755,6 +2346,10 @@ mod defaults {
     pub fn scale_x_y() -> R64 {
         R64::new(1.0)
     }
+
+    // pub fn uc_normalizer() -> R64 {
+    //     R64::new(1.0)
+    // }
 
     pub fn iou_normalizer() -> R64 {
         R64::new(0.75)
