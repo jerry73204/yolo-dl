@@ -41,11 +41,14 @@ trait TensorActivationEx {
 
 impl TensorActivationEx for Tensor {
     fn activation(&self, activation: Activation) -> Tensor {
+        dbg!(activation);
         match activation {
+            Activation::Linear => self.shallow_clone(),
             Activation::Relu => self.relu(),
             Activation::Swish => self.swish(),
             Activation::Mish => self.mish(),
             Activation::HardMish => self.hardswish(),
+            Activation::Leaky => self.clamp_min(0.0) + self.clamp_max(0.0) * 0.1,
             // Activation::NormalizeChannels => todo!(),
             // Activation::NormalizeChannelsSoftmax => todo!(),
             // Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
