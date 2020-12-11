@@ -496,19 +496,7 @@ impl Graph {
             let num_layers = layers.len();
             (0..num_layers).for_each(|layer_index| {
                 let layer = &layers[&layer_index];
-                let kind = match layer {
-                    Node::Convolutional(_) => "conv",
-                    Node::Connected(_) => "connected",
-                    Node::BatchNorm(_) => "batch_norm",
-                    Node::Dropout(_) => "dropout",
-                    Node::Shortcut(_) => "shortcut",
-                    Node::MaxPool(_) => "max_pool",
-                    Node::Route(_) => "route",
-                    Node::UpSample(_) => "up_sample",
-                    Node::Softmax(_) => "softmax",
-                    Node::Yolo(_) => "yolo",
-                    Node::GaussianYolo(_) => "gaussian_yolo",
-                };
+                let kind = layer.as_ref();
 
                 debug!(
                     "{}\t{}\t{:?}\t{:?}",
@@ -657,7 +645,7 @@ impl Display for ShapeList {
 
 // layer
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsRefStr)]
 pub enum Node {
     Connected(ConnectedNode),
     Convolutional(ConvolutionalNode),

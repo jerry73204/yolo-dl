@@ -40,20 +40,7 @@ fn main() -> Result<()> {
         let num_layers = graph.layers.len();
         (0..num_layers).for_each(|index| {
             let layer = &graph.layers[&index];
-
-            let kind = match layer {
-                Node::Convolutional(_) => "conv",
-                Node::Connected(_) => "connected",
-                Node::BatchNorm(_) => "batch_norm",
-                Node::Dropout(_) => "dropout",
-                Node::Softmax(_) => "softmax",
-                Node::Shortcut(_) => "shortcut",
-                Node::MaxPool(_) => "max_pool",
-                Node::Route(_) => "route",
-                Node::UpSample(_) => "up_sample",
-                Node::Yolo(_) => "yolo",
-                Node::GaussianYolo(_) => "gaussian_yolo",
-            };
+            let kind = layer.as_ref();
 
             table.add_row(row![
                 index,
