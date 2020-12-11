@@ -852,11 +852,11 @@ mod layer {
 
             // stack input tensors
             // becomes shape [batch, from_index, channel, height, width]
-            let tensor = Tensor::cat(&tensors, 1);
+            let tensor = Tensor::stack(&tensors, 1);
 
             // scale by weights
             // becomes shape [batch, channel, height, width]
-            let num_input_layers = from_indexes.len() as i64;
+            let num_features = from_indexes.len() as i64;
 
             let tensor = match weights_kind {
                 ShortcutWeightsKind::None => tensor.sum1(&[1], false, tensor.kind()),
@@ -870,14 +870,14 @@ mod layer {
                         WeightsNormalization::Softmax => weights.softmax(0, weights.kind()),
                     };
 
-                    let weights = weights.view([1, num_input_layers, 1, 1]).expand_as(&tensor);
+                    let weights = weights.view([1, num_features, 1, 1]).expand_as(&tensor);
                     (&tensor * weights).sum1(&[1], false, tensor.kind())
                 }
                 ShortcutWeightsKind::PerChannel(weights) => {
                     let weights = match weights_normalization {
                         WeightsNormalization::None => weights.shallow_clone(),
                         WeightsNormalization::Relu => {
-                            // assume weights tensor has shape [num_input_layers, num_channels]
+                            // assume weights tensor has shape [num_features, num_channels]
                             let relu = weights.relu();
                             let sum = relu.sum1(&[0], true, relu.kind()).expand_as(&relu) + 0.0001;
                             relu / sum
@@ -885,9 +885,7 @@ mod layer {
                         WeightsNormalization::Softmax => weights.softmax(0, weights.kind()),
                     };
 
-                    let weights = weights
-                        .view([1, num_input_layers, out_c, 1])
-                        .expand_as(&tensor);
+                    let weights = weights.view([1, num_features, out_c, 1]).expand_as(&tensor);
 
                     (&tensor * weights).sum1(&[1], false, tensor.kind())
                 }
@@ -983,6 +981,7 @@ mod layer {
             let size = size as i64;
             let padding = padding as i64;
 
+            ensure!(padding % 2 == 0, "padding must be even");
             ensure!(!maxpool_depth, "maxpool_depth is not implemented");
 
             Ok(MaxPoolLayer {
@@ -991,7 +990,8 @@ mod layer {
                     size,
                     stride_y,
                     stride_x,
-                    padding,
+                    // torch padding (one-side padding) = darknet padding / 2 (two-side padding)
+                    padding: padding / 2,
                 },
             })
         }
@@ -1011,8 +1011,8 @@ mod layer {
                 &[size, size],
                 &[stride_y, stride_x],
                 &[padding, padding],
-                &[],   // dilation
-                false, // cell_mode
+                &[1, 1], // dilation
+                false,   // cell_mode
             )
         }
     }
