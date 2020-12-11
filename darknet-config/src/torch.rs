@@ -12,7 +12,7 @@ use crate::{
         YoloNode,
     },
 };
-use tch::{nn, Kind, Tensor};
+use tch::{nn, IndexOp, Kind, Tensor};
 
 pub use layer::*;
 pub use tch_model::*;
@@ -1082,24 +1082,32 @@ mod layer {
 
             let num_anchors = anchors.len() as i64;
 
-            // reshape to [bsize, n_anchors, n_classes + 4 + 1, height, width]
+            // reshape to [bsize, n_anchors, n_classes + bbox (4) + objectness (1), height, width]
             let (bsize, channels, height, width) = input.size4()?;
             debug_assert!(channels % num_anchors == 0);
             let xs = input.view([bsize, num_anchors, -1, height, width]);
 
             // unpack detection parameters
-            let raw_x = xs.narrow(2, 0, 1);
-            let raw_y = xs.narrow(2, 1, 1);
-            let raw_w = xs.narrow(2, 2, 1);
-            let raw_h = xs.narrow(2, 3, 1);
-            let objectness = xs.narrow(2, 4, 1);
-            let class = xs.narrow(2, 5, num_classes);
+            let raw_x = xs.i((.., .., 0..1, .., ..));
+            let raw_y = xs.i((.., .., 1..2, .., ..));
+            let raw_w = xs.i((.., .., 2..3, .., ..));
+            let raw_h = xs.i((.., .., 3..4, .., ..));
+            let objectness = xs.i((.., .., 4..5, .., ..));
+            let class = xs.i((.., .., 5..(num_classes + 5), .., ..));
 
             // calculate bbox
             let bbox_cy = (&raw_y + y_grids.expand_as(&raw_y)) / height as f64;
             let bbox_cx = (&raw_x + x_grids.expand_as(&raw_x)) / width as f64;
             let bbox_h = (raw_h.exp() + 0.5) / height as f64;
             let bbox_w = (raw_w.exp() + 0.5) / width as f64;
+
+            // convert to [bsize, entries, anchors, height, width] shape
+            let bbox_cy = bbox_cy.permute(&[0, 2, 1, 3, 4]).contiguous();
+            let bbox_cx = bbox_cx.permute(&[0, 2, 1, 3, 4]).contiguous();
+            let bbox_h = bbox_h.permute(&[0, 2, 1, 3, 4]).contiguous();
+            let bbox_w = bbox_w.permute(&[0, 2, 1, 3, 4]).contiguous();
+            let objectness = objectness.permute(&[0, 2, 1, 3, 4]).contiguous();
+            let class = class.permute(&[0, 2, 1, 3, 4]).contiguous();
 
             // anchors
             let anchors: Vec<_> = anchors
