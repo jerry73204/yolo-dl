@@ -269,17 +269,17 @@ mod layer {
     use super::*;
 
     macro_rules! declare_tch_layer {
-        ($name:ident, $base:ty, $weights:ty) => {
+        ($name:ident, $node:ty, $weights:ty) => {
             #[derive(Debug)]
             pub struct $name {
-                pub base: $base,
+                pub node: $node,
                 pub weights: $weights,
             }
         };
-        ($name:ident, $base:ty) => {
+        ($name:ident, $node:ty) => {
             #[derive(Debug)]
             pub struct $name {
-                pub base: $base,
+                pub node: $node,
             }
         };
     }
@@ -300,45 +300,45 @@ mod layer {
     impl Layer {
         pub fn input_shape(&self) -> ShapeList {
             match self {
-                Self::Connected(layer) => ShapeList::SingleFlat(layer.base.input_shape),
-                Self::Convolutional(layer) => ShapeList::SingleHwc(layer.base.input_shape),
-                Self::Route(layer) => ShapeList::MultipleHwc(layer.base.input_shape.clone()),
-                Self::Shortcut(layer) => ShapeList::MultipleHwc(layer.base.input_shape.clone()),
-                Self::MaxPool(layer) => ShapeList::SingleHwc(layer.base.input_shape),
-                Self::UpSample(layer) => ShapeList::SingleHwc(layer.base.input_shape),
-                Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
-                Self::Yolo(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
-                Self::GaussianYolo(layer) => ShapeList::SingleHwc(layer.base.inout_shape),
+                Self::Connected(layer) => ShapeList::SingleFlat(layer.node.input_shape),
+                Self::Convolutional(layer) => ShapeList::SingleHwc(layer.node.input_shape),
+                Self::Route(layer) => ShapeList::MultipleHwc(layer.node.input_shape.clone()),
+                Self::Shortcut(layer) => ShapeList::MultipleHwc(layer.node.input_shape.clone()),
+                Self::MaxPool(layer) => ShapeList::SingleHwc(layer.node.input_shape),
+                Self::UpSample(layer) => ShapeList::SingleHwc(layer.node.input_shape),
+                Self::BatchNorm(layer) => ShapeList::SingleHwc(layer.node.inout_shape),
+                Self::Yolo(layer) => ShapeList::SingleHwc(layer.node.inout_shape),
+                Self::GaussianYolo(layer) => ShapeList::SingleHwc(layer.node.inout_shape),
             }
         }
 
         pub fn output_shape(&self) -> Shape {
             match self {
-                Self::Connected(layer) => Shape::Flat(layer.base.output_shape),
-                Self::Convolutional(layer) => Shape::Hwc(layer.base.output_shape),
-                Self::Route(layer) => Shape::Hwc(layer.base.output_shape),
-                Self::Shortcut(layer) => Shape::Hwc(layer.base.output_shape),
-                Self::MaxPool(layer) => Shape::Hwc(layer.base.output_shape),
-                Self::UpSample(layer) => Shape::Hwc(layer.base.output_shape),
-                Self::BatchNorm(layer) => Shape::Hwc(layer.base.inout_shape),
-                Self::Yolo(layer) => Shape::Hwc(layer.base.inout_shape),
-                Self::GaussianYolo(layer) => Shape::Hwc(layer.base.inout_shape),
+                Self::Connected(layer) => Shape::Flat(layer.node.output_shape),
+                Self::Convolutional(layer) => Shape::Hwc(layer.node.output_shape),
+                Self::Route(layer) => Shape::Hwc(layer.node.output_shape),
+                Self::Shortcut(layer) => Shape::Hwc(layer.node.output_shape),
+                Self::MaxPool(layer) => Shape::Hwc(layer.node.output_shape),
+                Self::UpSample(layer) => Shape::Hwc(layer.node.output_shape),
+                Self::BatchNorm(layer) => Shape::Hwc(layer.node.inout_shape),
+                Self::Yolo(layer) => Shape::Hwc(layer.node.inout_shape),
+                Self::GaussianYolo(layer) => Shape::Hwc(layer.node.inout_shape),
             }
         }
 
         pub fn from_indexes(&self) -> LayerPositionSet {
             match self {
-                Self::Connected(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::Convolutional(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::Route(layer) => LayerPositionSet::Multiple(layer.base.from_indexes.clone()),
+                Self::Connected(layer) => LayerPositionSet::Single(layer.node.from_indexes),
+                Self::Convolutional(layer) => LayerPositionSet::Single(layer.node.from_indexes),
+                Self::Route(layer) => LayerPositionSet::Multiple(layer.node.from_indexes.clone()),
                 Self::Shortcut(layer) => {
-                    LayerPositionSet::Multiple(layer.base.from_indexes.clone())
+                    LayerPositionSet::Multiple(layer.node.from_indexes.clone())
                 }
-                Self::MaxPool(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::UpSample(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::BatchNorm(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::Yolo(layer) => LayerPositionSet::Single(layer.base.from_indexes),
-                Self::GaussianYolo(layer) => LayerPositionSet::Single(layer.base.from_indexes),
+                Self::MaxPool(layer) => LayerPositionSet::Single(layer.node.from_indexes),
+                Self::UpSample(layer) => LayerPositionSet::Single(layer.node.from_indexes),
+                Self::BatchNorm(layer) => LayerPositionSet::Single(layer.node.from_indexes),
+                Self::Yolo(layer) => LayerPositionSet::Single(layer.node.from_indexes),
+                Self::GaussianYolo(layer) => LayerPositionSet::Single(layer.node.from_indexes),
             }
         }
 
@@ -429,7 +429,7 @@ mod layer {
         ) -> Result<Self> {
             let path = path.borrow();
             let darknet::ConnectedLayer {
-                base:
+                node:
                     ConnectedNode {
                         input_shape,
                         output_shape,
@@ -495,14 +495,14 @@ mod layer {
             });
 
             Ok(ConnectedLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights: ConnectedWeights { linear, batch_norm },
             })
         }
 
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
-                base:
+                node:
                     ConnectedNode {
                         config: ConnectedConfig { activation, .. },
                         ..
@@ -533,7 +533,7 @@ mod layer {
         ) -> Result<Self> {
             let path = path.borrow();
             let darknet::ConvolutionalLayer {
-                base:
+                node:
                     ConvolutionalNode {
                         ref config,
                         input_shape,
@@ -654,14 +654,14 @@ mod layer {
             };
 
             Ok(ConvolutionalLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights,
             })
         }
 
         pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let Self {
-                base:
+                node:
                     ConvolutionalNode {
                         config: ConvolutionalConfig { activation, .. },
                         ..
@@ -689,7 +689,7 @@ mod layer {
         ) -> Result<Self> {
             let path = path.borrow();
             let darknet::BatchNormLayer {
-                base:
+                node:
                     BatchNormNode {
                         inout_shape: [_h, _w, in_c],
                         ..
@@ -726,7 +726,7 @@ mod layer {
             batch_norm.bs.replace(biases.as_slice().unwrap(), &[in_c]);
 
             Ok(BatchNormLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights: BatchNormWeights { batch_norm },
             })
         }
@@ -747,7 +747,7 @@ mod layer {
         ) -> Result<Self> {
             let path = path.borrow();
             let darknet::ShortcutLayer {
-                base:
+                node:
                     ShortcutNode {
                         ref from_indexes,
                         ref input_shape,
@@ -794,7 +794,7 @@ mod layer {
             };
 
             Ok(ShortcutLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights: ShortcutWeights {
                     zero_paddings,
                     weights_kind,
@@ -807,7 +807,7 @@ mod layer {
             T: Borrow<Tensor>,
         {
             let Self {
-                base:
+                node:
                     ShortcutNode {
                         config:
                             ShortcutConfig {
@@ -896,7 +896,7 @@ mod layer {
             from: &darknet::RouteLayer,
         ) -> Result<Self> {
             let darknet::RouteLayer {
-                base:
+                node:
                     RouteNode {
                         config: RouteConfig { group, .. },
                         ref input_shape,
@@ -921,7 +921,7 @@ mod layer {
                 .collect();
 
             Ok(RouteLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights: RouteWeights { group_ranges },
             })
         }
@@ -955,7 +955,7 @@ mod layer {
             from: &darknet::MaxPoolLayer,
         ) -> Result<Self> {
             let darknet::MaxPoolLayer {
-                base:
+                node:
                     MaxPoolNode {
                         config:
                             MaxPoolConfig {
@@ -979,7 +979,7 @@ mod layer {
             ensure!(!maxpool_depth, "maxpool_depth is not implemented");
 
             Ok(MaxPoolLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights: MaxPoolWeights {
                     size,
                     stride_y,
@@ -1016,7 +1016,7 @@ mod layer {
             from: &darknet::UpSampleLayer,
         ) -> Result<Self> {
             let darknet::UpSampleLayer {
-                base:
+                node:
                     UpSampleNode {
                         output_shape: [out_h, out_w, _c],
                         ..
@@ -1028,7 +1028,7 @@ mod layer {
             let out_w = out_w as i64;
 
             Ok(UpSampleLayer {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights: UpSampleWeights { out_h, out_w },
             })
         }
@@ -1054,7 +1054,7 @@ mod layer {
             };
 
             Ok(Self {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights,
             })
         }
@@ -1064,7 +1064,7 @@ mod layer {
                 y_grids, x_grids, ..
             } = self.cache(input);
             let Self {
-                base:
+                node:
                     YoloNode {
                         config: YoloConfig { ref anchors, .. },
                         ..
@@ -1171,7 +1171,7 @@ mod layer {
             };
 
             Ok(Self {
-                base: from.base.clone(),
+                node: from.node.clone(),
                 weights,
             })
         }

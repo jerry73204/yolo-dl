@@ -30,26 +30,26 @@ mod model {
                 graph
                     .layers
                     .iter()
-                    .map(|(&layer_index, layer_base)| -> Result<_> {
-                        let layer = match layer_base {
-                            Node::Connected(base) => Layer::Connected(ConnectedLayer::new(base)),
-                            Node::Convolutional(base) => {
-                                Layer::Convolutional(ConvolutionalLayer::new(base, layer_index)?)
+                    .map(|(&layer_index, layer_node)| -> Result<_> {
+                        let layer = match layer_node {
+                            Node::Connected(node) => Layer::Connected(ConnectedLayer::new(node)),
+                            Node::Convolutional(node) => {
+                                Layer::Convolutional(ConvolutionalLayer::new(node, layer_index)?)
                             }
-                            Node::Route(base) => Layer::Route(RouteLayer { base: base.clone() }),
-                            Node::Shortcut(base) => Layer::Shortcut(ShortcutLayer::new(base)),
-                            Node::MaxPool(base) => {
-                                Layer::MaxPool(MaxPoolLayer { base: base.clone() })
+                            Node::Route(node) => Layer::Route(RouteLayer { node: node.clone() }),
+                            Node::Shortcut(node) => Layer::Shortcut(ShortcutLayer::new(node)),
+                            Node::MaxPool(node) => {
+                                Layer::MaxPool(MaxPoolLayer { node: node.clone() })
                             }
-                            Node::UpSample(base) => {
-                                Layer::UpSample(UpSampleLayer { base: base.clone() })
+                            Node::UpSample(node) => {
+                                Layer::UpSample(UpSampleLayer { node: node.clone() })
                             }
-                            Node::BatchNorm(base) => Layer::BatchNorm(BatchNormLayer::new(base)),
-                            Node::Dropout(base) => unimplemented!(),
-                            Node::Softmax(base) => unimplemented!(),
-                            Node::Yolo(base) => Layer::Yolo(YoloLayer { base: base.clone() }),
-                            Node::GaussianYolo(base) => {
-                                Layer::GaussianYolo(GaussianYoloLayer { base: base.clone() })
+                            Node::BatchNorm(node) => Layer::BatchNorm(BatchNormLayer::new(node)),
+                            Node::Dropout(node) => unimplemented!(),
+                            Node::Softmax(node) => unimplemented!(),
+                            Node::Yolo(node) => Layer::Yolo(YoloLayer { node: node.clone() }),
+                            Node::GaussianYolo(node) => {
+                                Layer::GaussianYolo(GaussianYoloLayer { node: node.clone() })
                             }
                         };
 
@@ -69,13 +69,13 @@ mod model {
             P: AsRef<Path>,
         {
             let config = DarknetConfig::load(config_file)?;
-            let base = Graph::from_config(&config)?;
-            Self::new(&base)
+            let graph = Graph::from_config(&config)?;
+            Self::new(&graph)
         }
 
         pub fn from_config(config: &DarknetConfig) -> Result<Self> {
-            let base = Graph::from_config(config)?;
-            Self::new(&base)
+            let graph = Graph::from_config(config)?;
+            Self::new(&graph)
         }
 
         pub fn load_weights<P>(&mut self, weights_file: P) -> Result<()>
@@ -137,17 +137,17 @@ mod layer {
     use super::*;
 
     macro_rules! declare_darknet_layer {
-        ($name:ident, $base:ty, $weights:ty) => {
+        ($name:ident, $node:ty, $weights:ty) => {
             #[derive(Debug, Clone)]
             pub struct $name {
-                pub base: $base,
+                pub node: $node,
                 pub weights: $weights,
             }
         };
-        ($name:ident, $base:ty) => {
+        ($name:ident, $node:ty) => {
             #[derive(Debug, Clone)]
             pub struct $name {
-                pub base: $base,
+                pub node: $node,
             }
         };
     }
@@ -192,7 +192,7 @@ mod layer {
     declare_darknet_layer!(GaussianYoloLayer, GaussianYoloNode);
 
     impl ConnectedLayer {
-        pub fn new(base: &ConnectedNode) -> Self {
+        pub fn new(node: &ConnectedNode) -> Self {
             let ConnectedNode {
                 config: ConnectedConfig {
                     batch_normalize, ..
@@ -200,7 +200,7 @@ mod layer {
                 input_shape,
                 output_shape,
                 ..
-            } = *base;
+            } = *node;
             let input_shape = input_shape as usize;
             let output_shape = output_shape as usize;
 
@@ -219,7 +219,7 @@ mod layer {
             };
 
             Self {
-                base: base.clone(),
+                node: node.clone(),
                 weights,
             }
         }
@@ -230,7 +230,7 @@ mod layer {
             transpose: bool,
         ) -> Result<()> {
             let Self {
-                base:
+                node:
                     ConnectedNode {
                         config:
                             ConnectedConfig {
@@ -279,7 +279,7 @@ mod layer {
     }
 
     impl ConvolutionalLayer {
-        pub fn new(base: &ConvolutionalNode, layer_index: usize) -> Result<Self> {
+        pub fn new(node: &ConvolutionalNode, layer_index: usize) -> Result<Self> {
             let ConvolutionalNode {
                 config:
                     ConvolutionalConfig {
@@ -292,7 +292,7 @@ mod layer {
                     },
                 input_shape: [_, _, in_c],
                 ..
-            } = *base;
+            } = *node;
 
             ensure!(
                 in_c % groups == 0,
@@ -330,14 +330,14 @@ mod layer {
             };
 
             Ok(Self {
-                base: base.clone(),
+                node: node.clone(),
                 weights,
             })
         }
 
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
-                base:
+                node:
                     ConvolutionalNode {
                         config:
                             ConvolutionalConfig {
@@ -394,8 +394,8 @@ mod layer {
     }
 
     impl BatchNormLayer {
-        pub fn new(base: &BatchNormNode) -> Self {
-            let [_h, _w, channels] = base.inout_shape;
+        pub fn new(node: &BatchNormNode) -> Self {
+            let [_h, _w, channels] = node.inout_shape;
             let channels = channels as usize;
 
             let biases = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
@@ -411,14 +411,14 @@ mod layer {
             };
 
             Self {
-                base: base.clone(),
+                node: node.clone(),
                 weights,
             }
         }
 
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
-                base:
+                node:
                     BatchNormNode {
                         config:
                             BatchNormConfig {
@@ -451,7 +451,7 @@ mod layer {
     }
 
     impl ShortcutLayer {
-        pub fn new(base: &ShortcutNode) -> Self {
+        pub fn new(node: &ShortcutNode) -> Self {
             let ShortcutNode {
                 config:
                     ShortcutConfig {
@@ -461,7 +461,7 @@ mod layer {
                     },
                 output_shape: [_, _, out_c],
                 ..
-            } = *base;
+            } = *node;
 
             let out_c = out_c as usize;
             let num_input_layers = from.len() + 1;
@@ -481,14 +481,14 @@ mod layer {
             };
 
             ShortcutLayer {
-                base: base.clone(),
+                node: node.clone(),
                 weights,
             }
         }
 
         pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
             let Self {
-                base:
+                node:
                     ShortcutNode {
                         config:
                             ShortcutConfig {
