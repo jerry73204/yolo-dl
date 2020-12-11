@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use argh::FromArgs;
-use darknet_config::{DarknetConfig, DarknetModel, LayerBase, ModelBase, TchModel};
+use darknet_config::{DarknetConfig, DarknetModel, Graph, Node, TchModel};
 use std::path::PathBuf;
 use tch::{nn, Device};
 
