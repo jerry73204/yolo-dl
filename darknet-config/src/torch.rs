@@ -167,6 +167,10 @@ mod tch_model {
             })
         }
 
+        pub fn input_shape(&self) -> ShapeList {
+            self.layers[0].input_shape()
+        }
+
         pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<MultiDenseDetection> {
             let (_batch_size, _channels, input_h, input_w) = input.size4()?;
 
