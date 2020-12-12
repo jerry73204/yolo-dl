@@ -1,5 +1,12 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
+pub mod common;
+pub mod detections;
+pub mod error;
+pub mod image;
+pub mod kinds;
+pub mod layers;
+pub mod network;
+pub mod sys;
+pub mod train;
+pub mod utils;
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+pub type BBox = sys::box_;
