@@ -3,6 +3,7 @@ members = [
     "yolo-dl",
     "train",
     "darknet-config",
+    "darknet-test",
     "tch-goodies",
     "mmap-dataset"
 ]
