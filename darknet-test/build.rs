@@ -150,6 +150,8 @@ where
     let include_files = vec![
         dst_path.join("include").join("darknet.h"),
         src_dir.join("network.h"),
+        src_dir.join("activations.h"),
+        src_dir.join("box.h"),
         src_dir.join("activation_layer.h"),
         src_dir.join("avgpool_layer.h"),
         src_dir.join("batchnorm_layer.h"),
@@ -197,13 +199,29 @@ where
         })?;
 
     builder
+        // darknet.h
+        .whitelist_function("train_detector")
+        .whitelist_function("free_detections")
+        // box.h
+        .whitelist_function("diounms_sort")
+        .whitelist_function("do_nms_sort")
+        // network.h
+        .whitelist_function("load_network")
         .whitelist_function("make_network")
+        .whitelist_function("free_network")
         .whitelist_function("forward_network")
         .whitelist_function("update_network")
         .whitelist_function("backward_output")
         .whitelist_function("train_network.*")
         .whitelist_function("get_network_.*")
-        .whitelist_function("network_*")
+        .whitelist_function("network_.*")
+        // image.h
+        .whitelist_function("make_image")
+        .whitelist_function("resize_image")
+        .whitelist_function("letterbox_image")
+        .whitelist_function("crop_image")
+        .whitelist_function("free_image")
+        // *_layer.h
         .whitelist_function("forward_.*_layer")
         .whitelist_function("backward_.*_layer")
         .whitelist_function("resize_.*_layer")
