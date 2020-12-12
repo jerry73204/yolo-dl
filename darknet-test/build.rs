@@ -76,23 +76,6 @@ fn guess_cmake_profile() -> &'static str {
     }
 }
 
-fn gen_bindings<P>(include_file: P) -> Result<()>
-where
-    P: AsRef<Path>,
-{
-    let include_file = include_file.as_ref();
-    bindgen::Builder::default()
-        .header(
-            include_file
-                .to_str()
-                .ok_or_else(|| format_err!("cannot create path to {}", include_file.display()))?,
-        )
-        .generate()
-        .map_err(|_| format_err!("failed to generate bindings"))?
-        .write_to_file(&*BINDINGS_TARGET_PATH)?;
-    Ok(())
-}
-
 fn is_dynamic() -> bool {
     return cfg!(feature = "dylib");
 }
@@ -161,12 +144,72 @@ where
         }
     }
 
-    // gen_bindings(dst_path.join("include").join("darknet.h"))?;
-    gen_bindings(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("include")
-            .join("darknet.h"),
-    )?;
+    // find header files
+
+    let src_dir = dst_path.join("src");
+    let include_files = vec![
+        dst_path.join("include").join("darknet.h"),
+        src_dir.join("network.h"),
+        src_dir.join("activation_layer.h"),
+        src_dir.join("avgpool_layer.h"),
+        src_dir.join("batchnorm_layer.h"),
+        src_dir.join("connected_layer.h"),
+        src_dir.join("conv_lstm_layer.h"),
+        src_dir.join("convolutional_layer.h"),
+        src_dir.join("cost_layer.h"),
+        src_dir.join("crnn_layer.h"),
+        src_dir.join("crop_layer.h"),
+        src_dir.join("deconvolutional_layer.h"),
+        src_dir.join("detection_layer.h"),
+        src_dir.join("dropout_layer.h"),
+        src_dir.join("gaussian_yolo_layer.h"),
+        src_dir.join("gru_layer.h"),
+        src_dir.join("local_layer.h"),
+        src_dir.join("lstm_layer.h"),
+        src_dir.join("maxpool_layer.h"),
+        src_dir.join("normalization_layer.h"),
+        src_dir.join("region_layer.h"),
+        src_dir.join("reorg_layer.h"),
+        src_dir.join("reorg_old_layer.h"),
+        src_dir.join("rnn_layer.h"),
+        src_dir.join("route_layer.h"),
+        src_dir.join("sam_layer.h"),
+        src_dir.join("scale_channels_layer.h"),
+        src_dir.join("shortcut_layer.h"),
+        src_dir.join("softmax_layer.h"),
+        src_dir.join("upsample_layer.h"),
+        src_dir.join("yolo_layer.h"),
+    ];
+
+    // generate bindings
+    let builder = bindgen::Builder::default()
+        .clang_arg(format!("-I{}", dst_path.join("include").to_str().unwrap()));
+
+    let builder = include_files
+        .iter()
+        .try_fold(builder, |builder, path| -> Result<_> {
+            // let path = path.as_ref();
+            let builder = builder.header(
+                path.to_str()
+                    .ok_or_else(|| format_err!("cannot create path to {}", path.display()))?,
+            );
+            Ok(builder)
+        })?;
+
+    builder
+        .whitelist_function("make_network")
+        .whitelist_function("forward_network")
+        .whitelist_function("update_network")
+        .whitelist_function("backward_output")
+        .whitelist_function("train_network.*")
+        .whitelist_function("get_network_.*")
+        .whitelist_function("network_*")
+        .whitelist_function("forward_.*_layer")
+        .whitelist_function("backward_.*_layer")
+        .whitelist_function("resize_.*_layer")
+        .generate()
+        .map_err(|_| format_err!("failed to generate bindings"))?
+        .write_to_file(&*BINDINGS_TARGET_PATH)?;
 
     Ok(())
 }
