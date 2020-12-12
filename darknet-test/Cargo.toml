@@ -1,0 +1,20 @@
+[package]
+name = "darknet-test"
+version = "0.1.0"
+authors = ["jerry73204 <jerry73204@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+anyhow = "1.0"
+bindgen = "0.55"
+cmake = "0.1"
+lazy_static = "1.4"
+fs_extra = "1.2"
+
+[features]
+docs-rs = []
+enable-cuda = []
+enable-cudnn = []
+enable-opencv = []
