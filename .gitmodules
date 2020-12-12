@@ -1,3 +1,0 @@
-[submodule "darknet-test/darknet"]
-	path = darknet-test/darknet
-	url = https://github.com/AlexeyAB/darknet.git
