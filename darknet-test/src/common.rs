@@ -1,6 +1,6 @@
 pub use anyhow::Result;
 pub use image::{error::ImageError, DynamicImage, ImageBuffer, Pixel};
-pub use ndarray::ArrayView4;
+pub use ndarray::{Array3, ArrayD, ArrayView4};
 pub use num_derive::FromPrimitive;
 pub use num_traits::FromPrimitive;
 pub use serde::{Deserialize, Serialize};

@@ -303,6 +303,31 @@ where
     }
 }
 
+impl<'a> From<&'a Array3<f32>> for Image {
+    fn from(array: &Array3<f32>) -> Self {
+        let array = array.as_standard_layout().to_owned();
+        let [in_w, in_h, in_c] = match array.shape() {
+            &[in_w, in_h, in_c] => [in_w, in_h, in_c],
+            _ => unreachable!(),
+        };
+        let n_components = in_w * in_w * in_c;
+        let src_slice = array.as_slice().unwrap();
+
+        let image = unsafe { sys::make_image(in_w as i32, in_h as i32, in_c as i32) };
+        let target_slice = unsafe { slice::from_raw_parts_mut(image.data, n_components) };
+
+        target_slice.copy_from_slice(src_slice);
+
+        Self { image }
+    }
+}
+
+impl From<Array3<f32>> for Image {
+    fn from(array: Array3<f32>) -> Self {
+        Self::from(&array)
+    }
+}
+
 impl<P> TryFrom<&Image> for ImageBuffer<P, Vec<P::Subpixel>>
 where
     P: Pixel + 'static,
@@ -389,6 +414,18 @@ where
     Container: Deref<Target = [P::Subpixel]>,
     P::Subpixel: ConvertSubpixel,
 {
+    fn into_cow_image(self) -> Cow<'a, Image> {
+        Cow::Owned(self.into())
+    }
+}
+
+impl<'a> IntoCowImage<'a> for &'a Array3<f32> {
+    fn into_cow_image(self) -> Cow<'a, Image> {
+        Cow::Owned(self.into())
+    }
+}
+
+impl<'a> IntoCowImage<'a> for Array3<f32> {
     fn into_cow_image(self) -> Cow<'a, Image> {
         Cow::Owned(self.into())
     }

@@ -3,14 +3,13 @@ use darknet_config::{DarknetModel, TchModel};
 use darknet_test::{
     config::{Config, InputConfig},
     darknet::network::Network,
-    sys,
 };
 use itertools::Itertools;
 use log::info;
-use ndarray::ArrayD;
+use ndarray::{Array3, ArrayD};
 use std::{convert::TryInto, fs, path::PathBuf};
 pub use structopt::StructOpt;
-use tch::{nn, vision, Device, Kind};
+use tch::{nn, vision, Kind};
 use tch_goodies::TensorExt;
 
 #[derive(Debug, Clone, StructOpt)]
@@ -35,7 +34,7 @@ fn main() -> Result<()> {
 
     // load darknet model
     info!("loading darknet model ...");
-    let darknet_model = Network::load(&config_file, Some(&weights_file), false)?;
+    let mut darknet_model = Network::load(&config_file, Some(&weights_file), false)?;
 
     // load rust model
     info!("loading rust model ...");
@@ -89,6 +88,7 @@ fn main() -> Result<()> {
         .try_for_each(|image_file| -> Result<_> {
             info!("test image {}", image_file.display());
 
+            // forward rust model
             let rust_input = vision::image::load(&image_file)?
                 .resize2d_letterbox(in_h as i64, in_w as i64)?
                 .to_device(rust_device)
@@ -96,9 +96,18 @@ fn main() -> Result<()> {
                 .g_div1(255.0)
                 .view([1, in_c as i64, in_h as i64, in_w as i64]);
 
-            let rust_output = rust_model.forward_t(&rust_input, false)?;
+            let _rust_output = rust_model.forward_t(&rust_input, false)?;
 
-            // let darknet_input: ArrayD<f32> = (&rust_input).try_into()?;
+            // forward darknet model
+            let darknet_input: Array3<f32> = {
+                let array: ArrayD<f32> = (&rust_input
+                    .view([in_c as i64, in_h as i64, in_w as i64])
+                    .permute(&[2, 1, 0]))
+                    .try_into()?;
+                array.into_shape((in_w, in_w, in_c)).unwrap()
+            };
+
+            let _darknet_output = darknet_model.predict(&darknet_input, 0.8, 0.5, 0.45, true);
 
             Ok(())
         })?;
