@@ -8,4 +8,12 @@ pub struct Config {
     // pub darknet_device: Device,
     #[serde(with = "tch_serde::serde_device")]
     pub rust_device: Device,
+    pub input: InputConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InputConfig {
+    File(PathBuf),
+    Dir(PathBuf),
+    Glob(String),
 }

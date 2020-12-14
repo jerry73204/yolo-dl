@@ -13,13 +13,11 @@ cmake = "0.1"
 lazy_static = "1.4"
 fs_extra = "1.2"
 glob = "0.3"
-# itertools = "0.9"
 
 [dependencies]
 anyhow = "1.0"
 darknet-config = { version = "0.1", path = "../darknet-config" }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
-argh = "0.1"
 pretty_env_logger = "0.4"
 log = "0.4"
 tch = { version = "0.3" }
@@ -34,6 +32,8 @@ json5 = "0.3"
 tch-serde = "0.3"
 safe-transmute = "0.11"
 ndarray = "0.14"
+itertools = "0.9"
+glob = "0.3"
 
 [features]
 default = ["enable-cuda", "enable-cudnn"]
