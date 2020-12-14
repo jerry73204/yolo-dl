@@ -1,13 +1,14 @@
-use crate::{
-    common::*,
+use super::{
     detections::Detections,
     error::Error,
     image::IntoCowImage,
     layers::{Layer, Layers},
-    sys, utils,
+    utils,
 };
+use crate::{common::*, sys};
 
 /// The network wrapper type for Darknet.
+#[derive(Debug)]
 pub struct Network {
     net: NonNull<sys::network>,
 }

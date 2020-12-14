@@ -1,4 +1,5 @@
-use crate::{common::*, sys, BBox};
+use super::BBox;
+use crate::{common::*, sys};
 
 /// An instance of detection.
 #[derive(Debug)]

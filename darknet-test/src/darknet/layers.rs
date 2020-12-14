@@ -1,11 +1,7 @@
-use crate::{
-    common::*,
-    kinds::{
-        Activation, CostType, IoULoss, LayerType, NmsKind, WeightsNormalizion, WeightsType,
-        YoloPoint,
-    },
-    sys,
+use super::kinds::{
+    Activation, CostType, IoULoss, LayerType, NmsKind, WeightsNormalizion, WeightsType, YoloPoint,
 };
+use crate::{common::*, sys};
 
 /// A collection layers.
 #[derive(Debug)]

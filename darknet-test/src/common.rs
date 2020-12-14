@@ -1,6 +1,7 @@
 pub use image::{error::ImageError, DynamicImage, ImageBuffer, Pixel};
 pub use num_derive::FromPrimitive;
 pub use num_traits::FromPrimitive;
+pub use serde::{Deserialize, Serialize};
 pub use std::{
     borrow::{Borrow, Cow},
     convert::TryFrom,
@@ -10,8 +11,9 @@ pub use std::{
     mem,
     ops::Deref,
     os::raw::c_int,
-    path::Path,
+    path::{Path, PathBuf},
     ptr::{self, NonNull},
     slice,
 };
+pub use tch::Device;
 pub use thiserror::Error;

@@ -1,38 +1,40 @@
 use anyhow::{format_err, Context, Result};
 use argh::FromArgs;
 use darknet_config::{DarknetModel, TchModel};
-use darknet_test::{network::Network, sys};
+use darknet_test::{config::Config, darknet::network::Network, sys};
 use log::info;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
+pub use structopt::StructOpt;
 use tch::{nn, vision, Device, Kind};
 use tch_goodies::TensorExt;
 
-#[derive(Debug, Clone, FromArgs)]
+#[derive(Debug, Clone, StructOpt)]
 /// Load darknet config and weights files and produce summary.
 struct Args {
-    #[argh(positional)]
-    /// configuration file
+    #[structopt(long, default_value = "darknet-test.json5")]
     config_file: PathBuf,
-    #[argh(positional)]
-    /// weights file
-    weights_file: PathBuf,
-    #[argh(positional)]
-    /// image file
-    image_file: PathBuf,
 }
 
 fn main() -> Result<()> {
     pretty_env_logger::init();
 
     let Args {
+        config_file: darknet_test_config_file,
+    } = Args::from_args();
+    let Config {
         config_file,
         weights_file,
-        image_file,
-    } = argh::from_env();
+        rust_device,
+    } = json5::from_str(&fs::read_to_string(&darknet_test_config_file)?)?;
+
+    // load darknet model
+    {
+        info!("loading darknet model");
+        let network_ptr = Network::load(&config_file, Some(&weights_file), false)?.into_raw();
+    }
 
     // load rust model
-    let device = Device::cuda_if_available();
-    let vs = nn::VarStore::new(device);
+    let vs = nn::VarStore::new(rust_device);
     let root = vs.root();
 
     let mut rust_model = {
@@ -45,11 +47,6 @@ fn main() -> Result<()> {
         info!("initializing model...");
         TchModel::from_darknet_model(&root, &darknet_model)?
     };
-
-    // load darknet model
-    {
-        let network_ptr = Network::load(&config_file, Some(weights_file), false)?.into_raw();
-    }
 
     Ok(())
 }

@@ -1,4 +1,5 @@
-use crate::{common::*, error::Error, sys, utils};
+use super::{error::Error, utils};
+use crate::{common::*, sys};
 
 /// Train a detector model.
 pub fn train_detector<P1, P2, P3, P4, G>(

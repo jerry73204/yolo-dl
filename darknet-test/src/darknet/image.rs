@@ -1,4 +1,5 @@
-use crate::{common::*, error::Error, sys, BBox};
+use super::{error::Error, BBox};
+use crate::{common::*, sys};
 
 pub trait ConvertSubpixel
 where
