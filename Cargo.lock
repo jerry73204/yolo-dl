@@ -828,7 +828,7 @@ dependencies = [
  "itertools 0.9.0",
  "log",
  "maplit",
- "ndarray",
+ "ndarray 0.13.1",
  "noisy_float",
  "owning_ref",
  "petgraph",
@@ -851,9 +851,26 @@ dependencies = [
  "anyhow",
  "bindgen",
  "cmake",
+ "darknet-config",
  "fs_extra",
  "glob",
+ "image",
+ "itertools 0.9.0",
+ "json5 0.3.0",
  "lazy_static",
+ "libc",
+ "log",
+ "ndarray 0.14.0",
+ "num-derive",
+ "num-traits",
+ "pretty_env_logger",
+ "safe-transmute",
+ "serde",
+ "structopt",
+ "tch",
+ "tch-goodies",
+ "tch-serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -1443,6 +1460,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "json5"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d993b17585f39e5e3bd98ff52bbd9e2a6d6b3f5b09d8abcec9d1873fb04cf3f"
+dependencies = [
+ "pest",
+ "pest_derive",
+ "serde",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,10 +1625,10 @@ dependencies = [
  "indexmap",
  "indicatif",
  "itertools 0.9.0",
- "json5",
+ "json5 0.2.8",
  "log",
  "memmap",
- "ndarray",
+ "ndarray 0.13.1",
  "noisy_float",
  "num_cpus",
  "par-stream",
@@ -1650,7 +1678,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac06db03ec2f46ee0ecdca1a1c34a99c0d188a0d83439b84bf0cb4b386e4ab09"
 dependencies = [
  "matrixmultiply",
- "num-complex",
+ "num-complex 0.2.4",
+ "num-integer",
+ "num-traits",
+ "rawpointer",
+]
+
+[[package]]
+name = "ndarray"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c0d5c9540a691d153064dc47a4db2504587a75eae07bf1d73f7a596ebc73c04"
+dependencies = [
+ "matrixmultiply",
+ "num-complex 0.3.1",
  "num-integer",
  "num-traits",
  "rawpointer",
@@ -1691,6 +1732,26 @@ checksum = "b6b19411a9719e753aff12e5187b74d60d3dc449ec3f4dc21e3989c3f554bc95"
 dependencies = [
  "autocfg",
  "num-traits",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "747d632c0c558b87dbabbe6a82f3b4ae03720d0646ac5b7b4dae89394be5f2c5"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-derive"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2599,6 +2660,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 
 [[package]]
+name = "structopt"
+version = "0.3.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5277acd7ee46e63e5168a80734c9f6ee81b1367a7d8772a2d765df2a3705d28c"
+dependencies = [
+ "clap",
+ "lazy_static",
+ "structopt-derive",
+]
+
+[[package]]
+name = "structopt-derive"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ba9cdfda491b814720b6b06e0cac513d922fc407582032e8706e9f137976f90"
+dependencies = [
+ "heck",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "strum"
 version = "0.19.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2663,7 +2748,7 @@ dependencies = [
  "half",
  "lazy_static",
  "libc",
- "ndarray",
+ "ndarray 0.13.1",
  "rand",
  "thiserror",
  "torch-sys",
@@ -2793,7 +2878,7 @@ dependencies = [
  "image",
  "integer-encoding",
  "lazy_static",
- "ndarray",
+ "ndarray 0.13.1",
  "noisy_float",
  "num_cpus",
  "prost",
@@ -2838,9 +2923,9 @@ dependencies = [
 
 [[package]]
 name = "tiff"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abeb4e3f32a8973722c0254189e6890358e72b1bf11becb287ee0b23c595a41d"
+checksum = "9a53f4706d65497df0c4349241deddf35f84cee19c87ed86ea8ca590f4464437"
 dependencies = [
  "jpeg-decoder",
  "miniz_oxide 0.4.3",
@@ -2983,10 +3068,10 @@ dependencies = [
  "image",
  "indexmap",
  "itertools 0.9.0",
- "json5",
+ "json5 0.2.8",
  "log",
  "mmap-dataset",
- "ndarray",
+ "ndarray 0.13.1",
  "noisy_float",
  "num_cpus",
  "par-stream",
@@ -3363,7 +3448,7 @@ dependencies = [
  "itertools 0.9.0",
  "lazy_static",
  "log",
- "ndarray",
+ "ndarray 0.13.1",
  "noisy_float",
  "num_cpus",
  "par-stream",
