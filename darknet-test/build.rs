@@ -88,10 +88,6 @@ fn is_cudnn_enabled() -> bool {
     cfg!(feature = "enable-cudnn")
 }
 
-fn is_opencv_enabled() -> bool {
-    cfg!(feature = "enable-opencv")
-}
-
 fn build_with_cmake<P>(src_path: P) -> Result<()>
 where
     P: AsRef<Path>,
@@ -121,10 +117,7 @@ where
             "ENABLE_CUDNN",
             if is_cudnn_enabled() { "ON" } else { "OFF" },
         )
-        .define(
-            "ENABLE_OPENCV",
-            if is_opencv_enabled() { "ON" } else { "OFF" },
-        )
+        .define("ENABLE_OPENCV", "ON")
         .build();
     println!("cargo:rustc-link-search={}", dst.join("build").display());
 
@@ -136,11 +129,20 @@ where
     if !is_dynamic() {
         println!("cargo:rustc-link-lib=gomp");
         println!("cargo:rustc-link-lib=stdc++");
+
+        println!("cargo:rustc-link-lib=opencv_core");
+        println!("cargo:rustc-link-lib=opencv_imgproc");
+        println!("cargo:rustc-link-lib=opencv_imgcodecs");
+        println!("cargo:rustc-link-lib=opencv_highgui");
+
         if is_cuda_enabled() {
             println!("cargo:rustc-link-lib=cudart");
-            println!("cargo:rustc-link-lib=cudnn");
             println!("cargo:rustc-link-lib=cublas");
             println!("cargo:rustc-link-lib=curand");
+        }
+
+        if is_cudnn_enabled() {
+            println!("cargo:rustc-link-lib=cudnn");
         }
     }
 

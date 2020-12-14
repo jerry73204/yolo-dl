@@ -30,8 +30,7 @@ num-derive = "0.3"
 num-traits = "0.2"
 
 [features]
-default = ["enable-opencv", "enable-cuda", "enable-cudnn"]
+default = ["enable-cuda", "enable-cudnn"]
 docs-rs = []
 enable-cuda = []
 enable-cudnn = []
-enable-opencv = []
