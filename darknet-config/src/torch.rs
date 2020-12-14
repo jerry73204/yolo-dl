@@ -41,7 +41,6 @@ trait TensorActivationEx {
 
 impl TensorActivationEx for Tensor {
     fn activation(&self, activation: Activation) -> Tensor {
-        dbg!(activation);
         match activation {
             Activation::Linear => self.shallow_clone(),
             Activation::Relu => self.relu(),

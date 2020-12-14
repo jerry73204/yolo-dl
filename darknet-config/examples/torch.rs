@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         TchModel::from_darknet_model(&root, &darknet_model)?
     };
 
-    let [in_c, in_h, in_w] = {
+    let [_in_c, in_h, in_w] = {
         let [in_h, in_w, in_c] = model
             .input_shape()
             .single_hwc()

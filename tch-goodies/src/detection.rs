@@ -99,28 +99,28 @@ impl TryFrom<DenseDetectionInit> for DenseDetection {
             let (batch_size, _entries, _anchors, height, width) = bbox_cy.size5()?;
             ensure!(
                 bbox_cy.size5()? == (batch_size, 1, num_anchors, height, width),
-                "invalid shape"
+                "bbox_cy has invalid shape"
             );
             ensure!(
                 bbox_cx.size5()? == (batch_size, 1, num_anchors, height, width),
-                "invalid shape"
+                "bbox_cx has invalid shape"
             );
             ensure!(
                 bbox_h.size5()? == (batch_size, 1, num_anchors, height, width),
-                "invalid shape"
+                "bbox_h has invalid shape"
             );
             ensure!(
                 bbox_w.size5()? == (batch_size, 1, num_anchors, height, width),
-                "invalid shape"
+                "bbox_w has invalid shape"
             );
             ensure!(
                 objectness.size5()? == (batch_size, 1, num_anchors, height, width),
-                "invalid shape"
+                "objectness has invalid shape"
             );
             ensure!(
                 classification.size5()?
                     == (batch_size, num_classes as i64, num_anchors, height, width),
-                "invalid shape"
+                "classification has invalid shape"
             );
 
             (batch_size, GridSize::new(height, width))
