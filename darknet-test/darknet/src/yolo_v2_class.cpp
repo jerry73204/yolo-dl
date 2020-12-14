@@ -13,7 +13,7 @@ extern "C" {
 #include "image.h"
 #include "demo.h"
 #include "option_list.h"
-#include "stb_image.h"
+// #include "stb_image.h"
 }
 //#include <sys/time.h>
 
@@ -224,38 +224,42 @@ LIB_API std::vector<bbox_t> Detector::detect(std::string image_filename, float t
 
 static image load_image_stb(char *filename, int channels)
 {
-    int w, h, c;
-    unsigned char *data = stbi_load(filename, &w, &h, &c, channels);
-    if (!data)
-        throw std::runtime_error("file not found");
-    if (channels) c = channels;
-    int i, j, k;
-    image im = make_image(w, h, c);
-    for (k = 0; k < c; ++k) {
-        for (j = 0; j < h; ++j) {
-            for (i = 0; i < w; ++i) {
-                int dst_index = i + w*j + w*h*k;
-                int src_index = k + c*i + c*w*j;
-                im.data[dst_index] = (float)data[src_index] / 255.;
-            }
-        }
-    }
-    free(data);
-    return im;
+    // int w, h, c;
+    // unsigned char *data = stbi_load(filename, &w, &h, &c, channels);
+    // if (!data)
+    //     throw std::runtime_error("file not found");
+    // if (channels) c = channels;
+    // int i, j, k;
+    // image im = make_image(w, h, c);
+    // for (k = 0; k < c; ++k) {
+    //     for (j = 0; j < h; ++j) {
+    //         for (i = 0; i < w; ++i) {
+    //             int dst_index = i + w*j + w*h*k;
+    //             int src_index = k + c*i + c*w*j;
+    //             im.data[dst_index] = (float)data[src_index] / 255.;
+    //         }
+    //     }
+    // }
+    // free(data);
+    // return im;
+    fprintf(stderr, "load_image_stb() is disabled");
+    abort();
 }
 
 LIB_API image_t Detector::load_image(std::string image_filename)
 {
-    char *input = const_cast<char *>(image_filename.c_str());
-    image im = load_image_stb(input, 3);
+    // char *input = const_cast<char *>(image_filename.c_str());
+    // image im = load_image_stb(input, 3);
 
-    image_t img;
-    img.c = im.c;
-    img.data = im.data;
-    img.h = im.h;
-    img.w = im.w;
+    // image_t img;
+    // img.c = im.c;
+    // img.data = im.data;
+    // img.h = im.h;
+    // img.w = im.w;
 
-    return img;
+    // return img;
+    fprintf(stderr, "load_image() is disabled");
+    abort();
 }
 
 

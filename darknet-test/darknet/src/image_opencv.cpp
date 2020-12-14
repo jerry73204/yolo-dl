@@ -837,14 +837,16 @@ extern "C" image get_image_from_stream_letterbox(cap_cv *cap, int w, int h, int 
 // ====================================================================
 // Image Saving
 // ====================================================================
-extern int stbi_write_png(char const *filename, int w, int h, int comp, const void  *data, int stride_in_bytes);
-extern int stbi_write_jpg(char const *filename, int x, int y, int comp, const void  *data, int quality);
+// extern int stbi_write_png(char const *filename, int w, int h, int comp, const void  *data, int stride_in_bytes);
+// extern int stbi_write_jpg(char const *filename, int x, int y, int comp, const void  *data, int quality);
 
 extern "C" void save_mat_png(cv::Mat img_src, const char *name)
 {
     cv::Mat img_rgb;
     if (img_src.channels() >= 3) cv::cvtColor(img_src, img_rgb, cv::COLOR_RGB2BGR);
-    stbi_write_png(name, img_rgb.cols, img_rgb.rows, 3, (char *)img_rgb.data, 0);
+    fprintf(stderr, "image channels must be at least 3");
+    abort();
+    // stbi_write_png(name, img_rgb.cols, img_rgb.rows, 3, (char *)img_rgb.data, 0);
 }
 // ----------------------------------------
 
@@ -852,7 +854,9 @@ extern "C" void save_mat_jpg(cv::Mat img_src, const char *name)
 {
     cv::Mat img_rgb;
     if (img_src.channels() >= 3) cv::cvtColor(img_src, img_rgb, cv::COLOR_RGB2BGR);
-    stbi_write_jpg(name, img_rgb.cols, img_rgb.rows, 3, (char *)img_rgb.data, 80);
+    fprintf(stderr, "image channels must be at least 3");
+    abort();
+    // stbi_write_jpg(name, img_rgb.cols, img_rgb.rows, 3, (char *)img_rgb.data, 80);
 }
 // ----------------------------------------
 
