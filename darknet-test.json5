@@ -1,0 +1,5 @@
+{
+    "config_file": "darknet-config/cfg/yolov4.cfg",
+    "weights_file": "/mnt/external1/aeon/dataset/yolov4.weights",
+    "rust_device": "cuda(1)",
+}
