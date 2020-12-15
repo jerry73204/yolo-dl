@@ -831,6 +831,7 @@ dependencies = [
  "binread",
  "byteorder",
  "derivative",
+ "dot",
  "glob",
  "image",
  "indexmap",
@@ -846,6 +847,7 @@ dependencies = [
  "serde",
  "serde_ini",
  "serde_repr",
+ "structopt",
  "strum",
  "tch",
  "tch-goodies",
@@ -951,6 +953,12 @@ name = "discard"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
+
+[[package]]
+name = "dot"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a74b6c4d4a1cff5f454164363c16b72fa12463ca6b31f4b5f2035a65fa3d5906"
 
 [[package]]
 name = "either"
