@@ -312,6 +312,15 @@ float *get_network_output(network net)
     return net.layers[i].output;
 }
 
+float *get_network_output_layer(network net, int index)
+{
+#ifdef GPU
+    if (gpu_index >= 0) return get_network_output_gpu_layer(net, index);
+#endif
+    layer l = net.layers[index];
+    return l.output;
+}
+
 float get_network_cost(network net)
 {
     int i;

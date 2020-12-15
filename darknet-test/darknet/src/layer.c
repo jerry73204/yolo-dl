@@ -266,3 +266,11 @@ void free_layer_custom(layer l, int keep_cudnn_desc)
 
 #endif  // GPU
 }
+
+float *layer_get_output(const layer *layer)
+{
+#ifdef GPU
+    if (gpu_index >= 0) return layer_get_output_gpu(layer);
+#endif
+    return layer->output;
+}

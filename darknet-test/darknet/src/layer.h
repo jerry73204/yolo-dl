@@ -8,6 +8,9 @@
 extern "C" {
 #endif
 
+float *layer_get_output(const layer *layer);
+float *layer_get_output_gpu(const layer *layer);
+
 //struct network_state;
 
 //struct layer;

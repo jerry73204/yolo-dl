@@ -207,6 +207,8 @@ where
         // box.h
         .whitelist_function("diounms_sort")
         .whitelist_function("do_nms_sort")
+        // layer.h
+        .whitelist_function("layer_.*")
         // network.h
         .whitelist_function("load_network")
         .whitelist_function("make_network")
