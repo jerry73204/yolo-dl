@@ -167,6 +167,15 @@ fn main() -> Result<()> {
                                         .permute(&[0, 3, 2, 1])
                                         .to_device(rust_device);
 
+                                // {
+                                //     let num_buckets = 10;
+                                //     let darknet_hist =
+                                //         Vec::<f32>::from(&darknet_feature_map.histc(num_buckets));
+                                //     let rust_hist =
+                                //         Vec::<f32>::from(&rust_feature_map.histc(num_buckets));
+                                //     dbg!(darknet_hist, rust_hist);
+                                // }
+
                                 // check values
                                 {
                                     let mse = f32::from(
@@ -178,7 +187,8 @@ fn main() -> Result<()> {
                                     // check mse
                                     ensure!(
                                         abs_diff_eq!(mse, 0.0),
-                                        "layer output differs from darknet. mse={}",
+                                        "output differs at layer {}. mse={}",
+                                        layer_index,
                                         mse
                                     );
                                 }
