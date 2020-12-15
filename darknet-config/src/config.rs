@@ -2429,6 +2429,13 @@ mod misc {
     }
 
     impl Shape {
+        pub fn to_vec(&self) -> Vec<u64> {
+            match *self {
+                Self::Hwc(hwc) => Vec::from(hwc),
+                Self::Flat(flat) => vec![flat],
+            }
+        }
+
         pub fn hwc(&self) -> Option<[u64; 3]> {
             match *self {
                 Self::Hwc(hwc) => Some(hwc),
