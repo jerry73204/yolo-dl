@@ -934,12 +934,102 @@ mod graphviz {
             match *node {
                 Some(layer_index) => {
                     let output_shape = self.layers[layer_index].output_shape().to_vec();
-                    LabelText::escaped(format!(
-                        r"({}) {}\n{}",
-                        layer_index,
-                        self.layers[layer_index].as_ref(),
-                        dot::escape_html(&format!("{:?}", output_shape))
-                    ))
+
+                    match &self.layers[layer_index] {
+                        Node::Convolutional(node) => {
+                            let ConvolutionalNode {
+                                config:
+                                    ConvolutionalConfig {
+                                        size,
+                                        stride_x,
+                                        stride_y,
+                                        dilation,
+                                        padding,
+                                        share_index,
+                                        ..
+                                    },
+                                ..
+                            } = *node;
+
+                            match share_index {
+                                Some(share_index) => LabelText::escaped(format!(
+                                    r"({}) {}\n{}\nshare={}",
+                                    layer_index,
+                                    self.layers[layer_index].as_ref(),
+                                    dot::escape_html(&format!("{:?}", output_shape)),
+                                    share_index.absolute().unwrap()
+                                )),
+                                None => {
+                                    if stride_y == stride_x {
+                                        LabelText::escaped(format!(
+                                            r"({}) {}\n{}\nk={} s={} p={} d={}",
+                                            layer_index,
+                                            self.layers[layer_index].as_ref(),
+                                            dot::escape_html(&format!("{:?}", output_shape)),
+                                            size,
+                                            stride_y,
+                                            padding,
+                                            dilation
+                                        ))
+                                    } else {
+                                        LabelText::escaped(format!(
+                                            r"({}) {}\n{}\nk={} sy={} sx={} p={} d={}",
+                                            layer_index,
+                                            self.layers[layer_index].as_ref(),
+                                            dot::escape_html(&format!("{:?}", output_shape)),
+                                            size,
+                                            stride_y,
+                                            stride_x,
+                                            padding,
+                                            dilation
+                                        ))
+                                    }
+                                }
+                            }
+                        }
+                        Node::MaxPool(node) => {
+                            let MaxPoolNode {
+                                config:
+                                    MaxPoolConfig {
+                                        size,
+                                        stride_x,
+                                        stride_y,
+                                        padding,
+                                        ..
+                                    },
+                                ..
+                            } = *node;
+
+                            if stride_y == stride_x {
+                                LabelText::escaped(format!(
+                                    r"({}) {}\n{}\nk={} s={} p={}",
+                                    layer_index,
+                                    self.layers[layer_index].as_ref(),
+                                    dot::escape_html(&format!("{:?}", output_shape)),
+                                    size,
+                                    stride_y,
+                                    padding,
+                                ))
+                            } else {
+                                LabelText::escaped(format!(
+                                    r"({}) {}\n{}\nk={} sy={} sx={} p={}",
+                                    layer_index,
+                                    self.layers[layer_index].as_ref(),
+                                    dot::escape_html(&format!("{:?}", output_shape)),
+                                    size,
+                                    stride_y,
+                                    stride_x,
+                                    padding,
+                                ))
+                            }
+                        }
+                        _ => LabelText::escaped(format!(
+                            r"({}) {}\n{}",
+                            layer_index,
+                            self.layers[layer_index].as_ref(),
+                            dot::escape_html(&format!("{:?}", output_shape))
+                        )),
+                    }
                 }
                 None => {
                     let shape = self.net.input_size.to_vec();
