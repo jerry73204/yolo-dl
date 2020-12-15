@@ -1,4 +1,5 @@
 use anyhow::{ensure, Result};
+use approx::abs_diff_eq;
 use darknet_config::{torch::LayerOutput, DarknetModel, TchModel};
 use darknet_test::{
     config::{Config, InputConfig},
@@ -89,7 +90,8 @@ fn main() -> Result<()> {
 
     image_files
         .into_iter()
-        .try_for_each(|image_file| -> Result<_> {
+        .enumerate()
+        .try_for_each(|(_step, image_file)| -> Result<_> {
             info!("test image {}", image_file.display());
 
             // forward rust model
@@ -114,16 +116,17 @@ fn main() -> Result<()> {
             let _darknet_output = darknet_model.predict(&darknet_input, 0.8, 0.5, 0.45, true);
 
             // verify per-layer output
-            let darknet_feature_maps = darknet_model
+            darknet_model
                 .layers()
                 .iter()
-                .map(|layer| layer.output_array());
-            rust_feature_maps
-                .into_iter()
-                .zip_eq(darknet_feature_maps)
+                .zip_eq(rust_feature_maps.into_iter())
                 .enumerate()
                 .try_for_each(
-                    |(layer_index, (rust_feature_map, darknet_feature_map))| -> Result<_> {
+                    |(layer_index, (darknet_layer, rust_feature_map))| -> Result<_> {
+                        // dbg!(darknet_layer.type_());
+
+                        let darknet_feature_map = darknet_layer.output_array();
+
                         match rust_feature_map {
                             LayerOutput::Tensor(rust_feature_map) => {
                                 // check shape
@@ -155,23 +158,29 @@ fn main() -> Result<()> {
                                         rust_shape,
                                         dark_shape
                                     );
-                               }
+                                }
+
+                                // convert feature map type
+                                let darknet_feature_map =
+                                    Tensor::try_from(darknet_feature_map.into_owned())?
+                                        // [b, w, h, c] to [b, c, h, w]
+                                        .permute(&[0, 3, 2, 1])
+                                        .to_device(rust_device);
 
                                 // check values
                                 {
-                                    let darknet_feature_map =
-                                        Tensor::try_from(darknet_feature_map.into_owned())?
-                                            // [b, w, h, c] to [b, c, h, w]
-                                            .permute(&[0, 3, 2, 1])
-                                            .to_device(rust_device);
-
-                                    let _mse = f32::from(
+                                    let mse = f32::from(
                                         (rust_feature_map - darknet_feature_map)
                                             .pow(2.0)
                                             .mean(Kind::Float),
                                     );
 
-                                    // TODO: check mse
+                                    // check mse
+                                    ensure!(
+                                        abs_diff_eq!(mse, 0.0),
+                                        "layer output differs from darknet. mse={}",
+                                        mse
+                                    );
                                 }
                             }
                             LayerOutput::Yolo(_rust_feature_map) => {
