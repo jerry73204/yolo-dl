@@ -115,8 +115,51 @@ mod tch_model {
             path: impl Borrow<nn::Path<'p>>,
             config: &DarknetConfig,
         ) -> Result<Self> {
-            let model = DarknetModel::from_config(config)?;
-            Self::from_darknet_model(path, &model)
+            let graph = Graph::from_config(config)?;
+            Self::from_graph(path, &graph)
+        }
+
+        pub fn from_graph<'p>(path: impl Borrow<nn::Path<'p>>, graph: &Graph) -> Result<Self> {
+            let path = path.borrow();
+            let Graph {
+                net:
+                    NetConfig {
+                        classes: num_classes,
+                        ..
+                    },
+                ..
+            } = *graph;
+
+            let layers: IndexMap<_, _> = graph.layers.iter().try_fold(
+                IndexMap::new(),
+                |mut collected, (&layer_index, layer_node)| -> Result<_> {
+                    let layer: Layer = match layer_node {
+                        Node::Connected(node) => ConnectedLayer::from_node(path, node)?.into(),
+                        Node::Convolutional(node) => {
+                            ConvolutionalLayer::from_node(path, node, layer_index, &collected)?
+                                .into()
+                        }
+                        Node::BatchNorm(node) => BatchNormLayer::from_node(path, node)?.into(),
+                        Node::MaxPool(node) => MaxPoolLayer::from_node(path, node)?.into(),
+                        Node::UpSample(node) => UpSampleLayer::from_node(path, node)?.into(),
+                        Node::Shortcut(node) => ShortcutLayer::from_node(path, node)?.into(),
+                        Node::Route(node) => RouteLayer::from_node(path, node)?.into(),
+                        Node::Yolo(node) => YoloLayer::from_node(path, node, num_classes)?.into(),
+                        Node::GaussianYolo(node) => {
+                            GaussianYoloLayer::from_node(path, node, num_classes)?.into()
+                        }
+                        _ => unimplemented!(),
+                    };
+
+                    collected.insert(layer_index, layer);
+                    Ok(collected)
+                },
+            )?;
+
+            Ok(Self {
+                graph: graph.clone(),
+                layers,
+            })
         }
 
         pub fn from_darknet_model<'p>(
@@ -141,20 +184,30 @@ mod tch_model {
                 IndexMap::new(),
                 |mut collected, (&layer_index, layer)| -> Result<_> {
                     let layer: Layer = match layer {
-                        darknet::Layer::Connected(conf) => ConnectedLayer::new(path, conf)?.into(),
-                        darknet::Layer::Convolutional(conf) => {
-                            ConvolutionalLayer::new(path, conf, &collected)?.into()
+                        darknet::Layer::Connected(conf) => {
+                            ConnectedLayer::from_darknet(path, conf)?.into()
                         }
-                        darknet::Layer::BatchNorm(conf) => BatchNormLayer::new(path, conf)?.into(),
-                        darknet::Layer::MaxPool(conf) => MaxPoolLayer::new(path, conf)?.into(),
-                        darknet::Layer::UpSample(conf) => UpSampleLayer::new(path, conf)?.into(),
-                        darknet::Layer::Shortcut(conf) => ShortcutLayer::new(path, conf)?.into(),
-                        darknet::Layer::Route(conf) => RouteLayer::new(path, conf)?.into(),
+                        darknet::Layer::Convolutional(conf) => {
+                            ConvolutionalLayer::from_darknet(path, conf, &collected)?.into()
+                        }
+                        darknet::Layer::BatchNorm(conf) => {
+                            BatchNormLayer::from_darknet(path, conf)?.into()
+                        }
+                        darknet::Layer::MaxPool(conf) => {
+                            MaxPoolLayer::from_darknet(path, conf)?.into()
+                        }
+                        darknet::Layer::UpSample(conf) => {
+                            UpSampleLayer::from_darknet(path, conf)?.into()
+                        }
+                        darknet::Layer::Shortcut(conf) => {
+                            ShortcutLayer::from_darknet(path, conf)?.into()
+                        }
+                        darknet::Layer::Route(conf) => RouteLayer::from_darknet(path, conf)?.into(),
                         darknet::Layer::Yolo(conf) => {
-                            YoloLayer::new(path, conf, num_classes)?.into()
+                            YoloLayer::from_darknet(path, conf, num_classes)?.into()
                         }
                         darknet::Layer::GaussianYolo(conf) => {
-                            GaussianYoloLayer::new(path, conf, num_classes)?.into()
+                            GaussianYoloLayer::from_darknet(path, conf, num_classes)?.into()
                         }
                     };
 
@@ -173,76 +226,93 @@ mod tch_model {
             self.layers[0].input_shape()
         }
 
-        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<MultiDenseDetection> {
+        pub fn forward_t(
+            &mut self,
+            input: &Tensor,
+            train: bool,
+        ) -> Result<(MultiDenseDetection, Vec<LayerOutput>)> {
             let (_batch_size, _channels, input_h, input_w) = input.size4()?;
 
-            let detections_iter = {
-                let mut intermediate_tensors = hashmap! {
-                    LayerPosition::Input => input.shallow_clone()
-                };
-                let mut final_tensors = hashmap! {};
+            let mut feature_maps = hashmap! {
+                LayerPosition::Input =>  LayerOutput::Tensor(input.shallow_clone())
+            };
+            let mut detections = hashmap! {};
 
-                self.layers
-                    .iter_mut()
-                    .try_for_each(|(&layer_index, layer)| -> Result<_> {
-                        // get input tensors
-                        let input = match layer.from_indexes() {
-                            LayerPositionSet::Single(index) => {
-                                let tensor = intermediate_tensors[&index].shallow_clone();
-                                TensorList::Single(tensor)
-                            }
-                            LayerPositionSet::Multiple(indexes) => {
-                                let tensors: Vec<_> = indexes
-                                    .iter()
-                                    .map(|index| intermediate_tensors[&index].shallow_clone())
-                                    .collect();
-                                TensorList::Multiple(tensors)
-                            }
-                            LayerPositionSet::Empty => unreachable!(),
-                        };
-
-                        // save output
-                        match layer.forward_t(input, train)? {
-                            LayerOutputKind::Tensor(output) => {
-                                let prev = intermediate_tensors
-                                    .insert(LayerPosition::Absolute(layer_index), output);
-                                debug_assert!(matches!(prev, None));
-                            }
-                            LayerOutputKind::Yolo(output) => {
-                                let prev = final_tensors.insert(layer_index, output);
-                                debug_assert!(matches!(prev, None));
-                            }
+            self.layers
+                .iter_mut()
+                .try_for_each(|(&layer_index, layer)| -> Result<_> {
+                    // get input tensors
+                    let input = match layer.from_indexes() {
+                        LayerPositionSet::Single(index) => {
+                            let tensor = feature_maps[&index].shallow_clone().tensor().unwrap();
+                            TensorList::Single(tensor)
                         }
+                        LayerPositionSet::Multiple(indexes) => {
+                            let tensors: Vec<_> = indexes
+                                .iter()
+                                .map(|index| feature_maps[&index].shallow_clone().tensor().unwrap())
+                                .collect();
+                            TensorList::Multiple(tensors)
+                        }
+                        LayerPositionSet::Empty => unreachable!(),
+                    };
 
-                        Ok(())
-                    })?;
+                    // save output
+                    let output = layer.forward_t(input, train)?;
+                    let prev = feature_maps
+                        .insert(LayerPosition::Absolute(layer_index), output.shallow_clone());
+                    debug_assert!(matches!(prev, None));
 
-                // pack output tensors
-                let exported_iter = {
-                    let mut exported: Vec<_> = final_tensors.into_iter().collect();
-                    exported.sort_by_cached_key(|(layer_index, _output)| *layer_index);
-                    exported.into_iter().map(|(_layer_index, output)| output)
-                };
+                    if let LayerOutput::Yolo(output) = output {
+                        let prev = detections.insert(layer_index, output);
+                        debug_assert!(matches!(prev, None));
+                    }
 
-                exported_iter
+                    Ok(())
+                })?;
+
+            // pack output tensors
+            let detections_iter = {
+                let mut detections: Vec<_> = detections.into_iter().collect();
+                detections.sort_by_cached_key(|(layer_index, _output)| *layer_index);
+                detections.into_iter().map(|(_layer_index, output)| output)
+            };
+
+            // convert feature maps
+            let feature_maps: Vec<_> = {
+                let mut feature_maps: Vec<_> = feature_maps
+                    .into_iter()
+                    .filter_map(|(layer_index, output)| match layer_index {
+                        LayerPosition::Absolute(index) => Some((index, output)),
+                        LayerPosition::Input => None,
+                    })
+                    .collect();
+                feature_maps.sort_by_cached_key(|(layer_index, _output)| *layer_index);
+                debug_assert!(feature_maps
+                    .iter()
+                    .enumerate()
+                    .all(|(expect_index, (layer_index, _output))| expect_index == *layer_index));
+                feature_maps
+                    .into_iter()
+                    .map(|(_layer_index, output)| output)
+                    .collect()
             };
 
             // combine features from every yolo layer
-
             let output =
                 MultiDenseDetection::new(input_h as usize, input_w as usize, detections_iter)?;
 
-            Ok(output)
+            Ok((output, feature_maps))
         }
     }
 
-    #[derive(Debug)]
-    pub enum LayerOutputKind {
+    #[derive(Debug, TensorLike)]
+    pub enum LayerOutput {
         Tensor(Tensor),
         Yolo(DenseDetection),
     }
 
-    impl LayerOutputKind {
+    impl LayerOutput {
         pub fn tensor(self) -> Option<Tensor> {
             match self {
                 Self::Tensor(tensor) => Some(tensor),
@@ -258,13 +328,13 @@ mod tch_model {
         }
     }
 
-    impl From<Tensor> for LayerOutputKind {
+    impl From<Tensor> for LayerOutput {
         fn from(from: Tensor) -> Self {
             Self::Tensor(from)
         }
     }
 
-    impl From<DenseDetection> for LayerOutputKind {
+    impl From<DenseDetection> for LayerOutput {
         fn from(from: DenseDetection) -> Self {
             Self::Yolo(from)
         }
@@ -348,8 +418,8 @@ mod layer {
             }
         }
 
-        pub fn forward_t(&mut self, xs: TensorList, train: bool) -> Result<LayerOutputKind> {
-            let output: LayerOutputKind = match self {
+        pub fn forward_t(&mut self, xs: TensorList, train: bool) -> Result<LayerOutput> {
+            let output: LayerOutput = match self {
                 Layer::Connected(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
                 Layer::Convolutional(layer) => layer.forward_t(xs.single().unwrap(), train).into(),
                 Layer::Route(layer) => layer.forward(xs.multiple().unwrap()).into(),
@@ -429,7 +499,55 @@ mod layer {
     }
 
     impl ConnectedLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &ConnectedNode,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let ConnectedNode {
+                input_shape,
+                output_shape,
+                config: ConnectedConfig {
+                    batch_normalize, ..
+                },
+                ..
+            } = *from;
+            let input_shape = input_shape as i64;
+            let output_shape = output_shape as i64;
+
+            let linear = nn::linear(
+                path,
+                input_shape,
+                output_shape,
+                nn::LinearConfig {
+                    bias: true,
+                    ..Default::default()
+                },
+            );
+
+            let batch_norm = if batch_normalize {
+                let batch_norm = nn::batch_norm1d(
+                    path,
+                    output_shape,
+                    nn::BatchNormConfig {
+                        momentum: 0.05,
+                        eps: 0.00001,
+                        ..Default::default()
+                    },
+                );
+
+                Some(batch_norm)
+            } else {
+                None
+            };
+
+            Ok(ConnectedLayer {
+                node: from.clone(),
+                weights: ConnectedWeights { linear, batch_norm },
+            })
+        }
+
+        pub fn from_darknet<'p>(
             path: impl Borrow<nn::Path<'p>>,
             from: &darknet::ConnectedLayer,
         ) -> Result<Self> {
@@ -532,7 +650,112 @@ mod layer {
     }
 
     impl ConvolutionalLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &ConvolutionalNode,
+            layer_index: usize,
+            collected: &IndexMap<usize, Layer>,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let ConvolutionalNode {
+                config:
+                    ConvolutionalConfig {
+                        size,
+                        stride_y,
+                        stride_x,
+                        padding,
+                        groups,
+                        share_index,
+                        filters,
+                        batch_normalize,
+                        ..
+                    },
+
+                input_shape,
+                output_shape,
+                ..
+            } = *from;
+
+            {
+                let [_in_w, _in_h, in_c] = input_shape;
+                ensure!(
+                    in_c % groups == 0,
+                    "the input channels is not multiple of groups"
+                );
+            }
+
+            ensure!(stride_y == stride_x, "stride_y must be equal to stride_x");
+            let stride = stride_y as i64;
+
+            let weights = match share_index {
+                Some(share_index) => {
+                    let share_index = share_index
+                        .to_absolute(layer_index)
+                        .ok_or_else(|| format_err!("invalid layer index"))?;
+                    match &collected[share_index] {
+                        Layer::Convolutional(target_layer) => {
+                            let ConvolutionalLayer {
+                                weights: ConvolutionalWeights { shared },
+                                ..
+                            } = target_layer;
+                            ConvolutionalWeights {
+                                shared: shared.clone(),
+                            }
+                        }
+                        _ => bail!("share_index must point to convolution layer"),
+                    }
+                }
+                None => {
+                    let [_h, _w, in_c] = input_shape;
+                    let [_h, _w, out_c] = output_shape;
+                    let in_c = in_c as i64;
+                    let out_c = out_c as i64;
+
+                    let conv = nn::conv2d(
+                        path,
+                        in_c,
+                        out_c,
+                        size as i64,
+                        nn::ConvConfig {
+                            stride,
+                            padding: padding as i64,
+                            groups: groups as i64,
+                            bias: true,
+                            ..Default::default()
+                        },
+                    );
+                    debug_assert!(matches!(conv.bs, Some(_)));
+
+                    let batch_norm = if batch_normalize {
+                        Some(nn::batch_norm2d(
+                            path,
+                            out_c,
+                            nn::BatchNormConfig {
+                                momentum: 0.1,
+                                eps: 0.00001,
+                                ..Default::default()
+                            },
+                        ))
+                    } else {
+                        None
+                    };
+
+                    ConvolutionalWeights {
+                        shared: Arc::new(Mutex::new(ConvolutionalWeightsShared {
+                            conv,
+                            batch_norm,
+                        })),
+                    }
+                }
+            };
+
+            Ok(ConvolutionalLayer {
+                node: from.clone(),
+                weights,
+            })
+        }
+
+        pub fn from_darknet<'p>(
             path: impl Borrow<nn::Path<'p>>,
             from: &darknet::ConvolutionalLayer,
             collected: &IndexMap<usize, Layer>,
@@ -689,7 +912,35 @@ mod layer {
     }
 
     impl BatchNormLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            from: &BatchNormNode,
+        ) -> Result<Self> {
+            let path = path.borrow();
+            let BatchNormNode {
+                inout_shape: [_h, _w, in_c],
+                ..
+            } = *from;
+
+            let in_c = in_c as i64;
+
+            let batch_norm = nn::batch_norm2d(
+                path,
+                in_c,
+                nn::BatchNormConfig {
+                    momentum: 0.1,
+                    eps: 0.00001,
+                    ..Default::default()
+                },
+            );
+
+            Ok(BatchNormLayer {
+                node: from.clone(),
+                weights: BatchNormWeights { batch_norm },
+            })
+        }
+
+        pub fn from_darknet<'p>(
             path: impl Borrow<nn::Path<'p>>,
             from: &darknet::BatchNormLayer,
         ) -> Result<Self> {
@@ -747,7 +998,62 @@ mod layer {
     }
 
     impl ShortcutLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(path: impl Borrow<nn::Path<'p>>, node: &ShortcutNode) -> Result<Self> {
+            let path = path.borrow();
+            let ShortcutNode {
+                config:
+                    ShortcutConfig {
+                        weights_type,
+                        ref from,
+                        ..
+                    },
+                ref from_indexes,
+                ref input_shape,
+                output_shape,
+                ..
+            } = *node;
+
+            let [out_h, out_w, out_c] = output_shape;
+            let zero_paddings: Vec<_> = input_shape
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, [_in_h, _in_w, in_c])| {
+                    if in_c < out_c {
+                        let zeros = path.zeros_no_train(
+                            &format!("zero_padding_{}", index),
+                            &[(out_c - in_c) as i64, out_h as i64, out_w as i64],
+                        );
+                        Some(zeros)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let num_features = from_indexes.len() as i64;
+            let weights_kind = match weights_type {
+                WeightsType::None => ShortcutWeightsKind::None,
+                WeightsType::PerFeature => {
+                    let weights = path.zeros("weights", &[num_features]);
+                    ShortcutWeightsKind::PerFeature(weights)
+                }
+                WeightsType::PerChannel => {
+                    let weights = path.zeros("weights", &[num_features, out_c as i64]);
+                    ShortcutWeightsKind::PerChannel(weights)
+                }
+            };
+
+            Ok(ShortcutLayer {
+                node: node.clone(),
+                weights: ShortcutWeights {
+                    zero_paddings,
+                    weights_kind,
+                },
+            })
+        }
+
+        pub fn from_darknet<'p>(
             path: impl Borrow<nn::Path<'p>>,
             from: &darknet::ShortcutLayer,
         ) -> Result<Self> {
@@ -895,7 +1201,35 @@ mod layer {
     }
 
     impl RouteLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(_path: impl Borrow<nn::Path<'p>>, from: &RouteNode) -> Result<Self> {
+            let RouteNode {
+                config: RouteConfig { group, .. },
+                ref input_shape,
+                ..
+            } = *from;
+
+            let num_groups = group.num_groups();
+            let group_id = group.group_id();
+
+            let group_ranges: Vec<_> = input_shape
+                .iter()
+                .cloned()
+                .map(|[_h, _w, c]| {
+                    debug_assert_eq!(c % num_groups, 0);
+                    let group_size = c / num_groups;
+                    let channel_begin = group_size * group_id;
+                    let channel_end = channel_begin + group_size;
+                    (channel_begin as i64, channel_end as i64)
+                })
+                .collect();
+
+            Ok(RouteLayer {
+                node: from.clone(),
+                weights: RouteWeights { group_ranges },
+            })
+        }
+
+        pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::RouteLayer,
         ) -> Result<Self> {
@@ -954,7 +1288,43 @@ mod layer {
     }
 
     impl MaxPoolLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(_path: impl Borrow<nn::Path<'p>>, from: &MaxPoolNode) -> Result<Self> {
+            {
+                let MaxPoolNode {
+                    config:
+                        MaxPoolConfig {
+                            stride_x,
+                            stride_y,
+                            size,
+                            padding,
+                            maxpool_depth,
+                            ..
+                        },
+                    ..
+                } = *from;
+
+                let stride_y = stride_y as i64;
+                let stride_x = stride_x as i64;
+                let size = size as i64;
+                let padding = padding as i64;
+
+                ensure!(padding % 2 == 0, "padding must be even");
+                ensure!(!maxpool_depth, "maxpool_depth is not implemented");
+
+                Ok(MaxPoolLayer {
+                    node: from.clone(),
+                    weights: MaxPoolWeights {
+                        size,
+                        stride_y,
+                        stride_x,
+                        // torch padding (one-side padding) = darknet padding / 2 (two-side padding)
+                        padding: padding / 2,
+                    },
+                })
+            }
+        }
+
+        pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::MaxPoolLayer,
         ) -> Result<Self> {
@@ -1017,7 +1387,25 @@ mod layer {
     }
 
     impl UpSampleLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(
+            _path: impl Borrow<nn::Path<'p>>,
+            from: &UpSampleNode,
+        ) -> Result<Self> {
+            let UpSampleNode {
+                output_shape: [out_h, out_w, _c],
+                ..
+            } = *from;
+
+            let out_h = out_h as i64;
+            let out_w = out_w as i64;
+
+            Ok(UpSampleLayer {
+                node: from.clone(),
+                weights: UpSampleWeights { out_h, out_w },
+            })
+        }
+
+        pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::UpSampleLayer,
         ) -> Result<Self> {
@@ -1049,7 +1437,23 @@ mod layer {
     }
 
     impl YoloLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(
+            _path: impl Borrow<nn::Path<'p>>,
+            from: &YoloNode,
+            num_classes: u64,
+        ) -> Result<Self> {
+            let weights = YoloWeights {
+                num_classes: num_classes as i64,
+                cache: None,
+            };
+
+            Ok(Self {
+                node: from.clone(),
+                weights,
+            })
+        }
+
+        pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::YoloLayer,
             num_classes: u64,
@@ -1174,7 +1578,23 @@ mod layer {
     }
 
     impl GaussianYoloLayer {
-        pub fn new<'p>(
+        pub fn from_node<'p>(
+            _path: impl Borrow<nn::Path<'p>>,
+            from: &GaussianYoloNode,
+            num_classes: u64,
+        ) -> Result<Self> {
+            let weights = GaussianYoloWeights {
+                num_classes: num_classes as i64,
+                cache: None,
+            };
+
+            Ok(Self {
+                node: from.clone(),
+                weights,
+            })
+        }
+
+        pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::GaussianYoloLayer,
             num_classes: u64,

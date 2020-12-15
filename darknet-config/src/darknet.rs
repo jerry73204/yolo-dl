@@ -45,8 +45,8 @@ mod model {
                                 Layer::UpSample(UpSampleLayer { node: node.clone() })
                             }
                             Node::BatchNorm(node) => Layer::BatchNorm(BatchNormLayer::new(node)),
-                            Node::Dropout(node) => unimplemented!(),
-                            Node::Softmax(node) => unimplemented!(),
+                            Node::Dropout(_node) => unimplemented!(),
+                            Node::Softmax(_node) => unimplemented!(),
                             Node::Yolo(node) => Layer::Yolo(YoloLayer { node: node.clone() }),
                             Node::GaussianYolo(node) => {
                                 Layer::GaussianYolo(GaussianYoloLayer { node: node.clone() })
