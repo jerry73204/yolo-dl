@@ -26,8 +26,10 @@ struct Args {
     pub config_file: PathBuf,
 }
 
+#[tracing::instrument]
 #[async_std::main]
 pub async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
     pretty_env_logger::init();
 
     let Args { config_file } = argh::from_env();
