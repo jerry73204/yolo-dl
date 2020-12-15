@@ -1,4 +1,4 @@
-use super::{detections::Detections, error::Error, image::IntoCowImage, layers::Layer, utils};
+use super::{detections::Detections, error::Error, image::IntoCowImage, layer::Layer, utils};
 use crate::{common::*, sys};
 
 /// The network wrapper type for Darknet.

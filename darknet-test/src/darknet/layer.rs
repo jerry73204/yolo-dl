@@ -3,64 +3,6 @@ use super::kinds::{
 };
 use crate::{common::*, sys};
 
-// /// A collection layers.
-// #[derive(Debug)]
-// pub struct Layers<'a> {
-//     pub(crate) layers: &'a [sys::layer],
-// }
-
-// impl<'a> Layers<'a> {
-//     /// Get the layer by index.
-//     pub fn get(&self, index: usize) -> Option<LayerRef<'a>> {
-//         self.layers.get(index).map(|layer| LayerRef { layer })
-//     }
-
-//     /// Get the iterator of the collection of layers.
-//     pub fn iter(&'a self) -> LayersIter<'a> {
-//         LayersIter {
-//             layers: self,
-//             index: 0,
-//         }
-//     }
-// }
-
-// impl<'a> IntoIterator for &'a Layers<'a> {
-//     type IntoIter = LayersIter<'a>;
-//     type Item = LayerRef<'a>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.iter()
-//     }
-// }
-
-// /// A iterator of a collection of layers.
-// #[derive(Debug, Clone)]
-// pub struct LayersIter<'a> {
-//     layers: &'a Layers<'a>,
-//     index: usize,
-// }
-
-// impl<'a> Iterator for LayersIter<'a> {
-//     type Item = LayerRef<'a>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let opt = self.layers.get(self.index);
-//         if let Some(_) = opt {
-//             self.index += 1;
-//         }
-//         opt
-//     }
-
-//     fn size_hint(&self) -> (usize, Option<usize>) {
-//         let len = self.layers.layers.len();
-//         (len, Some(len))
-//     }
-// }
-
-// impl<'a> FusedIterator for LayersIter<'a> {}
-
-// impl<'a> ExactSizeIterator for LayersIter<'a> {}
-
 /// A layer of the network.
 #[derive(Debug)]
 #[repr(transparent)]
@@ -69,6 +11,11 @@ pub struct Layer {
 }
 
 impl Layer {
+    /// Get layer index in network.
+    pub fn index(&self) -> usize {
+        self.layer.index as usize
+    }
+
     /// Get the type of layer.
     pub fn type_(&self) -> Option<LayerType> {
         FromPrimitive::from_usize(self.layer.type_ as usize)
@@ -171,7 +118,8 @@ impl Layer {
             let batch = self.batch();
             let (out_w, out_h, out_c) = self.output_shape();
             let output_size = batch * out_w * out_h * out_c;
-            let slice = slice::from_raw_parts_mut(self.output, output_size);
+            let output_ptr = sys::layer_get_output(&self.layer as *const _);
+            let slice = slice::from_raw_parts_mut(output_ptr, output_size);
             slice
         }
     }
@@ -180,7 +128,8 @@ impl Layer {
         unsafe {
             let batch = self.batch();
             let (out_w, out_h, out_c) = self.output_shape();
-            ArrayView4::from_shape_ptr((batch, out_w, out_h, out_c), self.output)
+            let output_ptr = sys::layer_get_output(&self.layer as *const _);
+            ArrayView4::from_shape_ptr((batch, out_w, out_h, out_c), output_ptr)
         }
     }
 }
