@@ -918,8 +918,16 @@ mod graphviz {
             }
         }
 
-        fn node_shape(&'a self, _node: &Option<usize>) -> Option<LabelText<'a>> {
-            None
+        fn node_shape(&'a self, node: &Option<usize>) -> Option<LabelText<'a>> {
+            match node {
+                None => Some(LabelText::label("box")),
+                Some(layer_index) => match self.layers[layer_index] {
+                    Node::Yolo(_) | Node::GaussianYolo(_) => Some(LabelText::label("box")),
+                    Node::Shortcut(_) => Some(LabelText::label("invtrapezium")),
+                    Node::Route(_) => Some(LabelText::label("invhouse")),
+                    _ => None,
+                },
+            }
         }
 
         fn node_label(&'a self, node: &Option<usize>) -> LabelText<'a> {
@@ -933,7 +941,13 @@ mod graphviz {
                         dot::escape_html(&format!("{:?}", output_shape))
                     ))
                 }
-                None => LabelText::label("input"),
+                None => {
+                    let shape = self.net.input_size.to_vec();
+                    LabelText::escaped(format!(
+                        r"input\n{}",
+                        dot::escape_html(&format!("{:?}", shape))
+                    ))
+                }
             }
         }
 
@@ -941,15 +955,31 @@ mod graphviz {
             Style::None
         }
 
-        fn node_color(&'a self, _node: &Option<usize>) -> Option<LabelText<'a>> {
-            None
+        fn node_color(&'a self, node: &Option<usize>) -> Option<LabelText<'a>> {
+            match node {
+                None => Some(LabelText::label("black")),
+                Some(layer_index) => match self.layers[layer_index] {
+                    Node::Yolo(_) | Node::GaussianYolo(_) => Some(LabelText::label("orange")),
+                    Node::Convolutional(_) => Some(LabelText::label("blue")),
+                    Node::MaxPool(_) => Some(LabelText::label("green")),
+                    Node::Shortcut(_) => Some(LabelText::label("brown")),
+                    Node::Route(_) => Some(LabelText::label("brown")),
+                    _ => None,
+                },
+            }
         }
 
         fn edge_label(&'a self, edge: &(Option<usize>, Option<usize>)) -> LabelText<'a> {
             match *edge {
                 (None, Some(to_index)) => LabelText::label(format!("input -> {}", to_index)),
                 (Some(from_index), Some(to_index)) => {
-                    LabelText::label(format!("{} -> {}", from_index, to_index))
+                    let shape = self.layers[from_index].output_shape().to_vec();
+                    LabelText::escaped(format!(
+                        r"{} -> {}\n{}",
+                        from_index,
+                        to_index,
+                        dot::escape_html(&format!("{:?}", shape))
+                    ))
                 }
                 _ => unreachable!(),
             }
