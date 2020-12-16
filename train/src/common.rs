@@ -60,6 +60,7 @@ pub use tch_goodies::{
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::{EventWriter, EventWriterInit};
 pub use tokio::sync::{broadcast, mpsc};
+pub use tracing::Instrument;
 pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
