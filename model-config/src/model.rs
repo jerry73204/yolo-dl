@@ -1,7 +1,16 @@
-use crate::common::*;
+use crate::{
+    common::*,
+    module::{
+        Bottleneck, BottleneckCsp, Concat, ConvBlock, Detect, Focus, Input, Output, Spp, UpSample,
+    },
+};
+
+pub trait LayerEx {
+    fn input_names(&self) -> Cow<'_, [&str]>;
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Yolo {
+pub struct Config {
     pub input_channels: usize,
     pub num_classes: usize,
     pub depth_multiple: R64,
@@ -12,71 +21,55 @@ pub struct Yolo {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Layer {
     pub name: Option<String>,
+    #[serde(flatten)]
     pub kind: LayerKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum LayerKind {
-    Focus {
-        from: Option<String>,
-        out_c: usize,
-        k: usize,
-    },
-    ConvBlock {
-        from: Option<String>,
-        out_c: usize,
-        k: usize,
-        s: usize,
-    },
-    Bottleneck {
-        from: Option<String>,
-        repeat: usize,
-    },
-    BottleneckCsp {
-        from: Option<String>,
-        repeat: usize,
-        shortcut: bool,
-    },
-    Spp {
-        from: Option<String>,
-        out_c: usize,
-        ks: Vec<usize>,
-    },
-    HeadConv2d {
-        from: Option<String>,
-        k: usize,
-        s: usize,
-        anchors: Vec<(usize, usize)>,
-    },
-    Upsample {
-        from: Option<String>,
-        scale_factor: R64,
-    },
-    Concat {
-        from: Vec<String>,
-    },
+    Input(Input),
+    Output(Output),
+    Focus(Focus),
+    ConvBlock(ConvBlock),
+    Bottleneck(Bottleneck),
+    BottleneckCsp(BottleneckCsp),
+    Spp(Spp),
+    UpSample(UpSample),
+    Concat(Concat),
+    Detect(Detect),
 }
 
-impl LayerKind {
-    pub fn from_name(&self) -> Option<&str> {
-        match self {
-            Self::Focus { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::ConvBlock { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::Bottleneck { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::BottleneckCsp { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::Spp { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::HeadConv2d { from, .. } => from.as_ref().map(|name| name.as_str()),
-            Self::Upsample { from, .. } => from.as_ref().map(|name| name.as_str()),
-            _ => None,
-        }
+impl Layer {
+    pub fn output_shape(&self, _input_shape: &[usize]) -> Option<Vec<usize>> {
+        // match &self.kind {
+        //     LayerKind::Input(layer) => layer.output_shape(input_shape),
+        //     LayerKind::Focus(layer) => layer.output_shape(input_shape),
+        //     LayerKind::ConvBlock(layer) => layer.output_shape(input_shape),
+        //     LayerKind::Bottleneck(layer) => layer.output_shape(input_shape),
+        //     LayerKind::BottleneckCsp(layer) => layer.output_shape(input_shape),
+        //     LayerKind::Spp(layer) => layer.output_shape(input_shape),
+        //     LayerKind::UpSample(layer) => layer.output_shape(input_shape),
+        //     LayerKind::Concat(layer) => layer.output_shape(input_shape),
+        //     LayerKind::Detect(layer) => layer.output_shape(input_shape),
+        // }
+        todo!();
     }
+}
 
-    pub fn from_multiple_names(&self) -> Option<&[String]> {
-        let names = match self {
-            Self::Concat { from, .. } => from.as_slice(),
-            _ => return None,
-        };
-        Some(names)
+impl LayerEx for Layer {
+    fn input_names(&self) -> Cow<'_, [&str]> {
+        match &self.kind {
+            LayerKind::Input(layer) => layer.input_names(),
+            LayerKind::Output(layer) => layer.input_names(),
+            LayerKind::Focus(layer) => layer.input_names(),
+            LayerKind::ConvBlock(layer) => layer.input_names(),
+            LayerKind::Bottleneck(layer) => layer.input_names(),
+            LayerKind::BottleneckCsp(layer) => layer.input_names(),
+            LayerKind::Spp(layer) => layer.input_names(),
+            LayerKind::UpSample(layer) => layer.input_names(),
+            LayerKind::Concat(layer) => layer.input_names(),
+            LayerKind::Detect(layer) => layer.input_names(),
+        }
     }
 }
