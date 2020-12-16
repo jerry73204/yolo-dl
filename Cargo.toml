@@ -5,7 +5,8 @@ members = [
     "darknet-config",
     "darknet-test",
     "tch-goodies",
-    "mmap-dataset"
+    "mmap-dataset",
+    "model-config",
 ]
 
 [profile.release]
