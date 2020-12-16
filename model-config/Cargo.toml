@@ -15,3 +15,6 @@ indexmap = { version = "1.6", features = ["serde-1"] }
 derivative = "2.1"
 structopt = "0.3"
 json5 = "0.3"
+
+[dev-dependencies]
+lazy_static = "1.4"
