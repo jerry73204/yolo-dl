@@ -1,5 +1,5 @@
 pub use derivative::Derivative;
-pub use indexmap::IndexSet;
+pub use indexmap::{IndexMap, IndexSet};
 pub use noisy_float::prelude::*;
 pub use serde::{
     de::{Error as DeserializeError, Visitor},

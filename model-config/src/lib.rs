@@ -2,6 +2,7 @@ mod common;
 pub mod misc;
 pub mod model;
 pub mod module;
+mod utils;
 pub mod zoo;
 
 pub use misc::*;

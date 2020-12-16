@@ -1,4 +1,4 @@
-use crate::{common::*, misc::Size, model::LayerEx};
+use crate::{common::*, misc::Size, model::LayerEx, utils};
 
 pub use bottleneck::*;
 pub use bottleneck_csp::*;
@@ -259,8 +259,7 @@ mod concat {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct Concat {
-        #[serde(with = "serde_indexset_string")]
-        #[derivative(Hash(hash_with = "hash_vec_indexset::<String, _>"))]
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<String, _>"))]
         pub from: IndexSet<String>,
     }
 
@@ -269,40 +268,5 @@ mod concat {
             let from: Vec<_> = self.from.iter().map(|name| name.as_str()).collect();
             from.into()
         }
-    }
-}
-
-fn hash_vec_indexset<T, H>(set: &IndexSet<T>, state: &mut H)
-where
-    T: Hash,
-    H: Hasher,
-{
-    let set: Vec<_> = set.iter().collect();
-    set.hash(state);
-}
-
-mod serde_indexset_string {
-    use super::*;
-
-    pub fn serialize<S>(set: &IndexSet<String>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let vec: Vec<_> = set.iter().cloned().collect();
-        vec.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexSet<String>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let vec = Vec::<String>::deserialize(deserializer)?;
-        let set: IndexSet<_> = vec.iter().cloned().collect();
-        if vec.len() != set.len() {
-            return Err(D::Error::custom(
-                "duplicated item is not allowed in the list",
-            ));
-        }
-        Ok(set)
     }
 }
