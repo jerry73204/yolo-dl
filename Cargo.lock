@@ -1201,7 +1201,7 @@ dependencies = [
  "futures-sink",
  "futures-task",
  "memchr",
- "pin-project",
+ "pin-project 1.0.2",
  "pin-utils",
  "proc-macro-hack",
  "proc-macro-nested",
@@ -1709,6 +1709,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-config"
+version = "0.1.0"
+dependencies = [
+ "derivative",
+ "indexmap",
+ "noisy_float",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "multimap"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1899,7 +1910,7 @@ dependencies = [
  "derivative",
  "futures",
  "num_cpus",
- "pin-project",
+ "pin-project 1.0.2",
  "tokio 0.3.6",
 ]
 
@@ -1976,11 +1987,31 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
+version = "0.4.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ffbc8e94b38ea3d2d8ba92aea2983b503cd75d0888d75b86bb37970b5698e15"
+dependencies = [
+ "pin-project-internal 0.4.27",
+]
+
+[[package]]
+name = "pin-project"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ccc2237c2c489783abd8c4c80e5450fc0e98644555b1364da68cc29aa151ca7"
 dependencies = [
- "pin-project-internal",
+ "pin-project-internal 1.0.2",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "0.4.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65ad2ae56b6abe3a1ee25f15ee605bacadb9a764edaba9c2bf4103800d4a1895"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3139,6 +3170,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-futures"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab7bb6f14721aa00656086e9335d363c5c8747bae02ebe32ea2c7dece5689b4c"
+dependencies = [
+ "pin-project 0.4.27",
+ "tracing",
+]
+
+[[package]]
 name = "tracing-log"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3219,6 +3260,7 @@ dependencies = [
  "tfrecord",
  "tokio 0.3.6",
  "tracing",
+ "tracing-futures",
  "tracing-subscriber",
  "unzip-n",
  "uuid",
@@ -3579,6 +3621,7 @@ dependencies = [
  "itertools 0.9.0",
  "lazy_static",
  "log",
+ "model-config",
  "ndarray",
  "noisy_float",
  "num_cpus",
