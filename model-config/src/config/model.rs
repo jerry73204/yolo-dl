@@ -1,22 +1,18 @@
-use crate::{
-    common::*,
-    module::{
-        Bottleneck, BottleneckCsp, Concat, ConvBlock, Detect, Focus, Input, Output, Spp, UpSample,
-    },
+use super::module::{
+    Bottleneck, BottleneckCsp, Concat, ConvBlock, Detect, Focus, Input, Output, Spp, UpSample,
 };
+use crate::{common::*, utils};
 
 pub trait LayerEx {
     fn input_names(&self) -> Cow<'_, [&str]>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Config {
-    pub input_channels: usize,
-    pub num_classes: usize,
-    pub depth_multiple: R64,
-    pub width_multiple: R64,
-    pub layers: Vec<Layer>,
-}
+#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+#[derivative(Hash)]
+pub struct Model(
+    #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<String, Layer, _>"))]
+    IndexMap<String, Layer>,
+);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Layer {

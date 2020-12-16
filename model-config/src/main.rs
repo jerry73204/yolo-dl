@@ -1,5 +1,5 @@
 use anyhow::Result;
-use model_config::Config;
+use model_config::config::Config;
 use std::{
     fs,
     path::{Path, PathBuf},
