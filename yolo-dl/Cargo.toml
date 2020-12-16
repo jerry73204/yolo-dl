@@ -42,6 +42,7 @@ envy = "0.4"
 dashmap = "3.11"
 slice-of-array = "0.2"
 getset = "0.1"
+model-config = { version = "0.1", path = "../model-config" }
 
 [features]
 profiling = []
