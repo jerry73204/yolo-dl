@@ -20,7 +20,7 @@ mod darknet_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "Vec<Item>")]
+    #[serde(try_from = "Items")]
     pub struct DarknetConfig {
         pub net: NetConfig,
         pub layers: Vec<LayerConfig>,
@@ -47,10 +47,10 @@ mod darknet_config {
         }
     }
 
-    impl TryFrom<Vec<Item>> for DarknetConfig {
+    impl TryFrom<Items> for DarknetConfig {
         type Error = anyhow::Error;
 
-        fn try_from(items: Vec<Item>) -> Result<Self, Self::Error> {
+        fn try_from(Items(items): Items) -> Result<Self, Self::Error> {
             // ensure only the first item is "net" item
             {
                 let mut iter = items.iter();
@@ -1687,7 +1687,7 @@ mod items {
         Yolo(RawYoloConfig),
     }
 
-    impl TryFrom<DarknetConfig> for Vec<Item> {
+    impl TryFrom<DarknetConfig> for Items {
         type Error = Error;
 
         fn try_from(config: DarknetConfig) -> Result<Self, Self::Error> {
@@ -2144,9 +2144,13 @@ mod items {
                     .try_collect()?
             };
 
-            Ok(items)
+            Ok(Items(items))
         }
     }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct Items(pub Vec<Item>);
 }
 
 mod misc {
