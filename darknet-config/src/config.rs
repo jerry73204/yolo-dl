@@ -486,7 +486,7 @@ mod darknet_config {
                 LayerConfig::AvgPool(layer) => &layer.common,
                 LayerConfig::Yolo(layer) => &layer.common,
                 LayerConfig::GaussianYolo(layer) => &layer.common,
-                LayerConfig::Unimplemented(layer) => panic!("unimplemented layer"),
+                LayerConfig::Unimplemented(_layer) => panic!("unimplemented layer"),
             }
         }
     }
@@ -855,7 +855,7 @@ mod net_config {
         pub step: u64,
         #[serde(default = "defaults::scale")]
         pub scale: R64,
-        #[serde(with = "serde_::opt_vec_u64", default)]
+        #[serde(with = "serde_::net_steps", default)]
         pub steps: Option<Vec<u64>>,
         #[serde(with = "serde_::opt_vec_r64", default)]
         pub scales: Option<Vec<R64>>,
@@ -3222,6 +3222,86 @@ mod serde_ {
             }
 
             Ok(Some(steps_set))
+        }
+    }
+
+    pub mod net_steps {
+        use super::*;
+
+        pub fn serialize<S>(steps: &Option<Vec<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            steps
+                .as_ref()
+                .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
+                .serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = <Option<String>>::deserialize(deserializer)?;
+            let steps: Option<Vec<u64>> = text
+                .map(|text| -> Result<_, String> {
+                    let steps: Vec<u64> = text.split(",")
+                        .enumerate()
+                        .map(|(index, token)| {
+                            let step:i64  = token
+                                .trim()
+                                .parse()
+                                .map_err(|_| format!("'{}' is not an integer", token))?;
+
+                            let step: u64 = match (index, step) {
+                                (0, -1) => {
+                                    warn!("the first -1 in 'steps' option is regarded as 0");
+                                    0
+                                }
+                                (0, step) => {
+                                    if step < 0 {
+                                        return Err(format!("invalid steps '{}': the first step must be -1 or non-negative integer", text));
+                                    }
+                                    step as u64
+                                }
+                                (_, step) => {
+                                    if step < 0 {
+                                        return Err(format!("invalid steps '{}': all steps except the first step must be positive integer", text));
+                                    }
+                                    step as u64
+                                }
+                            };
+
+                            Ok(step)
+                        })
+                        .try_collect()?;
+
+                    let is_monotonic = steps.iter().scan(None, |prev, curr| {
+                        match prev {
+                            None => None,
+                            Some(None) => {*prev = Some(Some(curr)); Some(true)}
+                            Some(Some(prev_val)) => {
+                                if *prev_val < curr {
+                                    *prev = Some(Some(curr));
+                                    Some(true)
+                                } else {
+                                    *prev = None;
+                                    Some(false)
+                                }
+                            }
+                        }
+                    })
+                    .all(|yes| yes);
+
+                    if !is_monotonic {
+                        return Err(format!("the steps '{}' is not monotonic", text));
+                    }
+
+                    Ok(steps)
+                })
+                .transpose()
+                .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
+            Ok(steps)
         }
     }
 
