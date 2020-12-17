@@ -31,7 +31,11 @@ export RUST_LOG=info     // verbose logging
 
 We suggest working on your favorite editor with [rust-analyzer](https://rust-analyzer.github.io/manual.html). It helps hunting common errors with ease.
 
-## Usage
+## Build the Project
+
+### Prerequisites
+
+The project requires PyTorch and CUDA 10.x/11.x to be installed.
 
 ### Build
 
@@ -41,31 +45,38 @@ The command builds the entire project.
 cargo build [--release]
 ```
 
-The `--release` option in only needed in production. It gains about 5x performance, but it takes longer compilation time and produces less verbose debug message.
+The `--release` option in only needed in production. It gains about 5x performance, but takes longer compilation time and produces less verbose debug message.
+
+## Usage
 
 ### Training
 
-The training process is configured by [yolo-dl/train.json5](yolo-dl/train.json5). Run the command to start training,
+The command trains a model. The `--config train.json5` is needed only when you wish to specify your custom configuration file.
 
 ```sh
-cargo run --release --bin train
+cargo run --release --bin train -- [--config train.json5]
 ```
 
-If it is configured correctly, it automatically starts from most recent checkpoint file.
+### Profile the Training
 
-### Profiling
-
-To profile the training performance, you can enable the `profiling` feature to print verbose timing of each stage.
+The `profiling` feature allows you to profile the timing of the data pipeline. It is useful to determine the performance bottleneck.
 
 ```sh
 cargo run --release --bin train --features profiling --manifest-path train/Cargo.toml
 ```
 
-### Build Memory-Mapped Dataset
+### Inspect a Darknet Configuration File
+
+The `darknet-config` is a toolkit to inspect configuration files from darknet project ([repo](https://github.com/AlexeyAB/darknet)). To show the model information,
 
 ```sh
-cargo run --release --bin mmap-dataset -- \
-    build iii 3x256x256 cfg/iii.class ~/dataset/ntu_delivery iii.mmap
+cargo run --release --bin darknet-config -- info yolov4.cfg
+```
+
+The `make-dot-file` subcommand can plot the computation graph in DOT format. For example, to save the plot to `output.dot`,
+
+```sh
+cargo run --release --bin darknet-config -- make-dot-file yolov4.cfg output.dot
 ```
 
 ## Related Projects
