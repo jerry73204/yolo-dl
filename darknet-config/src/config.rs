@@ -371,8 +371,11 @@ mod darknet_config {
         type Err = Error;
 
         fn from_str(text: &str) -> Result<Self, Self::Err> {
-            // remove comments
-            let regex = Regex::new(r"#.*").unwrap();
+            // remove comments and trailing whitespaces
+            let regex = RegexBuilder::new(r" *(#.*)?$")
+                .multi_line(true)
+                .build()
+                .unwrap();
             let text = regex.replace_all(text, "");
 
             // parse
