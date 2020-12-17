@@ -1035,7 +1035,7 @@ mod route_config {
     #[derivative(Hash)]
     #[serde(try_from = "RawRouteConfig", into = "RawRouteConfig")]
     pub struct RouteConfig {
-        #[derivative(Hash(hash_with = "hash_vec_indexset::<LayerIndex, _>"))]
+        #[derivative(Hash(hash_with = "hash_vec_layers"))]
         pub layers: IndexSet<LayerIndex>,
         pub group: RouteGroup,
         pub common: CommonLayerOptions,
@@ -1066,7 +1066,8 @@ mod route_config {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct RawRouteConfig {
-        #[derivative(Hash(hash_with = "hash_vec_indexset::<LayerIndex, _>"))]
+        #[derivative(Hash(hash_with = "hash_vec_layers"))]
+        #[serde(with = "serde_vec_layers")]
         pub layers: IndexSet<LayerIndex>,
         #[serde(default = "defaults::route_groups")]
         pub groups: NonZeroU64,
@@ -1100,7 +1101,8 @@ mod shortcut_config {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct ShortcutConfig {
-        #[derivative(Hash(hash_with = "hash_vec_indexset::<LayerIndex, _>"))]
+        #[derivative(Hash(hash_with = "hash_vec_layers"))]
+        #[serde(with = "serde_vec_layers")]
         pub from: IndexSet<LayerIndex>,
         pub activation: Activation,
         #[serde(with = "serde_weights_type", default = "defaults::weights_type")]
@@ -1313,6 +1315,7 @@ mod yolo_config {
         #[serde(default = "defaults::num")]
         pub num: u64,
         #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
+        #[serde(with = "serde_mask", default)]
         pub mask: Option<IndexSet<u64>>,
         #[serde(rename = "max", default = "defaults::max_boxes")]
         pub max_boxes: u64,
@@ -1426,6 +1429,7 @@ mod gaussian_yolo_config {
         #[serde(default = "defaults::num")]
         pub num: u64,
         #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
+        #[serde(with = "serde_mask", default)]
         pub mask: Option<IndexSet<u64>>,
         pub max_delta: Option<R64>,
         #[serde(with = "serde_opt_vec_u64", default)]
@@ -2826,6 +2830,14 @@ mod defaults {
     }
 }
 
+fn hash_vec_layers<H>(layers: &IndexSet<LayerIndex>, state: &mut H)
+where
+    H: Hasher,
+{
+    let layers: Vec<_> = layers.iter().cloned().collect();
+    layers.hash(state);
+}
+
 fn hash_vec_indexset<T, H>(set: &IndexSet<T>, state: &mut H)
 where
     T: Hash,
@@ -2866,6 +2878,84 @@ mod serde_zero_one_bool {
                 &"0 or 1",
             )),
         }
+    }
+}
+
+mod serde_vec_layers {
+    use super::*;
+
+    pub fn serialize<S>(indexes: &IndexSet<LayerIndex>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let text = indexes
+            .iter()
+            .cloned()
+            .map(|index| isize::from(index).to_string())
+            .join(",");
+        text.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexSet<LayerIndex>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let layers_vec: Vec<_> = text
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .split(",")
+            .map(|token| -> Result<_> {
+                let index: isize = token.parse()?;
+                let index = LayerIndex::from(index);
+                Ok(index)
+            })
+            .try_collect()
+            .map_err(|err| D::Error::custom(format!("failed to parse layer index: {:?}", err)))?;
+        let layers_set: IndexSet<LayerIndex> = layers_vec.iter().cloned().collect();
+
+        if layers_vec.len() != layers_set.len() {
+            return Err(D::Error::custom("duplicated layer index is not allowed"));
+        }
+
+        Ok(layers_set)
+    }
+}
+
+mod serde_mask {
+    use super::*;
+
+    pub fn serialize<S>(steps: &Option<IndexSet<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        steps
+            .as_ref()
+            .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
+            .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IndexSet<u64>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        let steps_vec: Vec<u64> = text
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .split(",")
+            .map(|token| token.parse())
+            .try_collect()
+            .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
+        let steps_set: IndexSet<_> = steps_vec.iter().cloned().collect();
+
+        if steps_vec.len() != steps_set.len() {
+            return Err(D::Error::custom("duplicated mask indexes is not allowed"));
+        }
+
+        Ok(Some(steps_set))
     }
 }
 
