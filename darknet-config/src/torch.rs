@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     config::{
-        Activation, ConnectedConfig, ConvolutionalConfig, DarknetConfig, MaxPoolConfig, NetConfig,
-        RouteConfig, Shape, ShortcutConfig, UpSampleConfig, WeightsNormalization, WeightsType,
+        Activation, ConnectedConfig, ConvolutionalConfig, DarknetConfig, GaussianYoloConfig,
+        MaxPoolConfig, RouteConfig, Shape, ShortcutConfig, WeightsNormalization, WeightsType,
         YoloConfig,
     },
     darknet::{self, DarknetModel},
@@ -121,14 +121,6 @@ mod tch_model {
 
         pub fn from_graph<'p>(path: impl Borrow<nn::Path<'p>>, graph: &Graph) -> Result<Self> {
             let path = path.borrow();
-            let Graph {
-                net:
-                    NetConfig {
-                        classes: num_classes,
-                        ..
-                    },
-                ..
-            } = *graph;
 
             let layers: IndexMap<_, _> = graph.layers.iter().try_fold(
                 IndexMap::new(),
@@ -144,9 +136,9 @@ mod tch_model {
                         Node::UpSample(node) => UpSampleLayer::from_node(path, node)?.into(),
                         Node::Shortcut(node) => ShortcutLayer::from_node(path, node)?.into(),
                         Node::Route(node) => RouteLayer::from_node(path, node)?.into(),
-                        Node::Yolo(node) => YoloLayer::from_node(path, node, num_classes)?.into(),
+                        Node::Yolo(node) => YoloLayer::from_node(path, node)?.into(),
                         Node::GaussianYolo(node) => {
-                            GaussianYoloLayer::from_node(path, node, num_classes)?.into()
+                            GaussianYoloLayer::from_node(path, node)?.into()
                         }
                         _ => unimplemented!(),
                     };
@@ -167,18 +159,6 @@ mod tch_model {
             model: &DarknetModel,
         ) -> Result<Self> {
             let path = path.borrow();
-            let DarknetModel {
-                graph:
-                    Graph {
-                        net:
-                            NetConfig {
-                                classes: num_classes,
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } = *model;
 
             let layers: IndexMap<_, _> = model.layers.iter().try_fold(
                 IndexMap::new(),
@@ -203,11 +183,9 @@ mod tch_model {
                             ShortcutLayer::from_darknet(path, conf)?.into()
                         }
                         darknet::Layer::Route(conf) => RouteLayer::from_darknet(path, conf)?.into(),
-                        darknet::Layer::Yolo(conf) => {
-                            YoloLayer::from_darknet(path, conf, num_classes)?.into()
-                        }
+                        darknet::Layer::Yolo(conf) => YoloLayer::from_darknet(path, conf)?.into(),
                         darknet::Layer::GaussianYolo(conf) => {
-                            GaussianYoloLayer::from_darknet(path, conf, num_classes)?.into()
+                            GaussianYoloLayer::from_darknet(path, conf)?.into()
                         }
                     };
 
@@ -1437,13 +1415,13 @@ mod layer {
     }
 
     impl YoloLayer {
-        pub fn from_node<'p>(
-            _path: impl Borrow<nn::Path<'p>>,
-            from: &YoloNode,
-            num_classes: u64,
-        ) -> Result<Self> {
+        pub fn from_node<'p>(_path: impl Borrow<nn::Path<'p>>, from: &YoloNode) -> Result<Self> {
+            let YoloNode {
+                config: YoloConfig { classes, .. },
+                ..
+            } = *from;
             let weights = YoloWeights {
-                num_classes: num_classes as i64,
+                num_classes: classes as i64,
                 cache: None,
             };
 
@@ -1456,10 +1434,17 @@ mod layer {
         pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::YoloLayer,
-            num_classes: u64,
         ) -> Result<Self> {
+            let darknet::YoloLayer {
+                node:
+                    YoloNode {
+                        config: YoloConfig { classes, .. },
+                        ..
+                    },
+                ..
+            } = *from;
             let weights = YoloWeights {
-                num_classes: num_classes as i64,
+                num_classes: classes as i64,
                 cache: None,
             };
 
@@ -1581,10 +1566,13 @@ mod layer {
         pub fn from_node<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &GaussianYoloNode,
-            num_classes: u64,
         ) -> Result<Self> {
+            let GaussianYoloNode {
+                config: GaussianYoloConfig { classes, .. },
+                ..
+            } = *from;
             let weights = GaussianYoloWeights {
-                num_classes: num_classes as i64,
+                num_classes: classes as i64,
                 cache: None,
             };
 
@@ -1597,10 +1585,17 @@ mod layer {
         pub fn from_darknet<'p>(
             _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::GaussianYoloLayer,
-            num_classes: u64,
         ) -> Result<Self> {
+            let darknet::GaussianYoloLayer {
+                node:
+                    GaussianYoloNode {
+                        config: GaussianYoloConfig { classes, .. },
+                        ..
+                    },
+                ..
+            } = *from;
             let weights = GaussianYoloWeights {
-                num_classes: num_classes as i64,
+                num_classes: classes as i64,
                 cache: None,
             };
 

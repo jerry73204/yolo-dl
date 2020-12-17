@@ -65,53 +65,6 @@ mod darknet_config {
                 );
             };
 
-            // extract global options from yolo item
-            let classes = {
-                let (classes_vec, anchors_vec) = items
-                    .iter()
-                    .filter_map(|item| match item {
-                        Item::Yolo(yolo) => {
-                            let RawYoloConfig {
-                                classes,
-                                ref anchors,
-                                ..
-                            } = *yolo;
-
-                            Some((classes, anchors))
-                        }
-                        Item::GaussianYolo(yolo) => {
-                            let RawGaussianYoloConfig {
-                                classes,
-                                ref anchors,
-                                ..
-                            } = *yolo;
-
-                            Some((classes, anchors))
-                        }
-                        _ => None,
-                    })
-                    .unzip_n_vec();
-
-                let classes = {
-                    let classes_set: HashSet<_> = classes_vec.iter().cloned().collect();
-                    ensure!(
-                        classes_set.len() == 1,
-                        "the classes of every yolo layer must be equal"
-                    );
-                    classes_vec[0]
-                };
-
-                {
-                    let anchors_set: HashSet<_> = anchors_vec.iter().collect();
-                    ensure!(
-                        anchors_set.len() == 1,
-                        "the anchors of every yolo layer must be equal"
-                    );
-                }
-
-                classes
-            };
-
             let mut items_iter = items.into_iter();
 
             // build net item
@@ -309,7 +262,6 @@ mod darknet_config {
                     power,
                     policy,
                     burn_in,
-                    classes,
                 }
             };
 
@@ -379,6 +331,7 @@ mod darknet_config {
                             };
 
                             LayerConfig::GaussianYolo(GaussianYoloConfig {
+                                classes,
                                 max_boxes,
                                 max_delta,
                                 counters_per_class,
@@ -464,6 +417,7 @@ mod darknet_config {
                             };
 
                             LayerConfig::Yolo(YoloConfig {
+                                classes,
                                 max_boxes,
                                 max_delta,
                                 counters_per_class,
@@ -597,7 +551,6 @@ mod net_config {
         pub power: R64,
         pub policy: Policy,
         pub burn_in: u64,
-        pub classes: u64,
     }
 
     impl NetConfig {
@@ -1267,6 +1220,7 @@ mod yolo_config {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct YoloConfig {
+        pub classes: u64,
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
         pub counters_per_class: Option<Vec<u64>>,
@@ -1378,6 +1332,7 @@ mod gaussian_yolo_config {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct GaussianYoloConfig {
+        pub classes: u64,
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
         pub counters_per_class: Option<Vec<u64>>,
@@ -1718,7 +1673,7 @@ mod items {
             } = config;
 
             // extract global options that will be placed into yolo layers
-            let (net, classes) = {
+            let net = {
                 let NetConfig {
                     max_batches,
                     batch,
@@ -1767,7 +1722,6 @@ mod items {
                     power,
                     policy,
                     burn_in,
-                    classes,
                 } = orig_net;
 
                 let (adam, b1, b2, eps) = match adam {
@@ -1936,7 +1890,7 @@ mod items {
                     gamma,
                 };
 
-                (net, classes)
+                net
             };
 
             let global_anchors: Vec<_> = orig_layers
@@ -1973,6 +1927,7 @@ mod items {
                             LayerConfig::Cost(layer) => Item::Cost(layer.try_into()?),
                             LayerConfig::Yolo(orig_layer) => {
                                 let YoloConfig {
+                                    classes,
                                     max_boxes,
                                     max_delta,
                                     counters_per_class,
@@ -2073,6 +2028,7 @@ mod items {
                             }
                             LayerConfig::GaussianYolo(orig_layer) => {
                                 let GaussianYoloConfig {
+                                    classes,
                                     max_boxes,
                                     max_delta,
                                     counters_per_class,

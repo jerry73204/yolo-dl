@@ -40,7 +40,6 @@ mod graph {
                 net:
                     NetConfig {
                         input_size: model_input_shape,
-                        classes: num_classes,
                         ..
                     },
                 ref layers,
@@ -323,12 +322,12 @@ mod graph {
                             let [in_h, in_w, in_c] = hwc_input_shape(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
                             let YoloConfig {
-                                anchors, ..
+                                classes, anchors, ..
                             } = conf;
 
                             // [batch, anchor, entry, h, w]
                             let num_anchors = anchors.len() as u64;
-                            ensure!(in_c == num_anchors * (num_classes + 4 + 1), "the output channels and yolo input channels mismatch");
+                            ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
 
                             let input_shape = [in_h, in_w, in_c];
                             let output_shape = input_shape;
@@ -338,12 +337,12 @@ mod graph {
                             let [in_h, in_w, in_c] = hwc_input_shape(from_index)
                                 .ok_or_else(|| format_err!("invalid shape"))?;
                             let GaussianYoloConfig {
-                                anchors, ..
+                                classes, anchors, ..
                             } = conf;
 
                             // [batch, anchor, entry, h, w]
                             let num_anchors = anchors.len() as u64;
-                            ensure!(in_c == num_anchors * (num_classes + 4 + 1), "the output channels and yolo input channels mismatch");
+                            ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
 
                             let input_shape = [in_h, in_w, in_c];
                             let output_shape = input_shape;
