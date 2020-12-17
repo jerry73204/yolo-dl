@@ -13,7 +13,7 @@ fn load_darknet_config() -> Result<()> {
     )?
     .try_for_each(|path| -> Result<_> {
         let path = path?;
-        let config = DarknetConfig::load(&path)
+        let _config = DarknetConfig::load(&path)
             .with_context(|| format!("failed to parse {}", path.display()))?;
         Ok(())
     })?;
