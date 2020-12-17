@@ -1,12 +1,12 @@
 use crate::common::*;
 
+pub use self::darknet_config::*;
 pub use avg_pool_config::*;
 pub use batch_norm_config::*;
 pub use connected_config::*;
 pub use convolutional_config::*;
 pub use cost_config::*;
 pub use crop_config::*;
-pub use darknet_config::*;
 pub use dropout_config::*;
 pub use gaussian_yolo_config::*;
 use items::*;
@@ -55,8 +55,28 @@ mod items {
         Crop(CropConfig),
         #[serde(rename = "avgpool")]
         AvgPool(AvgPoolConfig),
+        #[serde(rename = "local_avgpool")]
+        LocalAvgPool(UnimplementedLayerConfig),
         #[serde(rename = "crnn")]
         Crnn(UnimplementedLayerConfig),
+        #[serde(rename = "sam")]
+        Sam(UnimplementedLayerConfig),
+        #[serde(rename = "scale_channels")]
+        ScaleChannels(UnimplementedLayerConfig),
+        #[serde(rename = "gru")]
+        Gru(UnimplementedLayerConfig),
+        #[serde(rename = "lstm")]
+        Lstm(UnimplementedLayerConfig),
+        #[serde(rename = "rnn")]
+        Rnn(UnimplementedLayerConfig),
+        #[serde(rename = "detection")]
+        Detection(UnimplementedLayerConfig),
+        #[serde(rename = "region")]
+        Region(UnimplementedLayerConfig),
+        #[serde(rename = "reorg")]
+        Reorg(UnimplementedLayerConfig),
+        #[serde(rename = "contrastive")]
+        Contrastive(UnimplementedLayerConfig),
     }
 
     impl Item {
@@ -87,7 +107,18 @@ mod items {
                 Self::Net(_layer) => {
                     bail!("the 'net' layer must appear in the first section")
                 }
-                Self::Crnn(layer) => LayerConfig::Unimplemented(layer),
+                // unimplemented
+                Self::Crnn(layer)
+                | Self::Sam(layer)
+                | Self::ScaleChannels(layer)
+                | Self::LocalAvgPool(layer)
+                | Self::Contrastive(layer)
+                | Self::Detection(layer)
+                | Self::Region(layer)
+                | Self::Reorg(layer)
+                | Self::Rnn(layer)
+                | Self::Lstm(layer)
+                | Self::Gru(layer) => LayerConfig::Unimplemented(layer),
             };
             Ok(layer)
         }
@@ -1179,10 +1210,15 @@ mod convolutional_config {
             };
 
             // sanity check
-            ensure!(
-                size != 1 || dilation == 1,
-                "dilation must be 1 if size is 1"
-            );
+            let dilation = if size == 1 && dilation != 1 {
+                warn!(
+                    "dilation must be 1 if size is 1, but get dilation = {}, it will be ignored",
+                    dilation
+                );
+                1
+            } else {
+                dilation
+            };
 
             match (deform, size == 1) {
                 (Deform::None, _) | (_, false) => (),
@@ -2214,11 +2250,7 @@ mod crop_config {
     pub struct CropConfig {
         #[serde(default = "defaults::crop_stride")]
         pub stride: u64,
-        #[serde(
-            rename = "onlyforward",
-            with = "serde_::zero_one_bool",
-            default = "defaults::bool_false"
-        )]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub reverse: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -2261,12 +2293,8 @@ mod misc {
         pub dont_update: bool,
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub burnin_update: bool,
-        #[serde(
-            rename = "stopbackward",
-            with = "serde_::zero_one_bool",
-            default = "defaults::bool_false"
-        )]
-        pub stop_backward: bool,
+        #[serde(rename = "stopbackward", default = "defaults::stop_backward")]
+        pub stop_backward: u64,
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub train_only_bn: bool,
         #[serde(
@@ -2338,6 +2366,8 @@ mod misc {
         Hardtan,
         #[serde(rename = "lhtan")]
         Lhtan,
+        #[serde(rename = "relu6")]
+        Relu6,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -2622,6 +2652,10 @@ mod defaults {
 
     pub fn bool_false() -> bool {
         false
+    }
+
+    pub fn stop_backward() -> u64 {
+        0
     }
 
     pub fn crop_stride() -> u64 {
@@ -3021,12 +3055,10 @@ mod serde_ {
         {
             let text = String::deserialize(deserializer)?;
             let layers_vec: Vec<_> = text
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect::<String>()
                 .split(",")
                 .map(|token| -> Result<_, String> {
                     let index: isize = token
+                        .trim()
                         .parse()
                         .map_err(|_| format!("{} is not a valid index", token))?;
                     let index = LayerIndex::from(index);
@@ -3065,11 +3097,13 @@ mod serde_ {
         {
             let text = String::deserialize(deserializer)?;
             let steps_vec: Vec<u64> = text
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect::<String>()
                 .split(",")
-                .map(|token| token.parse())
+                .map(|token| {
+                    token
+                        .trim()
+                        .parse()
+                        .map_err(|_| format!("'{}' is not a valid index", token))
+                })
                 .try_collect()
                 .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
             let steps_set: IndexSet<_> = steps_vec.iter().cloned().collect();
@@ -3102,11 +3136,13 @@ mod serde_ {
             let text = <Option<String>>::deserialize(deserializer)?;
             let steps: Option<Vec<u64>> = text
                 .map(|text| {
-                    text.chars()
-                        .filter(|c| !c.is_whitespace())
-                        .collect::<String>()
-                        .split(",")
-                        .map(|token| token.parse())
+                    text.split(",")
+                        .map(|token| {
+                            token
+                                .trim()
+                                .parse()
+                                .map_err(|_| format!("'{}' is not a non-negative integer", token))
+                        })
                         .try_collect()
                 })
                 .transpose()
