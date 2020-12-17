@@ -1,35 +1,33 @@
 use super::{
     config::ModelGroupsConfig,
-    module::{
-        Bottleneck, BottleneckCsp, Concat, ConvBlock, Detect, Focus, Group, Input, Output, Spp,
-        UpSample,
-    },
+    misc::Shape,
+    module::{Group, Module, ModuleEx},
 };
 use crate::{common::*, utils};
 
 pub use group_name::*;
-pub use layer::*;
-pub use layer_ident::*;
-pub use layer_name::*;
-pub use layer_path::*;
 pub use model::*;
+pub use model_groups::*;
+pub use module_ident::*;
+pub use module_name::*;
+pub use module_path::*;
 
-mod layer_name {
+mod module_name {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct LayerName(String);
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ModuleName(String);
 
-    impl LayerName {
+    impl ModuleName {
         pub fn new<'a>(name: impl Into<Cow<'a, str>>) -> Result<Self> {
             let name = name.into().into_owned();
-            ensure!(!name.is_empty(), "layer name must not be empty");
-            ensure!(!name.contains('.'), "layer name must not contain dot '.'");
+            ensure!(!name.is_empty(), "module name must not be empty");
+            ensure!(!name.contains('.'), "module name must not contain dot '.'");
             Ok(Self(name))
         }
     }
 
-    impl Serialize for LayerName {
+    impl Serialize for ModuleName {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
@@ -38,7 +36,7 @@ mod layer_name {
         }
     }
 
-    impl<'de> Deserialize<'de> for LayerName {
+    impl<'de> Deserialize<'de> for ModuleName {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: Deserializer<'de>,
@@ -50,7 +48,7 @@ mod layer_name {
         }
     }
 
-    impl TryFrom<&str> for LayerName {
+    impl TryFrom<&str> for ModuleName {
         type Error = Error;
 
         fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -58,19 +56,19 @@ mod layer_name {
         }
     }
 
-    impl Borrow<str> for LayerName {
+    impl Borrow<str> for ModuleName {
         fn borrow(&self) -> &str {
             self.0.as_ref()
         }
     }
 
-    impl AsRef<str> for LayerName {
+    impl AsRef<str> for ModuleName {
         fn as_ref(&self) -> &str {
             self.0.as_ref()
         }
     }
 
-    impl Display for LayerName {
+    impl Display for ModuleName {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             self.0.fmt(f)
         }
@@ -80,14 +78,14 @@ mod layer_name {
 mod group_name {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct GroupName(String);
 
     impl GroupName {
         pub fn new<'a>(name: impl Into<Cow<'a, str>>) -> Result<Self> {
             let name = name.into().into_owned();
-            ensure!(!name.is_empty(), "layer name must not be empty");
-            ensure!(!name.contains('.'), "layer name must not contain dot '.'");
+            ensure!(!name.is_empty(), "module name must not be empty");
+            ensure!(!name.contains('.'), "module name must not contain dot '.'");
             Ok(Self(name))
         }
     }
@@ -140,16 +138,16 @@ mod group_name {
     }
 }
 
-mod layer_ident {
+mod module_ident {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub enum LayerIdent {
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ModuleIdent {
         Unnamed,
-        Named(LayerName),
+        Named(ModuleName),
     }
 
-    impl LayerIdent {
+    impl ModuleIdent {
         pub fn new<'a>(name: impl Into<Cow<'a, str>>) -> Result<Self> {
             let name = name.into();
             let name: &str = name.borrow();
@@ -160,15 +158,15 @@ mod layer_ident {
             Ok(ident)
         }
 
-        pub fn name(&self) -> Option<&str> {
+        pub fn name(&self) -> Option<&ModuleName> {
             match self {
                 Self::Unnamed => None,
-                Self::Named(name) => Some(name.as_ref()),
+                Self::Named(name) => Some(name),
             }
         }
     }
 
-    impl Serialize for LayerIdent {
+    impl Serialize for ModuleIdent {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
@@ -181,7 +179,7 @@ mod layer_ident {
         }
     }
 
-    impl<'de> Deserialize<'de> for LayerIdent {
+    impl<'de> Deserialize<'de> for ModuleIdent {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: Deserializer<'de>,
@@ -193,7 +191,7 @@ mod layer_ident {
         }
     }
 
-    impl TryFrom<&str> for LayerIdent {
+    impl TryFrom<&str> for ModuleIdent {
         type Error = Error;
 
         fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -201,7 +199,13 @@ mod layer_ident {
         }
     }
 
-    impl Display for LayerIdent {
+    impl From<ModuleName> for ModuleIdent {
+        fn from(name: ModuleName) -> Self {
+            ModuleIdent::Named(name)
+        }
+    }
+
+    impl Display for ModuleIdent {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Unnamed => "[unnamed]",
@@ -212,16 +216,19 @@ mod layer_ident {
     }
 }
 
-mod layer_path {
+mod module_path {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub enum LayerPath {
-        Layer(LayerName),
-        GroupRef { layer: LayerName, output: LayerName },
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ModulePath {
+        Layer(ModuleName),
+        GroupRef {
+            layer: ModuleName,
+            output: ModuleName,
+        },
     }
 
-    impl LayerPath {
+    impl ModulePath {
         pub fn new<'a>(name: impl Into<Cow<'a, str>>) -> Result<Self> {
             let name = name.into();
             let name: &str = name.borrow();
@@ -254,7 +261,7 @@ mod layer_path {
         }
     }
 
-    impl Serialize for LayerPath {
+    impl Serialize for ModulePath {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
@@ -269,7 +276,7 @@ mod layer_path {
         }
     }
 
-    impl<'de> Deserialize<'de> for LayerPath {
+    impl<'de> Deserialize<'de> for ModulePath {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: Deserializer<'de>,
@@ -281,7 +288,7 @@ mod layer_path {
         }
     }
 
-    impl TryFrom<&str> for LayerPath {
+    impl TryFrom<&str> for ModulePath {
         type Error = Error;
 
         fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -289,7 +296,7 @@ mod layer_path {
         }
     }
 
-    impl Display for LayerPath {
+    impl Display for ModulePath {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             let text: Cow<'_, str> = match self {
                 Self::Layer(name) => name.as_ref().into(),
@@ -302,73 +309,217 @@ mod layer_path {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
-pub struct ModelGroups(
-    #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<GroupName, Model, _>"))]
-    IndexMap<GroupName, Model>,
-);
+mod model_groups {
+    use super::*;
 
-impl ModelGroups {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        Self::load_opt(path, 5)
-    }
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
+    pub struct ModelGroups(
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<GroupName, Model, _>"))]
+        IndexMap<GroupName, Model>,
+    );
 
-    pub fn load_opt(path: impl AsRef<Path>, max_depth: usize) -> Result<Self> {
-        ensure!(max_depth > 0, "max_depth must be positive");
-        Self::load_recursive(path, max_depth, 0)
-    }
+    impl ModelGroups {
+        pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+            Self::load_opt(path, 5)
+        }
 
-    fn load_recursive(path: impl AsRef<Path>, max_depth: usize, curr_depth: usize) -> Result<Self> {
-        debug_assert!(max_depth > 0, "max_depth must be positive");
-        ensure!(curr_depth < max_depth, "max_depth exceeded");
+        pub fn load_opt(path: impl AsRef<Path>, max_depth: usize) -> Result<Self> {
+            ensure!(max_depth > 0, "max_depth must be positive");
+            Self::load_recursive(path, max_depth, 0)
+        }
 
-        let ModelGroupsConfig { includes, groups } = ModelGroupsConfig::from_path(path)?;
+        fn load_recursive(
+            path: impl AsRef<Path>,
+            max_depth: usize,
+            curr_depth: usize,
+        ) -> Result<Self> {
+            debug_assert!(max_depth > 0, "max_depth must be positive");
+            ensure!(curr_depth < max_depth, "max_depth exceeded");
 
-        // load included groups
-        let included_groups_vec: Vec<_> = includes
-            .into_iter()
-            .map(|path| Self::load_recursive(path, max_depth, curr_depth + 1))
-            .try_collect()?;
-        let parent_groups = Self::merge(included_groups_vec)?;
+            let ModelGroupsConfig {
+                includes,
+                groups: local_groups,
+            } = ModelGroupsConfig::from_path(path)?;
 
-        // check if group layer refer to valid groups
-        groups
-            .iter()
-            .flat_map(|(_group_name, model)| {
-                let Model { layers, .. } = model;
-                layers.iter()
-            })
-            .filter_map(|(_layer_name, layer)| match layer {
-                Layer::Group(Group { group, .. }) => Some(group),
-                _ => None,
-            })
-            .try_for_each(|group_name| -> Result<_> {
-                let Self(parent_groups) = &parent_groups;
-                ensure!(
-                    parent_groups.contains_key(group_name),
-                    "'{}' is not a valid group name",
-                    group_name
-                );
-                Ok(())
+            // load included groups
+            let included_groups_vec: Vec<_> = includes
+                .into_iter()
+                .map(|path| Self::load_recursive(path, max_depth, curr_depth + 1))
+                .try_collect()?;
+            let parent_groups = Self::merge(included_groups_vec)?;
+
+            // check if group layer refer to valid groups
+            let ref_graph = local_groups
+                .iter()
+                .flat_map(|(curr_group, model)| {
+                    let Model { layers, .. } = model;
+                    layers
+                        .iter()
+                        .map(move |(_layer_name, layer)| (curr_group, layer))
+                })
+                .filter_map(|(curr_group, layer)| match layer {
+                    Module::Group(Group {
+                        group: tgt_group, ..
+                    }) => Some((curr_group, tgt_group)),
+                    _ => None,
+                })
+                .try_fold(
+                    DiGraphMap::new(),
+                    |mut graph, (curr_group, tgt_group)| -> Result<_> {
+                        ensure!(
+                            curr_group != tgt_group,
+                            "the Group layer must not refer to the self group '{}'",
+                            tgt_group
+                        );
+
+                        let Self(parent_groups) = &parent_groups;
+
+                        if parent_groups.contains_key(tgt_group) {
+                            // parent groups
+                            Ok(graph)
+                        } else if local_groups.contains_key(tgt_group) {
+                            // local group
+                            graph.add_edge(curr_group, tgt_group, ());
+                            Ok(graph)
+                        } else {
+                            bail!("'{}' does not refer to a valid group", tgt_group);
+                        }
+                    },
+                )?;
+
+            // check cyclic group references in local groups
+            petgraph::algo::toposort(&ref_graph, None).map_err(|cycle| {
+                format_err!(
+                    "cyclic group reference foudn at '{}' group",
+                    cycle.node_id()
+                )
             })?;
 
-        // merge with included groups
-        let merged_groups = Self::merge(vec![ModelGroups(groups), parent_groups])?;
+            // check every layer refers to a valid input layer
+            local_groups
+                .iter()
+                .try_for_each(|(self_group_name, model)| -> Result<_> {
+                    let Model { inputs, layers, .. } = model;
 
-        Ok(merged_groups)
-    }
+                    let input_names: HashSet<_> = inputs
+                        .iter()
+                        .map(|(input_name, _shape)| input_name)
+                        .collect();
+                    let layer_names: HashSet<_> = layers
+                        .iter()
+                        .filter_map(|(layer_name, _layer)| layer_name.name())
+                        .collect();
 
-    pub fn merge(groups_iter: impl IntoIterator<Item = Self>) -> Result<Self> {
-        let groups: IndexMap<_, _> = groups_iter
-            .into_iter()
-            .flat_map(|Self(groups)| groups.into_iter())
-            .try_fold(IndexMap::new(), |mut map, (name, group)| -> Result<_> {
-                let prev = map.insert(name.clone(), group);
-                ensure!(prev.is_none(), "duplicated group name '{}'", name);
-                Ok(map)
-            })?;
-        Ok(Self(groups))
+                    layers
+                        .iter()
+                        .flat_map(|(self_name, layer)| {
+                            layer
+                                .input_paths()
+                                .into_iter()
+                                .map(move |input_path| (self_name, input_path))
+                        })
+                        .try_for_each(|(self_name, input_path)| -> Result<_> {
+                            match input_path {
+                                ModulePath::Layer(input_name) => {
+                                    // refer to input or any other layer
+                                    let self_reference = self_name
+                                        .name()
+                                        .map(|self_name| self_name == input_name)
+                                        .unwrap_or(false);
+                                    ensure!(
+                                        !self_reference,
+                                        "self-referencing to '{}' is not allowed",
+                                        input_name
+                                    );
+
+                                    let is_valid = input_names.contains(&input_name)
+                                        || layer_names.contains(&input_name);
+                                    ensure!(
+                                        is_valid,
+                                        "'{}' does not refer to an input or a layer",
+                                        input_name
+                                    );
+                                }
+                                ModulePath::GroupRef {
+                                    layer: input_name,
+                                    output: output_name,
+                                } => {
+                                    // refer to a "Group" layer
+                                    let self_reference = self_name
+                                        .name()
+                                        .map(|self_name| self_name == input_name)
+                                        .unwrap_or(false);
+                                    ensure!(
+                                        !self_reference,
+                                        "self-referencing to '{}' is not allowed",
+                                        input_name
+                                    );
+
+                                    // check referred group has the specified output name
+                                    let input_layer = layers
+                                        .get(&ModuleIdent::from(input_name.clone()))
+                                        .ok_or_else(|| {
+                                            format_err!(
+                                                "'{}' does not refer to a layer",
+                                                input_name
+                                            )
+                                        })?;
+
+                                    match input_layer {
+                                        Module::Group(Group {
+                                            group: group_name, ..
+                                        }) => {
+                                            debug_assert!(self_group_name != group_name);
+
+                                            match (
+                                                parent_groups.0.get(group_name),
+                                                local_groups.get(group_name),
+                                            ) {
+                                                (Some(group), None) | (None, Some(group)) => {
+                                                    let has_output =
+                                                        group.outputs.contains_key(output_name);
+                                                    ensure!(
+                                                    has_output,
+                                                    "the group '{}' does not have the output '{}'",
+                                                    group_name,
+                                                    output_name
+                                                );
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                        }
+                                        _ => bail!(
+                                            "the referred layer by '{}' is not a Group module",
+                                            input_name
+                                        ),
+                                    }
+                                }
+                            }
+
+                            Ok(())
+                        })?;
+
+                    Ok(())
+                })?;
+
+            // merge with included groups
+            let merged_groups = Self::merge(vec![parent_groups, ModelGroups(local_groups)])?;
+
+            Ok(merged_groups)
+        }
+
+        pub fn merge(groups_iter: impl IntoIterator<Item = Self>) -> Result<Self> {
+            let groups: IndexMap<_, _> = groups_iter
+                .into_iter()
+                .flat_map(|Self(groups)| groups.into_iter())
+                .try_fold(IndexMap::new(), |mut map, (name, group)| -> Result<_> {
+                    let prev = map.insert(name.clone(), group);
+                    ensure!(prev.is_none(), "duplicated group name '{}'", name);
+                    Ok(map)
+                })?;
+            Ok(Self(groups))
+        }
     }
 }
 
@@ -379,23 +530,23 @@ mod model {
     #[derivative(Hash)]
     #[serde(try_from = "ModelUnchecked", into = "ModelUnchecked")]
     pub struct Model {
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerName, Input, _>"))]
-        pub inputs: IndexMap<LayerName, Input>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerIdent, Layer, _>"))]
-        pub layers: IndexMap<LayerIdent, Layer>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerName, Output, _>"))]
-        pub outputs: IndexMap<LayerName, Output>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, Shape, _>"))]
+        pub inputs: IndexMap<ModuleName, Shape>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleIdent, Module, _>"))]
+        pub layers: IndexMap<ModuleIdent, Module>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, ModulePath, _>"))]
+        pub outputs: IndexMap<ModuleName, ModulePath>,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     struct ModelUnchecked {
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerName, Input, _>"))]
-        pub inputs: IndexMap<LayerName, Input>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerIdent, Layer, _>"))]
-        pub layers: IndexMap<LayerIdent, Layer>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerName, Output, _>"))]
-        pub outputs: IndexMap<LayerName, Output>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, Shape, _>"))]
+        pub inputs: IndexMap<ModuleName, Shape>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleIdent, Module, _>"))]
+        pub layers: IndexMap<ModuleIdent, Module>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, ModulePath, _>"))]
+        pub outputs: IndexMap<ModuleName, ModulePath>,
     }
 
     impl TryFrom<ModelUnchecked> for Model {
@@ -412,6 +563,7 @@ mod model {
             layers
                 .keys()
                 .filter_map(|ident| ident.name())
+                .map(|name| name.as_ref())
                 .chain(inputs.keys().map(AsRef::as_ref))
                 .chain(outputs.keys().map(AsRef::as_ref))
                 .try_fold(HashSet::new(), |mut set, name| {
@@ -439,61 +591,6 @@ mod model {
                 inputs,
                 layers,
                 outputs,
-            }
-        }
-    }
-}
-
-mod layer {
-    use super::*;
-
-    pub trait LayerEx {
-        fn input_layers(&self) -> Vec<&LayerPath>;
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(tag = "kind")]
-    pub enum Layer {
-        Focus(Focus),
-        ConvBlock(ConvBlock),
-        Bottleneck(Bottleneck),
-        BottleneckCsp(BottleneckCsp),
-        Spp(Spp),
-        UpSample(UpSample),
-        Concat(Concat),
-        Detect(Detect),
-        Group(Group),
-    }
-
-    impl Layer {
-        pub fn output_shape(&self, _input_shape: &[usize]) -> Option<Vec<usize>> {
-            // match &self.kind {
-            //     LayerKind::Input(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Focus(layer) => layer.output_shape(input_shape),
-            //     LayerKind::ConvBlock(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Bottleneck(layer) => layer.output_shape(input_shape),
-            //     LayerKind::BottleneckCsp(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Spp(layer) => layer.output_shape(input_shape),
-            //     LayerKind::UpSample(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Concat(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Detect(layer) => layer.output_shape(input_shape),
-            // }
-            todo!();
-        }
-    }
-
-    impl LayerEx for Layer {
-        fn input_layers(&self) -> Vec<&LayerPath> {
-            match self {
-                Layer::Focus(layer) => layer.input_layers(),
-                Layer::ConvBlock(layer) => layer.input_layers(),
-                Layer::Bottleneck(layer) => layer.input_layers(),
-                Layer::BottleneckCsp(layer) => layer.input_layers(),
-                Layer::Spp(layer) => layer.input_layers(),
-                Layer::UpSample(layer) => layer.input_layers(),
-                Layer::Concat(layer) => layer.input_layers(),
-                Layer::Detect(layer) => layer.input_layers(),
-                Layer::Group(layer) => layer.input_layers(),
             }
         }
     }

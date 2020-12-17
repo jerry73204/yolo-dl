@@ -1,4 +1,4 @@
-use crate::{common::*, config::Config, utils};
+use crate::{common::*, utils};
 
 pub use graph::*;
 pub use node::*;
@@ -15,24 +15,16 @@ mod graph {
         pub edges: IndexMap<usize, Edge>,
     }
 
-    impl Graph {
-        pub fn from_config(config: &Config) -> Self {
-            todo!();
-        }
-    }
+    // impl Graph {
+    //     pub fn from_config(config: &Config) -> Self {
+    //         todo!();
+    //     }
+    // }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum Node {
         Input(Input),
         Output(Output),
-        Focus(Focus),
-        ConvBlock(ConvBlock),
-        Bottleneck(Bottleneck),
-        BottleneckCsp(BottleneckCsp),
-        Spp(Spp),
-        UpSample(UpSample),
-        Concat(Concat),
-        Detect(Detect),
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

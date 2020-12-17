@@ -1,9 +1,6 @@
 use anyhow::Result;
-use model_config::config::Config;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+// use model_config::config::Config;
+use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 
 fn main() -> Result<()> {
@@ -22,6 +19,6 @@ fn main() -> Result<()> {
 }
 
 fn info(config_file: impl AsRef<Path>) -> Result<()> {
-    let config = Config::from_path(config_file)?;
+    // let config = Config::from_path(config_file)?;
     Ok(())
 }
