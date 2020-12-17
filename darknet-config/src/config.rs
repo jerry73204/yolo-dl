@@ -68,395 +68,15 @@ mod darknet_config {
             let mut items_iter = items.into_iter();
 
             // build net item
-            let net = {
-                let net = match items_iter.next().unwrap() {
-                    Item::Net(net) => net,
-                    _ => unreachable!(),
-                };
-
-                let RawNetConfig {
-                    max_batches,
-                    batch,
-                    learning_rate,
-                    learning_rate_min,
-                    sgdr_cycle,
-                    sgdr_mult,
-                    momentum,
-                    decay,
-                    subdivisions,
-                    time_steps,
-                    track,
-                    augment_speed,
-                    sequential_subdivisions,
-                    try_fix_nan,
-                    loss_scale,
-                    dynamic_minibatch,
-                    optimized_memory,
-                    workspace_size_limit_mb,
-                    adam,
-                    b1,
-                    b2,
-                    eps,
-                    width,
-                    height,
-                    channels,
-                    inputs,
-                    max_crop,
-                    min_crop,
-                    flip,
-                    blur,
-                    gaussian_noise,
-                    mixup,
-                    cutmux,
-                    mosaic,
-                    letter_box,
-                    mosaic_bound,
-                    contrastive,
-                    contrastive_jit_flip,
-                    contrastive_color,
-                    unsupervised,
-                    label_smooth_eps,
-                    resize_step,
-                    attention,
-                    adversarial_lr,
-                    max_chart_loss,
-                    angle,
-                    aspect,
-                    saturation,
-                    exposure,
-                    hue,
-                    power,
-                    policy,
-                    burn_in,
-                    step,
-                    scale,
-                    steps,
-                    scales,
-                    seq_scales,
-                    gamma,
-                } = net;
-
-                let sgdr_cycle = sgdr_cycle.unwrap_or(max_batches);
-                let sequential_subdivisions = sequential_subdivisions.unwrap_or(subdivisions);
-                let adam = if adam {
-                    Some(Adam { b1, b2, eps })
-                } else {
-                    None
-                };
-                let max_crop = max_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0) * 2);
-                let min_crop = min_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0));
-                let input_size = match (inputs, height, width, channels) {
-                    (Some(inputs), None, None, None) => Shape::Flat(inputs.get()),
-                    (None, Some(height), Some(width), Some(channels)) => {
-                        Shape::Hwc([height.get(), width.get(), channels.get()])
-                    }
-                    _ => bail!("either inputs or height/width/channels must be specified"),
-                };
-                let policy = match policy {
-                    PolicyKind::Random => Policy::Random,
-                    PolicyKind::Poly => Policy::Poly,
-                    PolicyKind::Constant => Policy::Constant,
-                    PolicyKind::Step => Policy::Step { step, scale },
-                    PolicyKind::Exp => Policy::Exp { gamma },
-                    PolicyKind::Sigmoid => Policy::Sigmoid { gamma, step },
-                    PolicyKind::Steps => {
-                        let steps = steps.ok_or_else(|| {
-                            format_err!("steps must be specified for step policy")
-                        })?;
-                        let scales = {
-                            let scales = scales.ok_or_else(|| {
-                                format_err!("scales must be specified for step policy")
-                            })?;
-                            ensure!(
-                                steps.len() == scales.len(),
-                                "the length of steps and scales must be equal"
-                            );
-                            scales
-                        };
-                        let seq_scales = {
-                            let seq_scales =
-                                seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
-                            ensure!(
-                                steps.len() == seq_scales.len(),
-                                "the length of steps and seq_scales must be equal"
-                            );
-                            seq_scales
-                        };
-
-                        Policy::Steps {
-                            steps,
-                            scales,
-                            seq_scales,
-                        }
-                    }
-                    PolicyKind::Sgdr => match (steps, scales, seq_scales) {
-                        (Some(steps), scales, seq_scales) => {
-                            let scales = scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
-                            let seq_scales =
-                                seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
-                            ensure!(
-                                steps.len() == scales.len(),
-                                "the length of steps and scales must be equal"
-                            );
-                            ensure!(
-                                steps.len() == seq_scales.len(),
-                                "the length of steps and seq_scales must be equal"
-                            );
-
-                            Policy::SgdrCustom {
-                                steps,
-                                scales,
-                                seq_scales,
-                            }
-                        }
-                        (None, None, None) => Policy::Sgdr,
-                        _ => bail!("either none or at least steps must be specifeid"),
-                    },
-                };
-
-                NetConfig {
-                    max_batches,
-                    batch,
-                    learning_rate,
-                    learning_rate_min,
-                    sgdr_cycle,
-                    sgdr_mult,
-                    momentum,
-                    decay,
-                    subdivisions,
-                    time_steps,
-                    track,
-                    augment_speed,
-                    sequential_subdivisions,
-                    try_fix_nan,
-                    loss_scale,
-                    dynamic_minibatch,
-                    optimized_memory,
-                    workspace_size_limit_mb,
-                    adam,
-                    input_size,
-                    max_crop,
-                    min_crop,
-                    flip,
-                    blur,
-                    gaussian_noise,
-                    mixup,
-                    cutmux,
-                    mosaic,
-                    letter_box,
-                    mosaic_bound,
-                    contrastive,
-                    contrastive_jit_flip,
-                    contrastive_color,
-                    unsupervised,
-                    label_smooth_eps,
-                    resize_step,
-                    attention,
-                    adversarial_lr,
-                    max_chart_loss,
-                    angle,
-                    aspect,
-                    saturation,
-                    exposure,
-                    hue,
-                    power,
-                    policy,
-                    burn_in,
-                }
-            };
+            let net = items_iter
+                .next()
+                .unwrap()
+                .try_into_net()
+                .map_err(|_| format_err!("the first section must be [net]"))?;
 
             // build layers
             let layers: Vec<_> = items_iter
-                .map(|item| {
-                    let layer = match item {
-                        Item::Connected(layer) => LayerConfig::Connected(layer),
-                        Item::Convolutional(layer) => LayerConfig::Convolutional(layer),
-                        Item::Route(layer) => LayerConfig::Route(layer),
-                        Item::Shortcut(layer) => LayerConfig::Shortcut(layer),
-                        Item::MaxPool(layer) => LayerConfig::MaxPool(layer),
-                        Item::UpSample(layer) => LayerConfig::UpSample(layer),
-                        Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
-                        Item::Dropout(layer) => LayerConfig::Dropout(layer),
-                        Item::Softmax(layer) => LayerConfig::Softmax(layer.try_into()?),
-                        Item::Cost(layer) => LayerConfig::Cost(layer.try_into()?),
-                        Item::GaussianYolo(layer) => {
-                            let RawGaussianYoloConfig {
-                                classes,
-                                num,
-                                mask,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                uc_normalizer,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                map,
-                                anchors,
-                                common,
-                            } = layer;
-
-                            let mask = mask.unwrap_or_else(|| IndexSet::new());
-                            let anchors = match (num, anchors) {
-                                (0, None) => vec![],
-                                (_, None) => bail!("num and length of anchors mismatch"),
-                                (_, Some(anchors)) => {
-                                    ensure!(
-                                        anchors.len() == num as usize,
-                                        "num and length of anchors mismatch"
-                                    );
-                                    let anchors: Vec<_> = mask
-                                        .into_iter()
-                                        .map(|index| -> Result<_> {
-                                            Ok(anchors.get(index as usize).ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?.clone())
-                                        })
-                                        .try_collect()?;
-                                    anchors
-                                }
-                            };
-
-                            LayerConfig::GaussianYolo(GaussianYoloConfig {
-                                classes,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                uc_normalizer,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                map,
-                                anchors,
-                                common,
-                            })
-                        }
-                        Item::Yolo(layer) => {
-                            let RawYoloConfig {
-                                classes,
-                                num,
-                                mask,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                focal_loss,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                track_history_size,
-                                sim_thresh,
-                                dets_for_track,
-                                dets_for_show,
-                                track_ciou_norm,
-                                embedding_layer,
-                                map,
-                                anchors,
-                                common,
-                            } = layer;
-
-                            let mask = mask.unwrap_or_else(|| IndexSet::new());
-                            let anchors = match (num, anchors) {
-                                (0, None) => vec![],
-                                (_, None) => bail!("num and length of anchors mismatch"),
-                                (_, Some(anchors)) => {
-                                    ensure!(
-                                        anchors.len() == num as usize,
-                                        "num and length of anchors mismatch"
-                                    );
-                                    let anchors: Vec<_> = mask
-                                        .into_iter()
-                                        .map(|index| -> Result<_> {
-                                            Ok(anchors.get(index as usize).ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?.clone())
-                                        })
-                                        .try_collect()?;
-                                    anchors
-                                }
-                            };
-
-                            LayerConfig::Yolo(YoloConfig {
-                                classes,
-                                max_boxes,
-                                max_delta,
-                                counters_per_class,
-                                label_smooth_eps,
-                                scale_x_y,
-                                objectness_smooth,
-                                iou_normalizer,
-                                obj_normalizer,
-                                cls_normalizer,
-                                delta_normalizer,
-                                iou_loss,
-                                iou_thresh_kind,
-                                beta_nms,
-                                nms_kind,
-                                yolo_point,
-                                jitter,
-                                resize,
-                                focal_loss,
-                                ignore_thresh,
-                                truth_thresh,
-                                iou_thresh,
-                                random,
-                                track_history_size,
-                                sim_thresh,
-                                dets_for_track,
-                                dets_for_show,
-                                track_ciou_norm,
-                                embedding_layer,
-                                map,
-                                anchors,
-                                common,
-                            })
-                        }
-                        Item::Net(_layer) => {
-                            bail!("the 'net' layer must appear in the first section")
-                        }
-                    };
-                    Ok(layer)
-                })
+                .map(|item| item.try_into_layer_config())
                 .try_collect()?;
 
             Ok(Self { net, layers })
@@ -503,6 +123,7 @@ mod net_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(try_from = "RawNetConfig", into = "RawNetConfig")]
     pub struct NetConfig {
         pub max_batches: u64,
         pub batch: u64,
@@ -559,8 +180,203 @@ mod net_config {
         }
     }
 
+    impl TryFrom<RawNetConfig> for NetConfig {
+        type Error = Error;
+
+        fn try_from(from: RawNetConfig) -> Result<Self, Self::Error> {
+            let RawNetConfig {
+                max_batches,
+                batch,
+                learning_rate,
+                learning_rate_min,
+                sgdr_cycle,
+                sgdr_mult,
+                momentum,
+                decay,
+                subdivisions,
+                time_steps,
+                track,
+                augment_speed,
+                sequential_subdivisions,
+                try_fix_nan,
+                loss_scale,
+                dynamic_minibatch,
+                optimized_memory,
+                workspace_size_limit_mb,
+                adam,
+                b1,
+                b2,
+                eps,
+                width,
+                height,
+                channels,
+                inputs,
+                max_crop,
+                min_crop,
+                flip,
+                blur,
+                gaussian_noise,
+                mixup,
+                cutmux,
+                mosaic,
+                letter_box,
+                mosaic_bound,
+                contrastive,
+                contrastive_jit_flip,
+                contrastive_color,
+                unsupervised,
+                label_smooth_eps,
+                resize_step,
+                attention,
+                adversarial_lr,
+                max_chart_loss,
+                angle,
+                aspect,
+                saturation,
+                exposure,
+                hue,
+                power,
+                policy,
+                burn_in,
+                step,
+                scale,
+                steps,
+                scales,
+                seq_scales,
+                gamma,
+            } = from;
+
+            let sgdr_cycle = sgdr_cycle.unwrap_or(max_batches);
+            let sequential_subdivisions = sequential_subdivisions.unwrap_or(subdivisions);
+            let adam = if adam {
+                Some(Adam { b1, b2, eps })
+            } else {
+                None
+            };
+            let max_crop = max_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0) * 2);
+            let min_crop = min_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0));
+            let input_size = match (inputs, height, width, channels) {
+                (Some(inputs), None, None, None) => Shape::Flat(inputs.get()),
+                (None, Some(height), Some(width), Some(channels)) => {
+                    Shape::Hwc([height.get(), width.get(), channels.get()])
+                }
+                _ => bail!("either inputs or height/width/channels must be specified"),
+            };
+            let policy = match policy {
+                PolicyKind::Random => Policy::Random,
+                PolicyKind::Poly => Policy::Poly,
+                PolicyKind::Constant => Policy::Constant,
+                PolicyKind::Step => Policy::Step { step, scale },
+                PolicyKind::Exp => Policy::Exp { gamma },
+                PolicyKind::Sigmoid => Policy::Sigmoid { gamma, step },
+                PolicyKind::Steps => {
+                    let steps = steps
+                        .ok_or_else(|| format_err!("steps must be specified for step policy"))?;
+                    let scales = {
+                        let scales = scales.ok_or_else(|| {
+                            format_err!("scales must be specified for step policy")
+                        })?;
+                        ensure!(
+                            steps.len() == scales.len(),
+                            "the length of steps and scales must be equal"
+                        );
+                        scales
+                    };
+                    let seq_scales = {
+                        let seq_scales =
+                            seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
+                        ensure!(
+                            steps.len() == seq_scales.len(),
+                            "the length of steps and seq_scales must be equal"
+                        );
+                        seq_scales
+                    };
+
+                    Policy::Steps {
+                        steps,
+                        scales,
+                        seq_scales,
+                    }
+                }
+                PolicyKind::Sgdr => match (steps, scales, seq_scales) {
+                    (Some(steps), scales, seq_scales) => {
+                        let scales = scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
+                        let seq_scales =
+                            seq_scales.unwrap_or_else(|| vec![R64::new(1.0); steps.len()]);
+                        ensure!(
+                            steps.len() == scales.len(),
+                            "the length of steps and scales must be equal"
+                        );
+                        ensure!(
+                            steps.len() == seq_scales.len(),
+                            "the length of steps and seq_scales must be equal"
+                        );
+
+                        Policy::SgdrCustom {
+                            steps,
+                            scales,
+                            seq_scales,
+                        }
+                    }
+                    (None, None, None) => Policy::Sgdr,
+                    _ => bail!("either none or at least steps must be specifeid"),
+                },
+            };
+
+            Ok(NetConfig {
+                max_batches,
+                batch,
+                learning_rate,
+                learning_rate_min,
+                sgdr_cycle,
+                sgdr_mult,
+                momentum,
+                decay,
+                subdivisions,
+                time_steps,
+                track,
+                augment_speed,
+                sequential_subdivisions,
+                try_fix_nan,
+                loss_scale,
+                dynamic_minibatch,
+                optimized_memory,
+                workspace_size_limit_mb,
+                adam,
+                input_size,
+                max_crop,
+                min_crop,
+                flip,
+                blur,
+                gaussian_noise,
+                mixup,
+                cutmux,
+                mosaic,
+                letter_box,
+                mosaic_bound,
+                contrastive,
+                contrastive_jit_flip,
+                contrastive_color,
+                unsupervised,
+                label_smooth_eps,
+                resize_step,
+                attention,
+                adversarial_lr,
+                max_chart_loss,
+                angle,
+                aspect,
+                saturation,
+                exposure,
+                hue,
+                power,
+                policy,
+                burn_in,
+            })
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawNetConfig {
+    pub(super) struct RawNetConfig {
         #[serde(default = "defaults::max_batches")]
         pub max_batches: u64,
         #[serde(default = "defaults::batch")]
@@ -585,20 +401,20 @@ mod net_config {
         #[serde(default = "defaults::augment_speed")]
         pub augment_speed: u64,
         pub sequential_subdivisions: Option<u64>,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub try_fix_nan: bool,
         #[serde(default = "defaults::loss_scale")]
         pub loss_scale: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub dynamic_minibatch: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub optimized_memory: bool,
         #[serde(
             rename = "workspace_size_limit_MB",
             default = "defaults::workspace_size_limit_mb"
         )]
         pub workspace_size_limit_mb: u64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub adam: bool,
         #[serde(rename = "B1", default = "defaults::b1")]
         pub b1: R64,
@@ -612,35 +428,35 @@ mod net_config {
         pub inputs: Option<NonZeroU64>,
         pub max_crop: Option<u64>,
         pub min_crop: Option<u64>,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_true")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_true")]
         pub flip: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub blur: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub gaussian_noise: bool,
         #[serde(default = "defaults::mixup")]
         pub mixup: MixUp,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub cutmux: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub mosaic: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub letter_box: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub mosaic_bound: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub contrastive: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub contrastive_jit_flip: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub contrastive_color: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub unsupervised: bool,
         #[serde(default = "defaults::label_smooth_eps")]
         pub label_smooth_eps: R64,
         #[serde(default = "defaults::resize_step")]
         pub resize_step: u64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub attention: bool,
         #[serde(default = "defaults::adversarial_lr")]
         pub adversarial_lr: R64,
@@ -666,14 +482,236 @@ mod net_config {
         pub step: u64,
         #[serde(default = "defaults::scale")]
         pub scale: R64,
-        #[serde(with = "serde_opt_vec_u64", default)]
+        #[serde(with = "serde_::opt_vec_u64", default)]
         pub steps: Option<Vec<u64>>,
-        #[serde(with = "serde_opt_vec_r64", default)]
+        #[serde(with = "serde_::opt_vec_r64", default)]
         pub scales: Option<Vec<R64>>,
-        #[serde(with = "serde_opt_vec_r64", default)]
+        #[serde(with = "serde_::opt_vec_r64", default)]
         pub seq_scales: Option<Vec<R64>>,
         #[serde(default = "defaults::gamma")]
         pub gamma: R64,
+    }
+
+    impl From<NetConfig> for RawNetConfig {
+        fn from(from: NetConfig) -> Self {
+            let NetConfig {
+                max_batches,
+                batch,
+                learning_rate,
+                learning_rate_min,
+                sgdr_cycle,
+                sgdr_mult,
+                momentum,
+                decay,
+                subdivisions,
+                time_steps,
+                track,
+                augment_speed,
+                sequential_subdivisions,
+                try_fix_nan,
+                loss_scale,
+                dynamic_minibatch,
+                optimized_memory,
+                workspace_size_limit_mb,
+                adam,
+                input_size,
+                max_crop,
+                min_crop,
+                flip,
+                blur,
+                gaussian_noise,
+                mixup,
+                cutmux,
+                mosaic,
+                letter_box,
+                mosaic_bound,
+                contrastive,
+                contrastive_jit_flip,
+                contrastive_color,
+                unsupervised,
+                label_smooth_eps,
+                resize_step,
+                attention,
+                adversarial_lr,
+                max_chart_loss,
+                angle,
+                aspect,
+                saturation,
+                exposure,
+                hue,
+                power,
+                policy,
+                burn_in,
+            } = from;
+
+            let (adam, b1, b2, eps) = match adam {
+                Some(Adam { b1, b2, eps }) => (true, b1, b2, eps),
+                None => (false, defaults::b1(), defaults::b2(), defaults::eps()),
+            };
+
+            let (inputs, height, width, channels) = match input_size {
+                Shape::Hwc([height, width, channels]) => {
+                    (None, Some(height), Some(width), Some(channels))
+                }
+                Shape::Flat(inputs) => (Some(inputs), None, None, None),
+            };
+
+            let (policy, step, scale, steps, scales, seq_scales, gamma) = match policy {
+                Policy::Random => (
+                    PolicyKind::Random,
+                    defaults::step(),
+                    defaults::scale(),
+                    None,
+                    None,
+                    None,
+                    defaults::gamma(),
+                ),
+                Policy::Poly => (
+                    PolicyKind::Poly,
+                    defaults::step(),
+                    defaults::scale(),
+                    None,
+                    None,
+                    None,
+                    defaults::gamma(),
+                ),
+                Policy::Constant => (
+                    PolicyKind::Constant,
+                    defaults::step(),
+                    defaults::scale(),
+                    None,
+                    None,
+                    None,
+                    defaults::gamma(),
+                ),
+                Policy::Step { step, scale } => (
+                    PolicyKind::Step,
+                    step,
+                    scale,
+                    None,
+                    None,
+                    None,
+                    defaults::gamma(),
+                ),
+                Policy::Exp { gamma } => (
+                    PolicyKind::Exp,
+                    defaults::step(),
+                    defaults::scale(),
+                    None,
+                    None,
+                    None,
+                    gamma,
+                ),
+                Policy::Sigmoid { gamma, step } => (
+                    PolicyKind::Sigmoid,
+                    step,
+                    defaults::scale(),
+                    None,
+                    None,
+                    None,
+                    gamma,
+                ),
+                Policy::Steps {
+                    steps,
+                    scales,
+                    seq_scales,
+                } => (
+                    PolicyKind::Steps,
+                    defaults::step(),
+                    defaults::scale(),
+                    Some(steps),
+                    Some(scales),
+                    Some(seq_scales),
+                    defaults::gamma(),
+                ),
+                Policy::Sgdr => (
+                    PolicyKind::Sgdr,
+                    defaults::step(),
+                    defaults::scale(),
+                    None,
+                    None,
+                    None,
+                    defaults::gamma(),
+                ),
+                Policy::SgdrCustom {
+                    steps,
+                    scales,
+                    seq_scales,
+                } => (
+                    PolicyKind::Sgdr,
+                    defaults::step(),
+                    defaults::scale(),
+                    Some(steps),
+                    Some(scales),
+                    Some(seq_scales),
+                    defaults::gamma(),
+                ),
+            };
+
+            let net = RawNetConfig {
+                max_batches,
+                batch,
+                learning_rate,
+                learning_rate_min,
+                sgdr_cycle: Some(sgdr_cycle),
+                sgdr_mult,
+                momentum,
+                decay,
+                subdivisions,
+                time_steps,
+                track,
+                augment_speed,
+                sequential_subdivisions: Some(sequential_subdivisions),
+                try_fix_nan,
+                loss_scale,
+                dynamic_minibatch,
+                optimized_memory,
+                workspace_size_limit_mb,
+                adam,
+                b1,
+                b2,
+                eps,
+                width: width.map(|w| NonZeroU64::new(w).unwrap()),
+                height: height.map(|h| NonZeroU64::new(h).unwrap()),
+                channels: channels.map(|c| NonZeroU64::new(c).unwrap()),
+                inputs: inputs.map(|i| NonZeroU64::new(i).unwrap()),
+                max_crop: Some(max_crop),
+                min_crop: Some(min_crop),
+                flip,
+                blur,
+                gaussian_noise,
+                mixup,
+                cutmux,
+                mosaic,
+                letter_box,
+                mosaic_bound,
+                contrastive,
+                contrastive_jit_flip,
+                contrastive_color,
+                unsupervised,
+                label_smooth_eps,
+                resize_step,
+                attention,
+                adversarial_lr,
+                max_chart_loss,
+                angle,
+                aspect,
+                saturation,
+                exposure,
+                hue,
+                power,
+                policy,
+                burn_in,
+                step,
+                scale,
+                steps,
+                scales,
+                seq_scales,
+                gamma,
+            };
+
+            net
+        }
     }
 }
 
@@ -686,7 +724,7 @@ mod connected_config {
         pub output: u64,
         #[serde(default = "defaults::connected_activation")]
         pub activation: Activation,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub batch_normalize: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -844,7 +882,7 @@ mod convolutional_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawConvolutionalConfig {
+    pub(super) struct RawConvolutionalConfig {
         pub filters: u64,
         #[serde(default = "defaults::groups")]
         pub groups: u64,
@@ -855,48 +893,48 @@ mod convolutional_config {
         pub stride_y: Option<u64>,
         #[serde(default = "defaults::dilation")]
         pub dilation: u64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub antialiasing: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub pad: bool,
         pub padding: Option<u64>,
         pub activation: Activation,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub assisted_excitation: bool,
         pub share_index: Option<LayerIndex>,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub batch_normalize: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub cbn: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub binary: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub xnor: bool,
         #[serde(
             rename = "bin_output",
-            with = "serde_zero_one_bool",
+            with = "serde_::zero_one_bool",
             default = "defaults::bool_false"
         )]
         pub use_bin_output: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub sway: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub rotate: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub stretch: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub stretch_sway: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub flipped: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub dot: bool,
         #[serde(default = "defaults::angle")]
         pub angle: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub grad_centr: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub reverse: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub coordconv: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -981,7 +1019,7 @@ mod route_config {
     #[derivative(Hash)]
     #[serde(try_from = "RawRouteConfig", into = "RawRouteConfig")]
     pub struct RouteConfig {
-        #[derivative(Hash(hash_with = "hash_vec_layers"))]
+        #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
         pub layers: IndexSet<LayerIndex>,
         pub group: RouteGroup,
         pub common: CommonLayerOptions,
@@ -1011,9 +1049,9 @@ mod route_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub struct RawRouteConfig {
-        #[derivative(Hash(hash_with = "hash_vec_layers"))]
-        #[serde(with = "serde_vec_layers")]
+    pub(super) struct RawRouteConfig {
+        #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
+        #[serde(with = "serde_::vec_layers")]
         pub layers: IndexSet<LayerIndex>,
         #[serde(default = "defaults::route_groups")]
         pub groups: NonZeroU64,
@@ -1047,11 +1085,11 @@ mod shortcut_config {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct ShortcutConfig {
-        #[derivative(Hash(hash_with = "hash_vec_layers"))]
-        #[serde(with = "serde_vec_layers")]
+        #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
+        #[serde(with = "serde_::vec_layers")]
         pub from: IndexSet<LayerIndex>,
         pub activation: Activation,
-        #[serde(with = "serde_weights_type", default = "defaults::weights_type")]
+        #[serde(with = "serde_::weights_type", default = "defaults::weights_type")]
         pub weights_type: WeightsType,
         #[serde(default = "defaults::weights_normalization")]
         pub weights_normalization: WeightsNormalization,
@@ -1129,18 +1167,18 @@ mod max_pool_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawMaxPoolConfig {
+    pub(super) struct RawMaxPoolConfig {
         #[serde(default = "defaults::maxpool_stride")]
         pub stride: u64,
         pub stride_x: Option<u64>,
         pub stride_y: Option<u64>,
         pub size: Option<u64>,
         pub padding: Option<u64>,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub maxpool_depth: bool,
         #[serde(default = "defaults::out_channels")]
         pub out_channels: u64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub antialiasing: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -1181,7 +1219,7 @@ mod up_sample_config {
     pub struct UpSampleConfig {
         #[serde(default = "defaults::upsample_stride")]
         pub stride: u64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub reverse: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -1219,6 +1257,7 @@ mod yolo_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
+    #[serde(try_from = "RawYoloConfig")]
     pub struct YoloConfig {
         pub classes: u64,
         pub max_boxes: u64,
@@ -1254,26 +1293,128 @@ mod yolo_config {
         pub common: CommonLayerOptions,
     }
 
+    impl TryFrom<RawYoloConfig> for YoloConfig {
+        type Error = Error;
+
+        fn try_from(from: RawYoloConfig) -> Result<Self, Self::Error> {
+            let RawYoloConfig {
+                classes,
+                num,
+                mask,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                focal_loss,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                track_history_size,
+                sim_thresh,
+                dets_for_track,
+                dets_for_show,
+                track_ciou_norm,
+                embedding_layer,
+                map,
+                anchors,
+                common,
+            } = from;
+
+            let mask = mask.unwrap_or_else(|| IndexSet::new());
+            let anchors = match (num, anchors) {
+                (0, None) => vec![],
+                (_, None) => bail!("num and length of anchors mismatch"),
+                (_, Some(anchors)) => {
+                    ensure!(
+                        anchors.len() == num as usize,
+                        "num and length of anchors mismatch"
+                    );
+                    let anchors: Vec<_> = mask
+                        .into_iter()
+                        .map(|index| -> Result<_> {
+                            Ok(anchors
+                                .get(index as usize)
+                                .ok_or_else(|| {
+                                    format_err!("mask index exceeds total number of anchors")
+                                })?
+                                .clone())
+                        })
+                        .try_collect()?;
+                    anchors
+                }
+            };
+
+            Ok(YoloConfig {
+                classes,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                focal_loss,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                track_history_size,
+                sim_thresh,
+                dets_for_track,
+                dets_for_show,
+                track_ciou_norm,
+                embedding_layer,
+                map,
+                anchors,
+                common,
+            })
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub struct RawYoloConfig {
+    pub(super) struct RawYoloConfig {
         #[serde(default = "defaults::classes")]
         pub classes: u64,
         #[serde(default = "defaults::num")]
         pub num: u64,
         #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
-        #[serde(with = "serde_mask", default)]
+        #[serde(with = "serde_::mask", default)]
         pub mask: Option<IndexSet<u64>>,
         #[serde(rename = "max", default = "defaults::max_boxes")]
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
-        #[serde(with = "serde_opt_vec_u64", default)]
+        #[serde(with = "serde_::opt_vec_u64", default)]
         pub counters_per_class: Option<Vec<u64>>,
         #[serde(default = "defaults::yolo_label_smooth_eps")]
         pub label_smooth_eps: R64,
         #[serde(default = "defaults::scale_x_y")]
         pub scale_x_y: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub objectness_smooth: bool,
         #[serde(default = "defaults::iou_normalizer")]
         pub iou_normalizer: R64,
@@ -1297,7 +1438,7 @@ mod yolo_config {
         pub jitter: R64,
         #[serde(default = "defaults::resize")]
         pub resize: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub focal_loss: bool,
         #[serde(default = "defaults::ignore_thresh")]
         pub ignore_thresh: R64,
@@ -1319,7 +1460,7 @@ mod yolo_config {
         pub track_ciou_norm: R64,
         pub embedding_layer: Option<LayerIndex>,
         pub map: Option<PathBuf>,
-        #[serde(with = "serde_anchors", default)]
+        #[serde(with = "serde_::anchors", default)]
         pub anchors: Option<Vec<(u64, u64)>>,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -1331,6 +1472,7 @@ mod gaussian_yolo_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
+    #[serde(try_from = "RawGaussianYoloConfig")]
     pub struct GaussianYoloConfig {
         pub classes: u64,
         pub max_boxes: u64,
@@ -1367,9 +1509,99 @@ mod gaussian_yolo_config {
         pub common: CommonLayerOptions,
     }
 
+    impl TryFrom<RawGaussianYoloConfig> for GaussianYoloConfig {
+        type Error = Error;
+
+        fn try_from(from: RawGaussianYoloConfig) -> Result<Self, Self::Error> {
+            let RawGaussianYoloConfig {
+                classes,
+                num,
+                mask,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                uc_normalizer,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                map,
+                anchors,
+                common,
+            } = from;
+
+            let mask = mask.unwrap_or_else(|| IndexSet::new());
+            let anchors = match (num, anchors) {
+                (0, None) => vec![],
+                (_, None) => bail!("num and length of anchors mismatch"),
+                (_, Some(anchors)) => {
+                    ensure!(
+                        anchors.len() == num as usize,
+                        "num and length of anchors mismatch"
+                    );
+                    let anchors: Vec<_> = mask
+                        .into_iter()
+                        .map(|index| -> Result<_> {
+                            Ok(anchors
+                                .get(index as usize)
+                                .ok_or_else(|| {
+                                    format_err!("mask index exceeds total number of anchors")
+                                })?
+                                .clone())
+                        })
+                        .try_collect()?;
+                    anchors
+                }
+            };
+
+            Ok(GaussianYoloConfig {
+                classes,
+                max_boxes,
+                max_delta,
+                counters_per_class,
+                label_smooth_eps,
+                scale_x_y,
+                objectness_smooth,
+                uc_normalizer,
+                iou_normalizer,
+                obj_normalizer,
+                cls_normalizer,
+                delta_normalizer,
+                iou_loss,
+                iou_thresh_kind,
+                beta_nms,
+                nms_kind,
+                yolo_point,
+                jitter,
+                resize,
+                ignore_thresh,
+                truth_thresh,
+                iou_thresh,
+                random,
+                map,
+                anchors,
+                common,
+            })
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub struct RawGaussianYoloConfig {
+    pub(super) struct RawGaussianYoloConfig {
         #[serde(default = "defaults::classes")]
         pub classes: u64,
         #[serde(rename = "max", default = "defaults::max_boxes")]
@@ -1377,16 +1609,16 @@ mod gaussian_yolo_config {
         #[serde(default = "defaults::num")]
         pub num: u64,
         #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
-        #[serde(with = "serde_mask", default)]
+        #[serde(with = "serde_::mask", default)]
         pub mask: Option<IndexSet<u64>>,
         pub max_delta: Option<R64>,
-        #[serde(with = "serde_opt_vec_u64", default)]
+        #[serde(with = "serde_::opt_vec_u64", default)]
         pub counters_per_class: Option<Vec<u64>>,
         #[serde(default = "defaults::yolo_label_smooth_eps")]
         pub label_smooth_eps: R64,
         #[serde(default = "defaults::scale_x_y")]
         pub scale_x_y: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub objectness_smooth: bool,
         #[serde(default = "defaults::uc_normalizer")]
         pub uc_normalizer: R64,
@@ -1421,7 +1653,7 @@ mod gaussian_yolo_config {
         #[serde(default = "defaults::random")]
         pub random: R64,
         pub map: Option<PathBuf>,
-        #[serde(with = "serde_anchors", default)]
+        #[serde(with = "serde_::anchors", default)]
         pub anchors: Option<Vec<(u64, u64)>>,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -1469,10 +1701,10 @@ mod dropout_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawDropoutConfig {
+    pub(super) struct RawDropoutConfig {
         #[serde(default = "defaults::probability")]
         pub probability: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub dropblock: bool,
         pub dropblock_size_rel: Option<R64>,
         pub dropblock_size_abs: Option<R64>,
@@ -1516,6 +1748,7 @@ mod softmax_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(try_from = "RawSoftmaxConfig")]
     pub struct SoftmaxConfig {
         pub groups: u64,
         pub temperature: R64,
@@ -1556,7 +1789,7 @@ mod softmax_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct RawSoftmaxConfig {
+    pub(super) struct RawSoftmaxConfig {
         #[serde(default = "defaults::softmax_groups")]
         pub groups: u64,
         #[serde(default = "defaults::temperature")]
@@ -1564,7 +1797,7 @@ mod softmax_config {
         pub tree_file: Option<PathBuf>,
         #[serde(default = "defaults::spatial")]
         pub spatial: R64,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub noloss: bool,
         #[serde(flatten)]
         pub common: CommonLayerOptions,
@@ -1634,9 +1867,9 @@ mod items {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub enum Item {
+    pub(super) enum Item {
         #[serde(rename = "net")]
-        Net(RawNetConfig),
+        Net(NetConfig),
         #[serde(rename = "connected")]
         Connected(ConnectedConfig),
         #[serde(rename = "convolutional")]
@@ -1654,7 +1887,7 @@ mod items {
         #[serde(rename = "dropout")]
         Dropout(DropoutConfig),
         #[serde(rename = "softmax")]
-        Softmax(RawSoftmaxConfig),
+        Softmax(SoftmaxConfig),
         #[serde(rename = "Gaussian_yolo")]
         GaussianYolo(RawGaussianYoloConfig),
         #[serde(rename = "yolo")]
@@ -1663,236 +1896,47 @@ mod items {
         Cost(CostConfig),
     }
 
+    impl Item {
+        pub fn try_into_net(self) -> Result<NetConfig> {
+            let net = match self {
+                Self::Net(net) => net,
+                _ => bail!("not a net layer"),
+            };
+            Ok(net)
+        }
+
+        pub fn try_into_layer_config(self) -> Result<LayerConfig> {
+            let layer = match self {
+                Self::Connected(layer) => LayerConfig::Connected(layer),
+                Self::Convolutional(layer) => LayerConfig::Convolutional(layer),
+                Self::Route(layer) => LayerConfig::Route(layer),
+                Self::Shortcut(layer) => LayerConfig::Shortcut(layer),
+                Self::MaxPool(layer) => LayerConfig::MaxPool(layer),
+                Self::UpSample(layer) => LayerConfig::UpSample(layer),
+                Self::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
+                Self::Dropout(layer) => LayerConfig::Dropout(layer),
+                Self::Softmax(layer) => LayerConfig::Softmax(layer),
+                Self::Cost(layer) => LayerConfig::Cost(layer),
+                Self::GaussianYolo(layer) => LayerConfig::GaussianYolo(layer.try_into()?),
+                Self::Yolo(layer) => LayerConfig::Yolo(layer.try_into()?),
+                Self::Net(_layer) => {
+                    bail!("the 'net' layer must appear in the first section")
+                }
+            };
+            Ok(layer)
+        }
+    }
+
     impl TryFrom<DarknetConfig> for Items {
         type Error = Error;
 
         fn try_from(config: DarknetConfig) -> Result<Self, Self::Error> {
             let DarknetConfig {
-                net: orig_net,
+                net,
                 layers: orig_layers,
             } = config;
 
             // extract global options that will be placed into yolo layers
-            let net = {
-                let NetConfig {
-                    max_batches,
-                    batch,
-                    learning_rate,
-                    learning_rate_min,
-                    sgdr_cycle,
-                    sgdr_mult,
-                    momentum,
-                    decay,
-                    subdivisions,
-                    time_steps,
-                    track,
-                    augment_speed,
-                    sequential_subdivisions,
-                    try_fix_nan,
-                    loss_scale,
-                    dynamic_minibatch,
-                    optimized_memory,
-                    workspace_size_limit_mb,
-                    adam,
-                    input_size,
-                    max_crop,
-                    min_crop,
-                    flip,
-                    blur,
-                    gaussian_noise,
-                    mixup,
-                    cutmux,
-                    mosaic,
-                    letter_box,
-                    mosaic_bound,
-                    contrastive,
-                    contrastive_jit_flip,
-                    contrastive_color,
-                    unsupervised,
-                    label_smooth_eps,
-                    resize_step,
-                    attention,
-                    adversarial_lr,
-                    max_chart_loss,
-                    angle,
-                    aspect,
-                    saturation,
-                    exposure,
-                    hue,
-                    power,
-                    policy,
-                    burn_in,
-                } = orig_net;
-
-                let (adam, b1, b2, eps) = match adam {
-                    Some(Adam { b1, b2, eps }) => (true, b1, b2, eps),
-                    None => (false, defaults::b1(), defaults::b2(), defaults::eps()),
-                };
-
-                let (inputs, height, width, channels) = match input_size {
-                    Shape::Hwc([height, width, channels]) => {
-                        (None, Some(height), Some(width), Some(channels))
-                    }
-                    Shape::Flat(inputs) => (Some(inputs), None, None, None),
-                };
-
-                let (policy, step, scale, steps, scales, seq_scales, gamma) = match policy {
-                    Policy::Random => (
-                        PolicyKind::Random,
-                        defaults::step(),
-                        defaults::scale(),
-                        None,
-                        None,
-                        None,
-                        defaults::gamma(),
-                    ),
-                    Policy::Poly => (
-                        PolicyKind::Poly,
-                        defaults::step(),
-                        defaults::scale(),
-                        None,
-                        None,
-                        None,
-                        defaults::gamma(),
-                    ),
-                    Policy::Constant => (
-                        PolicyKind::Constant,
-                        defaults::step(),
-                        defaults::scale(),
-                        None,
-                        None,
-                        None,
-                        defaults::gamma(),
-                    ),
-                    Policy::Step { step, scale } => (
-                        PolicyKind::Step,
-                        step,
-                        scale,
-                        None,
-                        None,
-                        None,
-                        defaults::gamma(),
-                    ),
-                    Policy::Exp { gamma } => (
-                        PolicyKind::Exp,
-                        defaults::step(),
-                        defaults::scale(),
-                        None,
-                        None,
-                        None,
-                        gamma,
-                    ),
-                    Policy::Sigmoid { gamma, step } => (
-                        PolicyKind::Sigmoid,
-                        step,
-                        defaults::scale(),
-                        None,
-                        None,
-                        None,
-                        gamma,
-                    ),
-                    Policy::Steps {
-                        steps,
-                        scales,
-                        seq_scales,
-                    } => (
-                        PolicyKind::Steps,
-                        defaults::step(),
-                        defaults::scale(),
-                        Some(steps),
-                        Some(scales),
-                        Some(seq_scales),
-                        defaults::gamma(),
-                    ),
-                    Policy::Sgdr => (
-                        PolicyKind::Sgdr,
-                        defaults::step(),
-                        defaults::scale(),
-                        None,
-                        None,
-                        None,
-                        defaults::gamma(),
-                    ),
-                    Policy::SgdrCustom {
-                        steps,
-                        scales,
-                        seq_scales,
-                    } => (
-                        PolicyKind::Sgdr,
-                        defaults::step(),
-                        defaults::scale(),
-                        Some(steps),
-                        Some(scales),
-                        Some(seq_scales),
-                        defaults::gamma(),
-                    ),
-                };
-
-                let net = RawNetConfig {
-                    max_batches,
-                    batch,
-                    learning_rate,
-                    learning_rate_min,
-                    sgdr_cycle: Some(sgdr_cycle),
-                    sgdr_mult,
-                    momentum,
-                    decay,
-                    subdivisions,
-                    time_steps,
-                    track,
-                    augment_speed,
-                    sequential_subdivisions: Some(sequential_subdivisions),
-                    try_fix_nan,
-                    loss_scale,
-                    dynamic_minibatch,
-                    optimized_memory,
-                    workspace_size_limit_mb,
-                    adam,
-                    b1,
-                    b2,
-                    eps,
-                    width: width.map(|w| NonZeroU64::new(w).unwrap()),
-                    height: height.map(|h| NonZeroU64::new(h).unwrap()),
-                    channels: channels.map(|c| NonZeroU64::new(c).unwrap()),
-                    inputs: inputs.map(|i| NonZeroU64::new(i).unwrap()),
-                    max_crop: Some(max_crop),
-                    min_crop: Some(min_crop),
-                    flip,
-                    blur,
-                    gaussian_noise,
-                    mixup,
-                    cutmux,
-                    mosaic,
-                    letter_box,
-                    mosaic_bound,
-                    contrastive,
-                    contrastive_jit_flip,
-                    contrastive_color,
-                    unsupervised,
-                    label_smooth_eps,
-                    resize_step,
-                    attention,
-                    adversarial_lr,
-                    max_chart_loss,
-                    angle,
-                    aspect,
-                    saturation,
-                    exposure,
-                    hue,
-                    power,
-                    policy,
-                    burn_in,
-                    step,
-                    scale,
-                    steps,
-                    scales,
-                    seq_scales,
-                    gamma,
-                };
-
-                net
-            };
-
             let global_anchors: Vec<_> = orig_layers
                 .iter()
                 .filter_map(|layer| match layer {
@@ -2128,7 +2172,7 @@ mod items {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub struct Items(pub Vec<Item>);
+    pub(super) struct Items(pub Vec<Item>);
 }
 
 mod misc {
@@ -2139,31 +2183,31 @@ mod misc {
         pub clip: Option<R64>,
         #[serde(
             rename = "onlyforward",
-            with = "serde_zero_one_bool",
+            with = "serde_::zero_one_bool",
             default = "defaults::bool_false"
         )]
         pub only_forward: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub dont_update: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub burnin_update: bool,
         #[serde(
             rename = "stopbackward",
-            with = "serde_zero_one_bool",
+            with = "serde_::zero_one_bool",
             default = "defaults::bool_false"
         )]
         pub stop_backward: bool,
-        #[serde(with = "serde_zero_one_bool", default = "defaults::bool_false")]
+        #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub train_only_bn: bool,
         #[serde(
             rename = "dontload",
-            with = "serde_zero_one_bool",
+            with = "serde_::zero_one_bool",
             default = "defaults::bool_false"
         )]
         pub dont_load: bool,
         #[serde(
             rename = "dontloadscales",
-            with = "serde_zero_one_bool",
+            with = "serde_::zero_one_bool",
             default = "defaults::bool_false"
         )]
         pub dont_load_scales: bool,
@@ -2824,22 +2868,23 @@ mod defaults {
     }
 }
 
-fn hash_vec_layers<H>(layers: &IndexSet<LayerIndex>, state: &mut H)
-where
-    H: Hasher,
-{
-    let layers: Vec<_> = layers.iter().cloned().collect();
-    layers.hash(state);
-}
-
-fn hash_vec_indexset<T, H>(set: &IndexSet<T>, state: &mut H)
+fn hash_vec<T, H>(layers: &IndexSet<T>, state: &mut H)
 where
     T: Hash,
     H: Hasher,
 {
-    let set: Vec<_> = set.iter().collect();
-    set.hash(state);
+    let layers: Vec<_> = layers.iter().collect();
+    layers.hash(state);
 }
+
+// fn hash_vec_indexset<T, H>(set: &IndexSet<T>, state: &mut H)
+// where
+//     T: Hash,
+//     H: Hasher,
+// {
+//     let set: Vec<_> = set.iter().collect();
+//     set.hash(state);
+// }
 
 fn hash_option_vec_indexset<T, H>(opt: &Option<IndexSet<T>>, state: &mut H)
 where
@@ -2850,262 +2895,274 @@ where
     opt.hash(state);
 }
 
-mod serde_zero_one_bool {
+mod serde_ {
     use super::*;
 
-    pub fn serialize<S>(&yes: &bool, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        (yes as i64).serialize(serializer)
-    }
+    pub mod zero_one_bool {
+        use super::*;
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        match i64::deserialize(deserializer)? {
-            0 => Ok(false),
-            1 => Ok(true),
-            value => Err(D::Error::invalid_value(
-                de::Unexpected::Signed(value),
-                &"0 or 1",
-            )),
-        }
-    }
-}
-
-mod serde_vec_layers {
-    use super::*;
-
-    pub fn serialize<S>(indexes: &IndexSet<LayerIndex>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let text = indexes
-            .iter()
-            .cloned()
-            .map(|index| isize::from(index).to_string())
-            .join(",");
-        text.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexSet<LayerIndex>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = String::deserialize(deserializer)?;
-        let layers_vec: Vec<_> = text
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .split(",")
-            .map(|token| -> Result<_> {
-                let index: isize = token.parse()?;
-                let index = LayerIndex::from(index);
-                Ok(index)
-            })
-            .try_collect()
-            .map_err(|err| D::Error::custom(format!("failed to parse layer index: {:?}", err)))?;
-        let layers_set: IndexSet<LayerIndex> = layers_vec.iter().cloned().collect();
-
-        if layers_vec.len() != layers_set.len() {
-            return Err(D::Error::custom("duplicated layer index is not allowed"));
+        pub fn serialize<S>(&yes: &bool, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            (yes as i64).serialize(serializer)
         }
 
-        Ok(layers_set)
-    }
-}
-
-mod serde_mask {
-    use super::*;
-
-    pub fn serialize<S>(steps: &Option<IndexSet<u64>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        steps
-            .as_ref()
-            .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IndexSet<u64>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = String::deserialize(deserializer)?;
-        let steps_vec: Vec<u64> = text
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .split(",")
-            .map(|token| token.parse())
-            .try_collect()
-            .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
-        let steps_set: IndexSet<_> = steps_vec.iter().cloned().collect();
-
-        if steps_vec.len() != steps_set.len() {
-            return Err(D::Error::custom("duplicated mask indexes is not allowed"));
-        }
-
-        Ok(Some(steps_set))
-    }
-}
-
-mod serde_opt_vec_u64 {
-    use super::*;
-
-    pub fn serialize<S>(steps: &Option<Vec<u64>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        steps
-            .as_ref()
-            .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = <Option<String>>::deserialize(deserializer)?;
-        let steps: Option<Vec<u64>> = text
-            .map(|text| {
-                text.chars()
-                    .filter(|c| !c.is_whitespace())
-                    .collect::<String>()
-                    .split(",")
-                    .map(|token| token.parse())
-                    .try_collect()
-            })
-            .transpose()
-            .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
-        Ok(steps)
-    }
-}
-
-mod serde_opt_vec_r64 {
-    use super::*;
-
-    pub fn serialize<S>(scales: &Option<Vec<R64>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        scales
-            .as_ref()
-            .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<R64>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = <Option<String>>::deserialize(deserializer)?;
-        let scales: Option<Vec<R64>> = text
-            .map(|text| {
-                text.chars()
-                    .filter(|c| !c.is_whitespace())
-                    .collect::<String>()
-                    .split(",")
-                    .map(|token| {
-                        let value: f64 = token.parse().map_err(|err| {
-                            D::Error::custom(format!("failed to parse steps: {:?}", err))
-                        })?;
-                        let value = R64::try_new(value).ok_or_else(|| {
-                            D::Error::custom(format!("invalid value '{}'", token))
-                        })?;
-                        Ok(value)
-                    })
-                    .try_collect()
-            })
-            .transpose()?;
-        Ok(scales)
-    }
-}
-
-mod serde_anchors {
-    use super::*;
-
-    pub fn serialize<S>(steps: &Option<Vec<(u64, u64)>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        steps
-            .as_ref()
-            .map(|steps| {
-                steps
-                    .iter()
-                    .flat_map(|(w, h)| vec![w, h])
-                    .map(|val| val.to_string())
-                    .join(",")
-            })
-            .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(u64, u64)>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = match Option::<String>::deserialize(deserializer)? {
-            Some(text) => text,
-            None => return Ok(None),
-        };
-        let values: Vec<u64> = text
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .split(",")
-            .map(|token| token.parse())
-            .try_collect()
-            .map_err(|err| D::Error::custom(format!("failed to parse anchors: {:?}", err)))?;
-
-        if values.len() % 2 != 0 {
-            return Err(D::Error::custom("expect even number of values"));
-        }
-
-        let anchors: Vec<_> = values
-            .into_iter()
-            .chunks(2)
-            .into_iter()
-            .map(|mut chunk| (chunk.next().unwrap(), chunk.next().unwrap()))
-            .collect();
-        Ok(Some(anchors))
-    }
-}
-
-mod serde_weights_type {
-    use super::*;
-
-    pub fn serialize<S>(weights_type: &WeightsType, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match weights_type {
-            WeightsType::None => "none",
-            WeightsType::PerFeature => "per_feature",
-            WeightsType::PerChannel => "per_channel",
-        }
-        .serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<WeightsType, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = String::deserialize(deserializer)?;
-        let weights_type = match text.as_str() {
-            "per_feature" | "per_layer" => WeightsType::PerFeature,
-            "per_channel" => WeightsType::PerChannel,
-            _ => {
-                return Err(D::Error::custom(format!(
-                    "'{}' is not a valid weights type",
-                    text
-                )))
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            match i64::deserialize(deserializer)? {
+                0 => Ok(false),
+                1 => Ok(true),
+                value => Err(D::Error::invalid_value(
+                    de::Unexpected::Signed(value),
+                    &"0 or 1",
+                )),
             }
-        };
-        Ok(weights_type)
+        }
+    }
+
+    pub mod vec_layers {
+        use super::*;
+
+        pub fn serialize<S>(
+            indexes: &IndexSet<LayerIndex>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let text = indexes
+                .iter()
+                .cloned()
+                .map(|index| isize::from(index).to_string())
+                .join(",");
+            text.serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexSet<LayerIndex>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = String::deserialize(deserializer)?;
+            let layers_vec: Vec<_> = text
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .split(",")
+                .map(|token| -> Result<_> {
+                    let index: isize = token.parse()?;
+                    let index = LayerIndex::from(index);
+                    Ok(index)
+                })
+                .try_collect()
+                .map_err(|err| {
+                    D::Error::custom(format!("failed to parse layer index: {:?}", err))
+                })?;
+            let layers_set: IndexSet<LayerIndex> = layers_vec.iter().cloned().collect();
+
+            if layers_vec.len() != layers_set.len() {
+                return Err(D::Error::custom("duplicated layer index is not allowed"));
+            }
+
+            Ok(layers_set)
+        }
+    }
+
+    pub mod mask {
+        use super::*;
+
+        pub fn serialize<S>(steps: &Option<IndexSet<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            steps
+                .as_ref()
+                .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
+                .serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IndexSet<u64>>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = String::deserialize(deserializer)?;
+            let steps_vec: Vec<u64> = text
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .split(",")
+                .map(|token| token.parse())
+                .try_collect()
+                .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
+            let steps_set: IndexSet<_> = steps_vec.iter().cloned().collect();
+
+            if steps_vec.len() != steps_set.len() {
+                return Err(D::Error::custom("duplicated mask indexes is not allowed"));
+            }
+
+            Ok(Some(steps_set))
+        }
+    }
+
+    pub mod opt_vec_u64 {
+        use super::*;
+
+        pub fn serialize<S>(steps: &Option<Vec<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            steps
+                .as_ref()
+                .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
+                .serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = <Option<String>>::deserialize(deserializer)?;
+            let steps: Option<Vec<u64>> = text
+                .map(|text| {
+                    text.chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect::<String>()
+                        .split(",")
+                        .map(|token| token.parse())
+                        .try_collect()
+                })
+                .transpose()
+                .map_err(|err| D::Error::custom(format!("failed to parse steps: {:?}", err)))?;
+            Ok(steps)
+        }
+    }
+
+    pub mod opt_vec_r64 {
+        use super::*;
+
+        pub fn serialize<S>(scales: &Option<Vec<R64>>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            scales
+                .as_ref()
+                .map(|steps| steps.iter().map(|step| step.to_string()).join(","))
+                .serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<R64>>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = <Option<String>>::deserialize(deserializer)?;
+            let scales: Option<Vec<R64>> = text
+                .map(|text| {
+                    text.chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect::<String>()
+                        .split(",")
+                        .map(|token| {
+                            let value: f64 = token.parse().map_err(|err| {
+                                D::Error::custom(format!("failed to parse steps: {:?}", err))
+                            })?;
+                            let value = R64::try_new(value).ok_or_else(|| {
+                                D::Error::custom(format!("invalid value '{}'", token))
+                            })?;
+                            Ok(value)
+                        })
+                        .try_collect()
+                })
+                .transpose()?;
+            Ok(scales)
+        }
+    }
+
+    pub mod anchors {
+        use super::*;
+
+        pub fn serialize<S>(
+            steps: &Option<Vec<(u64, u64)>>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            steps
+                .as_ref()
+                .map(|steps| {
+                    steps
+                        .iter()
+                        .flat_map(|(w, h)| vec![w, h])
+                        .map(|val| val.to_string())
+                        .join(",")
+                })
+                .serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(u64, u64)>>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = match Option::<String>::deserialize(deserializer)? {
+                Some(text) => text,
+                None => return Ok(None),
+            };
+            let values: Vec<u64> = text
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .split(",")
+                .map(|token| token.parse())
+                .try_collect()
+                .map_err(|err| D::Error::custom(format!("failed to parse anchors: {:?}", err)))?;
+
+            if values.len() % 2 != 0 {
+                return Err(D::Error::custom("expect even number of values"));
+            }
+
+            let anchors: Vec<_> = values
+                .into_iter()
+                .chunks(2)
+                .into_iter()
+                .map(|mut chunk| (chunk.next().unwrap(), chunk.next().unwrap()))
+                .collect();
+            Ok(Some(anchors))
+        }
+    }
+
+    pub mod weights_type {
+        use super::*;
+
+        pub fn serialize<S>(weights_type: &WeightsType, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            match weights_type {
+                WeightsType::None => "none",
+                WeightsType::PerFeature => "per_feature",
+                WeightsType::PerChannel => "per_channel",
+            }
+            .serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<WeightsType, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let text = String::deserialize(deserializer)?;
+            let weights_type = match text.as_str() {
+                "per_feature" | "per_layer" => WeightsType::PerFeature,
+                "per_channel" => WeightsType::PerChannel,
+                _ => {
+                    return Err(D::Error::custom(format!(
+                        "'{}' is not a valid weights type",
+                        text
+                    )))
+                }
+            };
+            Ok(weights_type)
+        }
     }
 }
