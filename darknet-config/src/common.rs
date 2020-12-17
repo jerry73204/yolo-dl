@@ -8,7 +8,7 @@ pub use itertools::{izip, Itertools};
 pub use log::{debug, warn};
 pub use maplit::hashmap;
 pub use ndarray::{Array1, Array2, Array3, Array4};
-pub use noisy_float::prelude::{r32, R32, R64};
+pub use noisy_float::prelude::{r32, r64, R32, R64};
 pub use owning_ref::{ArcRef, OwningRef};
 pub use petgraph::{
     data::{Element, FromElements},

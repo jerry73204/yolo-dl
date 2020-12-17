@@ -3,6 +3,7 @@ use crate::common::*;
 pub use batch_norm_config::*;
 pub use connected_config::*;
 pub use convolutional_config::*;
+pub use cost_config::*;
 pub use darknet_config::*;
 pub use dropout_config::*;
 pub use gaussian_yolo_config::*;
@@ -325,6 +326,7 @@ mod darknet_config {
                         Item::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
                         Item::Dropout(layer) => LayerConfig::Dropout(layer),
                         Item::Softmax(layer) => LayerConfig::Softmax(layer.try_into()?),
+                        Item::Cost(layer) => LayerConfig::Cost(layer.try_into()?),
                         Item::GaussianYolo(layer) => {
                             let RawGaussianYoloConfig {
                                 classes,
@@ -509,27 +511,17 @@ mod darknet_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum LayerConfig {
-        #[serde(rename = "connected")]
         Connected(ConnectedConfig),
-        #[serde(rename = "convolutional")]
         Convolutional(ConvolutionalConfig),
-        #[serde(rename = "route")]
         Route(RouteConfig),
-        #[serde(rename = "shortcut")]
         Shortcut(ShortcutConfig),
-        #[serde(rename = "maxpool")]
         MaxPool(MaxPoolConfig),
-        #[serde(rename = "upsample")]
         UpSample(UpSampleConfig),
-        #[serde(rename = "batchnorm")]
         BatchNorm(BatchNormConfig),
-        #[serde(rename = "dropout")]
         Dropout(DropoutConfig),
-        #[serde(rename = "dropout")]
         Softmax(SoftmaxConfig),
-        #[serde(rename = "yolo")]
+        Cost(CostConfig),
         Yolo(YoloConfig),
-        #[serde(rename = "Gaussian_yolo")]
         GaussianYolo(GaussianYoloConfig),
     }
 
@@ -545,6 +537,7 @@ mod darknet_config {
                 LayerConfig::BatchNorm(layer) => &layer.common,
                 LayerConfig::Dropout(layer) => &layer.common,
                 LayerConfig::Softmax(layer) => &layer.common,
+                LayerConfig::Cost(layer) => &layer.common,
                 LayerConfig::Yolo(layer) => &layer.common,
                 LayerConfig::GaussianYolo(layer) => &layer.common,
             }
@@ -1656,6 +1649,32 @@ mod softmax_config {
     pub struct Tree {}
 }
 
+mod cost_config {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct CostConfig {
+        #[serde(default = "defaults::cost_type")]
+        pub r#type: CostType,
+        #[serde(default = "defaults::cost_scale")]
+        pub scale: R64,
+        #[serde(default = "defaults::cost_ratio")]
+        pub ratio: R64,
+        #[serde(flatten)]
+        pub common: CommonLayerOptions,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum CostType {
+        #[serde(rename = "sse")]
+        Sse,
+        #[serde(rename = "masked")]
+        Masked,
+        #[serde(rename = "smooth")]
+        Smooth,
+    }
+}
+
 mod items {
     use super::*;
 
@@ -1685,6 +1704,8 @@ mod items {
         GaussianYolo(RawGaussianYoloConfig),
         #[serde(rename = "yolo")]
         Yolo(RawYoloConfig),
+        #[serde(rename = "cost")]
+        Cost(CostConfig),
     }
 
     impl TryFrom<DarknetConfig> for Items {
@@ -1949,6 +1970,7 @@ mod items {
                             LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
                             LayerConfig::Dropout(layer) => Item::Dropout(layer),
                             LayerConfig::Softmax(layer) => Item::Softmax(layer.try_into()?),
+                            LayerConfig::Cost(layer) => Item::Cost(layer.try_into()?),
                             LayerConfig::Yolo(orig_layer) => {
                                 let YoloConfig {
                                     max_boxes,
@@ -2530,6 +2552,18 @@ mod defaults {
 
     pub fn bool_false() -> bool {
         false
+    }
+
+    pub fn cost_type() -> CostType {
+        CostType::Sse
+    }
+
+    pub fn cost_scale() -> R64 {
+        r64(1.0)
+    }
+
+    pub fn cost_ratio() -> R64 {
+        r64(0.0)
     }
 
     pub fn max_batches() -> u64 {

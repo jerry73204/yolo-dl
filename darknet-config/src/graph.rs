@@ -109,6 +109,7 @@ mod graph {
                                 .try_collect()?;
                             LayerPositionSet::Multiple(from_indexes)
                         }
+                        _ => unimplemented!(),
                     };
                     Ok((layer_index, from_indexes))
                 })
@@ -348,6 +349,7 @@ mod graph {
                             let output_shape = input_shape;
                             (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
                         }
+                        _ => unimplemented!(),
                     };
 
                     collected.insert(*layer_index, (input_shape, output_shape));
@@ -490,6 +492,7 @@ mod graph {
                                     inout_shape: input_shape,
                                 })
                             }
+                            _ => unimplemented!(),
                         };
 
                         Ok((layer_index, layer))
