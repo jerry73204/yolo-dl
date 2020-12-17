@@ -1,7 +1,7 @@
 use crate::{
     common::*,
     config::{
-        BatchNormConfig, CommonLayerOptions, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
+        BatchNormConfig, Common, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
         ShortcutConfig, WeightsType,
     },
     graph::{
@@ -235,7 +235,7 @@ mod layer {
                         config:
                             ConnectedConfig {
                                 common:
-                                    CommonLayerOptions {
+                                    Common {
                                         dont_load,
                                         dont_load_scales,
                                         ..
@@ -346,7 +346,7 @@ mod layer {
                                 filters,
                                 flipped,
                                 common:
-                                    CommonLayerOptions {
+                                    Common {
                                         dont_load,
                                         dont_load_scales,
                                         ..
@@ -422,7 +422,7 @@ mod layer {
                     BatchNormNode {
                         config:
                             BatchNormConfig {
-                                common: CommonLayerOptions { dont_load, .. },
+                                common: Common { dont_load, .. },
                                 ..
                             },
                         ..
@@ -492,7 +492,7 @@ mod layer {
                     ShortcutNode {
                         config:
                             ShortcutConfig {
-                                common: CommonLayerOptions { dont_load, .. },
+                                common: Common { dont_load, .. },
                                 ..
                             },
                         ..

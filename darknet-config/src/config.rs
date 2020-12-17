@@ -3,6 +3,7 @@ use crate::common::*;
 pub use self::darknet_config::*;
 pub use avg_pool_config::*;
 pub use batch_norm_config::*;
+pub use common::*;
 pub use connected_config::*;
 pub use convolutional_config::*;
 pub use cost_config::*;
@@ -469,7 +470,7 @@ mod darknet_config {
     }
 
     impl LayerConfig {
-        pub fn common(&self) -> &CommonLayerOptions {
+        pub fn common(&self) -> &Common {
             match self {
                 LayerConfig::Connected(layer) => &layer.common,
                 LayerConfig::Convolutional(layer) => &layer.common,
@@ -1099,7 +1100,7 @@ mod connected_config {
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub batch_normalize: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -1133,7 +1134,7 @@ mod convolutional_config {
         pub reverse: bool,
         pub coordconv: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl ConvolutionalConfig {
@@ -1314,7 +1315,7 @@ mod convolutional_config {
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub coordconv: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl From<ConvolutionalConfig> for RawConvolutionalConfig {
@@ -1399,7 +1400,7 @@ mod route_config {
         #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
         pub layers: IndexSet<LayerIndex>,
         pub group: RouteGroup,
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl TryFrom<RawRouteConfig> for RouteConfig {
@@ -1435,7 +1436,7 @@ mod route_config {
         #[serde(default = "defaults::route_group_id")]
         pub group_id: u64,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl From<RouteConfig> for RawRouteConfig {
@@ -1471,7 +1472,7 @@ mod shortcut_config {
         #[serde(default = "defaults::weights_normalization")]
         pub weights_normalization: WeightsNormalization,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -1489,7 +1490,7 @@ mod max_pool_config {
         pub out_channels: u64,
         pub antialiasing: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl MaxPoolConfig {
@@ -1558,7 +1559,7 @@ mod max_pool_config {
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub antialiasing: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl From<MaxPoolConfig> for RawMaxPoolConfig {
@@ -1599,7 +1600,7 @@ mod up_sample_config {
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub reverse: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl UpSampleConfig {
@@ -1625,7 +1626,7 @@ mod batch_norm_config {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct BatchNormConfig {
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -1667,7 +1668,7 @@ mod yolo_config {
         pub yolo_point: YoloPoint,
         pub iou_loss: IouLoss,
         pub nms_kind: NmsKind,
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl TryFrom<RawYoloConfig> for YoloConfig {
@@ -1843,7 +1844,7 @@ mod yolo_config {
         #[serde(with = "serde_::anchors", default)]
         pub anchors: Option<Vec<(u64, u64)>>,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -1886,7 +1887,7 @@ mod gaussian_yolo_config {
         pub yolo_point: YoloPoint,
         pub iou_loss: IouLoss,
         pub nms_kind: NmsKind,
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl TryFrom<RawGaussianYoloConfig> for GaussianYoloConfig {
@@ -2036,7 +2037,7 @@ mod gaussian_yolo_config {
         #[serde(with = "serde_::anchors", default)]
         pub anchors: Option<Vec<(u64, u64)>>,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -2048,7 +2049,7 @@ mod dropout_config {
     pub struct DropoutConfig {
         pub probability: R64,
         pub dropblock: DropBlock,
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl TryFrom<RawDropoutConfig> for DropoutConfig {
@@ -2089,7 +2090,7 @@ mod dropout_config {
         pub dropblock_size_rel: Option<R64>,
         pub dropblock_size_abs: Option<R64>,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl From<DropoutConfig> for RawDropoutConfig {
@@ -2135,7 +2136,7 @@ mod softmax_config {
         pub tree: Option<(PathBuf, Tree)>,
         pub spatial: R64,
         pub noloss: bool,
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl TryFrom<RawSoftmaxConfig> for SoftmaxConfig {
@@ -2180,7 +2181,7 @@ mod softmax_config {
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub noloss: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     impl TryFrom<SoftmaxConfig> for RawSoftmaxConfig {
@@ -2229,7 +2230,7 @@ mod cost_config {
         #[serde(default = "defaults::cost_ratio")]
         pub ratio: R64,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -2253,7 +2254,7 @@ mod crop_config {
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
         pub reverse: bool,
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -2263,7 +2264,7 @@ mod avg_pool_config {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct AvgPoolConfig {
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
@@ -2273,15 +2274,16 @@ mod unimplemented_layer_config {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct UnimplementedLayerConfig {
         #[serde(flatten)]
-        pub common: CommonLayerOptions,
+        pub common: Common,
     }
 }
 
-mod misc {
+mod common {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct CommonLayerOptions {
+    #[serde(try_from = "RawCommon")]
+    pub struct Common {
         pub clip: Option<R64>,
         #[serde(
             rename = "onlyforward",
@@ -2309,10 +2311,117 @@ mod misc {
             default = "defaults::bool_false"
         )]
         pub dont_load_scales: bool,
-        #[serde(rename = "learning_rate", default = "defaults::learning_scale_scale")]
-        pub learning_scale_scale: R64,
+        #[serde(rename = "learning_rate", default = "defaults::learning_rate_scale")]
+        pub learning_rate_scale: R64,
     }
 
+    impl TryFrom<RawCommon> for Common {
+        type Error = Error;
+
+        fn try_from(from: RawCommon) -> Result<Self, Self::Error> {
+            let RawCommon {
+                clip,
+                only_forward,
+                dont_update,
+                burnin_update,
+                stop_backward,
+                train_only_bn,
+                dont_load,
+                dont_load_scales,
+                learning_rate_scale,
+            } = from;
+
+            let parse_r64 = |text: &str| -> Result<R64> {
+                Ok(R64::try_new(f64::from_str(text)?)
+                    .ok_or_else(|| format_err!("'{}' is not a finite number", text))?)
+            };
+
+            let parse_zero_one_bool = |text: &str| -> Result<_> {
+                let value = match text.trim() {
+                    "0" => false,
+                    "1" => true,
+                    _ => bail!("expect 0 or 1, but get '{}'", text),
+                };
+                Ok(value)
+            };
+
+            let clip = clip.map(|clip| parse_r64(clip.as_ref())).transpose()?;
+
+            let only_forward = only_forward
+                .map(|text| parse_zero_one_bool(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| false);
+
+            let dont_update = dont_update
+                .map(|text| parse_zero_one_bool(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| false);
+
+            let burnin_update = burnin_update
+                .map(|text| parse_zero_one_bool(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| false);
+
+            let stop_backward = stop_backward
+                .map(|text| text.parse())
+                .transpose()?
+                .unwrap_or_else(|| defaults::stop_backward());
+
+            let train_only_bn = train_only_bn
+                .map(|text| parse_zero_one_bool(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| false);
+
+            let dont_load = dont_load
+                .map(|text| parse_zero_one_bool(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| false);
+
+            let dont_load_scales = dont_load_scales
+                .map(|text| parse_zero_one_bool(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| false);
+
+            let learning_rate_scale = learning_rate_scale
+                .map(|text| parse_r64(text.as_ref()))
+                .transpose()?
+                .unwrap_or_else(|| defaults::learning_rate_scale());
+
+            Ok(Self {
+                clip,
+                only_forward,
+                dont_update,
+                burnin_update,
+                stop_backward,
+                train_only_bn,
+                dont_load,
+                dont_load_scales,
+                learning_rate_scale,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub(super) struct RawCommon {
+        pub clip: Option<String>,
+        #[serde(rename = "onlyforward")]
+        pub only_forward: Option<String>,
+        pub dont_update: Option<String>,
+        pub burnin_update: Option<String>,
+        #[serde(rename = "stopbackward")]
+        pub stop_backward: Option<String>,
+        pub train_only_bn: Option<String>,
+        #[serde(rename = "dontload")]
+        pub dont_load: Option<String>,
+        #[serde(rename = "dontloadscales")]
+        pub dont_load_scales: Option<String>,
+        #[serde(rename = "learning_rate")]
+        pub learning_rate_scale: Option<String>,
+    }
+}
+
+mod misc {
+    use super::*;
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum Deform {
         None,
@@ -2955,7 +3064,7 @@ mod defaults {
         Activation::Logistic
     }
 
-    pub fn learning_scale_scale() -> R64 {
+    pub fn learning_rate_scale() -> R64 {
         R64::new(1.0)
     }
 
