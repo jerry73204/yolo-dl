@@ -948,6 +948,7 @@ mod graphviz {
                                         dilation,
                                         padding,
                                         share_index,
+                                        batch_normalize,
                                         ..
                                     },
                                 ..
@@ -964,18 +965,19 @@ mod graphviz {
                                 None => {
                                     if stride_y == stride_x {
                                         LabelText::escaped(format!(
-                                            r"({}) {}\n{}\nk={} s={} p={} d={}",
+                                            r"({}) {}\n{}\nk={} s={} p={} d={}\nbatch_norm={}",
                                             layer_index,
                                             self.layers[layer_index].as_ref(),
                                             dot::escape_html(&format!("{:?}", output_shape)),
                                             size,
                                             stride_y,
                                             padding,
-                                            dilation
+                                            dilation,
+                                            if batch_normalize { "yes" } else { "no" }
                                         ))
                                     } else {
                                         LabelText::escaped(format!(
-                                            r"({}) {}\n{}\nk={} sy={} sx={} p={} d={}",
+                                            r"({}) {}\n{}\nk={} sy={} sx={} p={} d={}\nbatch_norm={}",
                                             layer_index,
                                             self.layers[layer_index].as_ref(),
                                             dot::escape_html(&format!("{:?}", output_shape)),
@@ -983,7 +985,8 @@ mod graphviz {
                                             stride_y,
                                             stride_x,
                                             padding,
-                                            dilation
+                                            dilation,
+                                            if batch_normalize { "yes" } else { "no" }
                                         ))
                                     }
                                 }
