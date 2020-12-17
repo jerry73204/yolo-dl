@@ -1,4 +1,7 @@
-use super::{misc::Size, model::LayerEx};
+use super::{
+    misc::Size,
+    model::{GroupName, LayerEx, LayerName, LayerPath},
+};
 use crate::{common::*, utils};
 
 pub use bottleneck::*;
@@ -7,6 +10,7 @@ pub use concat::*;
 pub use conv_block::*;
 pub use detect::*;
 pub use focus::*;
+pub use group::*;
 pub use input::*;
 pub use output::*;
 pub use spp::*;
@@ -21,7 +25,7 @@ mod input {
     }
 
     impl LayerEx for Input {
-        fn input_names(&self) -> Cow<'_, [&str]> {
+        fn input_layers(&self) -> Vec<&LayerPath> {
             [].as_ref().into()
         }
     }
@@ -32,16 +36,12 @@ mod output {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Output {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
     }
 
     impl LayerEx for Output {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -51,7 +51,7 @@ mod conv_block {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct ConvBlock {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub out_c: usize,
         pub k: usize,
         pub s: usize,
@@ -60,7 +60,7 @@ mod conv_block {
     }
 
     impl ConvBlock {
-        pub fn new(from: Option<String>, out_c: usize) -> Self {
+        pub fn new(from: Option<LayerPath>, out_c: usize) -> Self {
             Self {
                 from,
                 out_c,
@@ -73,12 +73,8 @@ mod conv_block {
     }
 
     impl LayerEx for ConvBlock {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -88,7 +84,7 @@ mod bottleneck {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Bottleneck {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub out_c: usize,
         pub shortcut: bool,
         pub g: usize,
@@ -96,7 +92,7 @@ mod bottleneck {
     }
 
     impl Bottleneck {
-        pub fn new(from: Option<String>, out_c: usize) -> Self {
+        pub fn new(from: Option<LayerPath>, out_c: usize) -> Self {
             Self {
                 from,
                 out_c,
@@ -108,12 +104,8 @@ mod bottleneck {
     }
 
     impl LayerEx for Bottleneck {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -123,7 +115,7 @@ mod bottleneck_csp {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct BottleneckCsp {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub out_c: usize,
         pub repeat: usize,
         pub shortcut: bool,
@@ -132,7 +124,7 @@ mod bottleneck_csp {
     }
 
     impl BottleneckCsp {
-        pub fn new(from: Option<String>, out_c: usize) -> Self {
+        pub fn new(from: Option<LayerPath>, out_c: usize) -> Self {
             Self {
                 from,
                 out_c,
@@ -145,12 +137,8 @@ mod bottleneck_csp {
     }
 
     impl LayerEx for BottleneckCsp {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -160,13 +148,13 @@ mod spp {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Spp {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub out_c: usize,
         pub ks: Vec<usize>,
     }
 
     impl Spp {
-        pub fn new(from: Option<String>, out_c: usize) -> Self {
+        pub fn new(from: Option<LayerPath>, out_c: usize) -> Self {
             Self {
                 from,
                 out_c,
@@ -176,12 +164,8 @@ mod spp {
     }
 
     impl LayerEx for Spp {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -191,24 +175,20 @@ mod focus {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Focus {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub out_c: usize,
         pub k: usize,
     }
 
     impl Focus {
-        pub fn new(from: Option<String>, out_c: usize) -> Self {
+        pub fn new(from: Option<LayerPath>, out_c: usize) -> Self {
             Self { from, out_c, k: 1 }
         }
     }
 
     impl LayerEx for Focus {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -218,18 +198,14 @@ mod detect {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Detect {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub num_classes: usize,
         pub anchors: Vec<Size>,
     }
 
     impl LayerEx for Detect {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -239,17 +215,13 @@ mod up_sample {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct UpSample {
-        pub from: Option<String>,
+        pub from: Option<LayerPath>,
         pub scale: R64,
     }
 
     impl LayerEx for UpSample {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            self.from
-                .as_ref()
-                .map(|name| vec![name.as_str()])
-                .unwrap_or(vec![])
-                .into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
         }
     }
 }
@@ -260,14 +232,33 @@ mod concat {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct Concat {
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<String, _>"))]
-        pub from: IndexSet<String>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<LayerPath, _>"))]
+        pub from: IndexSet<LayerPath>,
     }
 
     impl LayerEx for Concat {
-        fn input_names(&self) -> Cow<'_, [&str]> {
-            let from: Vec<_> = self.from.iter().map(|name| name.as_str()).collect();
-            from.into()
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            let from: Vec<_> = self.from.iter().collect();
+            from
+        }
+    }
+}
+
+mod group {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
+    pub struct Group {
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<LayerName, LayerPath, _>"))]
+        pub from: IndexMap<LayerName, LayerPath>,
+        pub group: GroupName,
+    }
+
+    impl LayerEx for Group {
+        fn input_layers(&self) -> Vec<&LayerPath> {
+            let from: Vec<_> = self.from.values().collect();
+            from
         }
     }
 }

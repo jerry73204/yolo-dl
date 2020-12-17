@@ -18,3 +18,7 @@ where
     let map: Vec<_> = set.iter().collect();
     map.hash(state);
 }
+
+pub fn empty_vec<T>() -> Vec<T> {
+    vec![]
+}

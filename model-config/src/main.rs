@@ -22,6 +22,6 @@ fn main() -> Result<()> {
 }
 
 fn info(config_file: impl AsRef<Path>) -> Result<()> {
-    let _config: Config = json5::from_str(&fs::read_to_string(config_file)?)?;
+    let config = Config::from_path(config_file)?;
     Ok(())
 }
