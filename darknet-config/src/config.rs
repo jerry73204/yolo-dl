@@ -1675,12 +1675,15 @@ mod yolo_config {
             let mask = mask.unwrap_or_else(|| IndexSet::new());
             let anchors = match (num, anchors) {
                 (0, None) => vec![],
-                (_, None) => bail!("num and length of anchors mismatch"),
-                (_, Some(anchors)) => {
-                    ensure!(
-                        anchors.len() == num as usize,
-                        "num and length of anchors mismatch"
-                    );
+                (num, None) => {
+                    warn!("num={} is inconsistent with actual number of anchors (0), the field is ignored", num);
+                    vec![]
+                }
+                (num, Some(anchors)) => {
+                    if anchors.len() != num as usize {
+                        warn!("num={} is inconsistent with actual number of anchors ({}), the field is ignored", num, anchors.len());
+                    }
+
                     let anchors: Vec<_> = mask
                         .into_iter()
                         .map(|index| -> Result<_> {
@@ -3180,16 +3183,21 @@ mod serde_ {
                 None => return Ok(None),
             };
             let values: Vec<u64> = text
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect::<String>()
-                .split(",")
-                .map(|token| token.parse())
+                .split(',')
+                .map(|token| {
+                    token
+                        .trim()
+                        .parse()
+                        .map_err(|_| format!("{} is not a number", token))
+                })
                 .try_collect()
                 .map_err(|err| D::Error::custom(format!("failed to parse anchors: {:?}", err)))?;
 
             if values.len() % 2 != 0 {
-                return Err(D::Error::custom("expect even number of values"));
+                return Err(D::Error::custom(format!(
+                    "expect even number of values in '{}'",
+                    text
+                )));
             }
 
             let anchors: Vec<_> = values
