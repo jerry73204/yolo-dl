@@ -44,7 +44,12 @@ mod darknet_config {
         type Err = Error;
 
         fn from_str(text: &str) -> Result<Self, Self::Err> {
-            Ok(serde_ini::from_str(text)?)
+            // remove comments
+            let regex = Regex::new(r"#.*").unwrap();
+            let text = regex.replace_all(text, "");
+
+            // parse
+            Ok(serde_ini::from_str(&text)?)
         }
     }
 

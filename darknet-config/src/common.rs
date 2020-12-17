@@ -14,6 +14,7 @@ pub use petgraph::{
     data::{Element, FromElements},
     prelude::DiGraphMap,
 };
+pub use regex::Regex;
 pub use serde::{
     de::{self, Error as _},
     Deserialize, Deserializer, Serialize, Serializer,
