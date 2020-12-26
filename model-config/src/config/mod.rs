@@ -1,9 +1,9 @@
-pub mod config;
+pub mod group;
 pub mod misc;
 pub mod model;
 pub mod module;
 
-pub use config::*;
+pub use group::*;
 pub use misc::*;
 pub use model::*;
 pub use module::*;

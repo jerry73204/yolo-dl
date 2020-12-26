@@ -17,6 +17,7 @@ structopt = "0.3"
 json5 = "0.3"
 itertools = "0.9"
 petgraph = "0.5"
+take_mut = "0.2"
 
 [dev-dependencies]
 lazy_static = "1.4"

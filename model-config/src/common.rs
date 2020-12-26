@@ -11,11 +11,13 @@ pub use serde::{
 };
 pub use std::{
     borrow::{Borrow, Cow},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     fs,
     hash::{Hash, Hasher},
-    iter,
+    iter::{self, FromIterator},
+    ops::Deref,
     path::{Path, PathBuf},
+    str::FromStr,
 };
