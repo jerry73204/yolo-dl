@@ -32,26 +32,26 @@ mod module_input {
         Infer,
         Layer(&'a ModuleName),
         Group(&'a GroupPath),
-        Multi(Vec<&'a InputPath>),
+        Multi(Vec<&'a ModulePath>),
     }
 
-    impl<'a> From<&'a InputPath> for ModuleInput<'a> {
-        fn from(from: &'a InputPath) -> Self {
+    impl<'a> From<&'a ModulePath> for ModuleInput<'a> {
+        fn from(from: &'a ModulePath) -> Self {
             match from {
-                InputPath::Layer(name) => Self::Layer(name),
-                InputPath::Group(path) => Self::Group(path),
+                ModulePath::Layer(name) => Self::Layer(name),
+                ModulePath::Group(path) => Self::Group(path),
             }
         }
     }
 
-    impl<'a> From<&'a Option<InputPath>> for ModuleInput<'a> {
-        fn from(from: &'a Option<InputPath>) -> Self {
+    impl<'a> From<&'a Option<ModulePath>> for ModuleInput<'a> {
+        fn from(from: &'a Option<ModulePath>) -> Self {
             from.as_ref().into()
         }
     }
 
-    impl<'a> From<Option<&'a InputPath>> for ModuleInput<'a> {
-        fn from(from: Option<&'a InputPath>) -> Self {
+    impl<'a> From<Option<&'a ModulePath>> for ModuleInput<'a> {
+        fn from(from: Option<&'a ModulePath>) -> Self {
             match from {
                 Some(path) => path.into(),
                 None => ModuleInput::Infer,
@@ -59,10 +59,10 @@ mod module_input {
         }
     }
 
-    impl<'a> FromIterator<&'a InputPath> for ModuleInput<'a> {
+    impl<'a> FromIterator<&'a ModulePath> for ModuleInput<'a> {
         fn from_iter<T>(iter: T) -> Self
         where
-            T: IntoIterator<Item = &'a InputPath>,
+            T: IntoIterator<Item = &'a ModulePath>,
         {
             Self::Multi(Vec::from_iter(iter))
         }
@@ -79,12 +79,12 @@ mod input_path {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub enum InputPath {
+    pub enum ModulePath {
         Layer(ModuleName),
         Group(GroupPath),
     }
 
-    impl FromStr for InputPath {
+    impl FromStr for ModulePath {
         type Err = Error;
 
         fn from_str(name: &str) -> Result<Self, Self::Err> {
@@ -116,7 +116,7 @@ mod input_path {
         }
     }
 
-    impl Serialize for InputPath {
+    impl Serialize for ModulePath {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
@@ -131,7 +131,7 @@ mod input_path {
         }
     }
 
-    impl<'de> Deserialize<'de> for InputPath {
+    impl<'de> Deserialize<'de> for ModulePath {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: Deserializer<'de>,
@@ -143,7 +143,7 @@ mod input_path {
         }
     }
 
-    impl TryFrom<&str> for InputPath {
+    impl TryFrom<&str> for ModulePath {
         type Error = Error;
 
         fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -151,7 +151,7 @@ mod input_path {
         }
     }
 
-    impl Display for InputPath {
+    impl Display for ModulePath {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             let text: Cow<'_, str> = match self {
                 Self::Layer(name) => name.as_ref().into(),
@@ -343,7 +343,7 @@ mod conv_bn_2d_block {
     #[serde(from = "RawConvBn2D", into = "RawConvBn2D")]
     pub struct ConvBn2D {
         pub name: Option<ModuleName>,
-        pub from: Option<InputPath>,
+        pub from: Option<ModulePath>,
         pub c: usize,
         pub k: usize,
         pub s: usize,
@@ -357,7 +357,7 @@ mod conv_bn_2d_block {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct RawConvBn2D {
         pub name: Option<ModuleName>,
-        pub from: Option<InputPath>,
+        pub from: Option<ModulePath>,
         pub c: usize,
         pub k: usize,
         #[serde(default = "default_stride")]
@@ -436,7 +436,7 @@ mod conv_bn_2d_block {
     }
 
     impl ConvBn2D {
-        pub fn new(name: Option<ModuleName>, from: Option<InputPath>, c: usize, k: usize) -> Self {
+        pub fn new(name: Option<ModuleName>, from: Option<ModulePath>, c: usize, k: usize) -> Self {
             Self {
                 name,
                 from,
@@ -488,7 +488,7 @@ mod conv_bn_2d_block {
 
 //     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 //     pub struct Bottleneck {
-//         pub from: Option<InputPath>,
+//         pub from: Option<ModulePath>,
 //         pub c: usize,
 //         pub shortcut: bool,
 //         pub g: usize,
@@ -496,7 +496,7 @@ mod conv_bn_2d_block {
 //     }
 
 //     impl Bottleneck {
-//         pub fn new(from: Option<InputPath>, c: usize) -> Self {
+//         pub fn new(from: Option<ModulePath>, c: usize) -> Self {
 //             Self {
 //                 from,
 //                 c,
@@ -508,7 +508,7 @@ mod conv_bn_2d_block {
 //     }
 
 //     impl ModuleEx for Bottleneck {
-//         fn input_paths(&self) -> Vec<&InputPath> {
+//         fn input_paths(&self) -> Vec<&ModulePath> {
 //             self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
 //         }
 //     }
@@ -520,7 +520,7 @@ mod dark_csp_2d {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct DarkCsp2D {
         pub name: Option<ModuleName>,
-        pub from: Option<InputPath>,
+        pub from: Option<ModulePath>,
         pub c: usize,
         pub repeat: usize,
         #[serde(default = "default_shortcut")]
@@ -532,7 +532,7 @@ mod dark_csp_2d {
     impl DarkCsp2D {
         pub fn new(
             name: Option<ModuleName>,
-            from: Option<InputPath>,
+            from: Option<ModulePath>,
             c: usize,
             repeat: usize,
         ) -> Self {
@@ -572,13 +572,13 @@ mod spp_csp_2d {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct SppCsp2D {
         pub name: Option<ModuleName>,
-        pub from: Option<InputPath>,
+        pub from: Option<ModulePath>,
         pub c: usize,
         pub k: Vec<usize>,
     }
 
     impl SppCsp2D {
-        pub fn new(name: Option<ModuleName>, from: Option<InputPath>, c: usize) -> Self {
+        pub fn new(name: Option<ModuleName>, from: Option<ModulePath>, c: usize) -> Self {
             Self {
                 name,
                 from,
@@ -604,19 +604,19 @@ mod spp_csp_2d {
 
 //     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 //     pub struct Focus {
-//         pub from: Option<InputPath>,
+//         pub from: Option<ModulePath>,
 //         pub c: usize,
 //         pub k: usize,
 //     }
 
 //     impl Focus {
-//         pub fn new(from: Option<InputPath>, c: usize) -> Self {
+//         pub fn new(from: Option<ModulePath>, c: usize) -> Self {
 //             Self { from, c, k: 1 }
 //         }
 //     }
 
 //     impl ModuleEx for Focus {
-//         fn input_paths(&self) -> Vec<&InputPath> {
+//         fn input_paths(&self) -> Vec<&ModulePath> {
 //             self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
 //         }
 //     }
@@ -628,7 +628,7 @@ mod detect_2d {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Detect2D {
         pub name: Option<ModuleName>,
-        pub from: Option<InputPath>,
+        pub from: Option<ModulePath>,
         pub classes: usize,
         pub anchors: Vec<Size>,
     }
@@ -650,7 +650,7 @@ mod merge_detect_2d {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct MergeDetect2D {
         pub name: Option<ModuleName>,
-        pub from: Vec<InputPath>,
+        pub from: Vec<ModulePath>,
     }
 
     impl ModuleEx for MergeDetect2D {
@@ -670,7 +670,7 @@ mod up_sample_2d {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct UpSample2D {
         pub name: Option<ModuleName>,
-        pub from: Option<InputPath>,
+        pub from: Option<ModulePath>,
         pub scale: R64,
     }
 
@@ -692,8 +692,8 @@ mod concat_2d {
     #[derivative(Hash)]
     pub struct Concat2D {
         pub name: Option<ModuleName>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<InputPath, _>"))]
-        pub from: IndexSet<InputPath>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<ModulePath, _>"))]
+        pub from: IndexSet<ModulePath>,
     }
 
     impl ModuleEx for Concat2D {
@@ -714,8 +714,8 @@ mod sum_2d {
     #[derivative(Hash)]
     pub struct Sum2D {
         pub name: Option<ModuleName>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<InputPath, _>"))]
-        pub from: IndexSet<InputPath>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<ModulePath, _>"))]
+        pub from: IndexSet<ModulePath>,
     }
 
     impl ModuleEx for Sum2D {
@@ -736,8 +736,8 @@ mod group_ref {
     #[derivative(Hash)]
     pub struct GroupRef {
         pub name: ModuleName,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, InputPath, _>"))]
-        pub from: IndexMap<ModuleName, InputPath>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, ModulePath, _>"))]
+        pub from: IndexMap<ModuleName, ModulePath>,
         pub group: GroupName,
     }
 
