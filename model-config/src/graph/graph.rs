@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub use graph::*;
-pub use node::*;
+// pub use node::*;
 
 mod graph {
     use super::*;
@@ -16,10 +16,8 @@ mod graph {
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
     pub struct Graph {
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<usize, Node, _>"))]
-        pub nodes: IndexMap<usize, Node>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<usize, Edge, _>"))]
-        pub edges: IndexMap<usize, Edge>,
+        #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<NodeKey, Node, _>"))]
+        pub nodes: IndexMap<NodeKey, Node>,
     }
 
     impl Graph {
@@ -33,585 +31,298 @@ mod graph {
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
             struct NodeEntry<'a> {
                 key: NodeKey,
-                infer_prev_key: Option<NodeKey>,
-                prefix: NodePath,
-                path: Option<NodePath>,
+                path: Option<ModulePath>,
                 layer: &'a Module,
             };
 
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-            struct NodeKey(pub usize);
+            // many-to-one edge
+            #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+            struct EdgeEntry {
+                src: Vec<NodePath>,
+                dst: NodePath,
+            }
 
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-            struct NodePath(pub Vec<ModuleName>);
+            enum NodePath {
+                Resolved(NodeKey),
+                Unresolved(ModulePath),
+            }
 
-            impl NodePath {
-                pub fn empty() -> Self {
-                    Self(vec![])
-                }
-
-                pub fn join<'a>(&self, name: impl Into<Cow<'a, ModuleName>>) -> Self {
-                    let name = name.into().into_owned();
-                    self.0.iter().cloned().chain(iter::once(name)).collect()
+            impl From<NodeKey> for NodePath {
+                fn from(from: NodeKey) -> Self {
+                    Self::Resolved(from)
                 }
             }
 
-            impl FromIterator<ModuleName> for NodePath {
-                fn from_iter<T>(iter: T) -> Self
-                where
-                    T: IntoIterator<Item = ModuleName>,
-                {
-                    Self(Vec::from_iter(iter))
+            impl From<ModulePath> for NodePath {
+                fn from(from: ModulePath) -> Self {
+                    Self::Unresolved(from)
                 }
             }
 
-            impl<'a> FromIterator<&'a ModuleName> for NodePath {
-                fn from_iter<T>(iter: T) -> Self
-                where
-                    T: IntoIterator<Item = &'a ModuleName>,
-                {
-                    Self(iter.into_iter().cloned().collect())
-                }
-            }
+            fn traverse_nodes<'a>(
+                groups: &'a Groups,
+                main_group_name: &GroupName,
+                prefix: ModulePath,
+                key_enumerator: &mut impl Iterator<Item = NodeKey>,
+            ) -> Result<(Vec<NodeEntry<'a>>, Vec<EdgeEntry>)> {
+                let group = groups
+                    .groups()
+                    .get(main_group_name)
+                    .ok_or_else(|| format_err!("the group '{}' does not exist", main_group_name))?;
 
-            let (nodes, path_key_map) = {
-                fn traverse_nodes<'a>(
-                    groups: &'a Groups,
-                    main_group_name: &GroupName,
-                    prefix: NodePath,
-                    key_enumerator: &mut impl Iterator<Item = NodeKey>,
-                ) -> Result<Vec<NodeEntry<'a>>> {
-                    let group = groups.groups().get(main_group_name).ok_or_else(|| {
-                        format_err!("the group '{}' does not exist", main_group_name)
-                    })?;
+                let mut saved_prev_key = None;
+                let tuples: Vec<_> = group
+                    .layers()
+                    .iter()
+                    .map(move |layer: &Module| -> Result<_> {
+                        let (nodes, edges) = match layer {
+                            Module::GroupRef(config::GroupRef {
+                                name: layer_name,
+                                group: sub_group_name,
+                                from,
+                                ..
+                            }) => {
+                                // enumerate nodes from the group
+                                let group_prefix = prefix.join(layer_name);
+                                let (nodes, group_edges) = traverse_nodes(
+                                    groups,
+                                    &sub_group_name,
+                                    group_prefix.clone(),
+                                    key_enumerator,
+                                )?;
 
-                    let mut saved_prev_key = None;
-                    let tuples: Vec<_> = group
-                        .layers()
-                        .iter()
-                        .map(|layer| Ok(layer))
-                        .try_flat_map(move |layer: &Module| -> Result<_> {
-                            let tuples = match layer {
-                                Module::GroupRef(config::GroupRef {
-                                    name: layer_name,
-                                    group: sub_group_name,
-                                    from,
-                                    ..
-                                }) => {
-                                    // enumerate nodes from the group
-                                    let group_prefix = prefix.join(layer_name);
-                                    let tuples = traverse_nodes(
-                                        groups,
-                                        &sub_group_name,
-                                        group_prefix,
-                                        key_enumerator,
-                                    )?;
+                                // create edges
+                                let edges: Vec<_> = from
+                                    .iter()
+                                    .map(|(dst_name, src_path)| -> Result<_> {
+                                        // forbid null- or self-reference
+                                        {
+                                            let first = src_path
+                                                .as_ref()
+                                                .first()
+                                                .ok_or_else(|| format_err!("TODO"))?;
+                                            ensure!(first != layer_name, "TODO");
+                                        }
 
-                                    // create edges
-                                    // from.iter().map(|(to_name, from_path)| match from_path {
-                                    //     ModulePath::Layer(from_name) => {}
-                                    //     ModulePath::Group(GroupPath { layer, output }) => {}
-                                    // });
+                                        let src = prefix.extend(src_path);
+                                        let dst = group_prefix.join(dst_name);
+                                        Ok(EdgeEntry {
+                                            src: vec![src.into()],
+                                            dst: dst.into(),
+                                        })
+                                    })
+                                    .chain(group_edges.into_iter().map(Ok))
+                                    .try_collect()?;
 
-                                    saved_prev_key = None;
+                                saved_prev_key = None;
 
-                                    tuples
-                                }
-                                layer => {
-                                    // create key and path for the layer
-                                    let key = key_enumerator.next().unwrap();
-                                    let path = layer.name().map(|name| prefix.join(name));
-                                    let infer_prev_key = saved_prev_key;
-                                    saved_prev_key = Some(key);
-                                    let nodes = vec![NodeEntry {
-                                        key,
-                                        infer_prev_key,
-                                        prefix: prefix.clone(),
-                                        path,
-                                        layer,
-                                    }];
-
-                                    nodes
-                                }
+                                (nodes, edges)
                             }
-                            .into_iter()
-                            .map(|tuple| Ok(tuple));
+                            layer => {
+                                // create key and path for the layer
+                                let key = key_enumerator.next().unwrap();
+                                let path = layer.name().map(|name| prefix.join(name));
+                                let infer_prev_key = saved_prev_key;
+                                saved_prev_key = Some(key);
 
-                            Ok(tuples)
+                                let nodes = vec![NodeEntry { key, path, layer }];
+
+                                // create edges
+                                let edges = match layer.input_paths() {
+                                    ModuleInput::None => vec![],
+                                    ModuleInput::Infer => {
+                                        let prev_key =
+                                            infer_prev_key.ok_or_else(|| format_err!("TODO"))?;
+                                        vec![EdgeEntry {
+                                            src: vec![prev_key.into()],
+                                            dst: key.into(),
+                                        }]
+                                    }
+                                    ModuleInput::Path(from_path) => {
+                                        let src = prefix.extend(from_path);
+                                        vec![EdgeEntry {
+                                            src: vec![src.into()],
+                                            dst: key.into(),
+                                        }]
+                                    }
+                                    ModuleInput::Indexed(from_paths) => {
+                                        let src: Vec<NodePath> = from_paths
+                                            .iter()
+                                            .cloned()
+                                            .map(|path| path.into())
+                                            .collect();
+                                        vec![EdgeEntry {
+                                            src,
+                                            dst: key.into(),
+                                        }]
+                                    }
+                                    ModuleInput::Named(_from_paths) => {
+                                        unreachable!("please report bug");
+                                    }
+                                };
+
+                                (nodes, edges)
+                            }
+                        };
+
+                        Ok((nodes, edges))
+                    })
+                    .try_collect()?;
+                let (nodes_vec, edges_vec) = tuples.into_iter().unzip_n_vec();
+                let nodes: Vec<_> = nodes_vec.into_iter().flatten().collect();
+                let edges: Vec<_> = edges_vec.into_iter().flatten().collect();
+
+                Ok((nodes, edges))
+            }
+
+            // collect nodes and edges from groups
+            let (node_entires, edges_entries) = traverse_nodes(
+                groups,
+                main_group_name,
+                ModulePath::empty(),
+                &mut iter::repeat(())
+                    .enumerate()
+                    .map(|(index, ())| NodeKey(index)),
+            )?;
+
+            let path_key_map: HashMap<_, _> = node_entires
+                .iter()
+                .flat_map(|node| Some((node.path.clone()?, node.key)))
+                .collect();
+
+            let nodes: HashMap<_, _> = node_entires
+                .into_iter()
+                .map(|node| (node.key, node))
+                .collect();
+
+            let dst_src_map = edges_entries
+                .into_iter()
+                .map(|edge| -> Result<_> {
+                    let EdgeEntry { src, dst } = edge;
+                    let src: Vec<_> = src
+                        .into_iter()
+                        .map(|src| -> Result<_> {
+                            let key = match src {
+                                NodePath::Resolved(key) => key,
+                                NodePath::Unresolved(path) => {
+                                    *path_key_map.get(&path).ok_or_else(|| format_err!("TODO"))?
+                                }
+                            };
+                            Ok(key)
                         })
                         .try_collect()?;
+                    let dst = match dst {
+                        NodePath::Resolved(key) => key,
+                        NodePath::Unresolved(path) => {
+                            *path_key_map.get(&path).ok_or_else(|| format_err!("TODO"))?
+                        }
+                    };
+                    Ok((src, dst))
+                })
+                .try_fold(HashMap::new(), |mut map, result| -> Result<_> {
+                    let (src, dst) = result?;
+                    let prev = map.insert(dst, src);
+                    ensure!(prev.is_none(), "TODO");
+                    Ok(map)
+                })?;
 
-                    Ok(tuples)
+            // sanity check
+            nodes.values().try_for_each(|node| -> Result<_> {
+                let NodeEntry {
+                    key,
+                    ref path,
+                    layer,
+                } = *node;
+
+                match layer {
+                    Module::Input(_) => {
+                        let path = path.as_ref().unwrap();
+                        let src = dst_src_map.get(&key);
+
+                        // check if
+                        // (1) top-level input layer has no incoming edge
+                        // (2) non-top level input has an incoming edge
+                        match (path.depth(), src) {
+                            (1, Some(_)) => {
+                                bail!("top level input layer cannot have an incoming edge")
+                            }
+                            (1, None) | (_, Some(_)) => {}
+                            (_, None) => {
+                                bail!("non-top level input layer must have an incoming edge")
+                            }
+                        }
+                    }
+                    Module::GroupRef(_) => unreachable!("please report bug"),
+                    layer => {
+                        let src = dst_src_map.get(&key);
+
+                        // make sure the input satisfies the specification
+                        match layer.input_paths() {
+                            ModuleInput::None => ensure!(src.is_none(), "TODO"),
+                            ModuleInput::Infer | ModuleInput::Path(_) => {
+                                ensure!(src.map(|keys| keys.len() == 1).unwrap_or(false), "TODO")
+                            }
+                            ModuleInput::Indexed(from_paths) => ensure!(
+                                src.map(|keys| keys.len() == from_paths.len())
+                                    .unwrap_or(false),
+                                "TODO"
+                            ),
+                            ModuleInput::Named(_) => unreachable!(),
+                        }
+                    }
                 }
 
-                let tuples = traverse_nodes(
-                    groups,
-                    main_group_name,
-                    NodePath::empty(),
-                    &mut iter::repeat(())
-                        .enumerate()
-                        .map(|(index, ())| NodeKey(index)),
-                )?;
+                Ok(())
+            })?;
 
-                let path_key_map: HashMap<_, _> = tuples
-                    .iter()
-                    .flat_map(|node| Some((node.path.clone()?, node.key)))
-                    .collect();
-                let nodes: HashMap<_, _> =
-                    tuples.into_iter().map(|node| (node.key, node)).collect();
+            // toposort
+            let sorted_node_keys = {
+                let mut graph = DiGraphMap::new();
+                nodes.values().for_each(|node| {
+                    let NodeEntry { key, .. } = *node;
+                    graph.add_node(key);
 
-                (nodes, path_key_map)
+                    let src = dst_src_map.get(&key);
+                    src.iter()
+                        .flat_map(|src_keys| src_keys.iter())
+                        .for_each(|&src_key| {
+                            graph.add_edge(src_key, key, ());
+                        });
+                });
+
+                let sorted_nodes: Vec<NodeKey> = petgraph::algo::toposort(&graph, None)
+                    .map_err(|_| format_err!("cycle detected"))?;
+                sorted_nodes
             };
 
-            // fn traverse_edges<'a>(
-            //     groups: &'a Groups,
-            //     main_group_name: &GroupName,
-            //     prefix: NodePath,
-            //     path_key_map: &HashMap<NodePath, NodeKey>,
-            // ) -> Result<Vec<(NodeKey, NodeKey)>> {
-            //     let group = groups
-            //         .groups()
-            //         .get(main_group_name)
-            //         .ok_or_else(|| format_err!("the group '{}' does not exist", main_group_name))?;
-
-            //     group.layers()
-            //         .map(|layer| -> Result<_> {
-            //             let edges_iter = match layer {
-            //                 Module::GroupRef(config::GroupRef {
-            //                     name: layer_name,
-            //                     from,
-            //                     group: sub_group_name,
-            //                 }) => {
-            //                     // build subgraph from group
-            //                     let group_prefix = prefix.join(layer_name);
-            //                     let group_edges = traverse_edges(groups, &sub_group_name, group_prefix, path_key_map)?;
-
-            //                     // build edges connecting into the subgraph
-            //                     let new_edges = from
-            //                         .iter()
-            //                         .map(|(to_name, from_path)| -> Result<_> {
-            //                             let dst_path = prefix.join(layer_name).join(to_name);
-            //                             let dst_key = path_key_map.get(&dst_path).ok_or_else(|| format_err!("TODO"))?;
-
-            //                             let src_key = match from_path {
-            //                                 ModulePath::Layer(from_name) => {
-            //                                     let src_path = prefix.join(from_name);
-            //                                     let src_key = path_key_map.get(&src_path).ok_or_else(|| format_err!("TODO"))?;
-            //                                     src_key
-            //                                 }
-            //                                 ModulePath::Group(GroupPath {
-            //                                     layer: from_name,
-            //                                     output: from_output,
-            //                                 }) => {
-            //                                     let src_path = prefix
-            //                                         .join(from_name)
-            //                                         .join(from_output);
-            //                                     let src_key = path_key_map.get(&src_path).ok_or_else(|| format_err!("TODO"))?;
-            //                                     src_key
-            //                                 }
-            //                             };
-            //                             let edge = (src_key, dst_key);
-
-            //                             Ok(edge)
-            //                         });
-
-            //                     let edges_iter = Box::new(group_edges.chain(new_edges));
-            //                     edges_iter
-            //                 }
-            //                 layer => {
-            //                     // create path
-            //                     let path = layer.name().map(|name| {
-            //                         prefix.join(name)
-            //                     });
-
-            //                     // add edges
-            //                     let edges = match layer.input_paths() {
-            //                         ModuleInput::None => vec![],
-            //                         ModuleInput::Infer => {
-            //                             todo!();
-            //                         }
-            //                         ModuleInput::Layer(from_name) => {
-            //                             let from_path = prefix.join(from_name);
-            //                             let edge = (from_path, path);
-            //                             vec![edge]
-            //                         }
-            //                         ModuleInput::Group(GroupPath{ layer: from_name, output: from_output }) => {
-            //                             let from_path = prefix.join(from_name).join(from_output);
-            //                             let edge = (from_path, path);
-            //                             vec![edge]
-            //                         }
-            //                         ModuleInput::Multi(from_paths) => {
-            //                             let edges: Vec<_> = from_paths
-            //                                 .into_iter()
-            //                                 .map(|from_path| -> Result<_> {
-            //                                     let edge = match from_path {
-            //                                         ModulePath::Layer(from_name) => {
-            //                                             let from_path = prefix.join(from_name);
-            //                                             let from_key = *path_key_map.get(&from_path).ok_or_else(|| format_err!("the layer with name '{}' does not exist", from_name))?;
-            //                                             let edge = (from_key, key);
-            //                                             edge
-            //                                         }
-            //                                         ModulePath::Group(GroupPath { layer: from_name, output: from_output }) => {
-            //                                             let from_path = prefix.join(from_name).join(from_output);
-            //                                             let from_key = *path_key_map.get(&from_path).ok_or_else(|| format_err!("the layer with name '{}' or group output '{}' does not exist", from_name, from_output))?;
-            //                                             let edge = (from_key, key);
-            //                                             edge
-            //                                         }
-            //                                     };
-            //                                     Ok(edge)
-            //                                 })
-            //                                 .try_collect()?;
-            //                             edges
-            //                         }
-            //                     };
-
-            //                     (vec![(key, path, layer)], edges)
-            //                 }
-            //             };
-
-            //             tuples.into_iter().for_each(|(key, path, layer)| {
-            //                 global_nodes.insert(key, layer);
-            //                 if let Some(path) = path {
-            //                     path_key_map.insert(path, key);
-            //                 }
-            //             });
-
-            //             edges.into_iter().for_each(|(from_key, to_key)| {
-            //                 global_edges.insert((from_key, to_key));
-            //             });
-
-            //             Ok(())
-            //         })?;
-
-            //     // let name_layer_map = layers
-            //     //     .iter()
-            //     //     .filter_map(|(path, layer)| Some((path.name()?, Layer::Layer(layer))))
-            //     //     .chain(
-            //     //         inputs
-            //     //             .iter()
-            //     //             .map(|(name, layer)| (name, Layer::Input(layer))),
-            //     //     )
-            //     //     .try_fold(HashMap::new(), |mut set, (name, layer)| -> Result<_> {
-            //     //         let prev = set.insert(name, layer);
-            //     //         ensure!(matches!(prev, None), "duplicated layer name '{}'", name);
-            //     //         Ok(set)
-            //     //     })?;
-
-            //     // index input nodes
-            //     // inputs.iter().for_each(|(layer_name, layer)| {
-            //     //     let path: NodePath = prefix.join(layer_name);
-            //     //     let key = key_enumerator.next().unwrap();
-
-            //     //     let prev = path_key_map.insert(path, key);
-            //     //     debug_assert!(matches!(prev, None));
-
-            //     //     nodes.insert(key, Layer::Input(layer));
-            //     // });
-
-            //     // toposort layers
-            //     // let sorted_layers = {
-            //     //     #[derive(Debug, Clone, Copy, Derivative)]
-            //     //     #[derivative(PartialOrd, Ord, PartialEq, Eq, Hash)]
-            //     //     struct IndexedLayer<'a> {
-            //     //         index: usize,
-            //     //         #[derivative(
-            //     //             PartialOrd = "ignore",
-            //     //             Ord = "ignore",
-            //     //             PartialEq = "ignore",
-            //     //             Hash = "ignore"
-            //     //         )]
-            //     //         layer_ident: &'a LayerIdent,
-            //     //         #[derivative(
-            //     //             PartialOrd = "ignore",
-            //     //             Ord = "ignore",
-            //     //             PartialEq = "ignore",
-            //     //             Hash = "ignore"
-            //     //         )]
-            //     //         layer: &'a config::Layer,
-            //     //     };
-
-            //     //     // create nodes
-            //     //     let iter = layers
-            //     //         .iter()
-            //     //         .enumerate()
-            //     //         .map(|(index, (layer_ident, layer))| {
-            //     //             let node = IndexedLayer {
-            //     //                 index,
-            //     //                 layer_ident,
-            //     //                 layer,
-            //     //             };
-            //     //             (layer_ident.name(), node)
-            //     //         });
-            //     //     let nodes: Vec<_> = iter.clone().map(|(_layer_name, node)| node).collect();
-            //     //     let name_node_map: HashMap<_, _> = iter
-            //     //         .filter_map(|(layer_name, node)| Some((layer_name?, node)))
-            //     //         .collect();
-
-            //     //     // create edges
-            //     //     let edges: Vec<_> = nodes
-            //     //         .iter()
-            //     //         .cloned()
-            //     //         .scan(None, |prev_node, curr_node| {
-            //     //             let saved_prev_node = *prev_node;
-            //     //             *prev_node = Some(curr_node);
-            //     //             Some(Ok((saved_prev_node, curr_node)))
-            //     //         })
-            //     //         .try_flat_map(|(infer_prev_node, curr_node)| -> Result<_> {
-            //     //             let edges = match curr_node.layer.input_layers() {
-            //     //                 LayerInput::None => vec![],
-            //     //                 LayerInput::Infer => match (infer_prev_node, inputs.len()) {
-            //     //                     // infer as input layer
-            //     //                     (None, 1) => vec![],
-            //     //                     (None, _) => bail!("cannot infer previous layer"),
-            //     //                     (Some(prev_node), _) => vec![(prev_node, curr_node)],
-            //     //                 },
-            //     //                 LayerInput::Single(LayerPath::Layer(from_name))
-            //     //                 | LayerInput::Single(LayerPath::GroupRef {
-            //     //                     layer: from_name,
-            //     //                     ..
-            //     //                 }) => {
-            //     //                     let prev_node = *name_node_map
-            //     //                         .get(from_name)
-            //     //                         .ok_or_else(|| format_err!(""))?;
-            //     //                     vec![(prev_node, curr_node)]
-            //     //                 }
-            //     //                 LayerInput::Multi(from_layers) => {
-            //     //                     let edges: Vec<_> = from_layers
-            //     //                         .iter()
-            //     //                         .cloned()
-            //     //                         .map(|from_name| -> Result<_> {
-            //     //                             let edge = match from_name {
-            //     //                                 LayerPath::Layer(from_name)
-            //     //                                 | LayerPath::GroupRef {
-            //     //                                     layer: from_name, ..
-            //     //                                 } => {
-            //     //                                     let prev_node =
-            //     //                                         *name_node_map
-            //     //                                             .get(from_name)
-            //     //                                             .ok_or_else(|| format_err!(""))?;
-            //     //                                     (prev_node, curr_node)
-            //     //                                 }
-            //     //                             };
-            //     //                             Ok(edge)
-            //     //                         })
-            //     //                         .try_collect()?;
-            //     //                     edges
-            //     //                 }
-            //     //             };
-            //     //             Ok(edges.into_iter().map(Result::Ok))
-            //     //         })
-            //     //         .try_collect()?;
-
-            //     //     // create graph
-            //     //     let graph = {
-            //     //         let mut graph = DiGraphMap::new();
-            //     //         nodes.into_iter().for_each(|node| {
-            //     //             graph.add_node(node);
-            //     //         });
-            //     //         edges.into_iter().for_each(|(from, to)| {
-            //     //             graph.add_edge(from, to, ());
-            //     //         });
-            //     //         graph
-            //     //     };
-
-            //     //     let sorted_layers: Vec<_> = petgraph::algo::toposort(&graph, None)
-            //     //         .map_err(|_cycle| format_err!("cycle detected"))?
-            //     //         .into_iter()
-            //     //         .map(
-            //     //             |IndexedLayer {
-            //     //                  layer_ident, layer, ..
-            //     //              }| (layer_ident, layer),
-            //     //         )
-            //     //         .collect();
-
-            //     //     sorted_layers
-            //     // };
-
-            //     // outputs.iter().map(|(layer_name, layer)| {
-            //     //     let layer_path: NodePath = prefix.join(layer_name);
-            //     //     (Some(layer_path), layer)
-            //     // });
-
-            //     // index layers
-            //     // let mut inferred_from_key = if inputs.len() == 1 {
-            //     //     Some(*nodes.keys().next().unwrap())
-            //     // } else {
-            //     //     None
-            //     // };
-
-            //     // group.layers()
-            //     //     .try_for_each(|layer| -> Result<_> {
-            //     //         let (tuples, edges) = match layer {
-            //     //             Module::GroupRef(config::GroupRef {
-            //     //                 name: layer_name,
-            //     //                 from,
-            //     //                 group: sub_group_name,
-            //     //             }) => {
-            //     //                 // build subgraph from group
-            //     //                 let group_prefix = prefix.join(layer_name);
-            //     //                 traverse(groups, &sub_group_name, &group_prefix, global_nodes, global_edges, key_enumerator, path_key_map)?;
-
-            //     //                 // build edges connecting into the subgraph
-            //     //                 let edges: Vec<_> = from
-            //     //                     .iter()
-            //     //                     .map(|(to_name, from_path)| -> Result<_> {
-            //     //                         let to_path = prefix.join(layer_name).join(to_name);
-            //     //                         let from_path = match from_path {
-            //     //                             ModulePath::Layer(from_name) => {
-            //     //                                 prefix.join(from_name)
-            //     //                             }
-            //     //                             ModulePath::Group(GroupPath {
-            //     //                                 layer: from_name,
-            //     //                                 output: from_output,
-            //     //                             }) => {
-            //     //                                 prefix
-            //     //                                     .join(from_name)
-            //     //                                     .join(from_output)
-            //     //                             }
-            //     //                         };
-            //     //                         let edge = (from_path, to_path);
-            //     //                         Ok(edge)
-            //     //                     })
-            //     //                     .try_collect()?;
-
-            //     //                 (vec![], edges)
-            //     //             }
-            //     //             layer => {
-            //     //                 // create new index for the layer
-            //     //                 let key = key_enumerator.next().unwrap();
-
-            //     //                 // create path
-            //     //                 let path = layer.name().map(|name| {
-            //     //                     prefix.join(name)
-            //     //                 });
-
-            //     //                 // add edges
-            //     //                 let edges = match layer.input_paths() {
-            //     //                     ModuleInput::None => vec![],
-            //     //                     ModuleInput::Infer => {
-            //     //                         todo!();
-            //     //                     }
-            //     //                     ModuleInput::Layer(from_name) => {
-            //     //                         let from_path = prefix.join(from_name);
-            //     //                         let edge = (from_path, path);
-            //     //                         vec![edge]
-            //     //                     }
-            //     //                     ModuleInput::Group(GroupPath{ layer: from_name, output: from_output }) => {
-            //     //                         let from_path = prefix.join(from_name).join(from_output);
-            //     //                         let edge = (from_path, path);
-            //     //                         vec![edge]
-            //     //                     }
-            //     //                     ModuleInput::Multi(from_paths) => {
-            //     //                         let edges: Vec<_> = from_paths
-            //     //                             .into_iter()
-            //     //                             .map(|from_path| -> Result<_> {
-            //     //                                 let edge = match from_path {
-            //     //                                     ModulePath::Layer(from_name) => {
-            //     //                                         let from_path = prefix.join(from_name);
-            //     //                                         let from_key = *path_key_map.get(&from_path).ok_or_else(|| format_err!("the layer with name '{}' does not exist", from_name))?;
-            //     //                                         let edge = (from_key, key);
-            //     //                                         edge
-            //     //                                     }
-            //     //                                     ModulePath::Group(GroupPath { layer: from_name, output: from_output }) => {
-            //     //                                         let from_path = prefix.join(from_name).join(from_output);
-            //     //                                         let from_key = *path_key_map.get(&from_path).ok_or_else(|| format_err!("the layer with name '{}' or group output '{}' does not exist", from_name, from_output))?;
-            //     //                                         let edge = (from_key, key);
-            //     //                                         edge
-            //     //                                     }
-            //     //                                 };
-            //     //                                 Ok(edge)
-            //     //                             })
-            //     //                             .try_collect()?;
-            //     //                         edges
-            //     //                     }
-            //     //                 };
-
-            //     //                 (vec![(key, path, layer)], edges)
-            //     //             }
-            //     //         };
-
-            //     //         tuples.into_iter().for_each(|(key, path, layer)| {
-            //     //             global_nodes.insert(key, layer);
-            //     //             if let Some(path) = path {
-            //     //                 path_key_map.insert(path, key);
-            //     //             }
-            //     //         });
-
-            //     //         edges.into_iter().for_each(|(from_key, to_key)| {
-            //     //             global_edges.insert((from_key, to_key));
-            //     //         });
-
-            //     //         Ok(())
-            //     //     })?;
-            // }
-
-            // let (nodes, edges) = {
-            //     let mut nodes = HashMap::new();
-            //     let mut edges = HashSet::new();
-
-            //     traverse(
-            //         groups,
-            //         main_group_name,
-            //         &NodePath::empty(),
-            //         &mut nodes,
-            //         &mut edges,
-            //         &mut iter::repeat(())
-            //             .enumerate()
-            //             .map(|(index, ())| NodeKey(index)),
-            //         &mut HashMap::new(),
-            //     )?;
-            //     (nodes, edges)
-            // };
             todo!();
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub enum Node {
-        Input(Input),
-        Output(Output),
+    pub struct Node {
+        pub key: NodeKey,
+        pub edges: Vec<IncomingEdge>,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Edge {
-        pub from: usize,
-        pub to: usize,
-        pub shape: Vec<usize>,
-    }
-}
-
-mod node {
-    use super::*;
+    // #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    // pub struct NodeInput {
+    //     pub src: Vec<IncomingEdge>,
+    //     pub dst: NodeKey,
+    // }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Input {
+    pub struct IncomingEdge {
+        pub src: NodeKey,
         pub shape: Vec<usize>,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Output {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Focus {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct ConvBlock {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Bottleneck {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct BottleneckCsp {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Spp {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct UpSample {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Concat {}
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct Detect {}
+    #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct NodeKey(pub usize);
 }
+
+// mod node {
+//     use super::*;
+// }

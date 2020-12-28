@@ -20,4 +20,8 @@ pub use std::{
     ops::Deref,
     path::{Path, PathBuf},
     str::FromStr,
+    string::ToString,
 };
+pub use unzip_n::unzip_n;
+
+unzip_n!(pub 2);

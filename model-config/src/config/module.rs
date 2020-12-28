@@ -26,21 +26,24 @@ pub use up_sample_2d::*;
 mod module_input {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative)]
+    #[derivative(Hash)]
     pub enum ModuleInput<'a> {
         None,
         Infer,
-        Layer(&'a ModuleName),
-        Group(&'a GroupPath),
-        Multi(Vec<&'a ModulePath>),
+        Path(&'a ModulePath),
+        Indexed(&'a [ModulePath]),
+        Named(
+            #[derivative(Hash(
+                hash_with = "utils::hash_vec_indexmap::<ModuleName, ModulePath, _>"
+            ))]
+            &'a IndexMap<ModuleName, ModulePath>,
+        ),
     }
 
     impl<'a> From<&'a ModulePath> for ModuleInput<'a> {
         fn from(from: &'a ModulePath) -> Self {
-            match from {
-                ModulePath::Layer(name) => Self::Layer(name),
-                ModulePath::Group(path) => Self::Group(path),
-            }
+            Self::Path(from)
         }
     }
 
@@ -59,14 +62,26 @@ mod module_input {
         }
     }
 
-    impl<'a> FromIterator<&'a ModulePath> for ModuleInput<'a> {
-        fn from_iter<T>(iter: T) -> Self
-        where
-            T: IntoIterator<Item = &'a ModulePath>,
-        {
-            Self::Multi(Vec::from_iter(iter))
+    impl<'a> From<&'a [ModulePath]> for ModuleInput<'a> {
+        fn from(from: &'a [ModulePath]) -> Self {
+            Self::Indexed(from)
         }
     }
+
+    impl<'a> From<&'a IndexMap<ModuleName, ModulePath>> for ModuleInput<'a> {
+        fn from(from: &'a IndexMap<ModuleName, ModulePath>) -> Self {
+            Self::Named(from)
+        }
+    }
+
+    // impl<'a> FromIterator<&'a ModulePath> for ModuleInput<'a> {
+    //     fn from_iter<T>(iter: T) -> Self
+    //     where
+    //         T: IntoIterator<Item = &'a ModulePath>,
+    //     {
+    //         Self::Multi(Vec::from_iter(iter))
+    //     }
+    // }
 }
 
 mod input_path {
@@ -79,40 +94,36 @@ mod input_path {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub enum ModulePath {
-        Layer(ModuleName),
-        Group(GroupPath),
+    pub struct ModulePath(Vec<ModuleName>);
+
+    impl ModulePath {
+        pub fn empty() -> Self {
+            Self(vec![])
+        }
+
+        pub fn depth(&self) -> usize {
+            self.0.len()
+        }
+
+        pub fn extend(&self, other: &ModulePath) -> Self {
+            self.0.iter().chain(other.0.iter()).collect()
+        }
+
+        pub fn join<'a>(&self, name: impl Into<Cow<'a, ModuleName>>) -> Self {
+            let name = name.into().into_owned();
+            self.0.iter().cloned().chain(iter::once(name)).collect()
+        }
     }
 
     impl FromStr for ModulePath {
         type Err = Error;
 
         fn from_str(name: &str) -> Result<Self, Self::Err> {
-            let mut tokens = name.split('.');
-            let first = tokens.next();
-            let second = tokens.next();
-            let third = tokens.next();
-
-            let path = match (first, second, third) {
-                (Some(first), None, None) => {
-                    ensure!(!first.is_empty(), "input path must not be empty");
-                    Self::Layer(first.try_into()?)
-                }
-                (Some(first), Some(second), None) => {
-                    ensure!(
-                        !first.is_empty() && !second.is_empty(),
-                        "invalid module path '{}'",
-                        name
-                    );
-                    Self::Group(GroupPath {
-                        layer: first.try_into()?,
-                        output: second.try_into()?,
-                    })
-                }
-                _ => bail!("module path can contain at most one dot symbol '.'"),
-            };
-
-            Ok(path)
+            let tokens = name.split('.');
+            let components: Vec<_> = tokens
+                .map(|token| ModuleName::from_str(token))
+                .try_collect()?;
+            Ok(Self(components))
         }
     }
 
@@ -121,13 +132,7 @@ mod input_path {
         where
             S: Serializer,
         {
-            let text: Cow<'_, str> = match self {
-                Self::Layer(name) => name.as_ref().into(),
-                Self::Group(GroupPath { layer, output }) => {
-                    format!("{}.{}", layer.as_ref(), output.as_ref()).into()
-                }
-            };
-            text.serialize(serializer)
+            self.to_string().serialize(serializer)
         }
     }
 
@@ -143,23 +148,42 @@ mod input_path {
         }
     }
 
-    impl TryFrom<&str> for ModulePath {
-        type Error = Error;
+    // impl TryFrom<&str> for ModulePath {
+    //     type Error = Error;
 
-        fn try_from(name: &str) -> Result<Self, Self::Error> {
-            Self::from_str(name)
-        }
-    }
+    //     fn try_from(name: &str) -> Result<Self, Self::Error> {
+    //         Self::from_str(name)
+    //     }
+    // }
 
     impl Display for ModulePath {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            let text: Cow<'_, str> = match self {
-                Self::Layer(name) => name.as_ref().into(),
-                Self::Group(GroupPath { layer, output }) => {
-                    format!("{}.{}", layer.as_ref(), output.as_ref()).into()
-                }
-            };
+            let text = self.0.iter().map(AsRef::as_ref).join(".");
             Display::fmt(&text, f)
+        }
+    }
+
+    impl AsRef<[ModuleName]> for ModulePath {
+        fn as_ref(&self) -> &[ModuleName] {
+            self.0.as_ref()
+        }
+    }
+
+    impl FromIterator<ModuleName> for ModulePath {
+        fn from_iter<T>(iter: T) -> Self
+        where
+            T: IntoIterator<Item = ModuleName>,
+        {
+            Self(Vec::from_iter(iter))
+        }
+    }
+
+    impl<'a> FromIterator<&'a ModuleName> for ModulePath {
+        fn from_iter<T>(iter: T) -> Self
+        where
+            T: IntoIterator<Item = &'a ModuleName>,
+        {
+            Self(iter.into_iter().cloned().collect())
         }
     }
 }
@@ -170,12 +194,13 @@ mod module_name {
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct ModuleName(String);
 
-    impl ModuleName {
-        pub fn new<'a>(name: impl Into<Cow<'a, str>>) -> Result<Self> {
-            let name = name.into().into_owned();
+    impl FromStr for ModuleName {
+        type Err = Error;
+
+        fn from_str(name: &str) -> Result<Self> {
             ensure!(!name.is_empty(), "module name must not be empty");
             ensure!(!name.contains('.'), "module name must not contain dot '.'");
-            Ok(Self(name))
+            Ok(Self(name.to_owned()))
         }
     }
 
@@ -194,19 +219,19 @@ mod module_name {
             D: Deserializer<'de>,
         {
             let text = String::deserialize(deserializer)?;
-            let name = Self::new(text)
+            let name = Self::from_str(&text)
                 .map_err(|err| D::Error::custom(format!("invalid name: {:?}", err)))?;
             Ok(name)
         }
     }
 
-    impl TryFrom<&str> for ModuleName {
-        type Error = Error;
+    // impl TryFrom<&str> for ModuleName {
+    //     type Error = Error;
 
-        fn try_from(name: &str) -> Result<Self, Self::Error> {
-            Self::new(name)
-        }
-    }
+    //     fn try_from(name: &str) -> Result<Self, Self::Error> {
+    //         Self::new(name)
+    //     }
+    // }
 
     impl Borrow<str> for ModuleName {
         fn borrow(&self) -> &str {
@@ -659,7 +684,7 @@ mod merge_detect_2d {
         }
 
         fn input_paths(&self) -> ModuleInput<'_> {
-            self.from.iter().collect()
+            self.from.as_slice().into()
         }
     }
 }
@@ -688,12 +713,10 @@ mod up_sample_2d {
 mod concat_2d {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Concat2D {
         pub name: Option<ModuleName>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<ModulePath, _>"))]
-        pub from: IndexSet<ModulePath>,
+        pub from: Vec<ModulePath>,
     }
 
     impl ModuleEx for Concat2D {
@@ -702,7 +725,7 @@ mod concat_2d {
         }
 
         fn input_paths(&self) -> ModuleInput<'_> {
-            self.from.iter().collect()
+            self.from.as_slice().into()
         }
     }
 }
@@ -710,12 +733,10 @@ mod concat_2d {
 mod sum_2d {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Sum2D {
         pub name: Option<ModuleName>,
-        #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<ModulePath, _>"))]
-        pub from: IndexSet<ModulePath>,
+        pub from: Vec<ModulePath>,
     }
 
     impl ModuleEx for Sum2D {
@@ -724,7 +745,7 @@ mod sum_2d {
         }
 
         fn input_paths(&self) -> ModuleInput<'_> {
-            self.from.iter().collect()
+            self.from.as_slice().into()
         }
     }
 }
@@ -747,7 +768,7 @@ mod group_ref {
         }
 
         fn input_paths(&self) -> ModuleInput<'_> {
-            self.from.values().collect()
+            (&self.from).into()
         }
     }
 }
