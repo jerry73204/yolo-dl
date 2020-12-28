@@ -6,7 +6,7 @@
             {
                 "name": "input",
                 "kind": "Input",
-                "shape": [3, 512, 512],
+                "shape": [3, "_", "_"],
             },
             {
                 "from": "input",
@@ -49,7 +49,7 @@
             {
                 "name": "input",
                 "kind": "Input",
-                "shape": [3, 512, 512],
+                "shape": [3, "_", "_"],
             },
             // initial layers, no forks
             {
