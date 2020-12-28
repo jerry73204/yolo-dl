@@ -96,6 +96,138 @@ mod dim {
             Ok(dim)
         }
     }
+
+    impl Add<Dim> for Dim {
+        type Output = Dim;
+
+        fn add(self, rhs: Dim) -> Self::Output {
+            match (self, rhs) {
+                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs + rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Sub<Dim> for Dim {
+        type Output = Dim;
+
+        fn sub(self, rhs: Dim) -> Self::Output {
+            match (self, rhs) {
+                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs - rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Mul<Dim> for Dim {
+        type Output = Dim;
+
+        fn mul(self, rhs: Dim) -> Self::Output {
+            match (self, rhs) {
+                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs * rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Div<Dim> for Dim {
+        type Output = Dim;
+
+        fn div(self, rhs: Dim) -> Self::Output {
+            match (self, rhs) {
+                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs / rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Add<usize> for Dim {
+        type Output = Dim;
+
+        fn add(self, rhs: usize) -> Self::Output {
+            match self {
+                Self(Some(lhs)) => Self(Some(lhs + rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Sub<usize> for Dim {
+        type Output = Dim;
+
+        fn sub(self, rhs: usize) -> Self::Output {
+            match self {
+                Self(Some(lhs)) => Self(Some(lhs - rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Mul<usize> for Dim {
+        type Output = Dim;
+
+        fn mul(self, rhs: usize) -> Self::Output {
+            match self {
+                Self(Some(lhs)) => Self(Some(lhs * rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Div<usize> for Dim {
+        type Output = Dim;
+
+        fn div(self, rhs: usize) -> Self::Output {
+            match self {
+                Self(Some(lhs)) => Self(Some(lhs / rhs)),
+                _ => Self(None),
+            }
+        }
+    }
+
+    impl Add<Dim> for usize {
+        type Output = Dim;
+
+        fn add(self, rhs: Dim) -> Self::Output {
+            match rhs {
+                Dim(Some(rhs)) => Dim(Some(self + rhs)),
+                _ => Dim(None),
+            }
+        }
+    }
+
+    impl Sub<Dim> for usize {
+        type Output = Dim;
+
+        fn sub(self, rhs: Dim) -> Self::Output {
+            match rhs {
+                Dim(Some(rhs)) => Dim(Some(self - rhs)),
+                _ => Dim(None),
+            }
+        }
+    }
+
+    impl Mul<Dim> for usize {
+        type Output = Dim;
+
+        fn mul(self, rhs: Dim) -> Self::Output {
+            match rhs {
+                Dim(Some(rhs)) => Dim(Some(self * rhs)),
+                _ => Dim(None),
+            }
+        }
+    }
+
+    impl Div<Dim> for usize {
+        type Output = Dim;
+
+        fn div(self, rhs: Dim) -> Self::Output {
+            match rhs {
+                Dim(Some(rhs)) => Dim(Some(self / rhs)),
+                _ => Dim(None),
+            }
+        }
+    }
 }
 
 mod shape {

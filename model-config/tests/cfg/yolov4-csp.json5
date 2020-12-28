@@ -65,7 +65,7 @@
             {
                 "name": "dark1",                
                 "kind": "DarkCsp2D",
-                "from": "init.prefix_output",
+                "from": "init.output",
                 "c": 256,
                 "repeat": 8,
             },

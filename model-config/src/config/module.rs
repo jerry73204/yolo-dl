@@ -19,6 +19,7 @@ pub use merge_detect_2d::*;
 pub use module::*;
 pub use module_input::*;
 pub use module_name::*;
+pub use shape_input::*;
 pub use spp_csp_2d::*;
 pub use sum_2d::*;
 pub use up_sample_2d::*;
@@ -26,7 +27,7 @@ pub use up_sample_2d::*;
 mod module_input {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Derivative)]
     #[derivative(Hash)]
     pub enum ModuleInput<'a> {
         None,
@@ -84,6 +85,70 @@ mod module_input {
     // }
 }
 
+mod shape_input {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Derivative)]
+    #[derivative(Hash)]
+    pub enum ShapeInput<'a> {
+        None,
+        Single(&'a Shape),
+        Indexed(&'a [&'a Shape]),
+        /* Named(
+         *     #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, Shape, _>"))]
+         *     &'a IndexMap<ModuleName, Shape>,
+         * ), */
+    }
+
+    impl ShapeInput<'_> {
+        pub fn none(&self) -> bool {
+            match self {
+                Self::None => true,
+                _ => false,
+            }
+        }
+
+        pub fn single(&self) -> Option<&Shape> {
+            match self {
+                Self::Single(shape) => Some(shape),
+                _ => None,
+            }
+        }
+
+        pub fn indexed(&self) -> Option<&[&Shape]> {
+            match self {
+                Self::Indexed(shape) => Some(shape),
+                _ => None,
+            }
+        }
+
+        // pub fn named(&self) -> Option<&[Shape]> {
+        //     match self {
+        //         Self::Named(shape) => Some(shape),
+        //         _ => None,
+        //     }
+        // }
+    }
+
+    impl<'a> From<&'a Shape> for ShapeInput<'a> {
+        fn from(from: &'a Shape) -> Self {
+            Self::Single(from)
+        }
+    }
+
+    impl<'a> From<&'a [&'a Shape]> for ShapeInput<'a> {
+        fn from(from: &'a [&'a Shape]) -> Self {
+            Self::Indexed(from)
+        }
+    }
+
+    // impl<'a> From<&'a IndexMap<ModuleName, Shape>> for ShapeInput<'a> {
+    //     fn from(from: &'a IndexMap<ModuleName, Shape>) -> Self {
+    //         Self::Named(from)
+    //     }
+    // }
+}
+
 mod input_path {
     use super::*;
 
@@ -99,6 +164,10 @@ mod input_path {
     impl ModulePath {
         pub fn empty() -> Self {
             Self(vec![])
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
         }
 
         pub fn depth(&self) -> usize {
@@ -270,6 +339,7 @@ mod module {
     pub trait ModuleEx {
         fn name(&self) -> Option<&ModuleName>;
         fn input_paths(&self) -> ModuleInput<'_>;
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape>;
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -289,23 +359,6 @@ mod module {
         Detect2D(Detect2D),
         MergeDetect2D(MergeDetect2D),
         GroupRef(GroupRef),
-    }
-
-    impl Module {
-        pub fn output_shape(&self, _input_shape: &[usize]) -> Option<Shape> {
-            // match &self.kind {
-            //     LayerKind::Input(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Focus(layer) => layer.output_shape(input_shape),
-            //     LayerKind::ConvBlock(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Bottleneck(layer) => layer.output_shape(input_shape),
-            //     LayerKind::BottleneckCsp(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Spp(layer) => layer.output_shape(input_shape),
-            //     LayerKind::UpSample(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Concat(layer) => layer.output_shape(input_shape),
-            //     LayerKind::Detect(layer) => layer.output_shape(input_shape),
-            // }
-            todo!();
-        }
     }
 
     impl ModuleEx for Module {
@@ -338,6 +391,21 @@ mod module {
                 Module::GroupRef(layer) => layer.input_paths(),
             }
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            match self {
+                Module::Input(layer) => layer.output_shape(input_shape),
+                Module::ConvBn2D(layer) => layer.output_shape(input_shape),
+                Module::UpSample2D(layer) => layer.output_shape(input_shape),
+                Module::DarkCsp2D(layer) => layer.output_shape(input_shape),
+                Module::SppCsp2D(layer) => layer.output_shape(input_shape),
+                Module::Concat2D(layer) => layer.output_shape(input_shape),
+                Module::Sum2D(layer) => layer.output_shape(input_shape),
+                Module::Detect2D(layer) => layer.output_shape(input_shape),
+                Module::MergeDetect2D(layer) => layer.output_shape(input_shape),
+                Module::GroupRef(layer) => layer.output_shape(input_shape),
+            }
+        }
     }
 }
 
@@ -356,7 +424,16 @@ mod input {
         }
 
         fn input_paths(&self) -> ModuleInput<'_> {
-            ModuleInput::Infer
+            ModuleInput::None
+        }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            // expect a none shape
+            if input_shape.none() {
+                Some(self.shape.clone())
+            } else {
+                None
+            }
         }
     }
 }
@@ -485,6 +562,11 @@ mod conv_bn_2d_block {
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_ref().into()
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            let in_shape = input_shape.single();
+            todo!();
+        }
     }
 
     fn default_stride() -> usize {
@@ -580,6 +662,11 @@ mod dark_csp_2d {
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_ref().into()
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            let in_shape = input_shape.single();
+            todo!();
+        }
     }
 
     fn default_shortcut() -> bool {
@@ -611,6 +698,11 @@ mod spp_csp_2d {
                 k: vec![1, 5, 9, 13],
             }
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            let in_shape = input_shape.single();
+            todo!();
+        }
     }
 
     impl ModuleEx for SppCsp2D {
@@ -620,6 +712,11 @@ mod spp_csp_2d {
 
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_ref().into()
+        }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            let in_shape = input_shape.single();
+            todo!();
         }
     }
 }
@@ -666,6 +763,11 @@ mod detect_2d {
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_ref().into()
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            let in_shape = input_shape.single();
+            todo!();
+        }
     }
 }
 
@@ -685,6 +787,10 @@ mod merge_detect_2d {
 
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_slice().into()
+        }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            todo!();
         }
     }
 }
@@ -707,6 +813,10 @@ mod up_sample_2d {
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_ref().into()
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            todo!();
+        }
     }
 }
 
@@ -727,6 +837,10 @@ mod concat_2d {
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_slice().into()
         }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            todo!();
+        }
     }
 }
 
@@ -746,6 +860,10 @@ mod sum_2d {
 
         fn input_paths(&self) -> ModuleInput<'_> {
             self.from.as_slice().into()
+        }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            todo!();
         }
     }
 }
@@ -769,6 +887,10 @@ mod group_ref {
 
         fn input_paths(&self) -> ModuleInput<'_> {
             (&self.from).into()
+        }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+            todo!();
         }
     }
 }

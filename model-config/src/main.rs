@@ -19,6 +19,6 @@ fn main() -> Result<()> {
 }
 
 fn info(config_file: impl AsRef<Path>) -> Result<()> {
-    let config = Model::load(config_file)?;
+    let _config = Model::load(config_file)?;
     Ok(())
 }

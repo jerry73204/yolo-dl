@@ -17,7 +17,7 @@ pub use std::{
     fs,
     hash::{Hash, Hasher},
     iter::{self, FromIterator},
-    ops::Deref,
+    ops::{Add, Deref, Div, Mul, Sub},
     path::{Path, PathBuf},
     str::FromStr,
     string::ToString,
