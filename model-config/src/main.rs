@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use model_config::{config::Model, graph::Graph};
 use std::{
     fs::File,
@@ -53,5 +53,6 @@ fn make_dot_file(config_file: impl AsRef<Path>, output_file: impl AsRef<Path>) -
 
 #[cfg(not(feature = "dot"))]
 fn make_dot_file(_config_file: impl AsRef<Path>, _output_file: impl AsRef<Path>) -> Result<()> {
+    use anyhow::bail;
     bail!("'dot' feature must be enabled to run this command");
 }

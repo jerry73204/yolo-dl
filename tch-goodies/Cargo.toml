@@ -16,7 +16,6 @@ serde = { version = "1.0", features = ["derive"] }
 tch-tensor-like = { version = "0.2", features = ["derive"] }
 approx = "0.4"
 log = "0.4"
-derive_more = "0.99"
 maplit = "1.0"
 getset = "0.1"
 unzip-n = "0.1"

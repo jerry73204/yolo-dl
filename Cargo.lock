@@ -128,15 +128,6 @@ dependencies = [
 
 [[package]]
 name = "arrayvec"
-version = "0.4.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
-dependencies = [
- "nodrop",
-]
-
-[[package]]
-name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
@@ -392,7 +383,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afa748e348ad3be8263be728124b24a24f268266f6f5d58af9d75f6a40b5c587"
 dependencies = [
  "arrayref",
- "arrayvec 0.5.2",
+ "arrayvec",
  "constant_time_eq",
 ]
 
@@ -875,7 +866,6 @@ dependencies = [
  "num-derive",
  "num-traits",
  "pretty_env_logger",
- "safe-transmute",
  "serde",
  "structopt",
  "tch",
@@ -1388,17 +1378,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "immeta"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7371aa3c98fad60de2d9b517e2e1ed45593c32b0c77249310fa507749a2a318b"
-dependencies = [
- "arrayvec 0.4.12",
- "byteorder",
- "num-traits",
-]
-
-[[package]]
 name = "indexmap"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1669,24 +1648,18 @@ dependencies = [
  "async-std",
  "bincode",
  "cesu8",
- "chrono",
- "coco",
- "derive_more",
  "futures",
  "glob",
  "image",
  "indexmap",
  "indicatif",
  "itertools 0.9.0",
- "json5 0.2.8",
  "log",
  "memmap",
  "ndarray",
  "noisy_float",
  "num_cpus",
  "par-stream",
- "percent-encoding",
- "pretty_env_logger",
  "prettytable-rs",
  "rand",
  "regex",
@@ -1694,18 +1667,13 @@ dependencies = [
  "serde",
  "serde-big-array",
  "serde-xml-rs",
- "serde_json",
  "tch",
  "tch-goodies",
- "tch-serde",
  "tch-tensor-like",
- "tfrecord",
  "tokio 0.3.6",
  "typenum",
  "unzip-n",
- "uuid",
  "voc-dataset",
- "yolo-dl",
 ]
 
 [[package]]
@@ -1757,12 +1725,6 @@ dependencies = [
  "num-traits",
  "rawpointer",
 ]
-
-[[package]]
-name = "nodrop"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 
 [[package]]
 name = "noisy_float"
@@ -2882,7 +2844,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "approx 0.4.0",
- "derive_more",
  "getset",
  "image",
  "itertools 0.9.0",
@@ -3149,6 +3110,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d258221f566b6c803c7b4714abadc080172b272090cdc5e244a6d4dd13c3a6bd"
+dependencies = [
+ "autocfg",
+ "pin-project-lite 0.2.0",
+]
+
+[[package]]
 name = "tokio-macros"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3294,7 +3265,7 @@ dependencies = [
  "tch-serde",
  "tch-tensor-like",
  "tfrecord",
- "tokio 0.3.6",
+ "tokio 1.0.1",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
@@ -3647,12 +3618,10 @@ dependencies = [
  "chrono",
  "coco",
  "dashmap",
- "derive_more",
  "envy",
  "futures",
  "getset",
  "image",
- "immeta",
  "indexmap",
  "itertools 0.9.0",
  "lazy_static",
@@ -3672,7 +3641,7 @@ dependencies = [
  "tch-goodies",
  "tch-tensor-like",
  "tfrecord",
- "tokio 0.3.6",
+ "tokio 1.0.1",
  "unzip-n",
  "uuid",
 ]

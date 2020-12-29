@@ -17,7 +17,7 @@ approx = "0.4"
 derive_more = "0.99"
 unzip-n = "0.1"
 serde_json = "1.0"
-async-std = { version = "1.7", features = ["unstable", "attributes"] }
+async-std = { version = "1.8", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1"
 json5 = "0.2"
@@ -26,7 +26,7 @@ futures = "0.3"
 rand = "0.7"
 percent-encoding = "2.1"
 image = "0.23"
-tokio = { version = "0.3", features = ["sync"] }
+tokio = { version = "1.0", features = ["sync"] }
 tfrecord = { version = "0.5", features = ["full"] }
 ndarray = "0.13"
 log = "0.4"

@@ -1,4 +1,4 @@
-use anyhow::{bail, format_err, Context, Result};
+use anyhow::{format_err, Context, Result};
 use darknet_config::{DarknetConfig, DarknetModel, Graph};
 use prettytable::{cell, row, Table};
 use std::{
@@ -121,6 +121,7 @@ fn make_dot_file(config_file: impl AsRef<Path>, output_file: impl AsRef<Path>) -
 
 #[cfg(not(feature = "dot"))]
 fn make_dot_file(_config_file: impl AsRef<Path>, _output_file: impl AsRef<Path>) -> Result<()> {
+    use anyhow::bail;
     bail!("'dot' feature must be enabled to run this command");
 }
 
@@ -166,8 +167,6 @@ fn detect_image(
     let _pred = model.forward_t(&image, false)?;
 
     todo!("show detection result");
-
-    Ok(())
 }
 
 #[cfg(not(feature = "tch"))]
@@ -176,5 +175,6 @@ fn detect_image(
     weights_file: impl AsRef<Path>,
     input_file: impl AsRef<Path>,
 ) -> Result<()> {
+    use anyhow::bail;
     bail!("'tch' feature must be enabled to run this command");
 }
