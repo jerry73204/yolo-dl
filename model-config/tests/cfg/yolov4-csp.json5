@@ -6,7 +6,7 @@
             {
                 "name": "input",
                 "kind": "Input",
-                "shape": [3, "_", "_"],
+                "shape": ["_", 3, "_", "_"],
             },
             {
                 "from": "input",
@@ -37,6 +37,12 @@
                 "from": ["fork", "merge"]
             },
             {
+                "kind": "ConvBn2D",
+                "c": 128,
+                "k": 3,
+                "s": 2,
+            },
+            {
                 "name": "output",
                 "kind": "DarkCsp2D",
                 "c": 128,
@@ -49,11 +55,11 @@
             {
                 "name": "input",
                 "kind": "Input",
-                "shape": [3, "_", "_"],
+                "shape": ["_", 3, "_", "_"],
             },
             // initial layers, no forks
             {
-                "name": "init",                
+                "name": "init",
                 "kind": "GroupRef",
                 "from": {
                     "input": "input",
@@ -63,27 +69,45 @@
 
             // (1, 1)
             {
-                "name": "dark1",                
-                "kind": "DarkCsp2D",
+                "kind": "ConvBn2D",
                 "from": "init.output",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "dark1",
+                "kind": "DarkCsp2D",
                 "c": 256,
                 "repeat": 8,
             },
 
             // (1, 2)
             {
-                "name": "dark2",                
-                "kind": "DarkCsp2D",
+                "kind": "ConvBn2D",
                 "from": "dark1",
+                "c": 512,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "dark2",
+                "kind": "DarkCsp2D",
                 "c": 512,
                 "repeat": 8,
             },
 
             // (1, 3)
             {
-                "name": "dark3",                
-                "kind": "DarkCsp2D",
+                "kind": "ConvBn2D",
                 "from": "dark2",
+                "c": 1024,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "dark3",
+                "kind": "DarkCsp2D",
                 "c": 1024,
                 "repeat": 4,
             },
@@ -95,7 +119,13 @@
                 "from": ["dark1", "up2_up1"],
             },
             {
-                "name": "up1",                
+                "kind": "ConvBn2D",
+                "c": 128,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "up1",
                 "kind": "DarkCsp2D",
                 "c": 128,
                 "repeat": 2,
@@ -108,7 +138,13 @@
                 "from": ["dark2", "up3_up2"],
             },
             {
-                "name": "up2",                
+                "kind": "ConvBn2D",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "up2",
                 "kind": "DarkCsp2D",
                 "c": 256,
                 "repeat": 2,
@@ -117,7 +153,7 @@
 
             // (2, 3)
             {
-                "name": "up3",                
+                "name": "up3",
                 "kind": "SppCsp2D",
                 "from": "dark3",
                 "c": 512,
@@ -130,7 +166,13 @@
                 "from": ["up2", "up1_down2"],
             },
             {
-                "name": "down2",                
+                "kind": "ConvBn2D",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "down2",
                 "kind": "DarkCsp2D",
                 "c": 256,
                 "repeat": 2,
@@ -143,7 +185,13 @@
                 "from": ["up3", "down2_down3"],
             },
             {
-                "name": "down3",                
+                "kind": "ConvBn2D",
+                "c": 512,
+                "k": 3,
+                "s": 2,
+            },
+            {
+                "name": "down3",
                 "kind": "DarkCsp2D",
                 "c": 512,
                 "repeat": 2,
@@ -153,7 +201,7 @@
 
             // (4, 1)
             {
-                "name": "detect1",                
+                "name": "detect1",
                 "kind": "Detect2D",
                 "from": "up1_detect1",
                 "classes": 80,
@@ -162,7 +210,7 @@
 
             // [4, 2]
             {
-                "name": "detect2",                
+                "name": "detect2",
                 "kind": "Detect2D",
                 "from": "down2_detect2",
                 "classes": 80,
@@ -171,7 +219,7 @@
 
             // [4, 3]
             {
-                "name": "detect3",                
+                "name": "detect3",
                 "kind": "Detect2D",
                 "from": "down3_detect3",
                 "classes": 80,
@@ -186,7 +234,7 @@
                 "k": 1,
             },
             {
-                "name": "up3_up2",                
+                "name": "up3_up2",
                 "kind": "UpSample2D",
                 "scale": 2.0,
             },
@@ -199,14 +247,14 @@
                 "k": 1,
             },
             {
-                "name": "up2_up1",                
+                "name": "up2_up1",
                 "kind": "UpSample2D",
                 "scale": 2.0,
             },
 
             // (2, 1) -> (3, 2)
             {
-                "name": "up1_down2",                
+                "name": "up1_down2",
                 "kind": "ConvBn2D",
                 "from": "up1",
                 "c": 256,
@@ -217,7 +265,7 @@
 
             // (3, 2) -> (3, 3)
             {
-                "name": "down2_down3",                
+                "name": "down2_down3",
                 "kind": "ConvBn2D",
                 "from": "down2",
                 "c": 512,
@@ -234,7 +282,7 @@
                 "s": 2,
             },
             {
-                "name": "up1_detect1",                
+                "name": "up1_detect1",
                 "kind": "ConvBn2D",
                 "c": 255,
                 "k": 1,
@@ -250,7 +298,7 @@
                 "s": 2,
             },
             {
-                "name": "down2_detect2",                
+                "name": "down2_detect2",
                 "kind": "ConvBn2D",
                 "c": 255,
                 "k": 1,
@@ -265,17 +313,10 @@
                 "s": 2,
             },
             {
-                "name": "down3_detect3",                
+                "name": "down3_detect3",
                 "kind": "ConvBn2D",
                 "c": 255,
                 "k": 1,
-            },
-
-            // output
-            {
-                "name": "yolo",                
-                "kind": "MergeDetect2D",
-                "from": ["detect1", "detect2", "detect3"]
             },
         ]
     }
