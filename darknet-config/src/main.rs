@@ -1,5 +1,5 @@
 use anyhow::{format_err, Context, Result};
-use darknet_config::{DarknetConfig, DarknetModel, Graph};
+use darknet_config::{DarknetConfig, DarknetModel, Graph, NodeKey};
 use prettytable::{cell, row, Table};
 use std::{
     fs::File,
@@ -77,9 +77,9 @@ fn info(config_file: impl AsRef<Path>) -> Result<()> {
             "output shape"
         ]);
 
-        let num_layers = graph.layers.len();
+        let num_layers = graph.layers.len() - 1;
         (0..num_layers).for_each(|index| {
-            let layer = &graph.layers[&index];
+            let layer = &graph.layers[&NodeKey::Index(index)];
             let kind = layer.as_ref();
 
             table.add_row(row![
@@ -166,7 +166,9 @@ fn detect_image(
 
     let _pred = model.forward_t(&image, false)?;
 
-    todo!("show detection result");
+    println!("detection runs successfully");
+    println!("detection visualization is not implemented");
+    Ok(())
 }
 
 #[cfg(not(feature = "tch"))]

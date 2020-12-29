@@ -5,8 +5,8 @@ use crate::{
         ShortcutConfig, WeightsType,
     },
     graph::{
-        BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, MaxPoolNode,
-        Node, RouteNode, ShortcutNode, UpSampleNode, YoloNode,
+        BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, InputNode,
+        MaxPoolNode, Node, NodeKey, RouteNode, ShortcutNode, UpSampleNode, YoloNode,
     },
 };
 
@@ -20,7 +20,7 @@ mod model {
     #[derive(Debug, Clone)]
     pub struct DarknetModel {
         pub graph: Graph,
-        pub layers: IndexMap<usize, Layer>,
+        pub layers: IndexMap<NodeKey, Layer>,
     }
 
     impl DarknetModel {
@@ -32,10 +32,11 @@ mod model {
                     .iter()
                     .map(|(&layer_index, layer_node)| -> Result<_> {
                         let layer = match layer_node {
+                            Node::Input(node) => Layer::Input(InputLayer::new(node)),
                             Node::Connected(node) => Layer::Connected(ConnectedLayer::new(node)),
-                            Node::Convolutional(node) => {
-                                Layer::Convolutional(ConvolutionalLayer::new(node, layer_index)?)
-                            }
+                            Node::Convolutional(node) => Layer::Convolutional(
+                                ConvolutionalLayer::new(node, layer_index.index().unwrap())?,
+                            ),
                             Node::Route(node) => Layer::Route(RouteLayer { node: node.clone() }),
                             Node::Shortcut(node) => Layer::Shortcut(ShortcutLayer::new(node)),
                             Node::MaxPool(node) => {
@@ -114,13 +115,16 @@ mod model {
 
             // load weights
             {
-                let num_layers = self.layers.len();
+                // load weights except input layer
+                let num_layers = self.layers.len() - 1;
 
-                (0..num_layers).try_for_each(|layer_index| -> Result<_> {
-                    let layer = &mut self.layers[&layer_index];
-                    layer.load_weights(&mut reader, transpose)?;
-                    Ok(())
-                })?;
+                (0..num_layers)
+                    .map(NodeKey::Index)
+                    .try_for_each(|key| -> Result<_> {
+                        let layer = &mut self.layers[&key];
+                        layer.load_weights(&mut reader, transpose)?;
+                        Ok(())
+                    })?;
 
                 ensure!(
                     matches!(reader.fill_buf()?, &[]),
@@ -154,6 +158,7 @@ mod layer {
 
     #[derive(Debug, Clone, AsRefStr)]
     pub enum Layer {
+        Input(InputLayer),
         Connected(ConnectedLayer),
         Convolutional(ConvolutionalLayer),
         Route(RouteLayer),
@@ -168,6 +173,7 @@ mod layer {
     impl Layer {
         pub fn load_weights(&mut self, reader: impl ReadBytesExt, transpose: bool) -> Result<()> {
             match self {
+                Self::Input(_layer) => Ok(()),
                 Self::Connected(layer) => layer.load_weights(reader, transpose),
                 Self::Convolutional(layer) => layer.load_weights(reader),
                 Self::Route(_layer) => Ok(()),
@@ -177,6 +183,19 @@ mod layer {
                 Self::BatchNorm(layer) => layer.load_weights(reader),
                 Self::Yolo(_layer) => Ok(()),
                 Self::GaussianYolo(_layer) => Ok(()),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct InputLayer {
+        pub node: InputNode,
+    }
+
+    impl InputLayer {
+        pub fn new(node: &InputNode) -> Self {
+            Self {
+                node: node.to_owned(),
             }
         }
     }

@@ -9,8 +9,8 @@ use crate::{
 };
 
 pub use graph::*;
-pub use layer_position::*;
 pub use node::*;
+pub use node_key::*;
 pub use shape::*;
 
 mod graph {
@@ -21,7 +21,7 @@ mod graph {
         pub seen: u64,
         pub cur_iteration: u64,
         pub net: NetConfig,
-        pub layers: IndexMap<usize, Node>,
+        pub layers: IndexMap<NodeKey, Node>,
     }
 
     impl Graph {
@@ -46,7 +46,7 @@ mod graph {
             } = *config;
 
             // compute from indexes per layer
-            let from_indexes_map: IndexMap<_, _> = layers
+            let from_indexes_map: IndexMap<NodeKey, _> = layers
                 .iter()
                 .enumerate()
                 .map(|(layer_index, layer_config)| -> Result<_> {
@@ -61,17 +61,17 @@ mod graph {
                         | LayerConfig::GaussianYolo(_)
                         | LayerConfig::Yolo(_) => {
                             if layer_index == 0 {
-                                LayerPositionSet::Single(LayerPosition::Input)
+                                InputKeys::Single(NodeKey::Input)
                             } else {
-                                LayerPositionSet::Single(LayerPosition::Absolute(layer_index - 1))
+                                InputKeys::Single(NodeKey::Index(layer_index - 1))
                             }
                         }
                         LayerConfig::Shortcut(conf) => {
                             let from = &conf.from;
                             let first_index = if layer_index == 0 {
-                                LayerPosition::Input
+                                NodeKey::Input
                             } else {
-                                LayerPosition::Absolute(layer_index - 1)
+                                NodeKey::Index(layer_index - 1)
                             };
 
                             let from_indexes: IndexSet<_> = iter::once(Ok(first_index))
@@ -79,7 +79,7 @@ mod graph {
                                     let index = index
                                         .to_absolute(layer_index)
                                         .ok_or_else(|| format_err!("invalid layer index"))?;
-                                    Ok(LayerPosition::Absolute(index))
+                                    Ok(NodeKey::Index(index))
                                 }))
                                 .try_collect()?;
 
@@ -88,7 +88,7 @@ mod graph {
                                 "from must not contain the index to previous layer"
                             );
 
-                            LayerPositionSet::Multiple(from_indexes)
+                            InputKeys::Multiple(from_indexes)
                         }
                         LayerConfig::Route(conf) => {
                             let from_indexes: IndexSet<_> = conf
@@ -103,81 +103,57 @@ mod graph {
                                         }
                                         LayerIndex::Absolute(index) => index,
                                     };
-                                    Ok(LayerPosition::Absolute(index))
+                                    Ok(NodeKey::Index(index))
                                 })
                                 .try_collect()?;
-                            LayerPositionSet::Multiple(from_indexes)
+                            InputKeys::Multiple(from_indexes)
                         }
                         _ => unimplemented!(),
                     };
-                    Ok((layer_index, from_indexes))
+
+                    let key = NodeKey::Index(layer_index);
+                    Ok((key, from_indexes))
                 })
+                .chain(iter::once(Ok((NodeKey::Input, InputKeys::None))))
                 .try_collect()?;
 
             // topological sort
-            let sorted_layer_indexes = {
+            let sorted_node_keys: Vec<NodeKey> = {
                 let graph = {
-                    let mut graph = DiGraphMap::<LayerPosition, ()>::new();
-                    graph.add_node(LayerPosition::Input);
-                    from_indexes_map
-                        .iter()
-                        .for_each(|(&layer_index, from_indexes)| {
-                            graph.add_node(LayerPosition::Absolute(layer_index));
-                            from_indexes.iter().for_each(|from_index| {
-                                graph.add_edge(
-                                    from_index,
-                                    LayerPosition::Absolute(layer_index),
-                                    (),
-                                );
-                            });
+                    let mut graph = DiGraphMap::<NodeKey, ()>::new();
+                    from_indexes_map.iter().for_each(|(&key, from_indexes)| {
+                        graph.add_node(key);
+                        from_indexes.iter().for_each(|from_key| {
+                            graph.add_edge(from_key, key, ());
                         });
+                    });
                     graph
                 };
 
-                let sorted_layer_indexes: Vec<_> = {
-                    let mut sorted_iter = petgraph::algo::toposort(&graph, None)
-                        .map_err(|cycle| {
-                            format_err!("cycle detected at layer index {:?}", cycle.node_id())
-                        })?
-                        .into_iter();
+                let sorted_node_keys = petgraph::algo::toposort(&graph, None).map_err(|cycle| {
+                    format_err!("cycle detected at layer index {:?}", cycle.node_id())
+                })?;
 
-                    let first = sorted_iter.next();
-                    debug_assert!(
-                        matches!(first, Some(LayerPosition::Input)),
-                        "please report bug"
-                    );
-
-                    sorted_iter
-                        .map(|layer_index| match layer_index {
-                            LayerPosition::Input => unreachable!("please report bug"),
-                            LayerPosition::Absolute(index) => index,
-                        })
-                        .collect()
-                };
-
-                sorted_layer_indexes
+                sorted_node_keys
             };
 
-            let layer_configs_map: IndexMap<_, _> = sorted_layer_indexes
+            let layer_configs_map: IndexMap<NodeKey, _> = sorted_node_keys
                 .iter()
                 .cloned()
-                .map(|layer_index| (layer_index, &layers[layer_index]))
+                .filter_map(|key| Some((key, &layers[key.index()?])))
                 .collect();
 
             // compute shapes
-            let shapes_map: IndexMap<usize, (ShapeList, Shape)> =
-            sorted_layer_indexes.iter().try_fold(
+            let shapes_map: IndexMap<NodeKey, (ShapeList, Shape)> =
+            sorted_node_keys.iter().try_fold(
                 IndexMap::new(),
-                |mut collected, layer_index| -> Result<_> {
+                |mut collected, &key| -> Result<_> {
                     // closures
-                    let hwc_input_shape = |from_indexes: &LayerPositionSet| {
+                    let hwc_input_shape = |from_indexes: &InputKeys| {
                         let shape = match *from_indexes {
-                            LayerPositionSet::Single(LayerPosition::Input) => {
-                                model_input_shape
-                            }
-                            LayerPositionSet::Single(LayerPosition::Absolute(index)) => {
+                            InputKeys::Single(src_key) => {
                                 let (_input_shape, output_shape) =
-                                    collected.get(&index).expect("please report bug");
+                                    collected.get(&src_key).expect("please report bug");
                                 *output_shape
                             }
                             _ => return None,
@@ -187,14 +163,11 @@ mod graph {
                             Shape::Flat(_) => None,
                         }
                     };
-                    let flat_input_shape = |from_indexes: &LayerPositionSet| {
+                    let flat_input_shape = |from_indexes: &InputKeys| {
                         let shape = match *from_indexes {
-                            LayerPositionSet::Single(LayerPosition::Input) => {
-                                model_input_shape
-                            }
-                            LayerPositionSet::Single(LayerPosition::Absolute(index)) => {
+                            InputKeys::Single(src_key) => {
                                 let ( _input_shape, output_shape) =
-                                    collected.get(&index).expect("please report bug");
+                                    collected.get(&src_key).expect("please report bug");
                                 *output_shape
                             }
                             _ => return None,
@@ -204,154 +177,156 @@ mod graph {
                             Shape::Hwc(_) => None,
                         }
                     };
-                    let multiple_hwc_input_shapes = |from_index: &LayerPositionSet| match from_index {
-                        LayerPositionSet::Multiple(indexes) => {
-                            indexes
+                    let multiple_hwc_input_shapes = |from_index: &InputKeys| match from_index {
+                        InputKeys::Multiple(src_keys) => {
+                            src_keys
                                 .iter()
                                 .cloned()
-                                .map(|index| {
-                                    let shape = match index {
-                                        LayerPosition::Input => {
-                                            model_input_shape
-                                        },
-                                        LayerPosition::Absolute(index) => {
-                                            let (_input_shape, output_shape) =
-                                                collected.get(&index).expect("please report bug");
-                                            *output_shape
-                                        },
+                                .map(|src_key| {
+                                    let shape = {
+                                        let (_input_shape, output_shape) =
+                                            collected.get(&src_key).expect("please report bug");
+                                        *output_shape
                                     };
                                     match shape {
                                         Shape::Hwc(hwc) => Some(hwc),
                                         Shape::Flat(_) => None,
                                     }
-                                }).fold(Some(vec![]), |folded, shape| {
-                                    match (folded, shape) {
-                                        (Some(mut folded), Some(shape)) => {
-                                            folded.push(shape);
-                                            Some(folded)
-                                        }
-                                        _ => None
-                                    }
+                                })
+                                .try_fold(vec![], |mut folded, shape| {
+                                    let shape = shape?;
+                                    folded.push(shape);
+                                    Some(folded)
                                 })
                         }
                         _ => None,
                     };
 
-                    let from_index = from_indexes_map.get(layer_index).expect("please report bug");
-                    let layer_config = layer_configs_map.get(layer_index).expect("please report bug");
-
-                    let (input_shape, output_shape) = match layer_config {
-                        LayerConfig::Convolutional(conf) => {
-                            let input_shape = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = conf.output_shape(input_shape);
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                    let (input_shape, output_shape) = match key {
+                        NodeKey::Input => {
+                            (ShapeList::None, model_input_shape)
                         }
-                        LayerConfig::Connected(conf) => {
-                            let input_shape = flat_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = conf.output;
-                            (ShapeList::SingleFlat(input_shape), Shape::Flat(output_shape))
-                        }
-                        LayerConfig::BatchNorm(_conf) => {
-                            let input_shape = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = input_shape;
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
-                        }
-                        LayerConfig::Shortcut(_conf) => {
-                                let input_shapes = multiple_hwc_input_shapes(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
+                        _ => {
+                            let from_index = from_indexes_map.get(&key).expect("please report bug");
+                            let layer_config = layer_configs_map.get(&key).expect("please report bug");
 
-                            // ensure input layers have equal heights and widths
-                            {
-                                let set: HashSet<_> = input_shapes.iter().map(|[h, w, _c]| [h, w]).collect();
-                                ensure!(set.len() == 1, "the input layers must have equal heights and widths");
-                            }
+                            let (input_shape, output_shape) = match layer_config {
+                                LayerConfig::Convolutional(conf) => {
+                                    let input_shape = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = conf.output_shape(input_shape);
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::Connected(conf) => {
+                                    let input_shape = flat_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = conf.output;
+                                    (ShapeList::SingleFlat(input_shape), Shape::Flat(output_shape))
+                                }
+                                LayerConfig::BatchNorm(_conf) => {
+                                    let input_shape = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = input_shape;
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::Shortcut(_conf) => {
+                                    let input_shapes = multiple_hwc_input_shapes(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
 
-                            // copy the shape of first layer as output shape
-                            let output_shape = input_shapes[0];
+                                    // ensure input layers have equal heights and widths
+                                    {
+                                        let set: HashSet<_> = input_shapes.iter().map(|[h, w, _c]| [h, w]).collect();
+                                        ensure!(set.len() == 1, "the input layers must have equal heights and widths");
+                                    }
 
-                            (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
-                        },
-                        LayerConfig::MaxPool(conf) => {
-                            let input_shape = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = conf.output_shape(input_shape);
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
-                        }
-                        LayerConfig::Dropout(_conf) => {
-                            let input_shape = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = input_shape;
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
-                        }
-                        LayerConfig::Softmax(_conf) => {
-                            let input_shape = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = input_shape;
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
-                        }
-                        LayerConfig::Route(conf) => {
-                            let RouteConfig { group, .. } = conf;
+                                    // copy the shape of first layer as output shape
+                                    let output_shape = input_shapes[0];
 
-                            let group_index = group.group_id();
-                            let num_groups = group.num_groups();
+                                    (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
+                                },
+                                LayerConfig::MaxPool(conf) => {
+                                    let input_shape = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = conf.output_shape(input_shape);
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::Dropout(_conf) => {
+                                    let input_shape = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = input_shape;
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::Softmax(_conf) => {
+                                    let input_shape = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = input_shape;
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::Route(conf) => {
+                                    let RouteConfig { group, .. } = conf;
 
-                            let input_shapes = multiple_hwc_input_shapes(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let [out_h, out_w] = {
-                                let set: HashSet<_> = input_shapes.iter().cloned().map(|[h, w, _c]| [h ,w]).collect();
-                                ensure!(set.len() == 1, "output shapes of input layers to a route layer must have the same heights and widths");
-                                set.into_iter().next().unwrap()
+                                    let group_index = group.group_id();
+                                    let num_groups = group.num_groups();
+
+                                    let input_shapes = multiple_hwc_input_shapes(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let [out_h, out_w] = {
+                                        let set: HashSet<_> = input_shapes.iter().cloned().map(|[h, w, _c]| [h ,w]).collect();
+                                        ensure!(set.len() == 1, "output shapes of input layers to a route layer must have the same heights and widths");
+                                        set.into_iter().next().unwrap()
+                                    };
+                                    let out_c: u64 = input_shapes.iter().cloned().try_fold(0, |sum, [_h, _w, c]| {
+                                        ensure!(c % num_groups == 0, "the input channel size must be multiple of groups");
+                                        Ok(sum + c / num_groups)
+                                    })?;
+                                    let output_shape = [out_h, out_w, out_c];
+                                    (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::UpSample(conf) => {
+                                    let input_shape = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let output_shape = conf.output_shape(input_shape);
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::Yolo(conf) => {
+                                    let [in_h, in_w, in_c] = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let YoloConfig {
+                                        classes, anchors, ..
+                                    } = conf;
+
+                                    // [batch, anchor, entry, h, w]
+                                    let num_anchors = anchors.len() as u64;
+                                    ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
+
+                                    let input_shape = [in_h, in_w, in_c];
+                                    let output_shape = input_shape;
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                LayerConfig::GaussianYolo(conf) => {
+                                    let [in_h, in_w, in_c] = hwc_input_shape(from_index)
+                                        .ok_or_else(|| format_err!("invalid shape"))?;
+                                    let GaussianYoloConfig {
+                                        classes, anchors, ..
+                                    } = conf;
+
+                                    // [batch, anchor, entry, h, w]
+                                    let num_anchors = anchors.len() as u64;
+                                    ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
+
+                                    let input_shape = [in_h, in_w, in_c];
+                                    let output_shape = input_shape;
+                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                }
+                                _ => unimplemented!(),
                             };
-                            let out_c: u64 = input_shapes.iter().cloned().try_fold(0, |sum, [_h, _w, c]| {
-                                ensure!(c % num_groups == 0, "the input channel size must be multiple of groups");
-                                Ok(sum + c / num_groups)
-                            })?;
-                            let output_shape = [out_h, out_w, out_c];
-                            (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
-                        }
-                        LayerConfig::UpSample(conf) => {
-                            let input_shape = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let output_shape = conf.output_shape(input_shape);
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
-                        }
-                        LayerConfig::Yolo(conf) => {
-                            let [in_h, in_w, in_c] = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let YoloConfig {
-                                classes, anchors, ..
-                            } = conf;
 
-                            // [batch, anchor, entry, h, w]
-                            let num_anchors = anchors.len() as u64;
-                            ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
-
-                            let input_shape = [in_h, in_w, in_c];
-                            let output_shape = input_shape;
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                            (input_shape, output_shape)
                         }
-                        LayerConfig::GaussianYolo(conf) => {
-                            let [in_h, in_w, in_c] = hwc_input_shape(from_index)
-                                .ok_or_else(|| format_err!("invalid shape"))?;
-                            let GaussianYoloConfig {
-                                classes, anchors, ..
-                            } = conf;
-
-                            // [batch, anchor, entry, h, w]
-                            let num_anchors = anchors.len() as u64;
-                            ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
-
-                            let input_shape = [in_h, in_w, in_c];
-                            let output_shape = input_shape;
-                            (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
-                        }
-                        _ => unimplemented!(),
                     };
 
-                    collected.insert(*layer_index, (input_shape, output_shape));
+
+                    collected.insert(key, (input_shape, output_shape));
 
                     Ok(collected)
                 },
@@ -363,138 +338,148 @@ mod graph {
                 let mut layer_configs_map = layer_configs_map;
                 let mut shapes_map = shapes_map;
 
-                sorted_layer_indexes
+                sorted_node_keys
                     .into_iter()
-                    .map(|layer_index| -> Result<_> {
-                        let from_indexes = from_indexes_map.remove(&layer_index).unwrap();
-                        let (input_shape, output_shape) = shapes_map.remove(&layer_index).unwrap();
-                        let layer_config = layer_configs_map.remove(&layer_index).unwrap().clone();
-
-                        let layer = match layer_config {
-                            LayerConfig::Connected(conf) => {
-                                let input_shape = input_shape.single_flat().unwrap();
-                                let output_shape = output_shape.flat().unwrap();
-
-                                Node::Connected(ConnectedNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    input_shape,
-                                    output_shape,
-                                })
+                    .map(|key| -> Result<_> {
+                        let node = match key {
+                            NodeKey::Input => {
+                                let (_input_shape, output_shape) = shapes_map.remove(&key).unwrap();
+                                Node::Input(InputNode { output_shape })
                             }
-                            LayerConfig::Convolutional(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
+                            _ => {
+                                let from_indexes = from_indexes_map.remove(&key).unwrap();
+                                let (input_shape, output_shape) = shapes_map.remove(&key).unwrap();
+                                let layer_config = layer_configs_map.remove(&key).unwrap().clone();
 
-                                Node::Convolutional(ConvolutionalNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    input_shape,
-                                    output_shape,
-                                })
-                            }
-                            LayerConfig::Route(conf) => {
-                                let input_shape = input_shape.multiple_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
+                                let node = match layer_config {
+                                    LayerConfig::Connected(conf) => {
+                                        let input_shape = input_shape.single_flat().unwrap();
+                                        let output_shape = output_shape.flat().unwrap();
 
-                                Node::Route(RouteNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.multiple().unwrap(),
-                                    input_shape,
-                                    output_shape,
-                                })
-                            }
-                            LayerConfig::Shortcut(conf) => {
-                                let input_shape = input_shape.multiple_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
+                                        Node::Connected(ConnectedNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            input_shape,
+                                            output_shape,
+                                        })
+                                    }
+                                    LayerConfig::Convolutional(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
 
-                                Node::Shortcut(ShortcutNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.multiple().unwrap(),
-                                    input_shape,
-                                    output_shape,
-                                })
-                            }
-                            LayerConfig::MaxPool(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
-                                Node::MaxPool(MaxPoolNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    input_shape,
-                                    output_shape,
-                                })
-                            }
-                            LayerConfig::UpSample(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
+                                        Node::Convolutional(ConvolutionalNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            input_shape,
+                                            output_shape,
+                                        })
+                                    }
+                                    LayerConfig::Route(conf) => {
+                                        let input_shape = input_shape.multiple_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
 
-                                Node::UpSample(UpSampleNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    input_shape,
-                                    output_shape,
-                                })
-                            }
-                            LayerConfig::BatchNorm(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
-                                debug_assert_eq!(input_shape, output_shape);
+                                        Node::Route(RouteNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.multiple().unwrap(),
+                                            input_shape,
+                                            output_shape,
+                                        })
+                                    }
+                                    LayerConfig::Shortcut(conf) => {
+                                        let input_shape = input_shape.multiple_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
 
-                                Node::BatchNorm(BatchNormNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    inout_shape: input_shape,
-                                })
-                            }
-                            LayerConfig::Dropout(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
-                                debug_assert_eq!(input_shape, output_shape);
+                                        Node::Shortcut(ShortcutNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.multiple().unwrap(),
+                                            input_shape,
+                                            output_shape,
+                                        })
+                                    }
+                                    LayerConfig::MaxPool(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
+                                        Node::MaxPool(MaxPoolNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            input_shape,
+                                            output_shape,
+                                        })
+                                    }
+                                    LayerConfig::UpSample(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
 
-                                Node::Dropout(DropoutNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    inout_shape: input_shape,
-                                })
-                            }
-                            LayerConfig::Softmax(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
-                                debug_assert_eq!(input_shape, output_shape);
+                                        Node::UpSample(UpSampleNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            input_shape,
+                                            output_shape,
+                                        })
+                                    }
+                                    LayerConfig::BatchNorm(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
+                                        debug_assert_eq!(input_shape, output_shape);
 
-                                Node::Softmax(SoftmaxNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    inout_shape: input_shape,
-                                })
-                            }
-                            LayerConfig::Yolo(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
-                                debug_assert_eq!(input_shape, output_shape);
+                                        Node::BatchNorm(BatchNormNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            inout_shape: input_shape,
+                                        })
+                                    }
+                                    LayerConfig::Dropout(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
+                                        debug_assert_eq!(input_shape, output_shape);
 
-                                Node::Yolo(YoloNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    inout_shape: input_shape,
-                                })
-                            }
-                            LayerConfig::GaussianYolo(conf) => {
-                                let input_shape = input_shape.single_hwc().unwrap();
-                                let output_shape = output_shape.hwc().unwrap();
-                                debug_assert_eq!(input_shape, output_shape);
+                                        Node::Dropout(DropoutNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            inout_shape: input_shape,
+                                        })
+                                    }
+                                    LayerConfig::Softmax(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
+                                        debug_assert_eq!(input_shape, output_shape);
 
-                                Node::GaussianYolo(GaussianYoloNode {
-                                    config: conf,
-                                    from_indexes: from_indexes.single().unwrap(),
-                                    inout_shape: input_shape,
-                                })
+                                        Node::Softmax(SoftmaxNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            inout_shape: input_shape,
+                                        })
+                                    }
+                                    LayerConfig::Yolo(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
+                                        debug_assert_eq!(input_shape, output_shape);
+
+                                        Node::Yolo(YoloNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            inout_shape: input_shape,
+                                        })
+                                    }
+                                    LayerConfig::GaussianYolo(conf) => {
+                                        let input_shape = input_shape.single_hwc().unwrap();
+                                        let output_shape = output_shape.hwc().unwrap();
+                                        debug_assert_eq!(input_shape, output_shape);
+
+                                        Node::GaussianYolo(GaussianYoloNode {
+                                            config: conf,
+                                            from_indexes: from_indexes.single().unwrap(),
+                                            inout_shape: input_shape,
+                                        })
+                                    }
+                                    _ => unimplemented!(),
+                                };
+
+                                node
                             }
-                            _ => unimplemented!(),
                         };
 
-                        Ok((layer_index, layer))
+                        Ok((key, node))
                     })
                     .try_collect()?
             };
@@ -503,24 +488,6 @@ mod graph {
             let net = config.net.clone();
             let seen = 0;
             let cur_iteration = 0;
-
-            // print layer params for debugging
-            #[cfg(debug_assertions)]
-            {
-                let num_layers = layers.len();
-                (0..num_layers).for_each(|layer_index| {
-                    let layer = &layers[&layer_index];
-                    let kind = layer.as_ref();
-
-                    debug!(
-                        "{}\t{}\t{:?}\t{:?}",
-                        layer_index,
-                        kind,
-                        layer.input_shape(),
-                        layer.output_shape()
-                    );
-                });
-            }
 
             Ok(Self {
                 seen,
@@ -532,73 +499,82 @@ mod graph {
     }
 }
 
-// layer position
+// node key
 
-mod layer_position {
+mod node_key {
     use super::*;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum LayerPosition {
+    pub enum NodeKey {
         Input,
-        Absolute(usize),
+        Index(usize),
     }
 
-    impl Display for LayerPosition {
+    impl NodeKey {
+        pub fn index(&self) -> Option<usize> {
+            match *self {
+                Self::Input => None,
+                Self::Index(index) => Some(index),
+            }
+        }
+    }
+
+    impl Display for NodeKey {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Input => write!(f, "input"),
-                Self::Absolute(index) => write!(f, "{}", index),
+                Self::Index(index) => write!(f, "{}", index),
             }
         }
     }
 
-    impl PartialOrd for LayerPosition {
+    impl PartialOrd for NodeKey {
         fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
             match (self, rhs) {
                 (Self::Input, Self::Input) => Some(Ordering::Equal),
-                (Self::Input, Self::Absolute(_)) => Some(Ordering::Less),
-                (Self::Absolute(_), Self::Input) => Some(Ordering::Greater),
-                (Self::Absolute(lindex), Self::Absolute(rindex)) => lindex.partial_cmp(rindex),
+                (Self::Input, Self::Index(_)) => Some(Ordering::Less),
+                (Self::Index(_), Self::Input) => Some(Ordering::Greater),
+                (Self::Index(lindex), Self::Index(rindex)) => lindex.partial_cmp(rindex),
             }
         }
     }
 
-    impl Ord for LayerPosition {
+    impl Ord for NodeKey {
         fn cmp(&self, rhs: &Self) -> Ordering {
             match (self, rhs) {
                 (Self::Input, Self::Input) => Ordering::Equal,
-                (Self::Input, Self::Absolute(_)) => Ordering::Less,
-                (Self::Absolute(_), Self::Input) => Ordering::Greater,
-                (Self::Absolute(lindex), Self::Absolute(rindex)) => lindex.cmp(rindex),
+                (Self::Input, Self::Index(_)) => Ordering::Less,
+                (Self::Index(_), Self::Input) => Ordering::Greater,
+                (Self::Index(lindex), Self::Index(rindex)) => lindex.cmp(rindex),
             }
         }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub enum LayerPositionSet {
-        Empty,
-        Single(LayerPosition),
-        Multiple(IndexSet<LayerPosition>),
+    pub enum InputKeys {
+        None,
+        Single(NodeKey),
+        Multiple(IndexSet<NodeKey>),
     }
 
-    impl LayerPositionSet {
-        pub fn iter(&self) -> impl Iterator<Item = LayerPosition> {
-            let index_iter: Box<dyn Iterator<Item = LayerPosition>> = match *self {
-                Self::Empty => Box::new(iter::empty()),
+    impl InputKeys {
+        pub fn iter(&self) -> impl Iterator<Item = NodeKey> {
+            let index_iter: Box<dyn Iterator<Item = NodeKey>> = match *self {
+                Self::None => Box::new(iter::empty()),
                 Self::Single(index) => Box::new(iter::once(index)),
                 Self::Multiple(ref indexes) => Box::new(indexes.clone().into_iter()),
             };
             index_iter
         }
 
-        pub fn single(&self) -> Option<LayerPosition> {
+        pub fn single(&self) -> Option<NodeKey> {
             match *self {
                 Self::Single(index) => Some(index),
                 _ => None,
             }
         }
 
-        pub fn multiple(&self) -> Option<IndexSet<LayerPosition>> {
+        pub fn multiple(&self) -> Option<IndexSet<NodeKey>> {
             match self {
                 Self::Multiple(indexes) => Some(indexes.clone()),
                 _ => None,
@@ -606,10 +582,10 @@ mod layer_position {
         }
     }
 
-    impl Display for LayerPositionSet {
+    impl Display for InputKeys {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Self::Empty => write!(f, "empty"),
+                Self::None => write!(f, "none"),
                 Self::Single(index) => write!(f, "{}", index),
                 Self::Multiple(indexes) => f
                     .debug_list()
@@ -627,12 +603,20 @@ mod shape {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ShapeList {
+        None,
         SingleFlat(u64),
         SingleHwc([u64; 3]),
         MultipleHwc(Vec<[u64; 3]>),
     }
 
     impl ShapeList {
+        pub fn is_none(&self) -> bool {
+            match self {
+                Self::None => true,
+                _ => false,
+            }
+        }
+
         pub fn single_flat(&self) -> Option<u64> {
             match *self {
                 Self::SingleFlat(size) => Some(size),
@@ -658,7 +642,8 @@ mod shape {
     impl Display for ShapeList {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Self::SingleFlat(size) => write!(f, "{}", size),
+                Self::None => write!(f, "[none]"),
+                Self::SingleFlat(size) => write!(f, "[{}]", size),
                 Self::SingleHwc([h, w, c]) => f.debug_list().entries(vec![h, w, c]).finish(),
                 Self::MultipleHwc(shapes) => write!(f, "{:?}", shapes),
             }
@@ -673,6 +658,7 @@ mod node {
 
     #[derive(Debug, Clone, AsRefStr)]
     pub enum Node {
+        Input(InputNode),
         Connected(ConnectedNode),
         Convolutional(ConvolutionalNode),
         Route(RouteNode),
@@ -689,6 +675,7 @@ mod node {
     impl Node {
         pub fn input_shape(&self) -> ShapeList {
             match self {
+                Self::Input(layer) => ShapeList::None,
                 Self::Connected(layer) => ShapeList::SingleFlat(layer.input_shape),
                 Self::Convolutional(layer) => ShapeList::SingleHwc(layer.input_shape),
                 Self::Route(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),
@@ -705,6 +692,7 @@ mod node {
 
         pub fn output_shape(&self) -> Shape {
             match self {
+                Self::Input(layer) => layer.output_shape.to_owned(),
                 Self::Connected(layer) => Shape::Flat(layer.output_shape),
                 Self::Convolutional(layer) => Shape::Hwc(layer.output_shape),
                 Self::Route(layer) => Shape::Hwc(layer.output_shape),
@@ -719,19 +707,20 @@ mod node {
             }
         }
 
-        pub fn from_indexes(&self) -> LayerPositionSet {
+        pub fn from_indexes(&self) -> InputKeys {
             match self {
-                Self::Connected(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Convolutional(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Route(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
-                Self::Shortcut(layer) => LayerPositionSet::Multiple(layer.from_indexes.clone()),
-                Self::MaxPool(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::UpSample(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::BatchNorm(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Dropout(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Softmax(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::Yolo(layer) => LayerPositionSet::Single(layer.from_indexes),
-                Self::GaussianYolo(layer) => LayerPositionSet::Single(layer.from_indexes),
+                Self::Input(_layer) => InputKeys::None,
+                Self::Connected(layer) => InputKeys::Single(layer.from_indexes),
+                Self::Convolutional(layer) => InputKeys::Single(layer.from_indexes),
+                Self::Route(layer) => InputKeys::Multiple(layer.from_indexes.clone()),
+                Self::Shortcut(layer) => InputKeys::Multiple(layer.from_indexes.clone()),
+                Self::MaxPool(layer) => InputKeys::Single(layer.from_indexes),
+                Self::UpSample(layer) => InputKeys::Single(layer.from_indexes),
+                Self::BatchNorm(layer) => InputKeys::Single(layer.from_indexes),
+                Self::Dropout(layer) => InputKeys::Single(layer.from_indexes),
+                Self::Softmax(layer) => InputKeys::Single(layer.from_indexes),
+                Self::Yolo(layer) => InputKeys::Single(layer.from_indexes),
+                Self::GaussianYolo(layer) => InputKeys::Single(layer.from_indexes),
             }
         }
     }
@@ -759,52 +748,40 @@ mod node {
         };
     }
 
-    declare_layer_base_inout_shape!(ConnectedNode, ConnectedConfig, LayerPosition, u64, u64);
+    #[derive(Debug, Clone)]
+    pub struct InputNode {
+        pub output_shape: Shape,
+    }
+
+    declare_layer_base_inout_shape!(ConnectedNode, ConnectedConfig, NodeKey, u64, u64);
     declare_layer_base_inout_shape!(
         ConvolutionalNode,
         ConvolutionalConfig,
-        LayerPosition,
+        NodeKey,
         [u64; 3],
         [u64; 3]
     );
     declare_layer_base_inout_shape!(
         RouteNode,
         RouteConfig,
-        IndexSet<LayerPosition>,
+        IndexSet<NodeKey>,
         Vec<[u64; 3]>,
         [u64; 3]
     );
     declare_layer_base_inout_shape!(
         ShortcutNode,
         ShortcutConfig,
-        IndexSet<LayerPosition>,
+        IndexSet<NodeKey>,
         Vec<[u64; 3]>,
         [u64; 3]
     );
-    declare_layer_base_inout_shape!(
-        MaxPoolNode,
-        MaxPoolConfig,
-        LayerPosition,
-        [u64; 3],
-        [u64; 3]
-    );
-    declare_layer_base_inout_shape!(
-        UpSampleNode,
-        UpSampleConfig,
-        LayerPosition,
-        [u64; 3],
-        [u64; 3]
-    );
-    declare_layer_base_single_shape!(YoloNode, YoloConfig, LayerPosition, [u64; 3]);
-    declare_layer_base_single_shape!(
-        GaussianYoloNode,
-        GaussianYoloConfig,
-        LayerPosition,
-        [u64; 3]
-    );
-    declare_layer_base_single_shape!(BatchNormNode, BatchNormConfig, LayerPosition, [u64; 3]);
-    declare_layer_base_single_shape!(DropoutNode, DropoutConfig, LayerPosition, [u64; 3]);
-    declare_layer_base_single_shape!(SoftmaxNode, SoftmaxConfig, LayerPosition, [u64; 3]);
+    declare_layer_base_inout_shape!(MaxPoolNode, MaxPoolConfig, NodeKey, [u64; 3], [u64; 3]);
+    declare_layer_base_inout_shape!(UpSampleNode, UpSampleConfig, NodeKey, [u64; 3], [u64; 3]);
+    declare_layer_base_single_shape!(YoloNode, YoloConfig, NodeKey, [u64; 3]);
+    declare_layer_base_single_shape!(GaussianYoloNode, GaussianYoloConfig, NodeKey, [u64; 3]);
+    declare_layer_base_single_shape!(BatchNormNode, BatchNormConfig, NodeKey, [u64; 3]);
+    declare_layer_base_single_shape!(DropoutNode, DropoutConfig, NodeKey, [u64; 3]);
+    declare_layer_base_single_shape!(SoftmaxNode, SoftmaxConfig, NodeKey, [u64; 3]);
 
     impl From<ConnectedNode> for Node {
         fn from(from: ConnectedNode) -> Self {
@@ -869,61 +846,53 @@ mod graphviz {
         }
     }
 
-    // `None` for input mode, Some(index) for layer at that index
+    // `None` for input node, Some(index) for layer at that index
 
-    impl<'a> GraphWalk<'a, Option<usize>, (Option<usize>, Option<usize>)> for Graph {
-        fn nodes(&'a self) -> Nodes<'a, Option<usize>> {
-            let layer_indexes: Vec<_> = iter::once(None)
-                .chain(self.layers.keys().cloned().map(Some))
-                .collect();
-            layer_indexes.into()
+    impl<'a> GraphWalk<'a, NodeKey, (NodeKey, NodeKey)> for Graph {
+        fn nodes(&'a self) -> Nodes<'a, NodeKey> {
+            self.layers.keys().cloned().collect_vec().into()
         }
 
-        fn edges(&'a self) -> Edges<'a, (Option<usize>, Option<usize>)> {
-            let edges: Vec<_> = self
-                .layers
+        fn edges(&'a self) -> Edges<'a, (NodeKey, NodeKey)> {
+            self.layers
                 .iter()
-                .flat_map(|(&layer_index, layer)| {
+                .flat_map(|(&key, layer)| {
                     layer
                         .from_indexes()
                         .iter()
-                        .map(|from_index| match from_index {
-                            LayerPosition::Input => None,
-                            LayerPosition::Absolute(index) => Some(index),
-                        })
-                        .map(move |from_index| (from_index, Some(layer_index)))
+                        .map(move |from_index| (from_index, key))
                 })
-                .collect();
-            edges.into()
+                .collect_vec()
+                .into()
         }
 
-        fn source(&'a self, edge: &(Option<usize>, Option<usize>)) -> Option<usize> {
+        fn source(&'a self, edge: &(NodeKey, NodeKey)) -> NodeKey {
             let (src, _dst) = *edge;
             src
         }
 
-        fn target(&'a self, edge: &(Option<usize>, Option<usize>)) -> Option<usize> {
+        fn target(&'a self, edge: &(NodeKey, NodeKey)) -> NodeKey {
             let (_src, dst) = *edge;
             dst
         }
     }
 
-    impl<'a> Labeller<'a, Option<usize>, (Option<usize>, Option<usize>)> for Graph {
+    impl<'a> Labeller<'a, NodeKey, (NodeKey, NodeKey)> for Graph {
         fn graph_id(&'a self) -> Id<'a> {
             Id::new("darknet").unwrap()
         }
 
-        fn node_id(&'a self, node: &Option<usize>) -> Id<'a> {
-            match *node {
-                Some(layer_index) => Id::new(format!("layer_{}", layer_index)).unwrap(),
-                None => Id::new("input").unwrap(),
+        fn node_id(&'a self, &key: &NodeKey) -> Id<'a> {
+            match key {
+                NodeKey::Input => Id::new("input").unwrap(),
+                NodeKey::Index(layer_index) => Id::new(format!("layer_{}", layer_index)).unwrap(),
             }
         }
 
-        fn node_shape(&'a self, node: &Option<usize>) -> Option<LabelText<'a>> {
-            match node {
-                None => Some(LabelText::label("box")),
-                Some(layer_index) => match self.layers[layer_index] {
+        fn node_shape(&'a self, &key: &NodeKey) -> Option<LabelText<'a>> {
+            match key {
+                NodeKey::Input => Some(LabelText::label("box")),
+                _ => match self.layers[&key] {
                     Node::Yolo(_) | Node::GaussianYolo(_) => Some(LabelText::label("box")),
                     Node::Shortcut(_) => Some(LabelText::label("invtrapezium")),
                     Node::Route(_) => Some(LabelText::label("invhouse")),
@@ -932,9 +901,16 @@ mod graphviz {
             }
         }
 
-        fn node_label(&'a self, node: &Option<usize>) -> LabelText<'a> {
-            match *node {
-                Some(layer_index) => {
+        fn node_label(&'a self, &key: &NodeKey) -> LabelText<'a> {
+            match key {
+                NodeKey::Input => {
+                    let shape = self.net.input_size.to_vec();
+                    LabelText::escaped(format!(
+                        r"input\n{}",
+                        dot::escape_html(&format!("{:?}", shape))
+                    ))
+                }
+                NodeKey::Index(layer_index) => {
                     let output_shape = self.layers[layer_index].output_shape().to_vec();
 
                     match &self.layers[layer_index] {
@@ -1036,24 +1012,17 @@ mod graphviz {
                         )),
                     }
                 }
-                None => {
-                    let shape = self.net.input_size.to_vec();
-                    LabelText::escaped(format!(
-                        r"input\n{}",
-                        dot::escape_html(&format!("{:?}", shape))
-                    ))
-                }
             }
         }
 
-        fn node_style(&'a self, _node: &Option<usize>) -> Style {
+        fn node_style(&'a self, _node: &NodeKey) -> Style {
             Style::None
         }
 
-        fn node_color(&'a self, node: &Option<usize>) -> Option<LabelText<'a>> {
-            match node {
-                None => Some(LabelText::label("black")),
-                Some(layer_index) => match self.layers[layer_index] {
+        fn node_color(&'a self, &key: &NodeKey) -> Option<LabelText<'a>> {
+            match key {
+                NodeKey::Input => Some(LabelText::label("black")),
+                _ => match self.layers[&key] {
                     Node::Yolo(_) | Node::GaussianYolo(_) => Some(LabelText::label("orange")),
                     Node::Convolutional(_) => Some(LabelText::label("blue")),
                     Node::MaxPool(_) => Some(LabelText::label("green")),
@@ -1064,10 +1033,12 @@ mod graphviz {
             }
         }
 
-        fn edge_label(&'a self, edge: &(Option<usize>, Option<usize>)) -> LabelText<'a> {
-            match *edge {
-                (None, Some(to_index)) => LabelText::label(format!("input -> {}", to_index)),
-                (Some(from_index), Some(to_index)) => {
+        fn edge_label(&'a self, &edge: &(NodeKey, NodeKey)) -> LabelText<'a> {
+            match edge {
+                (NodeKey::Input, NodeKey::Index(to_index)) => {
+                    LabelText::label(format!("input -> {}", to_index))
+                }
+                (NodeKey::Index(from_index), NodeKey::Index(to_index)) => {
                     let shape = self.layers[from_index].output_shape().to_vec();
                     LabelText::escaped(format!(
                         r"{} -> {}\n{}",
@@ -1080,19 +1051,19 @@ mod graphviz {
             }
         }
 
-        fn edge_start_arrow(&'a self, _edge: &(Option<usize>, Option<usize>)) -> Arrow {
+        fn edge_start_arrow(&'a self, _edge: &(NodeKey, NodeKey)) -> Arrow {
             Arrow::none()
         }
 
-        fn edge_end_arrow(&'a self, _edge: &(Option<usize>, Option<usize>)) -> Arrow {
+        fn edge_end_arrow(&'a self, _edge: &(NodeKey, NodeKey)) -> Arrow {
             Arrow::normal()
         }
 
-        fn edge_style(&'a self, _node: &(Option<usize>, Option<usize>)) -> Style {
+        fn edge_style(&'a self, _node: &(NodeKey, NodeKey)) -> Style {
             Style::None
         }
 
-        fn edge_color(&'a self, _node: &(Option<usize>, Option<usize>)) -> Option<LabelText<'a>> {
+        fn edge_color(&'a self, _node: &(NodeKey, NodeKey)) -> Option<LabelText<'a>> {
             None
         }
 
