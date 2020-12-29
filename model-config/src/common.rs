@@ -16,12 +16,14 @@ pub use std::{
     fmt::{self, Debug, Display, Formatter},
     fs,
     hash::{Hash, Hasher},
+    io::prelude::*,
     iter::{self, FromIterator},
     ops::{Add, Deref, Div, Mul, Sub},
     path::{Path, PathBuf},
     str::FromStr,
     string::ToString,
 };
+pub use strum::AsRefStr;
 pub use unzip_n::unzip_n;
 
 unzip_n!(pub 2);

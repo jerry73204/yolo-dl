@@ -334,7 +334,15 @@ mod shape {
                     list.entry(&value);
                 }
                 None => {
-                    list.entry(&'_');
+                    struct PlaceHolder;
+
+                    impl Debug for PlaceHolder {
+                        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                            f.write_str("_")
+                        }
+                    }
+
+                    list.entry(&PlaceHolder);
                 }
             });
             list.finish()

@@ -299,7 +299,7 @@ mod module {
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape>;
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, AsRefStr, Serialize, Deserialize)]
     #[serde(tag = "kind")]
     pub enum Module {
         Input(Input),

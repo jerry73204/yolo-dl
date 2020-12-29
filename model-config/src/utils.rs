@@ -1,6 +1,7 @@
 use crate::common::*;
 
 pub use iterator_ex::*;
+pub use option_ex::*;
 
 pub fn hash_vec_indexset<T, H>(set: &IndexSet<T>, state: &mut H)
 where
@@ -31,6 +32,40 @@ pub fn empty_index_set<T>() -> IndexSet<T> {
 
 pub fn empty_index_map<K, V>() -> IndexMap<K, V> {
     IndexMap::new()
+}
+
+mod option_ex {
+    use super::*;
+
+    pub trait OptionEx<T> {
+        fn display(&self) -> OptionDisplay<'_, T>
+        where
+            T: Display;
+    }
+
+    impl<T> OptionEx<T> for Option<T> {
+        fn display(&self) -> OptionDisplay<'_, T>
+        where
+            T: Display,
+        {
+            OptionDisplay(self.as_ref())
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct OptionDisplay<'a, T>(Option<&'a T>);
+
+    impl<T> Display for OptionDisplay<'_, T>
+    where
+        T: Display,
+    {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            if let Self(Some(item)) = self {
+                Display::fmt(item, f)?;
+            }
+            Ok(())
+        }
+    }
 }
 
 mod iterator_ex {
