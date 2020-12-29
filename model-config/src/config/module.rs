@@ -1,6 +1,6 @@
 use super::{
     group::GroupName,
-    misc::{Activation, Shape, Size},
+    misc::{Activation, Dim, Shape, Size},
 };
 use crate::{common::*, utils};
 
@@ -15,7 +15,6 @@ pub use detect_2d::*;
 pub use group_ref::*;
 pub use input::*;
 pub use input_path::*;
-pub use merge_detect_2d::*;
 pub use module::*;
 pub use module_input::*;
 pub use module_name::*;
@@ -74,15 +73,6 @@ mod module_input {
             Self::Named(from)
         }
     }
-
-    // impl<'a> FromIterator<&'a ModulePath> for ModuleInput<'a> {
-    //     fn from_iter<T>(iter: T) -> Self
-    //     where
-    //         T: IntoIterator<Item = &'a ModulePath>,
-    //     {
-    //         Self::Multi(Vec::from_iter(iter))
-    //     }
-    // }
 }
 
 mod shape_input {
@@ -94,10 +84,6 @@ mod shape_input {
         None,
         Single(&'a Shape),
         Indexed(&'a [&'a Shape]),
-        /* Named(
-         *     #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, Shape, _>"))]
-         *     &'a IndexMap<ModuleName, Shape>,
-         * ), */
     }
 
     impl ShapeInput<'_> {
@@ -121,13 +107,6 @@ mod shape_input {
                 _ => None,
             }
         }
-
-        // pub fn named(&self) -> Option<&[Shape]> {
-        //     match self {
-        //         Self::Named(shape) => Some(shape),
-        //         _ => None,
-        //     }
-        // }
     }
 
     impl<'a> From<&'a Shape> for ShapeInput<'a> {
@@ -141,12 +120,6 @@ mod shape_input {
             Self::Indexed(from)
         }
     }
-
-    // impl<'a> From<&'a IndexMap<ModuleName, Shape>> for ShapeInput<'a> {
-    //     fn from(from: &'a IndexMap<ModuleName, Shape>) -> Self {
-    //         Self::Named(from)
-    //     }
-    // }
 }
 
 mod input_path {
@@ -217,14 +190,6 @@ mod input_path {
         }
     }
 
-    // impl TryFrom<&str> for ModulePath {
-    //     type Error = Error;
-
-    //     fn try_from(name: &str) -> Result<Self, Self::Error> {
-    //         Self::from_str(name)
-    //     }
-    // }
-
     impl Display for ModulePath {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             let text = self.0.iter().map(AsRef::as_ref).join(".");
@@ -294,14 +259,6 @@ mod module_name {
         }
     }
 
-    // impl TryFrom<&str> for ModuleName {
-    //     type Error = Error;
-
-    //     fn try_from(name: &str) -> Result<Self, Self::Error> {
-    //         Self::new(name)
-    //     }
-    // }
-
     impl Borrow<str> for ModuleName {
         fn borrow(&self) -> &str {
             self.0.as_ref()
@@ -357,7 +314,6 @@ mod module {
         Concat2D(Concat2D),
         Sum2D(Sum2D),
         Detect2D(Detect2D),
-        MergeDetect2D(MergeDetect2D),
         GroupRef(GroupRef),
     }
 
@@ -372,7 +328,6 @@ mod module {
                 Module::Concat2D(layer) => layer.name(),
                 Module::Sum2D(layer) => layer.name(),
                 Module::Detect2D(layer) => layer.name(),
-                Module::MergeDetect2D(layer) => layer.name(),
                 Module::GroupRef(layer) => layer.name(),
             }
         }
@@ -387,7 +342,6 @@ mod module {
                 Module::Concat2D(layer) => layer.input_paths(),
                 Module::Sum2D(layer) => layer.input_paths(),
                 Module::Detect2D(layer) => layer.input_paths(),
-                Module::MergeDetect2D(layer) => layer.input_paths(),
                 Module::GroupRef(layer) => layer.input_paths(),
             }
         }
@@ -402,7 +356,6 @@ mod module {
                 Module::Concat2D(layer) => layer.output_shape(input_shape),
                 Module::Sum2D(layer) => layer.output_shape(input_shape),
                 Module::Detect2D(layer) => layer.output_shape(input_shape),
-                Module::MergeDetect2D(layer) => layer.output_shape(input_shape),
                 Module::GroupRef(layer) => layer.output_shape(input_shape),
             }
         }
@@ -564,8 +517,25 @@ mod conv_bn_2d_block {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            let in_shape = input_shape.single();
-            todo!();
+            let Self {
+                c: out_c,
+                k,
+                s,
+                p,
+                d,
+                ..
+            } = *self;
+
+            let [in_b, _in_c, in_h, in_w] = match input_shape.single()?.as_ref() {
+                &[b, c, h, w] => [b, c, h, w],
+                _ => return None,
+            };
+
+            let out_h = (in_h + 2 * p - d * (k - 1) - 1) / s + 1;
+            let out_w = (in_w + 2 * p - d * (k - 1) - 1) / s + 1;
+            let output_shape: Shape = vec![in_b, out_c.into(), out_h, out_w].into();
+
+            Some(output_shape)
         }
     }
 
@@ -589,37 +559,6 @@ mod conv_bn_2d_block {
         true
     }
 }
-
-// mod bottleneck {
-//     use super::*;
-
-//     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-//     pub struct Bottleneck {
-//         pub from: Option<ModulePath>,
-//         pub c: usize,
-//         pub shortcut: bool,
-//         pub g: usize,
-//         pub expansion: R64,
-//     }
-
-//     impl Bottleneck {
-//         pub fn new(from: Option<ModulePath>, c: usize) -> Self {
-//             Self {
-//                 from,
-//                 c,
-//                 shortcut: true,
-//                 g: 1,
-//                 expansion: r64(0.5),
-//             }
-//         }
-//     }
-
-//     impl ModuleEx for Bottleneck {
-//         fn input_paths(&self) -> Vec<&ModulePath> {
-//             self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
-//         }
-//     }
-// }
 
 mod dark_csp_2d {
     use super::*;
@@ -664,8 +603,12 @@ mod dark_csp_2d {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            let in_shape = input_shape.single();
-            todo!();
+            let Self { c: out_c, .. } = *self;
+
+            match input_shape.single()?.as_ref() {
+                &[b, _c, h, w] => Some(vec![b, out_c.into(), h, w].into()),
+                _ => None,
+            }
         }
     }
 
@@ -698,11 +641,6 @@ mod spp_csp_2d {
                 k: vec![1, 5, 9, 13],
             }
         }
-
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            let in_shape = input_shape.single();
-            todo!();
-        }
     }
 
     impl ModuleEx for SppCsp2D {
@@ -715,34 +653,15 @@ mod spp_csp_2d {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            let in_shape = input_shape.single();
-            todo!();
+            let Self { c: out_c, .. } = *self;
+
+            match input_shape.single()?.as_ref() {
+                &[b, _c, h, w] => Some(vec![b, out_c.into(), h, w].into()),
+                _ => None,
+            }
         }
     }
 }
-
-// mod focus {
-//     use super::*;
-
-//     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-//     pub struct Focus {
-//         pub from: Option<ModulePath>,
-//         pub c: usize,
-//         pub k: usize,
-//     }
-
-//     impl Focus {
-//         pub fn new(from: Option<ModulePath>, c: usize) -> Self {
-//             Self { from, c, k: 1 }
-//         }
-//     }
-
-//     impl ModuleEx for Focus {
-//         fn input_paths(&self) -> Vec<&ModulePath> {
-//             self.from.as_ref().map(|path| vec![path]).unwrap_or(vec![])
-//         }
-//     }
-// }
 
 mod detect_2d {
     use super::*;
@@ -765,32 +684,24 @@ mod detect_2d {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            let in_shape = input_shape.single();
-            todo!();
-        }
-    }
-}
+            let Self {
+                classes,
+                ref anchors,
+                ..
+            } = *self;
+            let input_shape = input_shape.single()?;
 
-mod merge_detect_2d {
-    use super::*;
-
-    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct MergeDetect2D {
-        pub name: Option<ModuleName>,
-        pub from: Vec<ModulePath>,
-    }
-
-    impl ModuleEx for MergeDetect2D {
-        fn name(&self) -> Option<&ModuleName> {
-            self.name.as_ref()
-        }
-
-        fn input_paths(&self) -> ModuleInput<'_> {
-            self.from.as_slice().into()
-        }
-
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            todo!();
+            match input_shape.as_ref() {
+                &[_b, Dim::Size(c), _h, _w] => {
+                    let expect_c = anchors.len() * (1 + 4 + classes);
+                    if c == expect_c {
+                        Some(input_shape.to_owned())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
         }
     }
 }
@@ -815,7 +726,16 @@ mod up_sample_2d {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            todo!();
+            let Self { scale, .. } = *self;
+
+            match input_shape.single()?.as_ref() {
+                &[b, c, h, w] => {
+                    let out_h = h.scale_r64(scale);
+                    let out_w = w.scale_r64(scale);
+                    Some(vec![b, c, out_h, out_w].into())
+                }
+                _ => None,
+            }
         }
     }
 }
@@ -839,7 +759,35 @@ mod concat_2d {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            todo!();
+            let Self { from, .. } = self;
+            let input_shapes = input_shape.indexed()?;
+
+            if input_shapes.len() != from.len() {
+                return None;
+            }
+
+            let acc = match input_shapes[0].as_ref() {
+                &[b, c, h, w] => [b, c, h, w],
+                _ => return None,
+            };
+
+            let output_shape = input_shapes[1..].iter().try_fold(acc, |acc, in_shape| {
+                match in_shape.as_ref() {
+                    &[b, c, h, w] => {
+                        let [acc_b, acc_c, acc_h, acc_w] = acc;
+                        Some([
+                            acc_b.equalize(&b)?,
+                            acc_c + c,
+                            acc_h.equalize(&h)?,
+                            acc_w.equalize(&w)?,
+                        ])
+                    }
+                    _ => None,
+                }
+            })?;
+            let output_shape: Shape = Vec::from(output_shape).into();
+
+            Some(output_shape)
         }
     }
 }
@@ -863,7 +811,11 @@ mod sum_2d {
         }
 
         fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            todo!();
+            let shapes = input_shape.indexed()?.as_ref();
+            let first = shapes[0].to_owned();
+            shapes[1..]
+                .iter()
+                .try_fold(first, |acc, shape| acc.equalize(shape))
         }
     }
 }
@@ -889,8 +841,8 @@ mod group_ref {
             (&self.from).into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            todo!();
+        fn output_shape(&self, _input_shape: ShapeInput<'_>) -> Option<Shape> {
+            None
         }
     }
 }

@@ -1,10 +1,10 @@
 use crate::{
     common::*,
     config::{
-        self, Group, GroupName, GroupPath, Groups, Model, Module, ModuleEx, ModuleInput,
-        ModuleName, ModulePath, Shape, ShapeInput,
+        self, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath, Shape,
+        ShapeInput,
     },
-    utils::{self, IteratorEx},
+    utils,
 };
 
 pub use graph::*;
@@ -308,6 +308,13 @@ mod graph {
 
                 let sorted_nodes: Vec<NodeKey> = petgraph::algo::toposort(&graph, None)
                     .map_err(|_| format_err!("cycle detected"))?;
+
+                let paths: Vec<_> = sorted_nodes
+                    .iter()
+                    .map(|key| nodes[key].path.as_ref().map(ToString::to_string))
+                    .collect();
+                dbg!(paths);
+
                 sorted_nodes
             };
 
@@ -437,7 +444,3 @@ mod graph {
     #[serde(transparent)]
     struct NodeKey(pub usize);
 }
-
-// mod node {
-//     use super::*;
-// }

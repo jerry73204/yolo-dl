@@ -8,51 +8,70 @@ mod dim {
     use super::*;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct Dim(Option<usize>);
+    pub enum Dim {
+        Size(usize),
+        Infer,
+    }
 
     impl Dim {
         pub fn size(&self) -> Option<usize> {
-            self.0
+            Option::<usize>::from(*self)
         }
 
         pub fn is_compatible_with(&self, other: &Dim) -> bool {
-            match (self.0, other.0) {
-                (Some(lhs), Some(rhs)) => lhs == rhs,
+            match (self, other) {
+                (Self::Size(lhs), Self::Size(rhs)) => lhs == rhs,
                 _ => true,
             }
         }
 
         pub fn equalize(&self, other: &Dim) -> Option<Self> {
-            match (self.0, other.0) {
-                (Some(lhs), Some(rhs)) => {
+            match (self, other) {
+                (Self::Size(lhs), Self::Size(rhs)) => {
                     if lhs == rhs {
                         Some(*self)
                     } else {
                         None
                     }
                 }
-                (Some(_), None) => Some(*self),
-                (None, Some(_)) => Some(*other),
-                (None, None) => Some(*self),
+                (Self::Size(_), Self::Infer) => Some(*self),
+                (Self::Infer, Self::Size(_)) => Some(*other),
+                (Self::Infer, Self::Infer) => Some(*self),
+            }
+        }
+
+        pub fn scale_r64(&self, scale: R64) -> Self {
+            match *self {
+                Self::Size(size) => {
+                    let new_size = (scale * size as f64).floor().raw() as usize;
+                    Self::Size(new_size)
+                }
+                Self::Infer => Self::Infer,
             }
         }
     }
 
     impl From<usize> for Dim {
         fn from(from: usize) -> Self {
-            Self(Some(from))
+            Self::Size(from)
         }
     }
 
     impl From<Option<usize>> for Dim {
         fn from(from: Option<usize>) -> Self {
-            Self(from)
+            match from {
+                Some(size) => Self::Size(size),
+                None => Self::Infer,
+            }
         }
     }
 
     impl From<Dim> for Option<usize> {
         fn from(from: Dim) -> Self {
-            from.0
+            match from {
+                Dim::Size(size) => Some(size),
+                Dim::Infer => None,
+            }
         }
     }
 
@@ -61,9 +80,9 @@ mod dim {
         where
             S: Serializer,
         {
-            match self.0 {
-                Some(value) => value.serialize(serializer),
-                None => "_".serialize(serializer),
+            match self {
+                Self::Size(value) => value.serialize(serializer),
+                Self::Infer => "_".serialize(serializer),
             }
         }
     }
@@ -81,13 +100,13 @@ mod dim {
                     if text != "_" {
                         return Err(D::Error::custom(format!("'{}' is not a dimension", text)));
                     }
-                    Self(None)
+                    Self::Infer
                 }
                 Value::Number(value) => {
                     let value = value.as_u64().ok_or_else(|| {
                         D::Error::custom(format!("'{}' is not a dimension", value))
                     })?;
-                    Self(Some(value as usize))
+                    Self::Size(value as usize)
                 }
                 value => {
                     return Err(D::Error::custom(format!("'{}' is not a dimension", value)));
@@ -102,8 +121,8 @@ mod dim {
 
         fn add(self, rhs: Dim) -> Self::Output {
             match (self, rhs) {
-                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs + rhs)),
-                _ => Self(None),
+                (Self::Size(lhs), Self::Size(rhs)) => Self::Size(lhs + rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -113,8 +132,8 @@ mod dim {
 
         fn sub(self, rhs: Dim) -> Self::Output {
             match (self, rhs) {
-                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs - rhs)),
-                _ => Self(None),
+                (Self::Size(lhs), Self::Size(rhs)) => Self::Size(lhs - rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -124,8 +143,8 @@ mod dim {
 
         fn mul(self, rhs: Dim) -> Self::Output {
             match (self, rhs) {
-                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs * rhs)),
-                _ => Self(None),
+                (Self::Size(lhs), Self::Size(rhs)) => Self::Size(lhs * rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -135,8 +154,8 @@ mod dim {
 
         fn div(self, rhs: Dim) -> Self::Output {
             match (self, rhs) {
-                (Self(Some(lhs)), Self(Some(rhs))) => Self(Some(lhs / rhs)),
-                _ => Self(None),
+                (Self::Size(lhs), Self::Size(rhs)) => Self::Size(lhs / rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -146,8 +165,8 @@ mod dim {
 
         fn add(self, rhs: usize) -> Self::Output {
             match self {
-                Self(Some(lhs)) => Self(Some(lhs + rhs)),
-                _ => Self(None),
+                Self::Size(lhs) => Self::Size(lhs + rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -157,8 +176,8 @@ mod dim {
 
         fn sub(self, rhs: usize) -> Self::Output {
             match self {
-                Self(Some(lhs)) => Self(Some(lhs - rhs)),
-                _ => Self(None),
+                Self::Size(lhs) => Self::Size(lhs - rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -168,8 +187,8 @@ mod dim {
 
         fn mul(self, rhs: usize) -> Self::Output {
             match self {
-                Self(Some(lhs)) => Self(Some(lhs * rhs)),
-                _ => Self(None),
+                Self::Size(lhs) => Self::Size(lhs * rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -179,8 +198,8 @@ mod dim {
 
         fn div(self, rhs: usize) -> Self::Output {
             match self {
-                Self(Some(lhs)) => Self(Some(lhs / rhs)),
-                _ => Self(None),
+                Self::Size(lhs) => Self::Size(lhs / rhs),
+                _ => Self::Infer,
             }
         }
     }
@@ -190,8 +209,8 @@ mod dim {
 
         fn add(self, rhs: Dim) -> Self::Output {
             match rhs {
-                Dim(Some(rhs)) => Dim(Some(self + rhs)),
-                _ => Dim(None),
+                Dim::Size(rhs) => Dim::Size(self + rhs),
+                _ => Dim::Infer,
             }
         }
     }
@@ -201,8 +220,8 @@ mod dim {
 
         fn sub(self, rhs: Dim) -> Self::Output {
             match rhs {
-                Dim(Some(rhs)) => Dim(Some(self - rhs)),
-                _ => Dim(None),
+                Dim::Size(rhs) => Dim::Size(self - rhs),
+                _ => Dim::Infer,
             }
         }
     }
@@ -212,8 +231,8 @@ mod dim {
 
         fn mul(self, rhs: Dim) -> Self::Output {
             match rhs {
-                Dim(Some(rhs)) => Dim(Some(self * rhs)),
-                _ => Dim(None),
+                Dim::Size(rhs) => Dim::Size(self * rhs),
+                _ => Dim::Infer,
             }
         }
     }
@@ -223,8 +242,8 @@ mod dim {
 
         fn div(self, rhs: Dim) -> Self::Output {
             match rhs {
-                Dim(Some(rhs)) => Dim(Some(self / rhs)),
-                _ => Dim(None),
+                Dim::Size(rhs) => Dim::Size(self / rhs),
+                _ => Dim::Infer,
             }
         }
     }
