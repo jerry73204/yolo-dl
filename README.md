@@ -79,6 +79,14 @@ The `make-dot-file` subcommand can plot the computation graph in DOT format. For
 cargo run --release --bin darknet-config -- make-dot-file yolov4.cfg output.dot
 ```
 
+## Documentation
+
+You can generate the API documentation from the source code. To open the doc in browser,
+
+```sh
+cargo doc --open
+```
+
 ## Related Projects
 
 - [tch-rs](https://github.com/LaurentMazare/tch-rs)
