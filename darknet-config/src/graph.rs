@@ -906,14 +906,15 @@ mod graphviz {
                 NodeKey::Input => {
                     let shape = self.net.input_size.to_vec();
                     LabelText::escaped(format!(
-                        r"input\n{}",
+                        r"input
+{}",
                         dot::escape_html(&format!("{:?}", shape))
                     ))
                 }
                 NodeKey::Index(layer_index) => {
-                    let output_shape = self.layers[layer_index].output_shape().to_vec();
+                    let output_shape = self.layers[&key].output_shape().to_vec();
 
-                    match &self.layers[layer_index] {
+                    match &self.layers[&key] {
                         Node::Convolutional(node) => {
                             let ConvolutionalNode {
                                 config:
@@ -932,18 +933,23 @@ mod graphviz {
 
                             match share_index {
                                 Some(share_index) => LabelText::escaped(format!(
-                                    r"({}) {}\n{}\nshare={}",
+                                    r"({}) {}
+{}
+share={}",
                                     layer_index,
-                                    self.layers[layer_index].as_ref(),
+                                    self.layers[&key].as_ref(),
                                     dot::escape_html(&format!("{:?}", output_shape)),
                                     share_index.absolute().unwrap()
                                 )),
                                 None => {
                                     if stride_y == stride_x {
                                         LabelText::escaped(format!(
-                                            r"({}) {}\n{}\nk={} s={} p={} d={}\nbatch_norm={}",
+                                            r"({}) {}
+{}
+k={} s={} p={} d={}
+batch_norm={}",
                                             layer_index,
-                                            self.layers[layer_index].as_ref(),
+                                            self.layers[&key].as_ref(),
                                             dot::escape_html(&format!("{:?}", output_shape)),
                                             size,
                                             stride_y,
@@ -953,9 +959,12 @@ mod graphviz {
                                         ))
                                     } else {
                                         LabelText::escaped(format!(
-                                            r"({}) {}\n{}\nk={} sy={} sx={} p={} d={}\nbatch_norm={}",
+                                            r"({}) {}
+{}
+k={} sy={} sx={} p={} d={}
+batch_norm={}",
                                             layer_index,
-                                            self.layers[layer_index].as_ref(),
+                                            self.layers[&key].as_ref(),
                                             dot::escape_html(&format!("{:?}", output_shape)),
                                             size,
                                             stride_y,
@@ -983,9 +992,11 @@ mod graphviz {
 
                             if stride_y == stride_x {
                                 LabelText::escaped(format!(
-                                    r"({}) {}\n{}\nk={} s={} p={}",
+                                    r"({}) {}
+{}
+k={} s={} p={}",
                                     layer_index,
-                                    self.layers[layer_index].as_ref(),
+                                    self.layers[&key].as_ref(),
                                     dot::escape_html(&format!("{:?}", output_shape)),
                                     size,
                                     stride_y,
@@ -993,9 +1004,11 @@ mod graphviz {
                                 ))
                             } else {
                                 LabelText::escaped(format!(
-                                    r"({}) {}\n{}\nk={} sy={} sx={} p={}",
+                                    r"({}) {}
+{}
+k={} sy={} sx={} p={}",
                                     layer_index,
-                                    self.layers[layer_index].as_ref(),
+                                    self.layers[&key].as_ref(),
                                     dot::escape_html(&format!("{:?}", output_shape)),
                                     size,
                                     stride_y,
@@ -1005,9 +1018,10 @@ mod graphviz {
                             }
                         }
                         _ => LabelText::escaped(format!(
-                            r"({}) {}\n{}",
+                            r"({}) {}
+{}",
                             layer_index,
-                            self.layers[layer_index].as_ref(),
+                            self.layers[&key].as_ref(),
                             dot::escape_html(&format!("{:?}", output_shape))
                         )),
                     }
@@ -1041,7 +1055,8 @@ mod graphviz {
                 (NodeKey::Index(from_index), NodeKey::Index(to_index)) => {
                     let shape = self.layers[from_index].output_shape().to_vec();
                     LabelText::escaped(format!(
-                        r"{} -> {}\n{}",
+                        r"{} -> {}
+{}",
                         from_index,
                         to_index,
                         dot::escape_html(&format!("{:?}", shape))
