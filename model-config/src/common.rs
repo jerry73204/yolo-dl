@@ -18,7 +18,7 @@ pub use std::{
     hash::{Hash, Hasher},
     io::prelude::*,
     iter::{self, FromIterator},
-    ops::{Add, Deref, Div, Mul, Sub},
+    ops::{Add, Deref, Div, Index, Mul, Sub},
     path::{Path, PathBuf},
     str::FromStr,
     string::ToString,
