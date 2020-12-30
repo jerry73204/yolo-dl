@@ -17,10 +17,12 @@ pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::{iproduct, izip, Itertools};
 pub use lazy_static::lazy_static;
 pub use log::{error, info, warn};
+pub use model_config::graph::Graph;
 pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
+pub use petgraph::graphmap::DiGraphMap;
 pub use rand::{prelude::*, rngs::StdRng};
 pub use regex::Regex;
 pub use serde::{

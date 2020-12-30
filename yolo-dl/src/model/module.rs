@@ -168,9 +168,12 @@ mod yolo_module {
     use super::*;
 
     pub enum YoloModule {
-        Single(usize, Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>),
+        Single(
+            NodeKey,
+            Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
+        ),
         Multi(
-            Vec<usize>,
+            Vec<NodeKey>,
             Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
         ),
     }
@@ -178,14 +181,14 @@ mod yolo_module {
     impl fmt::Debug for YoloModule {
         fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
             match self {
-                Self::Single(from_index, _) => f
+                Self::Single(src_key, _) => f
                     .debug_tuple("Single")
-                    .field(&from_index)
+                    .field(&src_key)
                     .field(&"func")
                     .finish(),
-                Self::Multi(from_indexes, _) => f
+                Self::Multi(src_keys, _) => f
                     .debug_tuple("Multi")
-                    .field(&from_indexes)
+                    .field(&src_keys)
                     .field(&"func")
                     .finish(),
             }
@@ -193,14 +196,14 @@ mod yolo_module {
     }
 
     impl YoloModule {
-        pub fn single<F>(from_index: usize, f: F) -> Self
+        pub fn single<F>(from_index: NodeKey, f: F) -> Self
         where
             F: 'static + Fn(&Tensor, bool) -> Tensor + Send,
         {
             Self::Single(from_index, Box::new(f))
         }
 
-        pub fn multi<F>(from_indexes: Vec<usize>, f: F) -> Self
+        pub fn multi<F>(from_indexes: Vec<NodeKey>, f: F) -> Self
         where
             F: 'static + Fn(&[&Tensor], bool) -> Tensor + Send,
         {
