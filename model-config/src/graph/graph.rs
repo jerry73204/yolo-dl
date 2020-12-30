@@ -16,7 +16,7 @@ mod graph {
     #[derivative(Hash)]
     pub struct Graph {
         #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<NodeKey, Node, _>"))]
-        pub(crate) nodes: IndexMap<NodeKey, Node>,
+        nodes: IndexMap<NodeKey, Node>,
     }
 
     impl Graph {
@@ -415,18 +415,22 @@ mod graph {
             let graph = Graph { nodes };
             Ok(graph)
         }
+
+        pub fn nodes(&self) -> &IndexMap<NodeKey, Node> {
+            &self.nodes
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Node {
-        pub(crate) input_keys: InputKeys,
-        pub(crate) output_shape: Shape,
-        pub(crate) path: Option<ModulePath>,
-        pub(crate) config: Module,
+        pub input_keys: InputKeys,
+        pub output_shape: Shape,
+        pub path: Option<ModulePath>,
+        pub config: Module,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub(crate) enum InputKeys {
+    pub enum InputKeys {
         None,
         Single(NodeKey),
         Indexed(Vec<NodeKey>),
@@ -445,7 +449,7 @@ mod graph {
 
     #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(transparent)]
-    pub(crate) struct NodeKey(pub usize);
+    pub struct NodeKey(pub usize);
 
     impl Display for NodeKey {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -470,13 +474,13 @@ mod graphviz {
 
     impl<'a> GraphWalk<'a, NodeKey, (NodeKey, NodeKey)> for Graph {
         fn nodes(&'a self) -> Nodes<'a, NodeKey> {
-            let keys: Vec<_> = self.nodes.keys().cloned().collect();
+            let keys: Vec<_> = self.nodes().keys().cloned().collect();
             keys.into()
         }
 
         fn edges(&'a self) -> Edges<'a, (NodeKey, NodeKey)> {
             let edges: Vec<_> = self
-                .nodes
+                .nodes()
                 .iter()
                 .flat_map(|(&dst_key, node)| {
                     node.input_keys
@@ -508,7 +512,7 @@ mod graphviz {
         }
 
         fn node_shape(&'a self, key: &NodeKey) -> Option<LabelText<'a>> {
-            match self.nodes[key].config {
+            match self.nodes()[key].config {
                 Module::Input(_) | Module::Detect2D(_) => Some(LabelText::label("box")),
                 Module::Concat2D(_) => Some(LabelText::label("invhouse")),
                 Module::Sum2D(_) => Some(LabelText::label("invtrapezium")),
@@ -522,7 +526,7 @@ mod graphviz {
                 output_shape,
                 path,
                 ..
-            } = &self.nodes[key];
+            } = &self.nodes()[key];
 
             match config {
                 Module::Input(_) => LabelText::escaped(format!(
@@ -653,7 +657,7 @@ k={:?}",
         }
 
         fn node_color(&'a self, key: &NodeKey) -> Option<LabelText<'a>> {
-            match self.nodes[key].config {
+            match self.nodes()[key].config {
                 Module::Input(_) => Some(LabelText::label("black")),
                 Module::Detect2D(_) => Some(LabelText::label("orange")),
                 Module::ConvBn2D(_) => Some(LabelText::label("blue")),
@@ -666,7 +670,7 @@ k={:?}",
 
         fn edge_label(&'a self, edge: &(NodeKey, NodeKey)) -> LabelText<'a> {
             let (src_key, dst_key) = *edge;
-            let shape = &self.nodes[&src_key].output_shape;
+            let shape = &self.nodes()[&src_key].output_shape;
 
             LabelText::escaped(format!(
                 r"{} -> {}\n{}",
