@@ -355,6 +355,13 @@ mod graph {
                                         .ok_or_else(|| format_err!("TODO"))?;
                                     output_shape
                                 }
+                                InputKeys::PlaceHolder => {
+                                    let input_shape = ShapeInput::None;
+                                    let output_shape = layer
+                                        .output_shape(input_shape)
+                                        .ok_or_else(|| format_err!("TODO"))?;
+                                    output_shape
+                                }
                                 InputKeys::Single(src_key) => {
                                     let input_shape = &output_shape_map[&src_key];
                                     let input_shape = ShapeInput::Single(input_shape);
@@ -432,6 +439,7 @@ mod graph {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum InputKeys {
         None,
+        PlaceHolder,
         Single(NodeKey),
         Indexed(Vec<NodeKey>),
     }
@@ -440,10 +448,25 @@ mod graph {
         pub fn iter(&self) -> impl Iterator<Item = NodeKey> {
             let iter: Box<dyn Iterator<Item = NodeKey>> = match *self {
                 Self::None => Box::new(iter::empty()),
+                Self::PlaceHolder => Box::new(iter::empty()),
                 Self::Single(key) => Box::new(iter::once(key)),
                 Self::Indexed(ref keys) => Box::new(keys.clone().into_iter()),
             };
             iter
+        }
+
+        pub fn single(&self) -> Option<NodeKey> {
+            match *self {
+                Self::Single(key) => Some(key),
+                _ => None,
+            }
+        }
+
+        pub fn indexed(&self) -> Option<&[NodeKey]> {
+            match self {
+                Self::Indexed(keys) => Some(keys.as_slice()),
+                _ => None,
+            }
         }
     }
 
