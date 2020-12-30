@@ -9,10 +9,140 @@ pub use conv_bn_2d::*;
 pub use dark_csp_2d::*;
 pub use detect::*;
 pub use focus::*;
+pub use input::*;
+pub use module::*;
+pub use module_input::*;
 pub use spp::*;
 pub use spp_csp_2d::*;
 pub use sum_2d::*;
-pub use yolo_module::*;
+
+mod module {
+    pub use super::*;
+
+    #[derive(Derivative)]
+    #[derivative(Debug)]
+    pub enum Module {
+        Input(Input),
+        ConvBn2D(ConvBn2D),
+        Sum2D(Sum2D),
+        Concat2D(Concat2D),
+        DarkCsp2D(DarkCsp2D),
+        SppCsp2D(SppCsp2D),
+        FnSingle(
+            #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
+        ),
+        FnIndexed(
+            #[derivative(Debug = "ignore")]
+            Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
+        ),
+    }
+
+    impl Module {
+        pub fn forward_t<'a>(
+            &mut self,
+            input: impl Into<ModuleInput<'a>>,
+            train: bool,
+        ) -> Result<ModuleOutput> {
+            let input = input.into();
+
+            let output: ModuleOutput = match (self, input) {
+                (Self::Input(module), ModuleInput::Single(tensor)) => {
+                    module.forward(tensor)?.into()
+                }
+                (Self::ConvBn2D(module), ModuleInput::Single(tensor)) => {
+                    module.forward_t(tensor, train).into()
+                }
+                (Self::Sum2D(module), ModuleInput::Indexed(tensors)) => {
+                    module.forward(&tensors)?.into()
+                }
+                (Self::Concat2D(module), ModuleInput::Indexed(tensors)) => {
+                    module.forward(&tensors)?.into()
+                }
+                (Self::DarkCsp2D(module), ModuleInput::Single(tensor)) => {
+                    module.forward_t(tensor, train).into()
+                }
+                (Self::SppCsp2D(module), ModuleInput::Single(tensor)) => {
+                    module.forward_t(tensor, train).into()
+                }
+                (Self::FnSingle(module), ModuleInput::Single(tensor)) => {
+                    module(tensor, train).into()
+                }
+                (Self::FnIndexed(module), ModuleInput::Indexed(tensors)) => {
+                    module(&tensors, train).into()
+                }
+                _ => bail!("input shape mismatch"),
+            };
+            Ok(output)
+        }
+    }
+}
+
+mod module_input {
+    pub use super::*;
+
+    #[derive(Debug, Clone)]
+    pub enum ModuleInput<'a> {
+        None,
+        Single(&'a Tensor),
+        Indexed(Vec<&'a Tensor>),
+    }
+
+    impl<'a> From<&'a Tensor> for ModuleInput<'a> {
+        fn from(from: &'a Tensor) -> Self {
+            Self::Single(from)
+        }
+    }
+
+    impl<'a, 'b> From<&'b [&'a Tensor]> for ModuleInput<'a> {
+        fn from(from: &'b [&'a Tensor]) -> Self {
+            Self::Indexed(Vec::from(from))
+        }
+    }
+
+    impl<'a> From<Vec<&'a Tensor>> for ModuleInput<'a> {
+        fn from(from: Vec<&'a Tensor>) -> Self {
+            Self::Indexed(from)
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum ModuleOutput {
+        Tensor(Tensor),
+    }
+
+    impl ModuleOutput {
+        pub fn tensor(self) -> Option<Tensor> {
+            match self {
+                Self::Tensor(tensor) => Some(tensor),
+                _ => None,
+            }
+        }
+    }
+
+    impl From<Tensor> for ModuleOutput {
+        fn from(tensor: Tensor) -> Self {
+            Self::Tensor(tensor)
+        }
+    }
+}
+
+mod input {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Input {}
+
+    impl Input {
+        pub fn new() -> Self {
+            Self {}
+        }
+
+        pub fn forward(&self, tensor: &Tensor) -> Result<Tensor> {
+            // TODO: check shape
+            Ok(tensor.shallow_clone())
+        }
+    }
+}
 
 mod spp_csp_2d {
     use super::*;
@@ -77,7 +207,7 @@ mod spp_csp_2d {
     }
 
     impl SppCsp2D {
-        pub fn forward(&self, xs: &Tensor, train: bool) -> Tensor {
+        pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
             let SppCsp2D {
                 first_conv,
                 last_conv,
@@ -131,9 +261,12 @@ mod sum_2d {
     pub struct Sum2D;
 
     impl Sum2D {
-        pub fn forward(tensors: &[Tensor]) -> Result<Tensor> {
+        pub fn forward<T>(&self, tensors: &[T]) -> Result<Tensor>
+        where
+            T: Borrow<Tensor>,
+        {
             tensors.iter().try_for_each(|tensor| -> Result<_> {
-                tensor.size4()?;
+                tensor.borrow().size4()?;
                 Ok(())
             })?;
             ensure!(!tensors.is_empty(), "empty input is not allowed");
@@ -147,86 +280,23 @@ mod concat_2d {
     use super::*;
 
     #[derive(Debug)]
-    pub struct Sum2D;
+    pub struct Concat2D;
 
-    impl Sum2D {
-        pub fn forward(tensors: &[Tensor]) -> Result<Tensor> {
+    impl Concat2D {
+        pub fn forward<T>(&self, tensors: &[T]) -> Result<Tensor>
+        where
+            T: Borrow<Tensor>,
+        {
             let mut iter = tensors.iter();
             let first = iter
                 .next()
                 .ok_or_else(|| format_err!("empty input is not allowed"))?
+                .borrow()
                 .shallow_clone();
             first.size4()?;
 
-            let output = iter.try_fold(first, |acc, tensor| acc.f_add(tensor))?;
+            let output = iter.try_fold(first, |acc, tensor| acc.f_add(tensor.borrow()))?;
             Ok(output)
-        }
-    }
-}
-
-mod yolo_module {
-    use super::*;
-
-    pub enum YoloModule {
-        Single(
-            NodeKey,
-            Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
-        ),
-        Multi(
-            Vec<NodeKey>,
-            Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
-        ),
-    }
-
-    impl fmt::Debug for YoloModule {
-        fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            match self {
-                Self::Single(src_key, _) => f
-                    .debug_tuple("Single")
-                    .field(&src_key)
-                    .field(&"func")
-                    .finish(),
-                Self::Multi(src_keys, _) => f
-                    .debug_tuple("Multi")
-                    .field(&src_keys)
-                    .field(&"func")
-                    .finish(),
-            }
-        }
-    }
-
-    impl YoloModule {
-        pub fn single<F>(from_index: NodeKey, f: F) -> Self
-        where
-            F: 'static + Fn(&Tensor, bool) -> Tensor + Send,
-        {
-            Self::Single(from_index, Box::new(f))
-        }
-
-        pub fn multi<F>(from_indexes: Vec<NodeKey>, f: F) -> Self
-        where
-            F: 'static + Fn(&[&Tensor], bool) -> Tensor + Send,
-        {
-            Self::Multi(from_indexes, Box::new(f))
-        }
-
-        pub fn forward_t<T>(&self, inputs: &[T], train: bool) -> Tensor
-        where
-            T: Borrow<Tensor>,
-        {
-            match self {
-                Self::Single(_, module_fn) => {
-                    debug_assert_eq!(inputs.len(), 1);
-                    module_fn(inputs[0].borrow(), train)
-                }
-                Self::Multi(_, module_fn) => {
-                    let inputs = inputs
-                        .iter()
-                        .map(|tensor| tensor.borrow())
-                        .collect::<Vec<_>>();
-                    module_fn(&inputs, train)
-                }
-            }
         }
     }
 }

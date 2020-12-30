@@ -42,6 +42,7 @@ slice-of-array = "0.2"
 getset = "0.1"
 model-config = { version = "0.1", path = "../model-config" }
 petgraph = "0.5"
+derivative = "2.1"
 
 [features]
 profiling = []

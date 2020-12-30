@@ -5,6 +5,7 @@ pub use async_std::sync::RwLock;
 pub use chrono::{DateTime, Local};
 pub use coco::Category;
 pub use dashmap::DashSet;
+pub use derivative::Derivative;
 pub use futures::{
     future,
     future::FutureExt,
@@ -41,11 +42,11 @@ pub use std::{
     fmt::Debug,
     future::Future,
     hash::{Hash, Hasher},
-    iter::{self, Sum},
+    iter::{self, FromIterator, Sum},
     marker::PhantomData,
     mem,
     num::NonZeroUsize,
-    ops::{Add, Deref, DerefMut, Div, Mul, Range, Rem, Sub},
+    ops::{Add, Deref, DerefMut, Div, Index, Mul, Range, Rem, Sub},
     path::{Path, PathBuf},
     pin::Pin,
     rc::Rc,

@@ -2,7 +2,7 @@ use super::{
     config::{LayerInit, LayerKind, YoloInit},
     module::{
         BottleneckCspInit, BottleneckInit, ConvBlockInit, DetectInit, DetectModule, FocusInit,
-        SppInit, YoloModule,
+        Input, Module, ModuleInput, SppInit,
     },
 };
 use crate::common::*;
@@ -11,10 +11,10 @@ pub use misc::*;
 pub use yolo_model::*;
 pub use yolo_output::*;
 
+pub use model_config::graph::{InputKeys, NodeKey};
+
 mod yolo_model {
     use super::*;
-
-    pub use model_config::graph::NodeKey;
 
     #[derive(Debug)]
     pub struct YoloModel {
@@ -23,36 +23,53 @@ mod yolo_model {
     }
 
     impl YoloModel {
-        pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> YoloOutput {
-            let (_batch_size, _channels, height, width) = xs.size4().unwrap();
+        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<YoloOutput> {
+            let (_batch_size, _channels, height, width) = input.size4().unwrap();
             let image_size = PixelSize::new(height, width);
-            let mut tmp_tensors: HashMap<NodeKey, Tensor> =
-                iter::once((NodeKey(0), xs.shallow_clone())).collect();
+            let mut tmp_tensors: HashMap<NodeKey, Tensor> = HashMap::new();
             let mut exported_tensors = vec![];
+            let mut input = Some(input); // it makes sure the input is consumed at most once
 
             // run the network
-            self.layers.values().for_each(|layer| {
-                let Layer {
-                    key,
-                    ref module,
-                    ref input_keys,
-                    ref anchors_opt,
-                } = *layer;
+            self.layers
+                .values_mut()
+                .try_for_each(|layer| -> Result<_> {
+                    let Layer {
+                        key,
+                        ref mut module,
+                        ref input_keys,
+                        ref anchors_opt,
+                    } = *layer;
 
-                let inputs: Vec<_> = input_keys.iter().map(|key| &tmp_tensors[key]).collect();
+                    let module_input: ModuleInput = match input_keys {
+                        InputKeys::None => ModuleInput::None,
+                        InputKeys::PlaceHolder => input.take().unwrap().into(),
+                        InputKeys::Single(src_key) => (&tmp_tensors[src_key]).into(),
+                        InputKeys::Indexed(src_keys) => {
+                            let tensors: Vec<_> = src_keys
+                                .iter()
+                                .map(|src_key| &tmp_tensors[src_key])
+                                .collect();
+                            tensors.into()
+                        }
+                    };
+                    let output = module.forward_t(module_input, train)?.tensor().unwrap();
 
-                let output = module.forward_t(inputs.as_slice(), train);
+                    if let Some(_anchors) = anchors_opt {
+                        exported_tensors.push(output.shallow_clone());
+                    }
+                    tmp_tensors.insert(key, output);
+                    Ok(())
+                })?;
 
-                if let Some(_anchors) = anchors_opt {
-                    exported_tensors.push(output.shallow_clone());
-                }
-                tmp_tensors.insert(key, output);
-            });
+            debug_assert!(input.is_none());
 
             // run detection module
             let exported_tensors: Vec<_> = exported_tensors.iter().collect();
-            self.detection_module
-                .forward_t(exported_tensors.as_slice(), train, &image_size)
+            let output =
+                self.detection_module
+                    .forward_t(exported_tensors.as_slice(), train, &image_size);
+            Ok(output)
         }
 
         pub fn from_config<'p, P>(config: &YoloInit, path: P) -> Result<Self>
@@ -102,7 +119,7 @@ mod yolo_model {
 
             // compute input indexes per layer
             // layer_index -> (from_indexes)
-            let mut index_to_inputs: IndexMap<NodeKey, Vec<NodeKey>> = index_to_config
+            let mut index_to_inputs: IndexMap<NodeKey, InputKeys> = index_to_config
                 .iter()
                 .map(|(key, layer)| {
                     let kind = &layer.kind;
@@ -112,28 +129,31 @@ mod yolo_model {
                             let src_key = *name_to_index
                                 .get(name)
                                 .expect(&format!(r#"undefined layer name "{}""#, name));
-                            vec![src_key]
+                            InputKeys::Single(src_key)
                         }
                         (None, None) => {
                             let NodeKey(layer_index) = key;
                             let src_key = NodeKey(layer_index - 1);
-                            vec![src_key]
+                            InputKeys::Single(src_key)
                         }
-                        (None, Some(names)) => names
-                            .iter()
-                            .map(|name| {
-                                *name_to_index
-                                    .get(name.as_str())
-                                    .expect(&format!(r#"undefined layer name "{}""#, name))
-                            })
-                            .collect_vec(),
+                        (None, Some(names)) => {
+                            let src_keys: Vec<_> = names
+                                .iter()
+                                .map(|name| {
+                                    *name_to_index
+                                        .get(name.as_str())
+                                        .expect(&format!(r#"undefined layer name "{}""#, name))
+                                })
+                                .collect();
+                            InputKeys::Indexed(src_keys)
+                        }
                         _ => unreachable!("please report bug"),
                     };
 
                     (*key, from_indexes)
                 })
                 // insert key for input layer
-                .chain(iter::once((NodeKey(0), vec![])))
+                .chain(iter::once((NodeKey(0), InputKeys::PlaceHolder)))
                 .collect();
 
             // topological sort layers
@@ -143,7 +163,7 @@ mod yolo_model {
                     let dst_key = *dst_key;
                     graph.add_node(dst_key);
 
-                    src_keys.iter().cloned().for_each(|src_key| {
+                    src_keys.iter().for_each(|src_key| {
                         graph.add_edge(src_key, dst_key, ());
                     });
                 });
@@ -158,226 +178,235 @@ mod yolo_model {
 
             // compute output channels per layer
             // layer_index -> (in_c?, out_c)
-            let index_to_channels: IndexMap<NodeKey, (Option<usize>, usize)> = {
-                let init_state: IndexMap<_, _> = {
-                    let mut state = IndexMap::new();
-                    state.insert(NodeKey(0), (None, input_channels));
-                    state
-                };
+            let index_to_channels: IndexMap<NodeKey, (Option<usize>, usize)> = sorted_keys
+                .iter()
+                .cloned()
+                .fold(IndexMap::new(), |mut channels_map, key| {
+                    let from_indexes = &index_to_inputs[&key];
+                    let layer = index_to_config.get(&key);
 
-                sorted_keys
-                    .iter()
-                    .cloned()
-                    .map(|key| (key, &index_to_config[&key]))
-                    .fold(init_state, |mut channels, (key, layer)| {
-                        let from_indexes = &index_to_inputs[&key];
-
-                        match layer.kind {
+                    let (input_channels, output_channels) = match layer {
+                        Some(layer) => match layer.kind {
                             LayerKind::Focus { out_c, .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = scale_channel(out_c);
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::ConvBlock { out_c, .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = scale_channel(out_c);
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::Bottleneck { .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = in_c;
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::BottleneckCsp { .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = in_c;
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::Spp { out_c, .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = scale_channel(out_c);
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::HeadConv2d { ref anchors, .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = anchors.len() * num_outputs_per_anchor;
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::Upsample { .. } => {
-                                debug_assert_eq!(from_indexes.len(), 1);
-                                let from_index = from_indexes[0];
-                                let in_c = channels[&from_index].1;
+                                let from_index = from_indexes.single().unwrap();
+                                let in_c = channels_map[&from_index].1;
                                 let out_c = in_c;
-                                channels.insert(key, (Some(in_c), out_c));
+                                (Some(in_c), out_c)
                             }
                             LayerKind::Concat { .. } => {
                                 let out_c = from_indexes
+                                    .indexed()
+                                    .unwrap()
                                     .iter()
                                     .cloned()
-                                    .map(|index| channels[&index].1)
+                                    .map(|index| channels_map[&index].1)
                                     .sum();
-                                channels.insert(key, (None, out_c));
+                                (None, out_c)
                             }
+                        },
+                        None => {
+                            debug_assert!(key == NodeKey(0));
+                            (None, input_channels)
                         }
+                    };
 
-                        channels
-                    })
-            };
+                    channels_map.insert(key, (input_channels, output_channels));
+                    channels_map
+                });
 
             // list of exported layer indexes and anchors
-            let mut index_to_anchors: IndexMap<NodeKey, Vec<(usize, usize)>> = index_to_config.iter()
-                .filter_map(|(key, layer)| {
+            let mut index_to_anchors: IndexMap<NodeKey, Vec<(usize, usize)>> = sorted_keys.iter().cloned()
+                .filter_map(|key| {
+                    let layer = index_to_config.get(&key)?;
                     match layer.kind {
                         LayerKind::HeadConv2d {ref anchors, ..} => Some((key, anchors.clone())),
                         _ => None
                     }
                 })
                 .map(|(key, anchors)| {
-                    let out_c = index_to_channels[key].1;
-                    debug_assert_eq!(out_c, anchors.len() * num_outputs_per_anchor, "the exported layer must have exactly (n_anchors * (n_classes + 5)) output channels");
-                    (*key, anchors)
-                }).collect();
+                    let (_in_c, out_c) = index_to_channels[&key];
+                    debug_assert_eq!(
+                        out_c, anchors.len() * num_outputs_per_anchor,
+                        "the exported layer must have exactly (n_anchors * (n_classes + 5)) output channels"
+                    );
+                    (key, anchors)
+                })
+                .collect();
 
             // build modules for each layer
             // key -> module
-            let mut index_to_module: IndexMap<NodeKey, YoloModule> = index_to_config
+            let mut index_to_module: IndexMap<NodeKey, Module> = sorted_keys
                 .iter()
-                .map(|(key, layer_init)| {
-                    // locals
-                    let key = *key;
-                    let LayerInit { kind, .. } = layer_init;
+                .cloned()
+                .map(|key| {
+                    let module = {
+                        let layer = index_to_config.get(&key);
 
-                    let src_keys = &index_to_inputs[&key];
-                    let (in_c_opt, out_c): (Option<usize>, usize) = index_to_channels[&key];
+                        match layer {
+                            Some(layer) => {
+                                let LayerInit { kind, .. } = layer;
+                                let src_keys = &index_to_inputs[&key];
+                                let (in_c_opt, out_c): (Option<usize>, usize) =
+                                    index_to_channels[&key];
 
-                    // build layer
-                    let module = match *kind {
-                        LayerKind::Focus { k, .. } => {
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
-                            let in_c = in_c_opt.unwrap();
-                            YoloModule::single(src_key, FocusInit { in_c, out_c, k }.build(path))
-                        }
-                        LayerKind::ConvBlock { k, s, .. } => {
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
-                            let in_c = in_c_opt.unwrap();
+                                // build layer
+                                let module = match *kind {
+                                    LayerKind::Focus { k, .. } => {
+                                        let src_key = src_keys.single().unwrap();
+                                        let in_c = in_c_opt.unwrap();
+                                        Module::FnSingle(FocusInit { in_c, out_c, k }.build(path))
+                                    }
+                                    LayerKind::ConvBlock { k, s, .. } => {
+                                        let src_key = src_keys.single().unwrap();
+                                        let in_c = in_c_opt.unwrap();
 
-                            YoloModule::single(
-                                src_key,
-                                ConvBlockInit {
-                                    k,
-                                    s,
-                                    ..ConvBlockInit::new(in_c, out_c)
-                                }
-                                .build(path),
-                            )
-                        }
-                        LayerKind::Bottleneck { repeat, .. } => {
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
-                            let in_c = in_c_opt.unwrap();
-                            let repeat = ((repeat as f64 * depth_multiple).round() as usize).max(1);
-                            let bottlenecks = (0..repeat)
-                                .into_iter()
-                                .map(|_| BottleneckInit::new(in_c, out_c).build(path))
-                                .collect::<Vec<_>>();
+                                        Module::FnSingle(
+                                            ConvBlockInit {
+                                                k,
+                                                s,
+                                                ..ConvBlockInit::new(in_c, out_c)
+                                            }
+                                            .build(path),
+                                        )
+                                    }
+                                    LayerKind::Bottleneck { repeat, .. } => {
+                                        let src_key = src_keys.single().unwrap();
+                                        let in_c = in_c_opt.unwrap();
+                                        let repeat = ((repeat as f64 * depth_multiple).round()
+                                            as usize)
+                                            .max(1);
+                                        let bottlenecks = (0..repeat)
+                                            .into_iter()
+                                            .map(|_| BottleneckInit::new(in_c, out_c).build(path))
+                                            .collect::<Vec<_>>();
 
-                            YoloModule::single(src_key, move |xs, train| {
-                                bottlenecks
-                                    .iter()
-                                    .fold(xs.shallow_clone(), |xs, block| block(&xs, train))
-                            })
-                        }
-                        LayerKind::BottleneckCsp {
-                            repeat, shortcut, ..
-                        } => {
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
-                            let in_c = in_c_opt.unwrap();
+                                        Module::FnSingle(Box::new(move |xs: &Tensor, train| {
+                                            bottlenecks
+                                                .iter()
+                                                .fold(xs.shallow_clone(), |xs, block| {
+                                                    block(&xs, train)
+                                                })
+                                        }))
+                                    }
+                                    LayerKind::BottleneckCsp {
+                                        repeat, shortcut, ..
+                                    } => {
+                                        let src_key = src_keys.single().unwrap();
+                                        let in_c = in_c_opt.unwrap();
 
-                            YoloModule::single(
-                                src_key,
-                                BottleneckCspInit {
-                                    repeat,
-                                    shortcut,
-                                    ..BottleneckCspInit::new(in_c, out_c)
-                                }
-                                .build(path),
-                            )
-                        }
-                        LayerKind::Spp { ref ks, .. } => {
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
-                            let in_c = in_c_opt.unwrap();
+                                        Module::FnSingle(
+                                            BottleneckCspInit {
+                                                repeat,
+                                                shortcut,
+                                                ..BottleneckCspInit::new(in_c, out_c)
+                                            }
+                                            .build(path),
+                                        )
+                                    }
+                                    LayerKind::Spp { ref ks, .. } => {
+                                        let src_key = src_keys.single().unwrap();
+                                        let in_c = in_c_opt.unwrap();
 
-                            YoloModule::single(
-                                src_key,
-                                SppInit {
-                                    in_c,
-                                    out_c,
-                                    ks: ks.to_vec(),
-                                }
-                                .build(path),
-                            )
-                        }
-                        LayerKind::HeadConv2d { k, s, .. } => {
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
-                            let in_c = in_c_opt.unwrap();
-                            let conv = nn::conv2d(
-                                path,
-                                in_c as i64,
-                                out_c as i64,
-                                k as i64,
-                                nn::ConvConfig {
-                                    stride: s as i64,
-                                    ..Default::default()
-                                },
-                            );
+                                        Module::FnSingle(
+                                            SppInit {
+                                                in_c,
+                                                out_c,
+                                                ks: ks.to_vec(),
+                                            }
+                                            .build(path),
+                                        )
+                                    }
+                                    LayerKind::HeadConv2d { k, s, .. } => {
+                                        let src_key = src_keys.single().unwrap();
+                                        let in_c = in_c_opt.unwrap();
+                                        let conv = nn::conv2d(
+                                            path,
+                                            in_c as i64,
+                                            out_c as i64,
+                                            k as i64,
+                                            nn::ConvConfig {
+                                                stride: s as i64,
+                                                ..Default::default()
+                                            },
+                                        );
 
-                            YoloModule::single(src_key, move |xs, train| xs.apply_t(&conv, train))
-                        }
-                        LayerKind::Upsample { scale_factor, .. } => {
-                            let scale_factor = scale_factor.raw();
-                            debug_assert_eq!(src_keys.len(), 1);
-                            let src_key = src_keys[0];
+                                        Module::FnSingle(Box::new(move |xs, train| {
+                                            xs.apply_t(&conv, train)
+                                        }))
+                                    }
+                                    LayerKind::Upsample { scale_factor, .. } => {
+                                        let scale_factor = scale_factor.raw();
+                                        let src_key = src_keys.single().unwrap();
 
-                            YoloModule::single(src_key, move |xs, _train| {
-                                let (height, width) = match xs.size().as_slice() {
-                                    &[_bsize, _channels, height, width] => (height, width),
-                                    _ => unreachable!(),
+                                        Module::FnSingle(Box::new(move |xs, _train| {
+                                            let (height, width) = match xs.size().as_slice() {
+                                                &[_bsize, _channels, height, width] => {
+                                                    (height, width)
+                                                }
+                                                _ => unreachable!(),
+                                            };
+
+                                            let new_height = (height as f64 * scale_factor) as i64;
+                                            let new_width = (width as f64 * scale_factor) as i64;
+
+                                            xs.upsample_nearest2d(
+                                                &[new_height, new_width],
+                                                Some(scale_factor),
+                                                Some(scale_factor),
+                                            )
+                                        }))
+                                    }
+                                    LayerKind::Concat { .. } => {
+                                        Module::FnIndexed(Box::new(move |tensors, _train| {
+                                            Tensor::cat(tensors, 1)
+                                        }))
+                                    }
                                 };
 
-                                let new_height = (height as f64 * scale_factor) as i64;
-                                let new_width = (width as f64 * scale_factor) as i64;
-
-                                xs.upsample_nearest2d(
-                                    &[new_height, new_width],
-                                    Some(scale_factor),
-                                    Some(scale_factor),
-                                )
-                            })
-                        }
-                        LayerKind::Concat { .. } => {
-                            YoloModule::multi(src_keys.to_vec(), move |tensors, _train| {
-                                Tensor::cat(tensors, 1)
-                            })
+                                module
+                            }
+                            None => {
+                                debug_assert!(key == NodeKey(0));
+                                Module::Input(Input::new())
+                            }
                         }
                     };
-
                     (key, module)
                 })
                 .collect();
@@ -746,8 +775,8 @@ mod misc {
     #[derive(Debug)]
     pub struct Layer {
         pub(crate) key: NodeKey,
-        pub(crate) module: YoloModule,
-        pub(crate) input_keys: Vec<NodeKey>,
+        pub(crate) module: Module,
+        pub(crate) input_keys: InputKeys,
         pub(crate) anchors_opt: Option<Vec<(usize, usize)>>,
     }
 

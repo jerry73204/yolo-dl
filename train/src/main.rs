@@ -399,12 +399,12 @@ async fn multi_gpu_training_worker(
 
             // run tasks
             let (worker_contexts_, outputs_per_worker) =
-                future::join_all(worker_contexts.into_iter().zip_eq(jobs).enumerate().map(
+                future::try_join_all(worker_contexts.into_iter().zip_eq(jobs).enumerate().map(
                     |(worker_index, (mut context, jobs))| {
-                        async_std::task::spawn_blocking(move || {
-                            let outputs = jobs
+                        async_std::task::spawn_blocking(move || -> Result<_> {
+                            let outputs: Vec<_> = jobs
                                 .into_iter()
-                                .map(|job| {
+                                .map(|job| -> Result<_> {
                                     let mut worker_timing = Timing::new("training worker");
 
                                     let WorkerContext {
@@ -426,7 +426,7 @@ async fn multi_gpu_training_worker(
                                     worker_timing.set_record("to device");
 
                                     // forward pass
-                                    let output = model.forward_t(&image, true);
+                                    let output = model.forward_t(&image, true)?;
                                     worker_timing.set_record("forward");
 
                                     // compute loss
@@ -449,7 +449,7 @@ async fn multi_gpu_training_worker(
 
                                     worker_timing.report();
 
-                                    WorkerOutput {
+                                    Ok(WorkerOutput {
                                         job_index,
                                         worker_index,
                                         minibatch_size,
@@ -457,15 +457,15 @@ async fn multi_gpu_training_worker(
                                         losses,
                                         target_bboxes: loss_auxiliary.target_bboxes,
                                         gradients,
-                                    }
+                                    })
                                 })
-                                .collect_vec();
+                                .try_collect()?;
 
-                            (context, outputs)
+                            Ok((context, outputs))
                         })
                     },
                 ))
-                .await
+                .await?
                 .into_iter()
                 .unzip_n_vec();
 
@@ -780,7 +780,7 @@ fn single_gpu_training_worker(
         timing.set_record("to device");
 
         // forward pass
-        let output = model.forward_t(&image, true);
+        let output = model.forward_t(&image, true)?;
         timing.set_record("forward");
 
         // compute loss
