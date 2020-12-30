@@ -3,11 +3,166 @@ use crate::common::*;
 
 pub use bottleneck::*;
 pub use bottleneck_csp::*;
+pub use concat_2d::*;
 pub use conv_block::*;
+pub use conv_bn_2d::*;
+pub use dark_csp_2d::*;
 pub use detect::*;
 pub use focus::*;
 pub use spp::*;
+pub use spp_csp_2d::*;
+pub use sum_2d::*;
 pub use yolo_module::*;
+
+mod spp_csp_2d {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct SppCsp2DInit {
+        pub in_c: usize,
+        pub out_c: usize,
+        pub k: Vec<usize>,
+        pub c_mul: R64,
+    }
+
+    impl SppCsp2DInit {
+        pub fn build<'p, P>(self, path: P) -> SppCsp2D
+        where
+            P: Borrow<nn::Path<'p>>,
+        {
+            let path = path.borrow();
+            let Self {
+                in_c,
+                out_c,
+                k,
+                c_mul,
+            } = self;
+
+            let mid_c = (in_c as f64 * c_mul.raw()).floor() as usize;
+            let first_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
+            let last_conv = ConvBn2DInit::new(mid_c, out_c, 1).build(path);
+            let skip_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+
+            let spp_conv_1 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+            let spp_conv_2 = ConvBn2DInit::new(mid_c, mid_c, 3).build(path);
+            let spp_conv_3 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+            let spp_conv_4 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+            let spp_conv_5 = ConvBn2DInit::new(mid_c, mid_c, 3).build(path);
+
+            SppCsp2D {
+                first_conv,
+                last_conv,
+                skip_conv,
+                spp_conv_1,
+                spp_conv_2,
+                spp_conv_3,
+                spp_conv_4,
+                spp_conv_5,
+                k,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SppCsp2D {
+        first_conv: ConvBn2D,
+        last_conv: ConvBn2D,
+        skip_conv: ConvBn2D,
+        spp_conv_1: ConvBn2D,
+        spp_conv_2: ConvBn2D,
+        spp_conv_3: ConvBn2D,
+        spp_conv_4: ConvBn2D,
+        spp_conv_5: ConvBn2D,
+        k: Vec<usize>,
+    }
+
+    impl SppCsp2D {
+        pub fn forward(&self, xs: &Tensor, train: bool) -> Tensor {
+            let SppCsp2D {
+                first_conv,
+                last_conv,
+                skip_conv,
+                spp_conv_1,
+                spp_conv_2,
+                spp_conv_3,
+                spp_conv_4,
+                spp_conv_5,
+                k,
+            } = self;
+
+            let first = first_conv.forward_t(xs, train);
+            let skip = skip_conv.forward_t(&first, train);
+
+            let spp: Tensor = {
+                let xs = spp_conv_1.forward_t(&first, train);
+                let xs = spp_conv_2.forward_t(&xs, train);
+                let xs = spp_conv_3.forward_t(&xs, train);
+                let spp: Tensor = {
+                    let mut iter = k.iter().cloned().map(|k| {
+                        let k = k as i64;
+                        let p = k - 1;
+                        let s = 1;
+                        let d = 1;
+                        let ceil_mode = false;
+                        xs.max_pool2d(&[k, k], &[s, s], &[p, p], &[d, d], ceil_mode)
+                    });
+
+                    let first = iter.next().unwrap();
+                    let spp = iter.fold(first, |acc, xs| acc + xs);
+
+                    spp
+                };
+                let xs = spp_conv_4.forward_t(&spp, train);
+                let xs = spp_conv_5.forward_t(&spp, train);
+                xs
+            };
+
+            let merge = Tensor::cat(&[skip, spp], 1);
+            let last = last_conv.forward_t(&merge, train);
+            last
+        }
+    }
+}
+
+mod sum_2d {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Sum2D;
+
+    impl Sum2D {
+        pub fn forward(tensors: &[Tensor]) -> Result<Tensor> {
+            tensors.iter().try_for_each(|tensor| -> Result<_> {
+                tensor.size4()?;
+                Ok(())
+            })?;
+            ensure!(!tensors.is_empty(), "empty input is not allowed");
+            let output = Tensor::cat(tensors, 1);
+            Ok(output)
+        }
+    }
+}
+
+mod concat_2d {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct Sum2D;
+
+    impl Sum2D {
+        pub fn forward(tensors: &[Tensor]) -> Result<Tensor> {
+            let mut iter = tensors.iter();
+            let first = iter
+                .next()
+                .ok_or_else(|| format_err!("empty input is not allowed"))?
+                .shallow_clone();
+            first.size4()?;
+
+            let output = iter.try_fold(first, |acc, tensor| acc.f_add(tensor))?;
+            Ok(output)
+        }
+    }
+}
 
 mod yolo_module {
     use super::*;
@@ -69,6 +224,96 @@ mod yolo_module {
                     module_fn(&inputs, train)
                 }
             }
+        }
+    }
+}
+
+mod conv_bn_2d {
+    pub use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct ConvBn2DInit {
+        pub in_c: usize,
+        pub out_c: usize,
+        pub k: usize,
+        pub s: usize,
+        pub p: usize,
+        pub d: usize,
+        pub g: usize,
+        pub activation: Activation,
+    }
+
+    impl ConvBn2DInit {
+        pub fn new(in_c: usize, out_c: usize, k: usize) -> Self {
+            Self {
+                in_c,
+                out_c,
+                k,
+                s: 1,
+                p: k / 2,
+                d: 1,
+                g: 1,
+                activation: Activation::Mish,
+            }
+        }
+
+        pub fn build<'p, P>(self, path: P) -> ConvBn2D
+        where
+            P: Borrow<nn::Path<'p>>,
+        {
+            let path = path.borrow();
+
+            let Self {
+                in_c,
+                out_c,
+                k,
+                s,
+                p,
+                d,
+                g,
+                activation,
+            } = self;
+
+            let conv = nn::conv2d(
+                path,
+                in_c as i64,
+                out_c as i64,
+                k as i64,
+                nn::ConvConfig {
+                    stride: s as i64,
+                    padding: p as i64,
+                    dilation: d as i64,
+                    groups: g as i64,
+                    bias: false,
+                    ..Default::default()
+                },
+            );
+            let bn = nn::batch_norm2d(path, out_c as i64, Default::default());
+
+            ConvBn2D {
+                conv,
+                bn,
+                activation,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct ConvBn2D {
+        conv: nn::Conv2D,
+        bn: nn::BatchNorm,
+        activation: Activation,
+    }
+
+    impl ConvBn2D {
+        pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+            let Self {
+                ref conv,
+                ref bn,
+                activation,
+            } = *self;
+
+            xs.apply(conv).apply_t(bn, train).activation(activation)
         }
     }
 }
@@ -427,6 +672,102 @@ mod focus {
                 );
                 conv(&xs, train)
             })
+        }
+    }
+}
+
+mod dark_csp_2d {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct DarkCsp2DInit {
+        pub in_c: usize,
+        pub out_c: usize,
+        pub repeat: usize,
+        pub shortcut: bool,
+        pub c_mul: R64,
+    }
+
+    impl DarkCsp2DInit {
+        pub fn build<'p, P>(self, path: P) -> DarkCsp2D
+        where
+            P: Borrow<nn::Path<'p>>,
+        {
+            let path = path.borrow();
+            let Self {
+                in_c,
+                out_c,
+                repeat,
+                shortcut,
+                c_mul,
+            } = self;
+
+            let mid_c = (in_c as f64 * c_mul.raw()).floor() as usize;
+
+            let skip_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
+            let merge_conv = ConvBn2DInit::new(in_c, out_c, 1).build(path);
+            let before_repeat_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
+            let after_repeat_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+
+            let repeat_convs: Vec<_> = (0..repeat)
+                .map(|_| {
+                    let first_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+                    let second_conv = ConvBn2DInit::new(mid_c, mid_c, 3).build(path);
+                    (first_conv, second_conv)
+                })
+                .collect();
+
+            DarkCsp2D {
+                skip_conv,
+                merge_conv,
+                before_repeat_conv,
+                after_repeat_conv,
+                repeat_convs,
+                shortcut,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct DarkCsp2D {
+        skip_conv: ConvBn2D,
+        merge_conv: ConvBn2D,
+        before_repeat_conv: ConvBn2D,
+        after_repeat_conv: ConvBn2D,
+        repeat_convs: Vec<(ConvBn2D, ConvBn2D)>,
+        shortcut: bool,
+    }
+
+    impl DarkCsp2D {
+        pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+            let Self {
+                ref skip_conv,
+                ref merge_conv,
+                ref before_repeat_conv,
+                ref after_repeat_conv,
+                ref repeat_convs,
+                shortcut,
+            } = *self;
+
+            let skip = skip_conv.forward_t(xs, train);
+            let repeat = {
+                let xs = before_repeat_conv.forward_t(xs, train);
+                let xs = repeat_convs
+                    .iter()
+                    .fold(xs, |xs, (first_conv, second_conv)| {
+                        let ys = second_conv.forward_t(&first_conv.forward_t(&xs, train), train);
+                        if shortcut {
+                            xs + ys
+                        } else {
+                            ys
+                        }
+                    });
+                let xs = after_repeat_conv.forward_t(&xs, train);
+                xs
+            };
+            let merge = Tensor::cat(&[skip, repeat], 1);
+            let output = merge_conv.forward_t(&merge, train);
+            output
         }
     }
 }

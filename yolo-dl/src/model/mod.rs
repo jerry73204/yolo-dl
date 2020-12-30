@@ -1,12 +1,12 @@
-mod activation;
 mod config;
 mod helper;
+mod misc;
 mod model;
 mod module;
 
-pub use activation::*;
 pub use config::*;
 pub use helper::*;
+pub use misc::*;
 pub use model::*;
 pub use module::*;
 
