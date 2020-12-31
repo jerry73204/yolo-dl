@@ -339,6 +339,7 @@ mod conv_bn_2d {
         pub d: usize,
         pub g: usize,
         pub activation: Activation,
+        pub batch_norm: bool,
     }
 
     impl ConvBn2DInit {
@@ -352,6 +353,7 @@ mod conv_bn_2d {
                 d: 1,
                 g: 1,
                 activation: Activation::Mish,
+                batch_norm: true,
             }
         }
 
@@ -370,6 +372,7 @@ mod conv_bn_2d {
                 d,
                 g,
                 activation,
+                batch_norm,
             } = self;
 
             let conv = nn::conv2d(
@@ -386,7 +389,11 @@ mod conv_bn_2d {
                     ..Default::default()
                 },
             );
-            let bn = nn::batch_norm2d(path, out_c as i64, Default::default());
+            let bn = if batch_norm {
+                Some(nn::batch_norm2d(path, out_c as i64, Default::default()))
+            } else {
+                None
+            };
 
             ConvBn2D {
                 conv,
@@ -399,7 +406,7 @@ mod conv_bn_2d {
     #[derive(Debug)]
     pub struct ConvBn2D {
         conv: nn::Conv2D,
-        bn: nn::BatchNorm,
+        bn: Option<nn::BatchNorm>,
         activation: Activation,
     }
 
@@ -411,7 +418,14 @@ mod conv_bn_2d {
                 activation,
             } = *self;
 
-            xs.apply(conv).apply_t(bn, train).activation(activation)
+            let xs = xs.apply(conv).activation(activation);
+
+            let xs = match bn {
+                Some(bn) => xs.apply_t(bn, train),
+                None => xs,
+            };
+
+            xs
         }
     }
 }
