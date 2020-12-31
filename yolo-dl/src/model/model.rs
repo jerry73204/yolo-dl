@@ -1,8 +1,9 @@
 use super::{
     config::{LayerInit, LayerKind, YoloInit},
     module::{
-        BottleneckCspInit, BottleneckInit, ConvBlockInit, DetectInit, DetectModule, FocusInit,
-        Input, Module, ModuleInput, ModuleOutput, SppInit,
+        BottleneckCspInit, BottleneckInit, Concat2D, ConvBlockInit, ConvBn2DInit, DarkCsp2DInit,
+        DetectInit, DetectModule, FocusInit, Input, Module, ModuleInput, ModuleOutput,
+        SppCsp2DInit, SppInit, Sum2D, UpSample2D,
     },
 };
 use crate::common::*;
@@ -12,6 +13,136 @@ pub use yolo_model::*;
 pub use yolo_output::*;
 
 pub use model_config::graph::{InputKeys, NodeKey};
+
+mod model {
+    use super::*;
+
+    struct Model {
+        nodes: IndexMap<NodeKey, Layer>,
+    }
+
+    impl Model {
+        pub fn from_graph<'p>(
+            orig_graph: &'_ model_config::graph::Graph,
+            path: impl Borrow<nn::Path<'p>>,
+        ) -> Result<Self> {
+            use model_config::{config, graph};
+            let path = path.borrow();
+            let orig_nodes = orig_graph.nodes();
+
+            let nodes: IndexMap<_, _> = orig_nodes
+                .iter()
+                .map(|(&key, node)| -> Result<_> {
+                    let graph::Node {
+                        input_keys,
+                        output_shape,
+                        config,
+                        ..
+                    } = node;
+
+                    let module = match *config {
+                        config::Module::Input(_) => Module::Input(Input::new()),
+                        config::Module::ConvBn2D(config::ConvBn2D {
+                            c,
+                            k,
+                            s,
+                            p,
+                            d,
+                            g,
+                            act,
+                            bn,
+                            ..
+                        }) => {
+                            let src_key = input_keys.single().unwrap();
+                            let [_b, in_c, _h, _w] =
+                                orig_nodes[&src_key].output_shape.size4().unwrap();
+                            let in_c = in_c.size().unwrap();
+
+                            Module::ConvBn2D(
+                                ConvBn2DInit {
+                                    in_c,
+                                    out_c: c,
+                                    k,
+                                    s,
+                                    p,
+                                    d,
+                                    g,
+                                    activation: act,
+                                    batch_norm: bn,
+                                }
+                                .build(path),
+                            )
+                        }
+                        config::Module::UpSample2D(config::UpSample2D { scale, .. }) => {
+                            Module::UpSample2D(UpSample2D::new(scale.raw())?)
+                        }
+                        config::Module::DarkCsp2D(config::DarkCsp2D {
+                            c,
+                            repeat,
+                            shortcut,
+                            c_mul,
+                            ..
+                        }) => {
+                            let src_key = input_keys.single().unwrap();
+                            let [_b, in_c, _h, _w] =
+                                orig_nodes[&src_key].output_shape.size4().unwrap();
+                            let in_c = in_c.size().unwrap();
+
+                            Module::DarkCsp2D(
+                                DarkCsp2DInit {
+                                    in_c,
+                                    out_c: c,
+                                    repeat,
+                                    shortcut,
+                                    c_mul,
+                                }
+                                .build(path),
+                            )
+                        }
+                        config::Module::SppCsp2D(config::SppCsp2D {
+                            c, ref k, c_mul, ..
+                        }) => {
+                            let src_key = input_keys.single().unwrap();
+                            let [_b, in_c, _h, _w] =
+                                orig_nodes[&src_key].output_shape.size4().unwrap();
+                            let in_c = in_c.size().unwrap();
+
+                            Module::SppCsp2D(
+                                SppCsp2DInit {
+                                    in_c,
+                                    out_c: c,
+                                    k: k.to_owned(),
+                                    c_mul,
+                                }
+                                .build(path),
+                            )
+                        }
+                        config::Module::Sum2D(_) => Module::Sum2D(Sum2D),
+                        config::Module::Concat2D(_) => Module::Concat2D(Concat2D),
+                        config::Module::Detect2D(config::Detect2D {
+                            classes,
+                            ref anchors,
+                            ..
+                        }) => {
+                            todo!();
+                        }
+                        config::Module::GroupRef(_) => unreachable!(),
+                    };
+
+                    let layer = Layer {
+                        key,
+                        input_keys: input_keys.to_owned(),
+                        module,
+                    };
+
+                    Ok((key, layer))
+                })
+                .try_collect()?;
+
+            Ok(Self { nodes })
+        }
+    }
+}
 
 mod yolo_model {
     use super::*;
