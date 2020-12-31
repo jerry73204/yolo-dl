@@ -15,6 +15,7 @@ pub use module_input::*;
 pub use spp::*;
 pub use spp_csp_2d::*;
 pub use sum_2d::*;
+pub use up_sample_2d::*;
 
 mod module {
     pub use super::*;
@@ -24,11 +25,13 @@ mod module {
     pub enum Module {
         Input(Input),
         ConvBn2D(ConvBn2D),
+        UpSample2D(UpSample2D),
         Sum2D(Sum2D),
         Concat2D(Concat2D),
         DarkCsp2D(DarkCsp2D),
         SppCsp2D(SppCsp2D),
         Detect(DetectModule),
+
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -165,6 +168,34 @@ mod input {
         pub fn forward(&self, tensor: &Tensor) -> Result<Tensor> {
             // TODO: check shape
             Ok(tensor.shallow_clone())
+        }
+    }
+}
+
+mod up_sample_2d {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct UpSample2D {
+        scale: f64,
+    }
+
+    impl UpSample2D {
+        pub fn new(scale: f64) -> Result<Self> {
+            ensure!(
+                scale.is_finite() && scale.is_sign_positive(),
+                "invalid scale value"
+            );
+            Ok(Self { scale })
+        }
+
+        pub fn forward(&self, input: &Tensor) -> Result<Tensor> {
+            let Self { scale } = *self;
+            let (_b, _c, in_h, in_w) = input.size4()?;
+            let out_h = (in_h as f64 * scale) as i64;
+            let out_w = (in_w as f64 * scale) as i64;
+            let output = input.upsample_nearest2d(&[out_h, out_w], None, None);
+            Ok(output)
         }
     }
 }
