@@ -28,6 +28,7 @@ mod module {
         Concat2D(Concat2D),
         DarkCsp2D(DarkCsp2D),
         SppCsp2D(SppCsp2D),
+        Detect(DetectModule),
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -38,10 +39,11 @@ mod module {
     }
 
     impl Module {
-        pub fn forward_t<'a>(
+        pub fn forward_t<'a, 'b>(
             &mut self,
             input: impl Into<ModuleInput<'a>>,
             train: bool,
+            image_size: impl Into<Option<&'b PixelSize<i64>>>,
         ) -> Result<ModuleOutput> {
             let input = input.into();
 
@@ -49,6 +51,15 @@ mod module {
                 (Self::Input(module), ModuleInput::Single(tensor)) => {
                     module.forward(tensor)?.into()
                 }
+                (Self::Detect(module), ModuleInput::Indexed(tensors)) => module
+                    .forward_t(
+                        &tensors,
+                        train,
+                        image_size
+                            .into()
+                            .ok_or_else(|| format_err!("image size not provided"))?,
+                    )
+                    .into(),
                 (Self::ConvBn2D(module), ModuleInput::Single(tensor)) => {
                     module.forward_t(tensor, train).into()
                 }
@@ -108,6 +119,7 @@ mod module_input {
     #[derive(Debug)]
     pub enum ModuleOutput {
         Tensor(Tensor),
+        Detect(YoloOutput),
     }
 
     impl ModuleOutput {
@@ -117,11 +129,24 @@ mod module_input {
                 _ => None,
             }
         }
+
+        pub fn detect(self) -> Option<YoloOutput> {
+            match self {
+                Self::Detect(detect) => Some(detect),
+                _ => None,
+            }
+        }
     }
 
     impl From<Tensor> for ModuleOutput {
         fn from(tensor: Tensor) -> Self {
             Self::Tensor(tensor)
+        }
+    }
+
+    impl From<YoloOutput> for ModuleOutput {
+        fn from(from: YoloOutput) -> Self {
+            Self::Detect(from)
         }
     }
 }
