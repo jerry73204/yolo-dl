@@ -257,6 +257,48 @@ mod shape {
     pub struct Shape(Vec<Dim>);
 
     impl Shape {
+        pub fn size0(&self) -> Option<()> {
+            match self.as_ref() {
+                &[] => Some(()),
+                _ => None,
+            }
+        }
+
+        pub fn size1(&self) -> Option<Dim> {
+            match self.as_ref() {
+                &[size] => Some(size),
+                _ => None,
+            }
+        }
+
+        pub fn size2(&self) -> Option<[Dim; 2]> {
+            match self.as_ref() {
+                &[s1, s2] => Some([s1, s2]),
+                _ => None,
+            }
+        }
+
+        pub fn size3(&self) -> Option<[Dim; 3]> {
+            match self.as_ref() {
+                &[s1, s2, s3] => Some([s1, s2, s3]),
+                _ => None,
+            }
+        }
+
+        pub fn size4(&self) -> Option<[Dim; 4]> {
+            match self.as_ref() {
+                &[s1, s2, s3, s4] => Some([s1, s2, s3, s4]),
+                _ => None,
+            }
+        }
+
+        pub fn size5(&self) -> Option<[Dim; 5]> {
+            match self.as_ref() {
+                &[s1, s2, s3, s4, s5] => Some([s1, s2, s3, s4, s5]),
+                _ => None,
+            }
+        }
+
         pub fn is_compatible_with(&self, other: &Shape) -> bool {
             if self.0.len() != other.0.len() {
                 return false;

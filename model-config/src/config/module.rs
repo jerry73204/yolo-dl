@@ -630,6 +630,8 @@ mod spp_csp_2d {
         pub from: Option<ModulePath>,
         pub c: usize,
         pub k: Vec<usize>,
+        #[serde(default = "default_c_mul")]
+        pub c_mul: R64,
     }
 
     impl SppCsp2D {
@@ -639,6 +641,7 @@ mod spp_csp_2d {
                 from,
                 c,
                 k: vec![1, 5, 9, 13],
+                c_mul: default_c_mul(),
             }
         }
     }
@@ -660,6 +663,10 @@ mod spp_csp_2d {
                 _ => None,
             }
         }
+    }
+
+    fn default_c_mul() -> R64 {
+        r64(0.5)
     }
 }
 
