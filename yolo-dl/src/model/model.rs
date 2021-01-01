@@ -2,8 +2,8 @@ use super::{
     config::{LayerInit, LayerKind, YoloInit},
     module::{
         BottleneckCspInit, BottleneckInit, Concat2D, ConvBlockInit, ConvBn2DInit, DarkCsp2DInit,
-        DetectInit, DetectModule, FocusInit, Input, Module, ModuleInput, ModuleOutput,
-        SppCsp2DInit, SppInit, Sum2D, UpSample2D,
+        Detect2DInit, DetectInit, DetectModule, FocusInit, Input, Module, ModuleInput,
+        ModuleOutput, SppCsp2DInit, SppInit, Sum2D, UpSample2D,
     },
 };
 use crate::common::*;
@@ -124,7 +124,20 @@ mod model {
                             ref anchors,
                             ..
                         }) => {
-                            todo!();
+                            let anchors: Vec<_> = anchors
+                                .iter()
+                                .map(|size| {
+                                    let config::Size { h, w } = *size;
+                                    PixelSize::new(h, w)
+                                })
+                                .collect();
+                            Module::Detect2D(
+                                Detect2DInit {
+                                    num_classes: classes,
+                                    anchors,
+                                }
+                                .build(path),
+                            )
                         }
                         config::Module::GroupRef(_) => unreachable!(),
                     };

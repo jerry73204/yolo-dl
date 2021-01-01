@@ -32,7 +32,7 @@ mod module {
         DarkCsp2D(DarkCsp2D),
         SppCsp2D(SppCsp2D),
         Detect(DetectModule),
-
+        Detect2D(Detect2D),
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -1256,7 +1256,7 @@ mod detect_2d {
     #[derive(Debug, Clone)]
     pub struct Detect2DInit {
         pub num_classes: usize,
-        pub anchors: Vec<PixelSize<usize>>,
+        pub anchors: Vec<PixelSize<R64>>,
     }
 
     impl Detect2DInit {
@@ -1272,11 +1272,6 @@ mod detect_2d {
                 anchors,
             } = self;
 
-            let anchors: Vec<_> = anchors
-                .into_iter()
-                .map(|size| size.map(|&val| val as i64))
-                .collect();
-
             Detect2D {
                 num_classes: num_classes as i64,
                 anchors,
@@ -1289,24 +1284,19 @@ mod detect_2d {
     #[derive(Debug)]
     pub struct Detect2D {
         num_classes: i64,
-        anchors: Vec<PixelSize<i64>>,
+        anchors: Vec<PixelSize<R64>>,
         device: Device,
         cache: Option<(PixelSize<i64>, Cache)>,
     }
 
     impl Detect2D {
-        pub fn forward_t(
+        pub fn forward(
             &mut self,
             tensor: &Tensor,
             image_size: &PixelSize<i64>,
         ) -> Result<Detect2DOutput> {
-            let Self {
-                num_classes,
-                device,
-                ..
-            } = *self;
-
-            let (batch_size, channels, feature_h, feature_w) = tensor.size4().unwrap();
+            let Self { num_classes, .. } = *self;
+            let (batch_size, channels, feature_h, feature_w) = tensor.size4()?;
 
             // load cached data
             let Cache {
@@ -1319,11 +1309,6 @@ mod detect_2d {
             let num_anchors = anchor_sizes.len() as i64;
             let num_entries = num_classes + 5;
             debug_assert_eq!(channels, num_anchors * num_entries);
-            let feature_size = GridSize::new(feature_h, feature_w);
-
-            // gride size in pixels
-            let grid_height = image_size.height as f64 / feature_h as f64;
-            let grid_width = image_size.width as f64 / feature_w as f64;
 
             // convert shape to [batch_size, n_entries, n_anchors, height, width]
             let outputs = tensor.view([batch_size, num_entries, num_anchors, feature_h, feature_w]);
@@ -1409,7 +1394,7 @@ mod detect_2d {
                                     ..
                                 } = anchor_size;
 
-                                GridSize::new(anchor_h as f64 / grid_h, anchor_w as f64 / grid_w)
+                                GridSize::new(anchor_h.raw() / grid_h, anchor_w.raw() / grid_w)
                             })
                             .collect_vec()
                     };
