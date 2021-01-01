@@ -8,6 +8,7 @@ pub use conv_block::*;
 pub use conv_bn_2d::*;
 pub use dark_csp_2d::*;
 pub use detect::*;
+pub use detect_2d::*;
 pub use focus::*;
 pub use input::*;
 pub use module::*;
@@ -123,6 +124,7 @@ mod module_input {
     pub enum ModuleOutput {
         Tensor(Tensor),
         Detect(YoloOutput),
+        Detect2D(Detect2DOutput),
     }
 
     impl ModuleOutput {
@@ -139,6 +141,13 @@ mod module_input {
                 _ => None,
             }
         }
+
+        pub fn detect_2d(self) -> Option<Detect2DOutput> {
+            match self {
+                Self::Detect2D(detect) => Some(detect),
+                _ => None,
+            }
+        }
     }
 
     impl From<Tensor> for ModuleOutput {
@@ -150,6 +159,12 @@ mod module_input {
     impl From<YoloOutput> for ModuleOutput {
         fn from(from: YoloOutput) -> Self {
             Self::Detect(from)
+        }
+    }
+
+    impl From<Detect2DOutput> for ModuleOutput {
+        fn from(from: Detect2DOutput) -> Self {
+            Self::Detect2D(from)
         }
     }
 }
@@ -1232,5 +1247,234 @@ mod detect {
         positions_grids: Vec<Tensor>,
         anchor_sizes_list: Vec<Vec<GridSize<f64>>>,
         anchor_sizes_grids: Vec<Tensor>,
+    }
+}
+
+mod detect_2d {
+    pub use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct Detect2DInit {
+        pub num_classes: usize,
+        pub anchors: Vec<PixelSize<usize>>,
+    }
+
+    impl Detect2DInit {
+        pub fn build<'p, P>(self, path: P) -> Detect2D
+        where
+            P: Borrow<nn::Path<'p>>,
+        {
+            let path = path.borrow();
+            let device = path.device();
+
+            let Self {
+                num_classes,
+                anchors,
+            } = self;
+
+            let anchors: Vec<_> = anchors
+                .into_iter()
+                .map(|size| size.map(|&val| val as i64))
+                .collect();
+
+            Detect2D {
+                num_classes: num_classes as i64,
+                anchors,
+                device,
+                cache: None,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Detect2D {
+        num_classes: i64,
+        anchors: Vec<PixelSize<i64>>,
+        device: Device,
+        cache: Option<(PixelSize<i64>, Cache)>,
+    }
+
+    impl Detect2D {
+        pub fn forward_t(
+            &mut self,
+            tensor: &Tensor,
+            image_size: &PixelSize<i64>,
+        ) -> Result<Detect2DOutput> {
+            let Self {
+                num_classes,
+                device,
+                ..
+            } = *self;
+
+            let (batch_size, channels, feature_h, feature_w) = tensor.size4().unwrap();
+
+            // load cached data
+            let Cache {
+                positions_grid,
+                anchor_sizes,
+                anchor_sizes_grid,
+            } = self.cache(tensor, image_size)?;
+
+            // compute outputs
+            let num_anchors = anchor_sizes.len() as i64;
+            let num_entries = num_classes + 5;
+            debug_assert_eq!(channels, num_anchors * num_entries);
+            let feature_size = GridSize::new(feature_h, feature_w);
+
+            // gride size in pixels
+            let grid_height = image_size.height as f64 / feature_h as f64;
+            let grid_width = image_size.width as f64 / feature_w as f64;
+
+            // convert shape to [batch_size, n_entries, n_anchors, height, width]
+            let outputs = tensor.view([batch_size, num_entries, num_anchors, feature_h, feature_w]);
+
+            // positions in grid units
+            let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
+
+            let position = sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
+            let cy = position.i((.., 0..1, .., .., ..));
+            let cx = position.i((.., 1..2, .., .., ..));
+
+            // bbox sizes in grid units
+            let size = sigmoid.i((.., 2..4, .., .., ..)) * anchor_sizes_grid;
+            let h = size.i((.., 0..1, .., .., ..));
+            let w = size.i((.., 1..2, .., .., ..));
+
+            // objectness
+            let objectness = outputs.i((.., 4..5, .., .., ..));
+
+            // sparse classification
+            let classification = outputs.i((.., 5.., .., .., ..));
+
+            Ok(Detect2DOutput {
+                cy,
+                cx,
+                h,
+                w,
+                objectness,
+                classification,
+            })
+        }
+
+        fn cache(&mut self, tensor: &Tensor, image_size: &PixelSize<i64>) -> Result<&Cache> {
+            let Self {
+                device,
+                ref anchors,
+                ref mut cache,
+                ..
+            } = *self;
+
+            let is_hit = cache
+                .as_ref()
+                .map(|(cached_size, _cache)| cached_size == image_size)
+                .unwrap_or(false);
+
+            if !is_hit {
+                tch::no_grad(|| -> Result<_> {
+                    let positions_grid = {
+                        let (_b, _c, feature_h, feature_w) = tensor.size4()?;
+                        let grid = {
+                            let grids = Tensor::meshgrid(&[
+                                Tensor::arange(feature_h, (Kind::Float, device)),
+                                Tensor::arange(feature_w, (Kind::Float, device)),
+                            ]);
+                            // corresponds to (batch * entry * anchor * height * width)
+                            Tensor::stack(&[&grids[0], &grids[1]], 0)
+                                .view([1, 2, 1, feature_h, feature_w])
+                        };
+                        grid.set_requires_grad(false)
+                    };
+
+                    let anchor_sizes: Vec<GridSize<f64>> = {
+                        let PixelSize {
+                            height: image_h,
+                            width: image_w,
+                            ..
+                        } = *image_size;
+
+                        let (_b, _cchannels, feature_h, feature_w) = tensor.size4()?;
+
+                        // gride size in pixels
+                        let grid_h = image_h as f64 / feature_h as f64;
+                        let grid_w = image_w as f64 / feature_w as f64;
+
+                        // convert anchor sizes into grid units
+                        anchors
+                            .iter()
+                            .cloned()
+                            .map(|anchor_size| {
+                                let PixelSize {
+                                    height: anchor_h,
+                                    width: anchor_w,
+                                    ..
+                                } = anchor_size;
+
+                                GridSize::new(anchor_h as f64 / grid_h, anchor_w as f64 / grid_w)
+                            })
+                            .collect_vec()
+                    };
+
+                    let anchor_sizes_grid = {
+                        let num_anchors = anchor_sizes.len();
+                        let (anchor_h_vec, anchor_w_vec) = anchor_sizes
+                            .iter()
+                            .cloned()
+                            .map(|anchor_size| {
+                                let GridSize {
+                                    height: anchor_h,
+                                    width: anchor_w,
+                                    ..
+                                } = anchor_size;
+                                (anchor_h as f32, anchor_w as f32)
+                            })
+                            .unzip_n_vec();
+
+                        let grid = Tensor::stack(
+                            &[
+                                Tensor::of_slice(&anchor_h_vec),
+                                Tensor::of_slice(&anchor_w_vec),
+                            ],
+                            0,
+                        )
+                        // corresponds to (batch * entry * anchor * height * width)
+                        .view([1, 2, num_anchors as i64, 1, 1])
+                        .set_requires_grad(false)
+                        .to_device(device);
+
+                        grid
+                    };
+
+                    *cache = Some((
+                        image_size.to_owned(),
+                        Cache {
+                            positions_grid,
+                            anchor_sizes,
+                            anchor_sizes_grid,
+                        },
+                    ));
+
+                    Ok(())
+                })?
+            }
+
+            Ok(cache.as_ref().map(|(_size, cache)| cache).unwrap())
+        }
+    }
+
+    #[derive(Debug)]
+    struct Cache {
+        positions_grid: Tensor,
+        anchor_sizes: Vec<GridSize<f64>>,
+        anchor_sizes_grid: Tensor,
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct Detect2DOutput {
+        cy: Tensor,
+        cx: Tensor,
+        h: Tensor,
+        w: Tensor,
+        objectness: Tensor,
+        classification: Tensor,
     }
 }

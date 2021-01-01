@@ -192,6 +192,9 @@ mod yolo_model {
                             let prev = output.replace(detect);
                             debug_assert!(prev.is_none());
                         }
+                        ModuleOutput::Detect2D(_detect) => {
+                            todo!();
+                        }
                     }
                     Ok(())
                 })?;
