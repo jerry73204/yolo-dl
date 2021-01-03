@@ -13,7 +13,7 @@ impl TensorEx for Tensor {
         match act {
             Mish => self.mish(),
             HardMish => self.hard_mish(),
-            Swith => self.swish(),
+            Swish => self.swish(),
             Relu => self.relu(),
             _ => unimplemented!(),
         }
