@@ -1,6 +1,7 @@
 use crate::{
     common::*,
-    unit::{GridUnit, PixelUnit, Unit},
+    ratio::Ratio,
+    unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Hash, Deserialize, TensorLike)]
@@ -40,3 +41,4 @@ where
 
 pub type PixelSize<T> = Size<T, PixelUnit>;
 pub type GridSize<T> = Size<T, GridUnit>;
+pub type RatioSize = Size<Ratio, RatioUnit>;
