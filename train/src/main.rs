@@ -426,7 +426,10 @@ async fn multi_gpu_training_worker(
                                     worker_timing.set_record("to device");
 
                                     // forward pass
-                                    let output = model.forward_t(&image, true)?;
+                                    let output = model
+                                        .forward_t(&image, true)?
+                                        .yolo()
+                                        .ok_or_else(|| format_err!("TODO"))?;
                                     worker_timing.set_record("forward");
 
                                     // compute loss
@@ -780,7 +783,10 @@ fn single_gpu_training_worker(
         timing.set_record("to device");
 
         // forward pass
-        let output = model.forward_t(&image, true)?;
+        let output = model
+            .forward_t(&image, true)?
+            .yolo()
+            .ok_or_else(|| format_err!("TODO"))?;
         timing.set_record("forward");
 
         // compute loss

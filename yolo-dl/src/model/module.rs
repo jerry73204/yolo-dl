@@ -11,6 +11,7 @@ pub use detect::*;
 pub use detect_2d::*;
 pub use focus::*;
 pub use input::*;
+pub use merge_detect_2d::*;
 pub use module::*;
 pub use module_input::*;
 pub use spp::*;
@@ -33,6 +34,7 @@ mod module {
         SppCsp2D(SppCsp2D),
         Detect(DetectModule),
         Detect2D(Detect2D),
+        MergeDetect2D(MergeDetect2D),
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -51,41 +53,55 @@ mod module {
         ) -> Result<ModuleOutput> {
             let input = input.into();
 
-            let output: ModuleOutput = match (self, input) {
-                (Self::Input(module), ModuleInput::Single(tensor)) => {
-                    module.forward(tensor)?.into()
-                }
-                (Self::Detect(module), ModuleInput::Indexed(tensors)) => module
+            let output: ModuleOutput = match self {
+                Self::Input(module) => module
+                    .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .into(),
+                Self::Detect(module) => module
                     .forward_t(
-                        &tensors,
+                        &input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?,
                         train,
                         image_size
                             .into()
                             .ok_or_else(|| format_err!("image size not provided"))?,
                     )
                     .into(),
-                (Self::ConvBn2D(module), ModuleInput::Single(tensor)) => {
-                    module.forward_t(tensor, train).into()
+                Self::ConvBn2D(module) => module
+                    .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
+                    .into(),
+                Self::UpSample2D(module) => module
+                    .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .into(),
+                Self::Sum2D(module) => module
+                    .forward(&input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .into(),
+                Self::Concat2D(module) => module
+                    .forward(&input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .into(),
+                Self::DarkCsp2D(module) => module
+                    .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
+                    .into(),
+                Self::SppCsp2D(module) => module
+                    .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
+                    .into(),
+                Self::Detect2D(module) => module
+                    .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .into(),
+                Self::MergeDetect2D(module) => module
+                    .forward(
+                        &input
+                            .indexed_detect_2d()
+                            .ok_or_else(|| format_err!("TODO"))?,
+                    )?
+                    .into(),
+                Self::FnSingle(module) => {
+                    module(input.tensor().ok_or_else(|| format_err!("TODO"))?, train).into()
                 }
-                (Self::Sum2D(module), ModuleInput::Indexed(tensors)) => {
-                    module.forward(&tensors)?.into()
-                }
-                (Self::Concat2D(module), ModuleInput::Indexed(tensors)) => {
-                    module.forward(&tensors)?.into()
-                }
-                (Self::DarkCsp2D(module), ModuleInput::Single(tensor)) => {
-                    module.forward_t(tensor, train).into()
-                }
-                (Self::SppCsp2D(module), ModuleInput::Single(tensor)) => {
-                    module.forward_t(tensor, train).into()
-                }
-                (Self::FnSingle(module), ModuleInput::Single(tensor)) => {
-                    module(tensor, train).into()
-                }
-                (Self::FnIndexed(module), ModuleInput::Indexed(tensors)) => {
-                    module(&tensors, train).into()
-                }
-                _ => bail!("input shape mismatch"),
+                Self::FnIndexed(module) => module(
+                    &input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?,
+                    train,
+                )
+                .into(),
             };
             Ok(output)
         }
@@ -96,38 +112,181 @@ mod module_input {
     pub use super::*;
 
     #[derive(Debug, Clone)]
+    pub enum DataKind<'a> {
+        Tensor(&'a Tensor),
+        Detect2D(&'a Detect2DOutput),
+    }
+
+    impl<'a> DataKind<'a> {
+        pub fn tensor(&self) -> Option<&Tensor> {
+            match self {
+                Self::Tensor(tensor) => Some(tensor),
+                _ => None,
+            }
+        }
+
+        pub fn detect_2d(&self) -> Option<&Detect2DOutput> {
+            match self {
+                Self::Detect2D(detect) => Some(detect),
+                _ => None,
+            }
+        }
+    }
+
+    impl<'a> From<&'a Tensor> for DataKind<'a> {
+        fn from(from: &'a Tensor) -> Self {
+            Self::Tensor(from)
+        }
+    }
+
+    impl<'a> From<&'a Detect2DOutput> for DataKind<'a> {
+        fn from(from: &'a Detect2DOutput) -> Self {
+            Self::Detect2D(from)
+        }
+    }
+
+    #[derive(Debug, Clone)]
     pub enum ModuleInput<'a> {
         None,
-        Single(&'a Tensor),
-        Indexed(Vec<&'a Tensor>),
+        Single(DataKind<'a>),
+        Indexed(Vec<DataKind<'a>>),
+    }
+
+    impl<'a> ModuleInput<'a> {
+        pub fn tensor(&self) -> Option<&Tensor> {
+            match self {
+                Self::Single(DataKind::Tensor(tensor)) => Some(tensor),
+                _ => None,
+            }
+        }
+
+        pub fn detect_2d(&self) -> Option<&Detect2DOutput> {
+            match self {
+                Self::Single(DataKind::Detect2D(detect)) => Some(detect),
+                _ => None,
+            }
+        }
+
+        pub fn indexed_tensor(&self) -> Option<Vec<&Tensor>> {
+            match self {
+                Self::Indexed(indexed) => {
+                    let tensors: Option<Vec<_>> =
+                        indexed.iter().map(|data| data.tensor()).collect();
+                    tensors
+                }
+                _ => None,
+            }
+        }
+
+        pub fn indexed_detect_2d(&self) -> Option<Vec<&Detect2DOutput>> {
+            match self {
+                Self::Indexed(indexed) => {
+                    let detects: Option<Vec<_>> =
+                        indexed.iter().map(|data| data.detect_2d()).collect();
+                    detects
+                }
+                _ => None,
+            }
+        }
     }
 
     impl<'a> From<&'a Tensor> for ModuleInput<'a> {
         fn from(from: &'a Tensor) -> Self {
-            Self::Single(from)
+            Self::Single(DataKind::from(from))
         }
     }
 
     impl<'a, 'b> From<&'b [&'a Tensor]> for ModuleInput<'a> {
         fn from(from: &'b [&'a Tensor]) -> Self {
-            Self::Indexed(Vec::from(from))
+            Self::Indexed(
+                from.iter()
+                    .cloned()
+                    .map(|tensor| DataKind::from(tensor))
+                    .collect(),
+            )
         }
     }
 
-    impl<'a> From<Vec<&'a Tensor>> for ModuleInput<'a> {
-        fn from(from: Vec<&'a Tensor>) -> Self {
-            Self::Indexed(from)
+    impl<'a> From<&'a Detect2DOutput> for ModuleInput<'a> {
+        fn from(from: &'a Detect2DOutput) -> Self {
+            Self::Single(DataKind::from(from))
+        }
+    }
+
+    impl<'a, 'b> From<&'b [&'a Detect2DOutput]> for ModuleInput<'a> {
+        fn from(from: &'b [&'a Detect2DOutput]) -> Self {
+            Self::Indexed(
+                from.iter()
+                    .cloned()
+                    .map(|tensor| DataKind::from(tensor))
+                    .collect(),
+            )
+        }
+    }
+
+    impl<'a> TryFrom<&'a ModuleOutput> for ModuleInput<'a> {
+        type Error = Error;
+
+        fn try_from(from: &'a ModuleOutput) -> Result<Self, Self::Error> {
+            let input: Self = match from {
+                ModuleOutput::Tensor(tensor) => tensor.into(),
+                ModuleOutput::Detect2D(detect) => detect.into(),
+                _ => bail!("TODO"),
+            };
+            Ok(input)
+        }
+    }
+
+    impl<'a, 'b> TryFrom<&'b [&'a ModuleOutput]> for ModuleInput<'a> {
+        type Error = Error;
+
+        fn try_from(from: &'b [&'a ModuleOutput]) -> Result<Self, Self::Error> {
+            let first = from.first().ok_or_else(|| format_err!("TODO"))?;
+            let input = match first {
+                ModuleOutput::Tensor(_) => {
+                    let input: Option<Vec<DataKind<'_>>> = from
+                        .iter()
+                        .cloned()
+                        .map(|output| {
+                            let tensor = output.as_tensor()?;
+                            Some(tensor.into())
+                        })
+                        .collect();
+                    Self::Indexed(input.ok_or_else(|| format_err!("TODO"))?)
+                }
+                ModuleOutput::Detect2D(_) => {
+                    let input: Option<Vec<DataKind<'_>>> = from
+                        .iter()
+                        .cloned()
+                        .map(|output| {
+                            let tensor = output.as_detect_2d()?;
+                            Some(tensor.into())
+                        })
+                        .collect();
+                    Self::Indexed(input.ok_or_else(|| format_err!("TODO"))?)
+                }
+                _ => bail!("TODO"),
+            };
+            Ok(input)
         }
     }
 
     #[derive(Debug)]
     pub enum ModuleOutput {
         Tensor(Tensor),
-        Detect(YoloOutput),
+        Yolo(YoloOutput),
         Detect2D(Detect2DOutput),
+        MergeDetect2D(MergeDetect2DOutput),
     }
 
     impl ModuleOutput {
+        pub fn as_tensor(&self) -> Option<&Tensor> {
+            match self {
+                Self::Tensor(tensor) => Some(tensor),
+                _ => None,
+            }
+        }
+
         pub fn tensor(self) -> Option<Tensor> {
             match self {
                 Self::Tensor(tensor) => Some(tensor),
@@ -135,9 +294,16 @@ mod module_input {
             }
         }
 
-        pub fn detect(self) -> Option<YoloOutput> {
+        pub fn yolo(self) -> Option<YoloOutput> {
             match self {
-                Self::Detect(detect) => Some(detect),
+                Self::Yolo(detect) => Some(detect),
+                _ => None,
+            }
+        }
+
+        pub fn as_detect_2d(&self) -> Option<&Detect2DOutput> {
+            match self {
+                Self::Detect2D(detect) => Some(detect),
                 _ => None,
             }
         }
@@ -145,6 +311,13 @@ mod module_input {
         pub fn detect_2d(self) -> Option<Detect2DOutput> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
+                _ => None,
+            }
+        }
+
+        pub fn merge_detect_2d(self) -> Option<MergeDetect2DOutput> {
+            match self {
+                Self::MergeDetect2D(detect) => Some(detect),
                 _ => None,
             }
         }
@@ -158,13 +331,19 @@ mod module_input {
 
     impl From<YoloOutput> for ModuleOutput {
         fn from(from: YoloOutput) -> Self {
-            Self::Detect(from)
+            Self::Yolo(from)
         }
     }
 
     impl From<Detect2DOutput> for ModuleOutput {
         fn from(from: Detect2DOutput) -> Self {
             Self::Detect2D(from)
+        }
+    }
+
+    impl From<MergeDetect2DOutput> for ModuleOutput {
+        fn from(from: MergeDetect2DOutput) -> Self {
+            Self::MergeDetect2D(from)
         }
     }
 }
@@ -1256,7 +1435,7 @@ mod detect_2d {
     #[derive(Debug, Clone)]
     pub struct Detect2DInit {
         pub num_classes: usize,
-        pub anchors: Vec<PixelSize<R64>>,
+        pub anchors: Vec<RatioSize>,
     }
 
     impl Detect2DInit {
@@ -1273,7 +1452,7 @@ mod detect_2d {
             } = self;
 
             Detect2D {
-                num_classes: num_classes as i64,
+                num_classes,
                 anchors,
                 device,
                 cache: None,
@@ -1283,183 +1462,285 @@ mod detect_2d {
 
     #[derive(Debug)]
     pub struct Detect2D {
-        num_classes: i64,
-        anchors: Vec<PixelSize<R64>>,
+        num_classes: usize,
+        anchors: Vec<RatioSize>,
         device: Device,
-        cache: Option<(PixelSize<i64>, Cache)>,
+        cache: Option<(GridSize<i64>, Cache)>,
     }
 
     impl Detect2D {
-        pub fn forward(
-            &mut self,
-            tensor: &Tensor,
-            image_size: &PixelSize<i64>,
-        ) -> Result<Detect2DOutput> {
-            let Self { num_classes, .. } = *self;
+        pub fn forward(&mut self, tensor: &Tensor) -> Result<Detect2DOutput> {
+            let Self {
+                num_classes,
+                ref anchors,
+                ..
+            } = *self;
             let (batch_size, channels, feature_h, feature_w) = tensor.size4()?;
+            let feature_size = GridSize::new(feature_h, feature_w);
+            let anchors = anchors.to_owned();
 
             // load cached data
             let Cache {
-                positions_grid,
-                anchor_sizes,
-                anchor_sizes_grid,
-            } = self.cache(tensor, image_size)?;
+                y_offsets,
+                x_offsets,
+                anchor_heights,
+                anchor_widths,
+            } = self.cache(tensor)?.shallow_clone();
 
             // compute outputs
-            let num_anchors = anchor_sizes.len() as i64;
-            let num_entries = num_classes + 5;
+            let num_anchors = anchors.len() as i64;
+            let num_entries = num_classes as i64 + 5;
             debug_assert_eq!(channels, num_anchors * num_entries);
 
             // convert shape to [batch_size, n_entries, n_anchors, height, width]
             let outputs = tensor.view([batch_size, num_entries, num_anchors, feature_h, feature_w]);
 
             // positions in grid units
-            let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
 
-            let position = sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
-            let cy = position.i((.., 0..1, .., .., ..));
-            let cx = position.i((.., 1..2, .., .., ..));
+            let cy = (outputs.i((.., 0..1, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_h as f64
+                + y_offsets.view([1, 1, 1, feature_h, 1]);
+            let cx = (outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_w as f64
+                + x_offsets.view([1, 1, 1, 1, feature_w]);
 
             // bbox sizes in grid units
-            let size = sigmoid.i((.., 2..4, .., .., ..)) * anchor_sizes_grid;
-            let h = size.i((.., 0..1, .., .., ..));
-            let w = size.i((.., 1..2, .., .., ..));
+            let h =
+                outputs.i((.., 2..3, .., .., ..)) * anchor_heights.view([1, 1, num_anchors, 1, 1]);
+            let w =
+                outputs.i((.., 3..4, .., .., ..)) * anchor_widths.view([1, 1, num_anchors, 1, 1]);
 
             // objectness
-            let objectness = outputs.i((.., 4..5, .., .., ..));
+            let obj = outputs.i((.., 4..5, .., .., ..));
 
             // sparse classification
-            let classification = outputs.i((.., 5.., .., .., ..));
+            let class = outputs.i((.., 5.., .., .., ..));
 
             Ok(Detect2DOutput {
+                batch_size,
+                num_classes,
+                feature_size,
+                anchors: anchors.to_owned(),
                 cy,
                 cx,
                 h,
                 w,
-                objectness,
-                classification,
+                obj,
+                class,
             })
         }
 
-        fn cache(&mut self, tensor: &Tensor, image_size: &PixelSize<i64>) -> Result<&Cache> {
-            let Self {
-                device,
-                ref anchors,
-                ref mut cache,
-                ..
-            } = *self;
+        fn cache(&mut self, tensor: &Tensor) -> Result<&Cache> {
+            tch::no_grad(move || -> Result<_> {
+                let Self {
+                    device,
+                    ref anchors,
+                    ref mut cache,
+                    ..
+                } = *self;
 
-            let is_hit = cache
-                .as_ref()
-                .map(|(cached_size, _cache)| cached_size == image_size)
-                .unwrap_or(false);
+                let (_b, _c, feature_h, feature_w) = tensor.size4()?;
+                let expect_size = GridSize::new(feature_h, feature_w);
 
-            if !is_hit {
-                tch::no_grad(|| -> Result<_> {
-                    let positions_grid = {
-                        let (_b, _c, feature_h, feature_w) = tensor.size4()?;
-                        let grid = {
-                            let grids = Tensor::meshgrid(&[
-                                Tensor::arange(feature_h, (Kind::Float, device)),
-                                Tensor::arange(feature_w, (Kind::Float, device)),
-                            ]);
-                            // corresponds to (batch * entry * anchor * height * width)
-                            Tensor::stack(&[&grids[0], &grids[1]], 0)
-                                .view([1, 2, 1, feature_h, feature_w])
-                        };
-                        grid.set_requires_grad(false)
-                    };
+                let is_hit = cache
+                    .as_ref()
+                    .map(|(size, _cache)| size == &expect_size)
+                    .unwrap_or(false);
 
-                    let anchor_sizes: Vec<GridSize<f64>> = {
-                        let PixelSize {
-                            height: image_h,
-                            width: image_w,
-                            ..
-                        } = *image_size;
+                if !is_hit {
+                    let y_offsets = (Tensor::arange(feature_h, (Kind::Float, device))
+                        / feature_h as f64)
+                        .set_requires_grad(false);
+                    let x_offsets = (Tensor::arange(feature_w, (Kind::Float, device))
+                        / feature_w as f64)
+                        .set_requires_grad(false);
 
-                        let (_b, _cchannels, feature_h, feature_w) = tensor.size4()?;
-
-                        // gride size in pixels
-                        let grid_h = image_h as f64 / feature_h as f64;
-                        let grid_w = image_w as f64 / feature_w as f64;
-
-                        // convert anchor sizes into grid units
-                        anchors
+                    let (anchor_heights, anchor_widths) = {
+                        let num_anchors = anchors.len();
+                        let (anchor_h_vec, anchor_w_vec) = anchors
                             .iter()
                             .cloned()
                             .map(|anchor_size| {
-                                let PixelSize {
+                                let RatioSize {
                                     height: anchor_h,
                                     width: anchor_w,
                                     ..
                                 } = anchor_size;
-
-                                GridSize::new(anchor_h.raw() / grid_h, anchor_w.raw() / grid_w)
-                            })
-                            .collect_vec()
-                    };
-
-                    let anchor_sizes_grid = {
-                        let num_anchors = anchor_sizes.len();
-                        let (anchor_h_vec, anchor_w_vec) = anchor_sizes
-                            .iter()
-                            .cloned()
-                            .map(|anchor_size| {
-                                let GridSize {
-                                    height: anchor_h,
-                                    width: anchor_w,
-                                    ..
-                                } = anchor_size;
-                                (anchor_h as f32, anchor_w as f32)
+                                (anchor_h.to_f64() as f32, anchor_w.to_f64() as f32)
                             })
                             .unzip_n_vec();
 
-                        let grid = Tensor::stack(
-                            &[
-                                Tensor::of_slice(&anchor_h_vec),
-                                Tensor::of_slice(&anchor_w_vec),
-                            ],
-                            0,
-                        )
-                        // corresponds to (batch * entry * anchor * height * width)
-                        .view([1, 2, num_anchors as i64, 1, 1])
-                        .set_requires_grad(false)
-                        .to_device(device);
+                        let anchor_heights = Tensor::of_slice(&anchor_h_vec)
+                            .set_requires_grad(false)
+                            .to_device(device);
+                        let anchor_widths = Tensor::of_slice(&anchor_w_vec)
+                            .set_requires_grad(false)
+                            .to_device(device);
 
-                        grid
+                        (anchor_heights, anchor_widths)
                     };
 
-                    *cache = Some((
-                        image_size.to_owned(),
-                        Cache {
-                            positions_grid,
-                            anchor_sizes,
-                            anchor_sizes_grid,
-                        },
-                    ));
+                    let new_cache = Cache {
+                        y_offsets,
+                        x_offsets,
+                        anchor_heights,
+                        anchor_widths,
+                    };
 
-                    Ok(())
-                })?
-            }
+                    *cache = Some((expect_size, new_cache));
+                }
 
-            Ok(cache.as_ref().map(|(_size, cache)| cache).unwrap())
+                let cache = cache.as_ref().map(|(_size, cache)| cache).unwrap();
+                Ok(cache)
+            })
         }
     }
 
     #[derive(Debug)]
     struct Cache {
-        positions_grid: Tensor,
-        anchor_sizes: Vec<GridSize<f64>>,
-        anchor_sizes_grid: Tensor,
+        y_offsets: Tensor,
+        x_offsets: Tensor,
+        anchor_heights: Tensor,
+        anchor_widths: Tensor,
     }
 
     #[derive(Debug, TensorLike)]
     pub struct Detect2DOutput {
-        cy: Tensor,
-        cx: Tensor,
-        h: Tensor,
-        w: Tensor,
-        objectness: Tensor,
-        classification: Tensor,
+        pub batch_size: i64,
+        #[tensor_like(clone)]
+        pub feature_size: GridSize<i64>,
+        pub num_classes: usize,
+        #[tensor_like(clone)]
+        pub anchors: Vec<RatioSize>,
+        pub cy: Tensor,
+        pub cx: Tensor,
+        pub h: Tensor,
+        pub w: Tensor,
+        pub obj: Tensor,
+        pub class: Tensor,
+    }
+}
+
+mod merge_detect_2d {
+    pub use super::*;
+
+    #[derive(Debug)]
+    pub struct MergeDetect2D {}
+
+    impl MergeDetect2D {
+        pub fn new() -> Self {
+            Self {}
+        }
+
+        pub fn forward(&mut self, detections: &[&Detect2DOutput]) -> Result<MergeDetect2DOutput> {
+            // ensure consistent sizes
+            let (batch_size_set, num_classes_set): (HashSet<i64>, HashSet<usize>) = detections
+                .iter()
+                .cloned()
+                .map(|detection| {
+                    let Detect2DOutput {
+                        batch_size,
+                        num_classes,
+                        ..
+                    } = *detection;
+
+                    (batch_size, num_classes)
+                })
+                .unzip_n();
+
+            ensure!(batch_size_set.len() == 1, "TODO");
+            ensure!(num_classes_set.len() == 1, "TODO");
+
+            // merge detections
+            let (cy_vec, cx_vec, h_vec, w_vec, obj_vec, class_vec, info) = detections
+                .iter()
+                .cloned()
+                .scan(0, |base_flat_index, detection| {
+                    let Detect2DOutput {
+                        batch_size,
+                        num_classes,
+                        ref feature_size,
+                        ref anchors,
+                        ref cy,
+                        ref cx,
+                        ref h,
+                        ref w,
+                        ref obj,
+                        ref class,
+                        ..
+                    } = *detection;
+
+                    let num_anchors = anchors.len();
+                    let GridSize {
+                        height: feature_h,
+                        width: feature_w,
+                        ..
+                    } = *feature_size;
+
+                    // flatten tensors
+                    let cy_flat = cy.view([batch_size, 1, -1]);
+                    let cx_flat = cx.view([batch_size, 1, -1]);
+                    let h_flat = h.view([batch_size, 1, -1]);
+                    let w_flat = w.view([batch_size, 1, -1]);
+                    let obj_flat = obj.view([batch_size, 1, -1]);
+                    let class_flat = class.view([batch_size, num_classes as i64, -1]);
+
+                    // save feature anchors and shapes
+                    let info = {
+                        let begin_flat_index = *base_flat_index;
+                        *base_flat_index += num_anchors as i64 * feature_h * feature_w;
+                        let end_flat_index = *base_flat_index;
+
+                        // compute base flat index
+                        let info = DetectionInfo {
+                            feature_size: feature_size.to_owned(),
+                            anchors: anchors.to_owned(),
+                            flat_index_range: begin_flat_index..end_flat_index,
+                        };
+                        info
+                    };
+
+                    Some((cy_flat, cx_flat, h_flat, w_flat, obj_flat, class_flat, info))
+                })
+                .unzip_n_vec();
+
+            let cy = Tensor::cat(&cy_vec, 2);
+            let cx = Tensor::cat(&cx_vec, 2);
+            let h = Tensor::cat(&h_vec, 2);
+            let w = Tensor::cat(&w_vec, 2);
+            let obj = Tensor::cat(&obj_vec, 2);
+            let class = Tensor::cat(&class_vec, 2);
+
+            Ok(MergeDetect2DOutput {
+                cy,
+                cx,
+                h,
+                w,
+                obj,
+                class,
+                info,
+            })
+        }
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct MergeDetect2DOutput {
+        pub cy: Tensor,
+        pub cx: Tensor,
+        pub h: Tensor,
+        pub w: Tensor,
+        pub obj: Tensor,
+        pub class: Tensor,
+        pub info: Vec<DetectionInfo>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+    pub struct DetectionInfo {
+        /// feature map size in grid units
+        #[tensor_like(clone)]
+        pub feature_size: GridSize<i64>,
+        /// Anchros (height, width) in grid units
+        #[tensor_like(clone)]
+        pub anchors: Vec<RatioSize>,
+        #[tensor_like(clone)]
+        pub flat_index_range: Range<i64>,
     }
 }

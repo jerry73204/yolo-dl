@@ -126,11 +126,13 @@ mod model {
                         }) => {
                             let anchors: Vec<_> = anchors
                                 .iter()
-                                .map(|size| {
+                                .map(|size| -> Result<_> {
                                     let config::Size { h, w } = *size;
-                                    PixelSize::new(h, w)
+                                    let size = RatioSize::new(h.try_into()?, w.try_into()?);
+                                    Ok(size)
                                 })
-                                .collect();
+                                .try_collect()?;
+
                             Module::Detect2D(
                                 Detect2DInit {
                                     num_classes: classes,
@@ -163,57 +165,51 @@ mod yolo_model {
     #[derive(Debug)]
     pub struct YoloModel {
         pub(crate) layers: IndexMap<NodeKey, Layer>,
+        pub(crate) output_key: NodeKey,
     }
 
     impl YoloModel {
-        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<YoloOutput> {
+        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<ModuleOutput> {
+            let Self {
+                ref mut layers,
+                output_key,
+            } = *self;
             let (_batch_size, _channels, height, width) = input.size4().unwrap();
             let image_size = PixelSize::new(height, width);
-            let mut tmp_tensors: HashMap<NodeKey, Tensor> = HashMap::new();
+            let mut module_outputs: HashMap<NodeKey, ModuleOutput> = HashMap::new();
             let mut input = Some(input); // it makes sure the input is consumed at most once
-            let mut output = None;
 
             // run the network
-            self.layers
-                .values_mut()
-                .try_for_each(|layer| -> Result<_> {
-                    let Layer {
-                        key,
-                        ref mut module,
-                        ref input_keys,
-                    } = *layer;
+            layers.values_mut().try_for_each(|layer| -> Result<_> {
+                let Layer {
+                    key,
+                    ref mut module,
+                    ref input_keys,
+                } = *layer;
 
-                    let module_input: ModuleInput = match input_keys {
-                        InputKeys::None => ModuleInput::None,
-                        InputKeys::PlaceHolder => input.take().unwrap().into(),
-                        InputKeys::Single(src_key) => (&tmp_tensors[src_key]).into(),
-                        InputKeys::Indexed(src_keys) => {
-                            let tensors: Vec<_> = src_keys
-                                .iter()
-                                .map(|src_key| &tmp_tensors[src_key])
-                                .collect();
-                            tensors.into()
-                        }
-                    };
-                    let module_output = module.forward_t(module_input, train, &image_size)?;
-
-                    match module_output {
-                        ModuleOutput::Tensor(tensor) => {
-                            tmp_tensors.insert(key, tensor);
-                        }
-                        ModuleOutput::Detect(detect) => {
-                            let prev = output.replace(detect);
-                            debug_assert!(prev.is_none());
-                        }
-                        ModuleOutput::Detect2D(_detect) => {
-                            todo!();
-                        }
+                let module_input: ModuleInput = match input_keys {
+                    InputKeys::None => ModuleInput::None,
+                    InputKeys::PlaceHolder => input.take().unwrap().into(),
+                    InputKeys::Single(src_key) => (&module_outputs[src_key]).try_into()?,
+                    InputKeys::Indexed(src_keys) => {
+                        let inputs: Vec<_> = src_keys
+                            .iter()
+                            .map(|src_key| &module_outputs[src_key])
+                            .collect();
+                        inputs.as_slice().try_into()?
                     }
-                    Ok(())
-                })?;
+                };
+                let module_output = module.forward_t(module_input, train, &image_size)?;
+                module_outputs.insert(key, module_output);
+                Ok(())
+            })?;
 
             debug_assert!(input.is_none());
-            Ok(output.unwrap())
+
+            // extract output
+            let output = module_outputs.remove(&output_key).unwrap();
+
+            Ok(output)
         }
 
         pub fn from_config<'p, P>(config: &YoloInit, path: P) -> Result<Self>
@@ -644,7 +640,15 @@ mod yolo_model {
                 })
                 .collect();
 
-            let yolo_model = YoloModel { layers };
+            let output_key = layers
+                .iter()
+                .find_map(|(&key, layer)| match layer.module {
+                    Module::Detect(_) => Some(key),
+                    _ => None,
+                })
+                .ok_or_else(|| format_err!("TODO"))?;
+
+            let yolo_model = YoloModel { output_key, layers };
 
             Ok(yolo_model)
         }
