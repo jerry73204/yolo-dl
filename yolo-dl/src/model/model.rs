@@ -2,7 +2,7 @@ use super::{
     config::{LayerInit, LayerKind, YoloInit},
     module::{
         BottleneckCspInit, BottleneckInit, Concat2D, ConvBlockInit, ConvBn2DInit, DarkCsp2DInit,
-        Detect2DInit, DetectInit, DetectModule, FocusInit, Input, Module, ModuleInput,
+        Detect2DInit, DetectInit, FocusInit, Input, MergeDetect2D, Module, ModuleInput,
         ModuleOutput, SppCsp2DInit, SppInit, Sum2D, UpSample2D,
     },
 };
@@ -54,8 +54,12 @@ mod model {
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
-                            let [_b, in_c, _h, _w] =
-                                orig_nodes[&src_key].output_shape.size4().unwrap();
+                            let [_b, in_c, _h, _w] = orig_nodes[&src_key]
+                                .output_shape
+                                .as_tensor()
+                                .unwrap()
+                                .size4()
+                                .unwrap();
                             let in_c = in_c.size().unwrap();
 
                             Module::ConvBn2D(
@@ -84,8 +88,12 @@ mod model {
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
-                            let [_b, in_c, _h, _w] =
-                                orig_nodes[&src_key].output_shape.size4().unwrap();
+                            let [_b, in_c, _h, _w] = orig_nodes[&src_key]
+                                .output_shape
+                                .as_tensor()
+                                .unwrap()
+                                .size4()
+                                .unwrap();
                             let in_c = in_c.size().unwrap();
 
                             Module::DarkCsp2D(
@@ -103,8 +111,12 @@ mod model {
                             c, ref k, c_mul, ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
-                            let [_b, in_c, _h, _w] =
-                                orig_nodes[&src_key].output_shape.size4().unwrap();
+                            let [_b, in_c, _h, _w] = orig_nodes[&src_key]
+                                .output_shape
+                                .as_tensor()
+                                .unwrap()
+                                .size4()
+                                .unwrap();
                             let in_c = in_c.size().unwrap();
 
                             Module::SppCsp2D(
@@ -142,6 +154,9 @@ mod model {
                             )
                         }
                         config::Module::GroupRef(_) => unreachable!(),
+                        config::Module::MergeDetect2D(_) => {
+                            Module::MergeDetect2D(MergeDetect2D::new())
+                        }
                     };
 
                     let layer = Layer {

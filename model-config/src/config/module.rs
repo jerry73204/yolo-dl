@@ -4,10 +4,6 @@ use super::{
 };
 use crate::{common::*, utils};
 
-// pub use bottleneck::*;
-// pub use bottleneck_csp::*;
-// pub use focus::*;
-// pub use spp::*;
 pub use concat_2d::*;
 pub use conv_bn_2d_block::*;
 pub use dark_csp_2d::*;
@@ -15,10 +11,12 @@ pub use detect_2d::*;
 pub use group_ref::*;
 pub use input::*;
 pub use input_path::*;
+pub use merge_detect_2d::*;
 pub use module::*;
 pub use module_input::*;
 pub use module_name::*;
 pub use shape_input::*;
+pub use shape_output::*;
 pub use spp_csp_2d::*;
 pub use sum_2d::*;
 pub use up_sample_2d::*;
@@ -30,6 +28,7 @@ mod module_input {
     #[derivative(Hash)]
     pub enum ModuleInput<'a> {
         None,
+        PlaceHolder,
         Infer,
         Path(&'a ModulePath),
         Indexed(&'a [ModulePath]),
@@ -80,44 +79,195 @@ mod shape_input {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Derivative)]
     #[derivative(Hash)]
+    pub enum ShapeKind<'a> {
+        Tensor(&'a Shape),
+        Detect2D,
+    }
+
+    impl ShapeKind<'_> {
+        pub fn tensor(&self) -> Option<&Shape> {
+            match self {
+                Self::Tensor(shape) => Some(shape),
+                _ => None,
+            }
+        }
+
+        pub fn is_detect_2d(&self) -> bool {
+            match self {
+                Self::Detect2D => true,
+                _ => false,
+            }
+        }
+    }
+
+    impl<'a> From<&'a Shape> for ShapeKind<'a> {
+        fn from(from: &'a Shape) -> Self {
+            Self::Tensor(from)
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative)]
+    #[derivative(Hash)]
     pub enum ShapeInput<'a> {
         None,
-        Single(&'a Shape),
-        Indexed(&'a [&'a Shape]),
+        PlaceHolder,
+        Single(ShapeKind<'a>),
+        Indexed(Vec<ShapeKind<'a>>),
     }
 
     impl ShapeInput<'_> {
-        pub fn none(&self) -> bool {
+        pub fn is_none(&self) -> bool {
             match self {
                 Self::None => true,
                 _ => false,
             }
         }
 
-        pub fn single(&self) -> Option<&Shape> {
+        pub fn is_placeholder(&self) -> bool {
             match self {
-                Self::Single(shape) => Some(shape),
+                Self::PlaceHolder => true,
+                _ => false,
+            }
+        }
+
+        pub fn tensor(&self) -> Option<&Shape> {
+            match self {
+                Self::Single(ShapeKind::Tensor(shape)) => Some(shape),
                 _ => None,
             }
         }
 
-        pub fn indexed(&self) -> Option<&[&Shape]> {
+        pub fn is_detect_2d(&self) -> bool {
             match self {
-                Self::Indexed(shape) => Some(shape),
+                Self::Single(ShapeKind::Detect2D) => true,
+                _ => false,
+            }
+        }
+
+        pub fn indexed_tensor(&self) -> Option<Vec<&Shape>> {
+            match self {
+                Self::Indexed(vec) => {
+                    let shapes: Option<Vec<_>> = vec.iter().map(|kind| kind.tensor()).collect();
+                    shapes
+                }
                 _ => None,
+            }
+        }
+
+        pub fn is_indexed_detect_2d(&self) -> bool {
+            match self {
+                Self::Indexed(vec) => vec.iter().all(|kind| kind.is_detect_2d()),
+                _ => false,
             }
         }
     }
 
     impl<'a> From<&'a Shape> for ShapeInput<'a> {
         fn from(from: &'a Shape) -> Self {
-            Self::Single(from)
+            Self::Single(from.into())
         }
     }
 
-    impl<'a> From<&'a [&'a Shape]> for ShapeInput<'a> {
-        fn from(from: &'a [&'a Shape]) -> Self {
-            Self::Indexed(from)
+    impl<'a> TryFrom<&'a ShapeOutput> for ShapeInput<'a> {
+        type Error = Error;
+
+        fn try_from(from: &'a ShapeOutput) -> Result<Self, Self::Error> {
+            let input_shape: Self = match from {
+                ShapeOutput::Shape(shape) => shape.into(),
+                ShapeOutput::Detect2D => Self::Single(ShapeKind::Detect2D),
+                ShapeOutput::MergeDetect2D => bail!("TODO"),
+            };
+            Ok(input_shape)
+        }
+    }
+
+    impl<'a, 'b> From<&'b [&'a Shape]> for ShapeInput<'a> {
+        fn from(from: &'b [&'a Shape]) -> Self {
+            let shapes: Vec<ShapeKind> = from.iter().cloned().map(|shape| shape.into()).collect();
+            Self::Indexed(shapes)
+        }
+    }
+
+    impl<'a, 'b> TryFrom<&'b [&'a ShapeOutput]> for ShapeInput<'a> {
+        type Error = Error;
+
+        fn try_from(from: &'b [&'a ShapeOutput]) -> Result<Self, Self::Error> {
+            let kinds: Vec<_> = from
+                .iter()
+                .map(|output_shape| -> Result<_> {
+                    let kind = match output_shape {
+                        ShapeOutput::Shape(shape) => ShapeKind::Tensor(shape),
+                        ShapeOutput::Detect2D => ShapeKind::Detect2D,
+                        _ => bail!("TODO"),
+                    };
+                    Ok(kind)
+                })
+                .try_collect()?;
+            Ok(Self::Indexed(kinds))
+        }
+    }
+}
+
+mod shape_output {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derivative(Hash)]
+    pub enum ShapeOutput {
+        Shape(Shape),
+        Detect2D,
+        MergeDetect2D,
+    }
+
+    impl ShapeOutput {
+        pub fn tensor(self) -> Option<Shape> {
+            match self {
+                Self::Shape(shape) => Some(shape),
+                _ => None,
+            }
+        }
+
+        pub fn as_tensor(&self) -> Option<&Shape> {
+            match self {
+                Self::Shape(shape) => Some(shape),
+                _ => None,
+            }
+        }
+
+        pub fn is_detect_2d(&self) -> bool {
+            match self {
+                Self::Detect2D => true,
+                _ => false,
+            }
+        }
+
+        pub fn is_merge_detect_2d(&self) -> bool {
+            match self {
+                Self::MergeDetect2D => true,
+                _ => false,
+            }
+        }
+    }
+
+    impl From<Shape> for ShapeOutput {
+        fn from(from: Shape) -> Self {
+            Self::Shape(from)
+        }
+    }
+
+    impl From<Vec<Dim>> for ShapeOutput {
+        fn from(from: Vec<Dim>) -> Self {
+            Self::Shape(Shape::from(from))
+        }
+    }
+
+    impl Display for ShapeOutput {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Shape(shape) => Display::fmt(shape, f),
+                Self::Detect2D => write!(f, "Detect2D"),
+                Self::MergeDetect2D => write!(f, "MergeDetect2D"),
+            }
         }
     }
 }
@@ -296,7 +446,7 @@ mod module {
     pub trait ModuleEx {
         fn name(&self) -> Option<&ModuleName>;
         fn input_paths(&self) -> ModuleInput<'_>;
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape>;
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput>;
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, AsRefStr, Serialize, Deserialize)]
@@ -315,6 +465,7 @@ mod module {
         Sum2D(Sum2D),
         Detect2D(Detect2D),
         GroupRef(GroupRef),
+        MergeDetect2D(MergeDetect2D),
     }
 
     impl ModuleEx for Module {
@@ -329,6 +480,7 @@ mod module {
                 Module::Sum2D(layer) => layer.name(),
                 Module::Detect2D(layer) => layer.name(),
                 Module::GroupRef(layer) => layer.name(),
+                Module::MergeDetect2D(layer) => layer.name(),
             }
         }
 
@@ -343,10 +495,11 @@ mod module {
                 Module::Sum2D(layer) => layer.input_paths(),
                 Module::Detect2D(layer) => layer.input_paths(),
                 Module::GroupRef(layer) => layer.input_paths(),
+                Module::MergeDetect2D(layer) => layer.input_paths(),
             }
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             match self {
                 Module::Input(layer) => layer.output_shape(input_shape),
                 Module::ConvBn2D(layer) => layer.output_shape(input_shape),
@@ -357,6 +510,7 @@ mod module {
                 Module::Sum2D(layer) => layer.output_shape(input_shape),
                 Module::Detect2D(layer) => layer.output_shape(input_shape),
                 Module::GroupRef(layer) => layer.output_shape(input_shape),
+                Module::MergeDetect2D(layer) => layer.output_shape(input_shape),
             }
         }
     }
@@ -377,16 +531,20 @@ mod input {
         }
 
         fn input_paths(&self) -> ModuleInput<'_> {
-            ModuleInput::None
+            ModuleInput::PlaceHolder
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             // expect a none shape
-            if input_shape.none() {
-                Some(self.shape.clone())
-            } else {
-                None
-            }
+            let output_shape = match input_shape {
+                ShapeInput::Single(ShapeKind::Tensor(input_shape)) => {
+                    input_shape.equalize(&self.shape)?
+                }
+                ShapeInput::PlaceHolder => self.shape.clone(),
+                _ => return None,
+            };
+
+            Some(output_shape.into())
         }
     }
 }
@@ -516,7 +674,7 @@ mod conv_bn_2d_block {
             self.from.as_ref().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             let Self {
                 c: out_c,
                 k,
@@ -526,7 +684,7 @@ mod conv_bn_2d_block {
                 ..
             } = *self;
 
-            let [in_b, _in_c, in_h, in_w] = match input_shape.single()?.as_ref() {
+            let [in_b, _in_c, in_h, in_w] = match input_shape.tensor()?.as_ref() {
                 &[b, c, h, w] => [b, c, h, w],
                 _ => return None,
             };
@@ -535,7 +693,7 @@ mod conv_bn_2d_block {
             let out_w = (in_w + 2 * p - d * (k - 1) - 1) / s + 1;
             let output_shape: Shape = vec![in_b, out_c.into(), out_h, out_w].into();
 
-            Some(output_shape)
+            Some(output_shape.into())
         }
     }
 
@@ -602,10 +760,10 @@ mod dark_csp_2d {
             self.from.as_ref().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             let Self { c: out_c, .. } = *self;
 
-            match input_shape.single()?.as_ref() {
+            match input_shape.tensor()?.as_ref() {
                 &[b, _c, h, w] => Some(vec![b, out_c.into(), h, w].into()),
                 _ => None,
             }
@@ -655,10 +813,10 @@ mod spp_csp_2d {
             self.from.as_ref().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             let Self { c: out_c, .. } = *self;
 
-            match input_shape.single()?.as_ref() {
+            match input_shape.tensor()?.as_ref() {
                 &[b, _c, h, w] => Some(vec![b, out_c.into(), h, w].into()),
                 _ => None,
             }
@@ -690,19 +848,19 @@ mod detect_2d {
             self.from.as_ref().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             let Self {
                 classes,
                 ref anchors,
                 ..
             } = *self;
-            let input_shape = input_shape.single()?;
+            let input_shape = input_shape.tensor()?;
 
             match input_shape.as_ref() {
                 &[_b, Dim::Size(c), _h, _w] => {
                     let expect_c = anchors.len() * (1 + 4 + classes);
                     if c == expect_c {
-                        Some(input_shape.to_owned())
+                        Some(ShapeOutput::Detect2D)
                     } else {
                         None
                     }
@@ -732,10 +890,10 @@ mod up_sample_2d {
             self.from.as_ref().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             let Self { scale, .. } = *self;
 
-            match input_shape.single()?.as_ref() {
+            match input_shape.tensor()?.as_ref() {
                 &[b, c, h, w] => {
                     let out_h = h.scale_r64(scale);
                     let out_w = w.scale_r64(scale);
@@ -765,9 +923,9 @@ mod concat_2d {
             self.from.as_slice().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             let Self { from, .. } = self;
-            let input_shapes = input_shape.indexed()?;
+            let input_shapes = input_shape.indexed_tensor()?;
 
             if input_shapes.len() != from.len() {
                 return None;
@@ -794,7 +952,7 @@ mod concat_2d {
             })?;
             let output_shape: Shape = Vec::from(output_shape).into();
 
-            Some(output_shape)
+            Some(output_shape.into())
         }
     }
 }
@@ -817,12 +975,12 @@ mod sum_2d {
             self.from.as_slice().into()
         }
 
-        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<Shape> {
-            let shapes = input_shape.indexed()?.as_ref();
-            let first = shapes[0].to_owned();
-            shapes[1..]
-                .iter()
-                .try_fold(first, |acc, shape| acc.equalize(shape))
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
+            let input_shapes: Vec<&Shape> = input_shape.indexed_tensor()?;
+            let mut iter = input_shapes.iter().cloned();
+            let first = iter.next()?.to_owned();
+            let output_shape = iter.try_fold(first, |acc, shape| acc.equalize(shape))?;
+            Some(output_shape.into())
         }
     }
 }
@@ -848,8 +1006,36 @@ mod group_ref {
             (&self.from).into()
         }
 
-        fn output_shape(&self, _input_shape: ShapeInput<'_>) -> Option<Shape> {
+        fn output_shape(&self, _input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
             None
+        }
+    }
+}
+
+mod merge_detect_2d {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct MergeDetect2D {
+        pub name: Option<ModuleName>,
+        pub from: Vec<ModulePath>,
+    }
+
+    impl ModuleEx for MergeDetect2D {
+        fn name(&self) -> Option<&ModuleName> {
+            self.name.as_ref()
+        }
+
+        fn input_paths(&self) -> ModuleInput<'_> {
+            self.from.as_slice().into()
+        }
+
+        fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
+            if input_shape.is_indexed_detect_2d() {
+                Some(ShapeOutput::MergeDetect2D)
+            } else {
+                None
+            }
         }
     }
 }

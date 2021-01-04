@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{
         self, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath, Shape,
-        ShapeInput,
+        ShapeInput, ShapeOutput,
     },
     utils::{self, OptionEx},
 };
@@ -37,6 +37,7 @@ mod graph {
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
             enum InputPaths {
                 None,
+                PlaceHolder,
                 Single(NodePath),
                 Indexed(Vec<NodePath>),
             }
@@ -126,10 +127,13 @@ mod graph {
 
                                 // create input paths
                                 let input_paths = match layer.input_paths() {
-                                    ModuleInput::None => {
+                                    ModuleInput::None => Some(InputPaths::None),
+                                    ModuleInput::PlaceHolder => {
                                         // no input if it's top-level input layer
                                         match (layer, prefix.is_empty()) {
-                                            (Module::Input(_), true) => Some(InputPaths::None),
+                                            (Module::Input(_), true) => {
+                                                Some(InputPaths::PlaceHolder)
+                                            }
                                             (Module::Input(_), false) => None,
                                             (_, _) => None,
                                         }
@@ -207,6 +211,7 @@ mod graph {
 
                     let src_keys = match src_path {
                         InputPaths::None => InputKeys::None,
+                        InputPaths::PlaceHolder => InputKeys::PlaceHolder,
                         InputPaths::Single(src_path) => {
                             let src_key = match src_path {
                                 NodePath::Resolved(key) => key,
@@ -263,13 +268,13 @@ mod graph {
                         // (1) top-level input layer has no incoming edge
                         // (2) non-top level input has an incoming edge
                         match (path.depth(), src) {
-                            (1, InputKeys::None) => {}
+                            (1, InputKeys::PlaceHolder) => {}
                             (1, _) => {
-                                bail!("top level input cannot have inputs")
+                                bail!("top level input must have placeholder input")
                             }
                             (_, InputKeys::Single(_)) => {}
                             (_, _) => {
-                                bail!("non-top level input must have an input")
+                                bail!("non-top level input must be resolved")
                             }
                         }
                     }
@@ -312,23 +317,24 @@ mod graph {
             };
 
             // compute output shape
-            let output_shape_map: HashMap<NodeKey, Shape> =
+            let output_shape_map: HashMap<NodeKey, ShapeOutput> =
                 sorted_node_keys.iter().cloned().try_fold(
                     HashMap::new(),
-                    |mut output_shape_map: HashMap<NodeKey, Shape>, key| -> Result<_> {
+                    |mut output_shape_map: HashMap<NodeKey, ShapeOutput>, key| -> Result<_> {
                         let NodeEntry {
                             layer, ref path, ..
                         } = nodes[&key];
                         let input_keys = &input_keys_map[&key];
 
                         let output_shape = match layer {
-                            Module::Input(config::Input { shape, .. }) => {
+                            Module::Input(_) => {
                                 let path = path.as_ref().unwrap();
 
                                 if path.depth() == 1 {
                                     // top level input has no input
-                                    ensure!(matches!(input_keys, InputKeys::None), "TODO");
-                                    let output_shape = shape.to_owned();
+                                    ensure!(matches!(input_keys, InputKeys::PlaceHolder), "TODO");
+                                    let output_shape =
+                                        layer.output_shape(ShapeInput::PlaceHolder).unwrap();
                                     output_shape
                                 } else {
                                     // non-top level input has one input
@@ -336,13 +342,13 @@ mod graph {
                                         InputKeys::Single(key) => key,
                                         _ => bail!("TODO"),
                                     };
-                                    let input_shape = &output_shape_map[&src_key];
-
-                                    // ensure input shape is consistent with specified shape
-                                    let output_shape = input_shape
-                                        .equalize(shape)
+                                    let input_shape = output_shape_map[&src_key]
+                                        .as_tensor()
                                         .ok_or_else(|| format_err!("TODO"))?;
 
+                                    // ensure input shape is consistent with specified shape
+                                    let output_shape =
+                                        layer.output_shape(input_shape.into()).unwrap();
                                     output_shape
                                 }
                             }
@@ -363,20 +369,20 @@ mod graph {
                                     output_shape
                                 }
                                 InputKeys::Single(src_key) => {
-                                    let input_shape = &output_shape_map[&src_key];
-                                    let input_shape = ShapeInput::Single(input_shape);
+                                    let input_shape: ShapeInput =
+                                        (&output_shape_map[&src_key]).try_into()?;
                                     let output_shape = layer
                                         .output_shape(input_shape)
                                         .ok_or_else(|| format_err!("TODO"))?;
                                     output_shape
                                 }
                                 InputKeys::Indexed(src_keys) => {
-                                    let input_shape: Vec<_> = src_keys
+                                    let shapes: Vec<_> = src_keys
                                         .iter()
                                         .cloned()
                                         .map(|src_key| &output_shape_map[&src_key])
                                         .collect();
-                                    let input_shape = ShapeInput::Indexed(&input_shape);
+                                    let input_shape: ShapeInput = shapes.as_slice().try_into()?;
                                     let output_shape = layer
                                         .output_shape(input_shape)
                                         .ok_or_else(|| format_err!("TODO"))?;
@@ -431,7 +437,7 @@ mod graph {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct Node {
         pub input_keys: InputKeys,
-        pub output_shape: Shape,
+        pub output_shape: ShapeOutput,
         pub path: Option<ModulePath>,
         pub config: Module,
     }
