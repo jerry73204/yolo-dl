@@ -18,10 +18,10 @@ use crate::{
 
 const FILE_STRFTIME: &str = "%Y-%m-%d-%H-%M-%S.%3f%z";
 
-#[derive(Debug, Clone, FromArgs)]
+#[derive(Debug, Clone, StructOpt)]
 /// Train YOLO model
 struct Args {
-    #[argh(option, default = "PathBuf::from(\"train.json5\")")]
+    #[structopt(long, default_value = "train.json5")]
     /// configuration file
     pub config_file: PathBuf,
 }
@@ -31,8 +31,11 @@ struct Args {
 pub async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let Args { config_file } = argh::from_env();
-    let config = Arc::new(Config::open(&config_file)?);
+    let Args { config_file } = Args::from_args();
+    let config = Arc::new(
+        Config::open(&config_file)
+            .with_context(|| format!("failed to load config file '{}'", config_file.display()))?,
+    );
     let start_time = Local::now();
     let logging_dir = Arc::new(
         config

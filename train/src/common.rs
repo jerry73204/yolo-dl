@@ -1,6 +1,5 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::{abs_diff_eq, AbsDiffEq};
-pub use argh::FromArgs;
 pub use async_std::sync::RwLock;
 pub use chrono::{DateTime, Local};
 pub use coco::Category;
@@ -48,6 +47,7 @@ pub use std::{
     },
     time::{Duration, Instant},
 };
+pub use structopt::StructOpt;
 pub use tch::{
     kind::FLOAT_CPU,
     nn::{self, OptimizerConfig},
