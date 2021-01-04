@@ -404,7 +404,7 @@ mod layer {
 
         pub fn from_indexes(&self) -> InputKeys {
             match self {
-                Self::Input(layer) => InputKeys::None,
+                Self::Input(_layer) => InputKeys::None,
                 Self::Connected(layer) => InputKeys::Single(layer.node.from_indexes),
                 Self::Convolutional(layer) => InputKeys::Single(layer.node.from_indexes),
                 Self::Route(layer) => InputKeys::Multiple(layer.node.from_indexes.clone()),
@@ -517,7 +517,7 @@ mod layer {
         }
 
         pub fn from_darknet<'p>(
-            path: impl Borrow<nn::Path<'p>>,
+            _path: impl Borrow<nn::Path<'p>>,
             from: &darknet::InputLayer,
         ) -> Result<Self> {
             let darknet::InputLayer { node, .. } = from;
@@ -719,7 +719,6 @@ mod layer {
                         padding,
                         groups,
                         share_index,
-                        filters,
                         batch_normalize,
                         ..
                     },
@@ -1054,12 +1053,7 @@ mod layer {
         pub fn from_node<'p>(path: impl Borrow<nn::Path<'p>>, node: &ShortcutNode) -> Result<Self> {
             let path = path.borrow();
             let ShortcutNode {
-                config:
-                    ShortcutConfig {
-                        weights_type,
-                        ref from,
-                        ..
-                    },
+                config: ShortcutConfig { weights_type, .. },
                 ref from_indexes,
                 ref input_shape,
                 output_shape,
@@ -1680,8 +1674,8 @@ mod layer {
             })
         }
 
-        pub fn forward(&mut self, input: &Tensor) -> Result<DenseDetection> {
-            todo!();
+        pub fn forward(&mut self, _input: &Tensor) -> Result<DenseDetection> {
+            unimplemented!();
         }
     }
 }

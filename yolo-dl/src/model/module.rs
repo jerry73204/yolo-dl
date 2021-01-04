@@ -1554,7 +1554,6 @@ mod detect_2d {
                         .set_requires_grad(false);
 
                     let (anchor_heights, anchor_widths) = {
-                        let num_anchors = anchors.len();
                         let (anchor_h_vec, anchor_w_vec) = anchors
                             .iter()
                             .cloned()

@@ -17,7 +17,7 @@ pub use model_config::graph::{InputKeys, NodeKey};
 mod model {
     use super::*;
 
-    struct Model {
+    pub struct Model {
         nodes: IndexMap<NodeKey, Layer>,
     }
 
@@ -34,10 +34,7 @@ mod model {
                 .iter()
                 .map(|(&key, node)| -> Result<_> {
                     let graph::Node {
-                        input_keys,
-                        output_shape,
-                        config,
-                        ..
+                        input_keys, config, ..
                     } = node;
 
                     let module = match *config {
@@ -567,7 +564,6 @@ mod yolo_model {
                                     }
                                     LayerKind::Upsample { scale_factor, .. } => {
                                         let scale_factor = scale_factor.raw();
-                                        let src_key = src_keys.single().unwrap();
 
                                         Module::FnSingle(Box::new(move |xs, _train| {
                                             let (height, width) = match xs.size().as_slice() {

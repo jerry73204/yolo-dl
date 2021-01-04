@@ -2153,7 +2153,7 @@ mod softmax_config {
             } = from;
 
             let tree = tree_file
-                .map(|path| -> Result<_> {
+                .map(|_path| -> Result<_> {
                     unimplemented!();
                 })
                 .transpose()?;
@@ -2198,7 +2198,7 @@ mod softmax_config {
             } = from;
 
             let tree_file = tree
-                .map(|(path, tree)| -> Result<_> {
+                .map(|(_path, _tree)| -> Result<_> {
                     unimplemented!();
                 })
                 .transpose()?;

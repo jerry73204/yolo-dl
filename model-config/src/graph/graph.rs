@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     config::{
-        self, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath, Shape,
-        ShapeInput, ShapeOutput,
+        self, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath, ShapeInput,
+        ShapeOutput,
     },
     utils::{self, OptionEx},
 };

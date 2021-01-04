@@ -62,7 +62,7 @@ pub async fn main() -> Result<()> {
             DeviceConfig::MultiDevice { devices, .. } => devices.len() * 2,
             DeviceConfig::NonUniformMultiDevice { devices, .. } => devices.len() * 2,
         };
-        async_std::sync::channel(channel_size)
+        async_std::channel::bounded(channel_size)
     };
 
     // load dataset
@@ -183,7 +183,7 @@ async fn multi_gpu_training_worker(
     checkpoint_dir: Arc<PathBuf>,
     input_channels: usize,
     num_classes: usize,
-    data_rx: async_std::sync::Receiver<TrainingRecord>,
+    data_rx: async_std::channel::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     workers: &[(Device, usize)],
 ) -> Result<()> {
@@ -697,7 +697,7 @@ fn single_gpu_training_worker(
     checkpoint_dir: Arc<PathBuf>,
     input_channels: usize,
     num_classes: usize,
-    data_rx: async_std::sync::Receiver<TrainingRecord>,
+    data_rx: async_std::channel::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     device: Device,
 ) -> Result<()> {

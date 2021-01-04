@@ -265,7 +265,6 @@ mod graph {
                                 LayerConfig::Route(conf) => {
                                     let RouteConfig { group, .. } = conf;
 
-                                    let group_index = group.group_id();
                                     let num_groups = group.num_groups();
 
                                     let input_shapes = multiple_hwc_input_shapes(from_index)
@@ -675,7 +674,7 @@ mod node {
     impl Node {
         pub fn input_shape(&self) -> ShapeList {
             match self {
-                Self::Input(layer) => ShapeList::None,
+                Self::Input(_layer) => ShapeList::None,
                 Self::Connected(layer) => ShapeList::SingleFlat(layer.input_shape),
                 Self::Convolutional(layer) => ShapeList::SingleHwc(layer.input_shape),
                 Self::Route(layer) => ShapeList::MultipleHwc(layer.input_shape.clone()),

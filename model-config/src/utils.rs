@@ -22,9 +22,9 @@ where
     map.hash(state);
 }
 
-pub fn empty_vec<T>() -> Vec<T> {
-    vec![]
-}
+// pub fn empty_vec<T>() -> Vec<T> {
+//     vec![]
+// }
 
 pub fn empty_index_set<T>() -> IndexSet<T> {
     IndexSet::new()
