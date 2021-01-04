@@ -2,10 +2,12 @@ use crate::common::*;
 use yolo_dl::loss::{IoUKind, MatchGrid};
 
 pub use dataset::*;
+pub use model::*;
 pub use training::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub model: ModelConfig,
     pub dataset: DatasetConfig,
     pub logging: LoggingConfig,
     pub preprocessor: PreprocessorConfig,
@@ -20,6 +22,27 @@ impl Config {
         let text = std::fs::read_to_string(path)?;
         let config = json5::from_str(&text)?;
         Ok(config)
+    }
+}
+
+mod model {
+    use super::*;
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "kind")]
+    pub enum ModelConfig {
+        Darknet(DarknetModelConfig),
+        NewslabV1(NewslabV1ModelConfig),
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct DarknetModelConfig {
+        pub cfg_file: PathBuf,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct NewslabV1ModelConfig {
+        pub cfg_file: PathBuf,
     }
 }
 

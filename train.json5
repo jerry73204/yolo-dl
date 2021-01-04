@@ -1,4 +1,8 @@
 {
+    "model": {
+        "kind": "NewslabV1",
+        "cfg_file": "model-config/tests/cfg/yolov4-csp.json5",
+    },
     "dataset": {
         "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "kind": {
