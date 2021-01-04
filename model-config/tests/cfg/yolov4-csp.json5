@@ -329,6 +329,13 @@
                 "c": 255,
                 "k": 1,
             },
+
+            // output
+            {
+                "name": "output",
+                "kind": "MergeDetect2D",
+                "from": ["detect1", "detect2", "detect3"],
+            },
         ]
     }
 }
