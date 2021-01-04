@@ -1,6 +1,9 @@
 use crate::common::*;
 use yolo_dl::loss::{IoUKind, MatchGrid};
 
+pub use dataset::*;
+pub use training::*;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub dataset: DatasetConfig,
@@ -28,36 +31,40 @@ pub struct LoggingConfig {
     pub enable_debug_stat: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatasetConfig {
-    pub class_whitelist: Option<HashSet<String>>,
-    pub kind: DatasetKind,
-}
+mod dataset {
+    use super::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum DatasetKind {
-    Coco {
-        classes_file: PathBuf,
-        image_size: NonZeroUsize,
-        dataset_dir: PathBuf,
-        dataset_name: String,
-    },
-    Voc {
-        classes_file: PathBuf,
-        image_size: NonZeroUsize,
-        dataset_dir: PathBuf,
-    },
-    Iii {
-        classes_file: PathBuf,
-        image_size: NonZeroUsize,
-        dataset_dir: PathBuf,
-        #[serde(default = "empty_hashset::<PathBuf>")]
-        blacklist_files: HashSet<PathBuf>,
-    },
-    Mmap {
-        dataset_file: PathBuf,
-    },
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct DatasetConfig {
+        pub class_whitelist: Option<HashSet<String>>,
+        pub kind: DatasetKind,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "type")]
+    pub enum DatasetKind {
+        Coco {
+            classes_file: PathBuf,
+            image_size: NonZeroUsize,
+            dataset_dir: PathBuf,
+            dataset_name: String,
+        },
+        Voc {
+            classes_file: PathBuf,
+            image_size: NonZeroUsize,
+            dataset_dir: PathBuf,
+        },
+        Iii {
+            classes_file: PathBuf,
+            image_size: NonZeroUsize,
+            dataset_dir: PathBuf,
+            #[serde(default = "empty_hashset::<PathBuf>")]
+            blacklist_files: HashSet<PathBuf>,
+        },
+        Mmap {
+            dataset_file: PathBuf,
+        },
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,66 +96,70 @@ pub struct PreprocessorConfig {
     pub device: Device,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrainingConfig {
-    pub batch_size: NonZeroUsize,
-    #[serde(default = "default_initial_step")]
-    pub initial_step: usize,
-    pub lr_schedule: LearningRateSchedule,
-    pub momentum: R64,
-    pub weight_decay: R64,
-    pub loss: LossConfig,
-    pub save_checkpoint_steps: Option<NonZeroUsize>,
-    pub load_checkpoint: LoadCheckpoint,
-    pub device_config: DeviceConfig,
-}
+mod training {
+    use super::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LossConfig {
-    pub match_grid_method: MatchGrid,
-    pub iou_kind: IoUKind,
-    pub iou_loss_weight: Option<R64>,
-    pub objectness_loss_weight: Option<R64>,
-    pub classification_loss_weight: Option<R64>,
-}
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TrainingConfig {
+        pub batch_size: NonZeroUsize,
+        #[serde(default = "default_initial_step")]
+        pub initial_step: usize,
+        pub lr_schedule: LearningRateSchedule,
+        pub momentum: R64,
+        pub weight_decay: R64,
+        pub loss: LossConfig,
+        pub save_checkpoint_steps: Option<NonZeroUsize>,
+        pub load_checkpoint: LoadCheckpoint,
+        pub device_config: DeviceConfig,
+    }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum DeviceConfig {
-    SingleDevice {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "type")]
+    pub enum DeviceConfig {
+        SingleDevice {
+            #[serde(with = "tch_serde::serde_device")]
+            device: Device,
+        },
+        MultiDevice {
+            minibatch_size: NonZeroUsize,
+            #[serde(with = "serde_vec_device")]
+            devices: Vec<Device>,
+        },
+        NonUniformMultiDevice {
+            devices: Vec<WorkerConfig>,
+        },
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct WorkerConfig {
         #[serde(with = "tch_serde::serde_device")]
-        device: Device,
-    },
-    MultiDevice {
-        minibatch_size: NonZeroUsize,
-        #[serde(with = "serde_vec_device")]
-        devices: Vec<Device>,
-    },
-    NonUniformMultiDevice {
-        devices: Vec<WorkerConfig>,
-    },
-}
+        pub device: Device,
+        pub minibatch_size: NonZeroUsize,
+    }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum LoadCheckpoint {
-    Disabled,
-    FromRecent,
-    FromFile { file: PathBuf },
-}
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "type")]
+    pub enum LearningRateSchedule {
+        Constant { lr: R64 },
+        StepWise { steps: Vec<(usize, R64)> },
+    }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerConfig {
-    #[serde(with = "tch_serde::serde_device")]
-    pub device: Device,
-    pub minibatch_size: NonZeroUsize,
-}
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "type")]
+    pub enum LoadCheckpoint {
+        Disabled,
+        FromRecent,
+        FromFile { file: PathBuf },
+    }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum LearningRateSchedule {
-    Constant { lr: R64 },
-    StepWise { steps: Vec<(usize, R64)> },
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct LossConfig {
+        pub match_grid_method: MatchGrid,
+        pub iou_kind: IoUKind,
+        pub iou_loss_weight: Option<R64>,
+        pub objectness_loss_weight: Option<R64>,
+        pub classification_loss_weight: Option<R64>,
+    }
 }
 
 fn empty_hashset<T>() -> HashSet<T> {
