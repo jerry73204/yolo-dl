@@ -493,7 +493,7 @@ mod spp_csp_2d {
                     spp
                 };
                 let xs = spp_conv_4.forward_t(&spp, train);
-                let xs = spp_conv_5.forward_t(&spp, train);
+                let xs = spp_conv_5.forward_t(&xs, train);
                 xs
             };
 
