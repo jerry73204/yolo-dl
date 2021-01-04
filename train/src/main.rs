@@ -26,8 +26,8 @@ struct Args {
     pub config_file: PathBuf,
 }
 
-#[tracing::instrument]
 #[async_std::main]
+#[tracing::instrument]
 pub async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
@@ -82,7 +82,10 @@ pub async fn main() -> Result<()> {
 
             while let Some(result) = train_stream.next().await {
                 let record = result?;
-                data_tx.send(record).await;
+                data_tx
+                    .send(record)
+                    .await
+                    .map_err(|_| format_err!("failed to send message to training worker"))?;
             }
 
             Fallible::Ok(())
