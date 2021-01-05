@@ -420,7 +420,7 @@ mod spp_csp_2d {
 
             let mid_c = (in_c as f64 * c_mul.raw()).floor() as usize;
             let first_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
-            let last_conv = ConvBn2DInit::new(mid_c, out_c, 1).build(path);
+            let last_conv = ConvBn2DInit::new(mid_c * 2, out_c, 1).build(path);
             let skip_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
 
             let spp_conv_1 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
@@ -480,7 +480,7 @@ mod spp_csp_2d {
                 let spp: Tensor = {
                     let mut iter = k.iter().cloned().map(|k| {
                         let k = k as i64;
-                        let p = k - 1;
+                        let p = k / 2;
                         let s = 1;
                         let d = 1;
                         let ceil_mode = false;
@@ -519,8 +519,13 @@ mod sum_2d {
                 tensor.borrow().size4()?;
                 Ok(())
             })?;
-            ensure!(!tensors.is_empty(), "empty input is not allowed");
-            let output = Tensor::cat(tensors, 1);
+            let mut iter = tensors.iter();
+            let first = iter
+                .next()
+                .ok_or_else(|| format_err!("empty input is not allowed"))?
+                .borrow()
+                .shallow_clone();
+            let output = iter.try_fold(first, |acc, tensor| acc.f_add(tensor.borrow()))?;
             Ok(output)
         }
     }
@@ -537,15 +542,11 @@ mod concat_2d {
         where
             T: Borrow<Tensor>,
         {
-            let mut iter = tensors.iter();
-            let first = iter
-                .next()
-                .ok_or_else(|| format_err!("empty input is not allowed"))?
-                .borrow()
-                .shallow_clone();
-            first.size4()?;
-
-            let output = iter.try_fold(first, |acc, tensor| acc.f_add(tensor.borrow()))?;
+            tensors.iter().try_for_each(|tensor| -> Result<_> {
+                tensor.borrow().size4()?;
+                Ok(())
+            })?;
+            let output = Tensor::f_cat(tensors, 1)?;
             Ok(output)
         }
     }
@@ -1042,7 +1043,7 @@ mod dark_csp_2d {
             let mid_c = (in_c as f64 * c_mul.raw()).floor() as usize;
 
             let skip_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
-            let merge_conv = ConvBn2DInit::new(in_c, out_c, 1).build(path);
+            let merge_conv = ConvBn2DInit::new(mid_c * 2, out_c, 1).build(path);
             let before_repeat_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
             let after_repeat_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
 
