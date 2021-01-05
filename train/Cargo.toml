@@ -47,6 +47,8 @@ tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-futures = "0.2"
 structopt = "0.3"
+model-config = { version = "0.1", path = "../model-config" }
+darknet-config = { version = "0.1", path = "../darknet-config" }
 
 [features]
 profiling = ["yolo-dl/profiling"]

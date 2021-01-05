@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    model::{InstanceIndex, LayerMeta, YoloOutput},
+    model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput},
     profiling::Timing,
 };
 
@@ -224,7 +224,7 @@ pub struct YoloLoss {
 impl YoloLoss {
     pub fn forward(
         &self,
-        prediction: &YoloOutput,
+        prediction: &MergeDetect2DOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
     ) -> (YoloLossOutput, YoloLossAuxiliary) {
         let mut timing = Timing::new("loss function");
@@ -428,10 +428,9 @@ impl YoloLoss {
 
                 let mse = (target_array - expected_array)
                     .map(|diff| diff.powi(2))
-                    .mean()
-                    .unwrap();
+                    .mean();
 
-                abs_diff_eq!(mse, 0.0)
+                mse.map(|mse| abs_diff_eq!(mse, 0.0)).unwrap_or(true)
             });
 
             target
@@ -442,20 +441,20 @@ impl YoloLoss {
 
     fn objectness_loss(
         &self,
-        prediction: &YoloOutput,
-        target_bboxes: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
+        prediction: &MergeDetect2DOutput,
+        target_bboxes: &HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
         iou_score: &Tensor,
     ) -> Tensor {
-        let device = prediction.device;
-        let batch_size = prediction.batch_size;
+        let device = prediction.device();
+        let batch_size = prediction.batch_size();
 
-        let pred_objectness = &prediction.objectness;
+        let pred_objectness = &prediction.obj;
         let target_objectness = tch::no_grad(|| {
             let (batch_indexes_vec, flat_indexes_vec) = target_bboxes
                 .keys()
                 .map(|instance_index| {
                     let batch_index = instance_index.batch_index as i64;
-                    let flat_index = prediction.instance_to_flat_index(instance_index);
+                    let flat_index = prediction.instance_to_flat_index(instance_index).unwrap();
                     (batch_index, flat_index)
                 })
                 .unzip_n_vec();
@@ -487,7 +486,7 @@ impl YoloLoss {
                     .enumerate()
                     .for_each(|(index, instance_index)| {
                         let batch_index = instance_index.batch_index as i64;
-                        let flat_index = prediction.instance_to_flat_index(instance_index);
+                        let flat_index = prediction.instance_to_flat_index(instance_index).unwrap();
                         expect_array[[batch_index as usize, 0, flat_index as usize]] =
                             iou_loss_array[[index, 0]].clamp(0.0, 1.0)
                                 * self.objectness_iou_ratio as f32
@@ -513,9 +512,9 @@ impl YoloLoss {
     /// Match target bboxes with grids.
     fn match_target_bboxes(
         &self,
-        prediction: &YoloOutput,
+        prediction: &MergeDetect2DOutput,
         target: &Vec<Vec<LabeledRatioBBox>>,
-    ) -> HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>> {
+    ) -> HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>> {
         let snap_thresh = 0.5;
 
         let target_bboxes: HashMap<_, _> = target
@@ -527,20 +526,21 @@ impl YoloLoss {
                     let [_cy, _cx, h, w] = bbox.cycxhw();
                     if abs_diff_eq!(h, 0.0) || abs_diff_eq!(w, 0.0) {
                         warn!(
-                        "The bounding box {:?} is too small. It may cause division by zero error.",
-                        bbox
-                    );
+                            "The bounding box {:?} is too small. It may cause division by zero error.",
+                            bbox
+                        );
                     }
+                    let bbox = Arc::new(bbox.to_owned());
                     (batch_index, bbox)
                 })
             })
             // pair up per target bbox and per prediction feature
-            .cartesian_product(prediction.layer_meta.iter().enumerate())
+            .cartesian_product(prediction.info.iter().enumerate())
             // generate neighbor bboxes
             .map(|args| {
                 // unpack variables
                 let ((batch_index, target_bbox), (layer_index, layer)) = args;
-                let LayerMeta {
+                let DetectionInfo {
                     feature_size:
                         GridSize {
                             height: feature_h,
@@ -551,13 +551,11 @@ impl YoloLoss {
                     ..
                 } = *layer;
 
-                // compute bbox in grid units
-                let target_bbox: Arc<LabeledGridBBox<_>> =
-                    Arc::new(target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize));
-                let [target_cy, target_cx, _target_h, _target_w] = target_bbox.cycxhw();
-
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes = {
+                    let target_bbox_grid: LabeledGridBBox<_> = target_bbox
+                        .to_r64_bbox(feature_h as usize, feature_w as usize);
+                    let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
                     let target_row = target_cy.floor().raw() as i64;
                     let target_col = target_cx.floor().raw() as i64;
                     debug_assert!(target_row >= 0 && target_col >= 0);
@@ -644,16 +642,17 @@ impl YoloLoss {
                     .enumerate()
                     .filter_map(move |(anchor_index, anchor_size)| {
                         // filter by anchor sizes
-                        let GridSize {
+                        let RatioSize {
                             height: anchor_h,
                             width: anchor_w,
                             ..
                         } = anchor_size;
 
-                        if target_h / anchor_h <= self.anchor_scale_thresh
-                            && anchor_h / target_h <= self.anchor_scale_thresh
-                            && target_w / anchor_w <= self.anchor_scale_thresh
-                            && anchor_w / target_w <= self.anchor_scale_thresh
+                        // convert ratio to float to avoid range checking
+                        if target_h.to_f64() / anchor_h.to_f64() <= self.anchor_scale_thresh
+                            && anchor_h.to_f64() / target_h.to_f64() <= self.anchor_scale_thresh
+                            && target_w.to_f64() / anchor_w.to_f64() <= self.anchor_scale_thresh
+                            && anchor_w.to_f64() / target_w.to_f64() <= self.anchor_scale_thresh
                         {
                             Some(anchor_index)
                         } else {
@@ -686,32 +685,23 @@ impl YoloLoss {
             )
             .collect();
 
-        debug_assert!(target_bboxes.iter().all(|(instance_index, bbox)| {
-            let InstanceIndex {
-                grid_row, grid_col, ..
-            } = **instance_index;
-            let [cy, cx, _h, _w] = bbox.cycxhw();
-            (grid_row as f64 - cy.raw()).abs() <= 1.0 + snap_thresh
-                && (grid_col as f64 - cx.raw()).abs() <= 1.0 + snap_thresh
-        }));
-
         target_bboxes
     }
 
     /// Build HashSet of predictions indexed by per-grid position
     fn collect_instances(
-        prediction: &YoloOutput,
-        target: &HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
+        prediction: &MergeDetect2DOutput,
+        target: &HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
     ) -> (PredInstances, TargetInstances) {
         let mut timing = Timing::new("collect_instances");
 
-        let device = prediction.device;
+        let device = prediction.device();
         let pred_instances = {
             let (batch_indexes_vec, flat_indexes_vec) = target
                 .keys()
                 .map(|instance_index| {
                     let batch_index = instance_index.batch_index as i64;
-                    let flat_index = prediction.instance_to_flat_index(instance_index);
+                    let flat_index = prediction.instance_to_flat_index(instance_index).unwrap();
                     (batch_index, flat_index)
                 })
                 .unzip_n_vec();
@@ -727,19 +717,19 @@ impl YoloLoss {
                 .permute(&[0, 2, 1])
                 .index(&[&batch_indexes, &flat_indexes]);
             let height = prediction
-                .height
+                .h
                 .permute(&[0, 2, 1])
                 .index(&[&batch_indexes, &flat_indexes]);
             let width = prediction
-                .width
+                .w
                 .permute(&[0, 2, 1])
                 .index(&[&batch_indexes, &flat_indexes]);
             let objectness = prediction
-                .objectness
+                .obj
                 .permute(&[0, 2, 1])
                 .index(&[&batch_indexes, &flat_indexes]);
             let classification = prediction
-                .classification
+                .class
                 .permute(&[0, 2, 1])
                 .index(&[&batch_indexes, &flat_indexes]);
 
@@ -762,10 +752,10 @@ impl YoloLoss {
                     let [cy, cx, h, w] = bbox.bbox.cycxhw();
                     let category_id = bbox.category_id;
                     (
-                        cy.raw() as f32,
-                        cx.raw() as f32,
-                        h.raw() as f32,
-                        w.raw() as f32,
+                        cy.to_f64() as f32,
+                        cx.to_f64() as f32,
+                        h.to_f64() as f32,
+                        w.to_f64() as f32,
                         category_id as i64,
                     )
                 })
@@ -810,7 +800,7 @@ impl YoloLoss {
 
 #[derive(Debug)]
 pub struct YoloLossAuxiliary {
-    pub target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
+    pub target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
     pub iou_score: Tensor,
 }
 

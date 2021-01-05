@@ -120,9 +120,9 @@ impl LoggingWorker {
         tag: &str,
         step: usize,
         input: Tensor,
-        output: YoloOutput,
+        output: MergeDetect2DOutput,
         losses: YoloLossOutput,
-        target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
+        target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>>,
     ) -> Result<()> {
         let Config {
             logging:
@@ -136,6 +136,7 @@ impl LoggingWorker {
 
         let mut timing = Timing::new("log training output");
         let step = step as i64;
+        let (_b, _c, image_h, image_w) = input.size4()?;
 
         // compute statistics and plot image
         let (losses, debug_stat, bbox_image, objectness_image, mut timing) =
@@ -143,10 +144,10 @@ impl LoggingWorker {
                 tch::no_grad(|| -> Result<_> {
                     // log statistics
                     let debug_stat = if enable_debug_stat {
-                        let cy_mean = f32::from(output.cy().mean(Kind::Float));
-                        let cx_mean = f32::from(output.cx().mean(Kind::Float));
-                        let h_mean = f32::from(output.height().mean(Kind::Float));
-                        let w_mean = f32::from(output.width().mean(Kind::Float));
+                        let cy_mean = f32::from(output.cy.mean(Kind::Float));
+                        let cx_mean = f32::from(output.cx.mean(Kind::Float));
+                        let h_mean = f32::from(output.h.mean(Kind::Float));
+                        let w_mean = f32::from(output.w.mean(Kind::Float));
                         Some((cy_mean, cx_mean, h_mean, w_mean))
                     } else {
                         None
@@ -157,55 +158,31 @@ impl LoggingWorker {
                     // plot bboxes
                     let bbox_image = if enable_images {
                         let mut canvas = input.copy();
-                        let layer_meta = output.layer_meta();
-                        let PixelSize {
-                            height: image_height,
-                            width: image_width,
-                            ..
-                        } = *output.image_size();
                         let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
                         let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
                         // gather data from each bbox
                         // btlbr = batch + tlbr
-                        let (pred_info, batch_indexes_vec, flat_indexes_vec, target_btlbrs) =
+                        let (batch_index_vec, batch_indexes_vec, flat_indexes_vec, target_btlbrs) =
                             target_bboxes
                                 .iter()
-                                .map(|(pred_index, target_in_grids)| -> Result<_> {
+                                .map(|(pred_index, target_bbox_ratio)| -> Result<_> {
                                     let InstanceIndex {
                                         batch_index,
                                         layer_index,
                                         ..
                                     } = *pred_index.as_ref();
-                                    let LabeledGridBBox {
-                                        bbox: target_bbox, ..
-                                    } = target_in_grids.as_ref();
                                     let flat_index =
-                                        output.instance_to_flat_index(pred_index.as_ref());
+                                        output.instance_to_flat_index(pred_index.as_ref()).unwrap();
+                                    let target_bbox_pixel: LabeledPixelBBox<_> = target_bbox_ratio
+                                        .to_r64_bbox(image_h as usize, image_w as usize);
                                     let [target_t, target_l, target_b, target_r] =
-                                        target_bbox.tlbr();
-                                    let LayerMeta {
-                                        grid_size:
-                                            PixelSize {
-                                                height: grid_height,
-                                                width: grid_width,
-                                                ..
-                                            },
-                                        ..
-                                    } = layer_meta[layer_index];
+                                        target_bbox_pixel.tlbr();
 
-                                    let target_t = ((target_t * grid_height).raw() as i64)
-                                        .max(0)
-                                        .min(image_height - 1);
-                                    let target_b = ((target_b * grid_height).raw() as i64)
-                                        .max(0)
-                                        .min(image_height - 1);
-                                    let target_l = ((target_l * grid_width).raw() as i64)
-                                        .max(0)
-                                        .min(image_width - 1);
-                                    let target_r = ((target_r * grid_width).raw() as i64)
-                                        .max(0)
-                                        .min(image_width - 1);
+                                    let target_t = (target_t.raw() as i64).max(0).min(image_h - 1);
+                                    let target_b = (target_b.raw() as i64).max(0).min(image_h - 1);
+                                    let target_l = (target_l.raw() as i64).max(0).min(image_w - 1);
+                                    let target_r = (target_r.raw() as i64).max(0).min(image_w - 1);
 
                                     let target_btlbr = [
                                         batch_index as i64,
@@ -215,12 +192,7 @@ impl LoggingWorker {
                                         target_r,
                                     ];
 
-                                    Ok((
-                                        (batch_index, grid_height, grid_width),
-                                        batch_index as i64,
-                                        flat_index,
-                                        target_btlbr,
-                                    ))
+                                    Ok((batch_index, batch_index as i64, flat_index, target_btlbr))
                                 })
                                 .collect::<Fallible<Vec<_>>>()?
                                 .into_iter()
@@ -232,19 +204,19 @@ impl LoggingWorker {
                             let flat_indexes = Tensor::of_slice(&flat_indexes_vec);
 
                             let pred_cy = output
-                                .cy()
+                                .cy
                                 .permute(&[0, 2, 1])
                                 .index(&[&batch_indexes, &flat_indexes]);
                             let pred_cx = output
-                                .cx()
+                                .cx
                                 .permute(&[0, 2, 1])
                                 .index(&[&batch_indexes, &flat_indexes]);
                             let pred_h = output
-                                .height()
+                                .h
                                 .permute(&[0, 2, 1])
                                 .index(&[&batch_indexes, &flat_indexes]);
                             let pred_w = output
-                                .width()
+                                .w
                                 .permute(&[0, 2, 1])
                                 .index(&[&batch_indexes, &flat_indexes]);
 
@@ -253,22 +225,21 @@ impl LoggingWorker {
                             let pred_l: Vec<f64> = (&pred_cx - &pred_w / 2.0).into();
                             let pred_r: Vec<f64> = (&pred_cx + &pred_w / 2.0).into();
 
-                            let pred_btlbrs = izip!(pred_info, pred_t, pred_l, pred_b, pred_r)
-                                .map(|args| {
-                                    let ((batch_index, grid_height, grid_width), t, l, b, r) = args;
-                                    let t = ((t * grid_height.raw()) as i64)
-                                        .max(0)
-                                        .min(image_height - 1);
-                                    let b = ((b * grid_height.raw()) as i64)
-                                        .max(0)
-                                        .min(image_height - 1);
-                                    let l =
-                                        ((l * grid_width.raw()) as i64).max(0).min(image_width - 1);
-                                    let r =
-                                        ((r * grid_width.raw()) as i64).max(0).min(image_width - 1);
-                                    [batch_index as i64, t, l, b, r]
-                                })
-                                .collect_vec();
+                            let pred_btlbrs =
+                                izip!(batch_index_vec, pred_t, pred_l, pred_b, pred_r)
+                                    .map(|args| {
+                                        let (batch_index, t, l, b, r) = args;
+                                        let t =
+                                            ((t * image_h as f64) as i64).max(0).min(image_h - 1);
+                                        let b =
+                                            ((b * image_h as f64) as i64).max(0).min(image_h - 1);
+                                        let l =
+                                            ((l * image_w as f64) as i64).max(0).min(image_w - 1);
+                                        let r =
+                                            ((r * image_w as f64) as i64).max(0).min(image_w - 1);
+                                        [batch_index as i64, t, l, b, r]
+                                    })
+                                    .collect_vec();
 
                             // TODO: select color according to classification
                             // let pred_classification =
@@ -289,23 +260,17 @@ impl LoggingWorker {
 
                     let objectness_image = if enable_images {
                         let batch_size = output.batch_size();
-                        let PixelSize {
-                            height: input_h,
-                            width: input_w,
-                            ..
-                        } = *output.image_size();
-
                         let objectness_maps: Vec<_> = output
                             .feature_maps()
                             .into_iter()
                             .map(|feature_map| feature_map.objectness)
-                            .zip_eq(output.layer_meta().iter())
+                            .zip_eq(output.info.iter())
                             .map(|(objectness_map, meta)| {
                                 let num_anchors = meta.anchors.len() as i64;
                                 objectness_map
                                     .copy()
-                                    .resize_(&[batch_size, 1, num_anchors, input_h, input_w])
-                                    .view([batch_size, num_anchors, input_h, input_w])
+                                    .resize_(&[batch_size, 1, num_anchors, image_h, image_w])
+                                    .view([batch_size, num_anchors, image_h, image_w])
                             })
                             .collect();
 
@@ -313,7 +278,7 @@ impl LoggingWorker {
                         let (objectness_image, _argmax) =
                             Tensor::cat(&objectness_maps, 1).max2(1, true);
                         debug_assert!(
-                            objectness_image.size4()? == (batch_size, 1, input_h, input_w)
+                            objectness_image.size4()? == (batch_size, 1, image_h, image_w)
                         );
 
                         Some(objectness_image)

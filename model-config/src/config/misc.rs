@@ -362,6 +362,16 @@ mod shape {
         }
     }
 
+    impl FromIterator<usize> for Shape {
+        fn from_iter<T>(iter: T) -> Self
+        where
+            T: IntoIterator<Item = usize>,
+        {
+            let shape: Vec<Dim> = iter.into_iter().map(Into::into).collect();
+            Self(shape)
+        }
+    }
+
     impl AsRef<[Dim]> for Shape {
         fn as_ref(&self) -> &[Dim] {
             &self.0

@@ -1,13 +1,14 @@
 use super::*;
 use crate::common::*;
 
+use model_config::config::Shape;
+
 pub use bottleneck::*;
 pub use bottleneck_csp::*;
 pub use concat_2d::*;
 pub use conv_block::*;
 pub use conv_bn_2d::*;
 pub use dark_csp_2d::*;
-pub use detect::*;
 pub use detect_2d::*;
 pub use focus::*;
 pub use input::*;
@@ -32,7 +33,6 @@ mod module {
         Concat2D(Concat2D),
         DarkCsp2D(DarkCsp2D),
         SppCsp2D(SppCsp2D),
-        Detect(DetectModule),
         Detect2D(Detect2D),
         MergeDetect2D(MergeDetect2D),
         FnSingle(
@@ -45,26 +45,16 @@ mod module {
     }
 
     impl Module {
-        pub fn forward_t<'a, 'b>(
+        pub fn forward_t<'a>(
             &mut self,
             input: impl Into<ModuleInput<'a>>,
             train: bool,
-            image_size: impl Into<Option<&'b PixelSize<i64>>>,
         ) -> Result<ModuleOutput> {
             let input = input.into();
 
             let output: ModuleOutput = match self {
                 Self::Input(module) => module
                     .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)?
-                    .into(),
-                Self::Detect(module) => module
-                    .forward_t(
-                        &input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?,
-                        train,
-                        image_size
-                            .into()
-                            .ok_or_else(|| format_err!("image size not provided"))?,
-                    )
                     .into(),
                 Self::ConvBn2D(module) => module
                     .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
@@ -103,6 +93,7 @@ mod module {
                 )
                 .into(),
             };
+
             Ok(output)
         }
     }
@@ -274,7 +265,6 @@ mod module_input {
     #[derive(Debug)]
     pub enum ModuleOutput {
         Tensor(Tensor),
-        Yolo(YoloOutput),
         Detect2D(Detect2DOutput),
         MergeDetect2D(MergeDetect2DOutput),
     }
@@ -290,13 +280,6 @@ mod module_input {
         pub fn tensor(self) -> Option<Tensor> {
             match self {
                 Self::Tensor(tensor) => Some(tensor),
-                _ => None,
-            }
-        }
-
-        pub fn yolo(self) -> Option<YoloOutput> {
-            match self {
-                Self::Yolo(detect) => Some(detect),
                 _ => None,
             }
         }
@@ -329,12 +312,6 @@ mod module_input {
         }
     }
 
-    impl From<YoloOutput> for ModuleOutput {
-        fn from(from: YoloOutput) -> Self {
-            Self::Yolo(from)
-        }
-    }
-
     impl From<Detect2DOutput> for ModuleOutput {
         fn from(from: Detect2DOutput) -> Self {
             Self::Detect2D(from)
@@ -352,15 +329,31 @@ mod input {
     use super::*;
 
     #[derive(Debug)]
-    pub struct Input {}
+    pub struct Input {
+        shape: Shape,
+    }
 
     impl Input {
-        pub fn new() -> Self {
-            Self {}
+        pub fn new(shape: &Shape) -> Self {
+            Self {
+                shape: shape.clone(),
+            }
         }
 
         pub fn forward(&self, tensor: &Tensor) -> Result<Tensor> {
-            // TODO: check shape
+            let actual_shape: Shape = tensor
+                .size()
+                .into_iter()
+                .map(|size| size as usize)
+                .collect();
+
+            ensure!(
+                actual_shape.is_compatible_with(&self.shape),
+                "input shape mismatch: expect {}, but get {}",
+                self.shape,
+                actual_shape
+            );
+
             Ok(tensor.shallow_clone())
         }
     }
@@ -1110,326 +1103,6 @@ mod dark_csp_2d {
     }
 }
 
-mod detect {
-    pub use super::*;
-
-    #[derive(Debug, Clone)]
-    pub struct DetectInit {
-        pub num_classes: usize,
-        pub anchors_list: Vec<Vec<PixelSize<usize>>>,
-    }
-
-    impl DetectInit {
-        pub fn build<'p, P>(self, path: P) -> DetectModule
-        where
-            P: Borrow<nn::Path<'p>>,
-        {
-            let path = path.borrow();
-            let device = path.device();
-
-            let Self {
-                num_classes,
-                anchors_list,
-            } = self;
-
-            let anchors_list: Vec<Vec<_>> = anchors_list
-                .into_iter()
-                .map(|list| {
-                    list.into_iter()
-                        .map(|PixelSize { height, width, .. }| {
-                            PixelSize::new(height as i64, width as i64)
-                        })
-                        .collect()
-                })
-                .collect();
-
-            DetectModule {
-                num_classes: num_classes as i64,
-                anchors_list,
-                device,
-                cache: HashMap::new(),
-            }
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct DetectModule {
-        num_classes: i64,
-        anchors_list: Vec<Vec<PixelSize<i64>>>,
-        device: Device,
-        cache: HashMap<PixelSize<i64>, DetectModuleCache>,
-    }
-
-    impl DetectModule {
-        pub fn forward_t(
-            &mut self,
-            tensors: &[&Tensor],
-            _train: bool,
-            image_size: &PixelSize<i64>,
-        ) -> YoloOutput {
-            debug_assert_eq!(tensors.len(), self.anchors_list.len());
-            let num_classes = self.num_classes;
-            let device = self.device;
-            let num_entries = num_classes + 5;
-            let (batch_size, _channels, _height, _width) = tensors[0].size4().unwrap();
-
-            // load cached data
-            let DetectModuleCache {
-                positions_grids,
-                anchor_sizes_list,
-                anchor_sizes_grids,
-            } = &*self.cache(tensors, image_size);
-
-            // compute outputs
-            let (cy_vec, cx_vec, h_vec, w_vec, objectness_vec, classification_vec, layer_meta) =
-                izip!(
-                    tensors.iter(),
-                    positions_grids,
-                    anchor_sizes_list,
-                    anchor_sizes_grids
-                )
-                .scan(
-                    0,
-                    |base_flat_index, (xs, positions_grid, anchor_sizes, anchor_sizes_grid)| {
-                        let (bsize, channels, feature_height, feature_width) = xs.size4().unwrap();
-                        let num_anchors = anchor_sizes.len() as i64;
-                        debug_assert_eq!(bsize, batch_size);
-                        debug_assert_eq!(channels, num_anchors * num_entries);
-                        let feature_size = GridSize::new(feature_height, feature_width);
-
-                        // gride size in pixels
-                        let grid_height = image_size.height as f64 / feature_height as f64;
-                        let grid_width = image_size.width as f64 / feature_width as f64;
-
-                        // transform outputs
-                        let (cy, cx, h, w, objectness, classification) = {
-                            // convert shape to [batch_size, n_entries, n_anchors, height, width]
-                            let outputs = xs.view([
-                                batch_size,
-                                num_entries,
-                                num_anchors,
-                                feature_height,
-                                feature_width,
-                            ]);
-
-                            // positions in grid units
-                            let (cy_map, cx_map, h_map, w_map) = {
-                                let sigmoid = outputs.i((.., 0..4, .., .., ..)).sigmoid();
-
-                                let position =
-                                    sigmoid.i((.., 0..2, .., .., ..)) * 2.0 - 0.5 + positions_grid;
-                                let cy_map = position.i((.., 0..1, .., .., ..));
-                                let cx_map = position.i((.., 1..2, .., .., ..));
-
-                                // bbox sizes in grid units
-                                let size = sigmoid.i((.., 2..4, .., .., ..)) * anchor_sizes_grid;
-                                let h_map = size.i((.., 0..1, .., .., ..));
-                                let w_map = size.i((.., 1..2, .., .., ..));
-
-                                (cy_map, cx_map, h_map, w_map)
-                            };
-
-                            // objectness
-                            let objectness_map = outputs.i((.., 4..5, .., .., ..));
-
-                            // sparse classification
-                            let classification_map = outputs.i((.., 5.., .., .., ..));
-
-                            let cy_flat = cy_map.view([batch_size, 1, -1]);
-                            let cx_flat = cx_map.view([batch_size, 1, -1]);
-                            let h_flat = h_map.view([batch_size, 1, -1]);
-                            let w_flat = w_map.view([batch_size, 1, -1]);
-                            let objectness_flat = objectness_map.view([batch_size, 1, -1]);
-                            let classification_flat =
-                                classification_map.view([batch_size, num_classes, -1]);
-
-                            (
-                                cy_flat,
-                                cx_flat,
-                                h_flat,
-                                w_flat,
-                                objectness_flat,
-                                classification_flat,
-                            )
-                        };
-
-                        // save feature anchors and shapes
-                        let layer_meta = {
-                            let begin_flat_index = *base_flat_index;
-                            *base_flat_index += num_anchors * feature_height * feature_width;
-                            let end_flat_index = *base_flat_index;
-
-                            // compute base flat index
-                            let layer_meta = LayerMeta {
-                                feature_size: feature_size.to_owned(),
-                                grid_size: PixelSize::new(
-                                    R64::new(grid_height),
-                                    R64::new(grid_width),
-                                ),
-                                anchors: anchor_sizes
-                                    .iter()
-                                    .map(|size| size.map(|&val| R64::new(val)))
-                                    .collect(),
-                                // begin_flat_index,
-                                // end_flat_index,
-                                flat_index_range: begin_flat_index..end_flat_index,
-                            };
-                            layer_meta
-                        };
-
-                        Some((cy, cx, h, w, objectness, classification, layer_meta))
-                    },
-                )
-                .unzip_n_vec();
-
-            let cy = Tensor::cat(&cy_vec, 2);
-            let cx = Tensor::cat(&cx_vec, 2);
-            let h = Tensor::cat(&h_vec, 2);
-            let w = Tensor::cat(&w_vec, 2);
-            let objectness = Tensor::cat(&objectness_vec, 2);
-            let classification = Tensor::cat(&classification_vec, 2);
-
-            YoloOutput {
-                image_size: image_size.to_owned(),
-                batch_size,
-                num_classes,
-                device,
-                cy,
-                cx,
-                height: h,
-                width: w,
-                objectness,
-                classification,
-                layer_meta,
-            }
-        }
-
-        fn cache(
-            &mut self,
-            tensors: &[&Tensor],
-            image_size: &PixelSize<i64>,
-        ) -> &DetectModuleCache {
-            let device = self.device;
-            let anchors_list = self.anchors_list.clone();
-
-            self.cache.entry(image_size.to_owned()).or_insert_with(|| {
-                tch::no_grad(|| {
-                    let positions_grids = {
-                        tensors
-                            .iter()
-                            .map(|xs| {
-                                let (_bsize, _channels, feature_height, feature_width) =
-                                    xs.size4().unwrap();
-                                let grid = {
-                                    let grids = Tensor::meshgrid(&[
-                                        Tensor::arange(feature_height, (Kind::Float, device)),
-                                        Tensor::arange(feature_width, (Kind::Float, device)),
-                                    ]);
-                                    // corresponds to (batch * entry * anchor * height * width)
-                                    Tensor::stack(&[&grids[0], &grids[1]], 0).view([
-                                        1,
-                                        2,
-                                        1,
-                                        feature_height,
-                                        feature_width,
-                                    ])
-                                };
-                                grid.set_requires_grad(false)
-                            })
-                            .collect_vec()
-                    };
-
-                    let anchor_sizes_list: Vec<Vec<GridSize<f64>>> = {
-                        let PixelSize {
-                            height: image_h,
-                            width: image_w,
-                            ..
-                        } = *image_size;
-
-                        anchors_list
-                            .iter()
-                            .zip_eq(tensors.iter().cloned())
-                            .map(|(anchors, xs)| {
-                                let (_bsize, _channels, feature_h, feature_w) = xs.size4().unwrap();
-
-                                // gride size in pixels
-                                let grid_h = image_h as f64 / feature_h as f64;
-                                let grid_w = image_w as f64 / feature_w as f64;
-
-                                // convert anchor sizes into grid units
-                                anchors
-                                    .iter()
-                                    .cloned()
-                                    .map(|anchor_size| {
-                                        let PixelSize {
-                                            height: anchor_h,
-                                            width: anchor_w,
-                                            ..
-                                        } = anchor_size;
-
-                                        GridSize::new(
-                                            anchor_h as f64 / grid_h,
-                                            anchor_w as f64 / grid_w,
-                                        )
-                                    })
-                                    .collect_vec()
-                            })
-                            .collect_vec()
-                    };
-
-                    let anchor_sizes_grids = {
-                        anchor_sizes_list
-                            .iter()
-                            .map(|anchor_sizes| {
-                                let num_anchors = anchor_sizes.len();
-                                let (anchor_h_vec, anchor_w_vec) = anchor_sizes
-                                    .iter()
-                                    .cloned()
-                                    .map(|anchor_size| {
-                                        let GridSize {
-                                            height: anchor_h,
-                                            width: anchor_w,
-                                            ..
-                                        } = anchor_size;
-                                        (anchor_h as f32, anchor_w as f32)
-                                    })
-                                    .unzip_n_vec();
-
-                                let grid = Tensor::stack(
-                                    &[
-                                        Tensor::of_slice(&anchor_h_vec),
-                                        Tensor::of_slice(&anchor_w_vec),
-                                    ],
-                                    0,
-                                )
-                                // corresponds to (batch * entry * anchor * height * width)
-                                .view([1, 2, num_anchors as i64, 1, 1])
-                                .set_requires_grad(false)
-                                .to_device(device);
-
-                                grid
-                            })
-                            .collect_vec()
-                    };
-
-                    DetectModuleCache {
-                        positions_grids,
-                        anchor_sizes_list,
-                        anchor_sizes_grids,
-                    }
-                })
-            })
-        }
-    }
-
-    #[derive(Debug)]
-    struct DetectModuleCache {
-        positions_grids: Vec<Tensor>,
-        anchor_sizes_list: Vec<Vec<GridSize<f64>>>,
-        anchor_sizes_grids: Vec<Tensor>,
-    }
-}
-
 mod detect_2d {
     pub use super::*;
 
@@ -1648,6 +1321,7 @@ mod merge_detect_2d {
 
             ensure!(batch_size_set.len() == 1, "TODO");
             ensure!(num_classes_set.len() == 1, "TODO");
+            let num_classes = num_classes_set.into_iter().next().unwrap();
 
             // merge detections
             let (cy_vec, cx_vec, h_vec, w_vec, obj_vec, class_vec, info) = detections
@@ -1710,6 +1384,7 @@ mod merge_detect_2d {
             let class = Tensor::cat(&class_vec, 2);
 
             Ok(MergeDetect2DOutput {
+                num_classes,
                 cy,
                 cx,
                 h,
@@ -1723,6 +1398,7 @@ mod merge_detect_2d {
 
     #[derive(Debug, TensorLike)]
     pub struct MergeDetect2DOutput {
+        pub num_classes: usize,
         pub cy: Tensor,
         pub cx: Tensor,
         pub h: Tensor,
@@ -1730,6 +1406,291 @@ mod merge_detect_2d {
         pub obj: Tensor,
         pub class: Tensor,
         pub info: Vec<DetectionInfo>,
+    }
+
+    impl MergeDetect2DOutput {
+        pub fn device(&self) -> Device {
+            self.cy.device()
+        }
+
+        pub fn batch_size(&self) -> i64 {
+            let (batch_size, _entries, _samples) = self.cy.size3().unwrap();
+            batch_size
+        }
+
+        pub fn cat<T>(outputs: impl IntoIterator<Item = T>, device: Device) -> Result<Self>
+        where
+            T: Borrow<Self>,
+        {
+            let (
+                batch_size_set,
+                num_classes_set,
+                info_set,
+                cy_vec,
+                cx_vec,
+                h_vec,
+                w_vec,
+                obj_vec,
+                class_vec,
+            ): (
+                HashSet<i64>,
+                Vec<usize>,
+                HashSet<Vec<DetectionInfo>>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+            ) = outputs
+                .into_iter()
+                .map(|output| {
+                    let output = output.borrow();
+                    let batch_size = output.batch_size();
+                    let Self {
+                        num_classes,
+                        ref info,
+                        ref cy,
+                        ref cx,
+                        ref h,
+                        ref w,
+                        ref obj,
+                        ref class,
+                        ..
+                    } = *output;
+
+                    (
+                        batch_size,
+                        num_classes,
+                        info.to_owned(),
+                        cy.to_device(device),
+                        cx.to_device(device),
+                        h.to_device(device),
+                        w.to_device(device),
+                        obj.to_device(device),
+                        class.to_device(device),
+                    )
+                })
+                .unzip_n();
+
+            let batch_size = {
+                ensure!(batch_size_set.len() == 1, "batch_size must be equal");
+                batch_size_set.into_iter().next().unwrap()
+            };
+            let num_classes = {
+                ensure!(num_classes_set.len() == 1, "num_classes must be equal");
+                num_classes_set.into_iter().next().unwrap()
+            };
+            let info = {
+                ensure!(info_set.len() == 1, "detection info must be equal");
+                info_set.into_iter().next().unwrap()
+            };
+            let cy = Tensor::cat(&cy_vec, 0);
+            let cx = Tensor::cat(&cx_vec, 0);
+            let h = Tensor::cat(&h_vec, 0);
+            let w = Tensor::cat(&w_vec, 0);
+            let obj = Tensor::cat(&obj_vec, 0);
+            let class = Tensor::cat(&class_vec, 0);
+
+            let flat_index_size: i64 = info
+                .iter()
+                .map(|meta| {
+                    let DetectionInfo {
+                        feature_size: GridSize { height, width, .. },
+                        ref anchors,
+                        ..
+                    } = *meta;
+                    height * width * anchors.len() as i64
+                })
+                .sum();
+
+            ensure!(
+                cy.size3()? == (batch_size, 1, flat_index_size),
+                "invalid cy shape"
+            );
+            ensure!(
+                cx.size3()? == (batch_size, 1, flat_index_size),
+                "invalid cx shape"
+            );
+            ensure!(
+                h.size3()? == (batch_size, 1, flat_index_size),
+                "invalid height shape"
+            );
+            ensure!(
+                w.size3()? == (batch_size, 1, flat_index_size),
+                "invalid width shape"
+            );
+            ensure!(
+                obj.size3()? == (batch_size, 1, flat_index_size),
+                "invalid objectness shape"
+            );
+            ensure!(
+                class.size3()? == (batch_size, num_classes as i64, flat_index_size),
+                "invalid classification shape"
+            );
+
+            Ok(Self {
+                num_classes,
+                info,
+                cy,
+                cx,
+                h,
+                w,
+                obj,
+                class,
+            })
+        }
+
+        pub fn flat_to_instance_index(
+            &self,
+            batch_index: usize,
+            flat_index: i64,
+        ) -> Option<InstanceIndex> {
+            let batch_size = self.batch_size();
+            if batch_index as i64 >= batch_size || flat_index < 0 {
+                return None;
+            }
+
+            let (
+                layer_index,
+                DetectionInfo {
+                    feature_size:
+                        GridSize {
+                            height: feature_h,
+                            width: feature_w,
+                            ..
+                        },
+                    anchors,
+                    flat_index_range,
+                    ..
+                },
+            ) = self
+                .info
+                .iter()
+                .enumerate()
+                .find(|(_layer_index, meta)| flat_index < meta.flat_index_range.end)?;
+
+            // flat_index = begin_flat_index + col + row * (width + anchor_index * height)
+            let remainder = flat_index - flat_index_range.start;
+            let grid_col = remainder % feature_w;
+            let grid_row = remainder / feature_w % feature_h;
+            let anchor_index = remainder / feature_w / feature_h;
+
+            if anchor_index >= anchors.len() as i64 {
+                return None;
+            }
+
+            Some(InstanceIndex {
+                batch_index,
+                layer_index,
+                anchor_index,
+                grid_row,
+                grid_col,
+            })
+        }
+
+        pub fn instance_to_flat_index(&self, instance_index: &InstanceIndex) -> Option<i64> {
+            let InstanceIndex {
+                layer_index,
+                anchor_index,
+                grid_row,
+                grid_col,
+                ..
+            } = *instance_index;
+
+            let DetectionInfo {
+                ref flat_index_range,
+                feature_size: GridSize { height, width, .. },
+                ..
+            } = self.info.get(layer_index)?;
+
+            let flat_index =
+                flat_index_range.start + grid_col + width * (grid_row + height * anchor_index);
+
+            Some(flat_index)
+        }
+
+        pub fn feature_maps(&self) -> Vec<FeatureMap> {
+            let batch_size = self.batch_size();
+            let Self {
+                num_classes,
+                ref info,
+                ..
+            } = *self;
+
+            let feature_maps = info
+                .iter()
+                .enumerate()
+                .map(|(_layer_index, meta)| {
+                    let DetectionInfo {
+                        feature_size:
+                            GridSize {
+                                height: feature_h,
+                                width: feature_w,
+                                ..
+                            },
+                        ref anchors,
+                        ref flat_index_range,
+                        ..
+                    } = *meta;
+                    let num_anchors = anchors.len() as i64;
+
+                    let cy_map = self.cy.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let cx_map = self.cx.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let h_map = self.h.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let w_map = self.w.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let obj_map = self.obj.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let class_map = self.class.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        num_classes as i64,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+
+                    FeatureMap {
+                        cy: cy_map,
+                        cx: cx_map,
+                        h: h_map,
+                        w: w_map,
+                        objectness: obj_map,
+                        classification: class_map,
+                    }
+                })
+                .collect_vec();
+
+            feature_maps
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
@@ -1742,5 +1703,25 @@ mod merge_detect_2d {
         pub anchors: Vec<RatioSize>,
         #[tensor_like(clone)]
         pub flat_index_range: Range<i64>,
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct FeatureMap {
+        // tensors have shape [batch, entry, anchor, height, width]
+        pub cy: Tensor,
+        pub cx: Tensor,
+        pub h: Tensor,
+        pub w: Tensor,
+        pub objectness: Tensor,
+        pub classification: Tensor,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+    pub struct InstanceIndex {
+        pub batch_index: usize,
+        pub layer_index: usize,
+        pub anchor_index: i64,
+        pub grid_row: i64,
+        pub grid_col: i64,
     }
 }

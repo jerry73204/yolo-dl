@@ -64,7 +64,7 @@ pub use tracing::Instrument;
 pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
-    model::{InstanceIndex, LayerMeta, YoloModel, YoloOutput},
+    model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput, YoloModel},
     processor::{CacheLoader, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
 };

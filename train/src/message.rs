@@ -20,9 +20,9 @@ mod logging_message {
         TrainingOutput {
             step: usize,
             input: Tensor,
-            output: YoloOutput,
+            output: MergeDetect2DOutput,
             losses: YoloLossOutput,
-            target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
+            target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>>,
         },
         Images {
             images: Vec<Tensor>,
@@ -50,9 +50,9 @@ mod logging_message {
             tag: S,
             step: usize,
             input: &Tensor,
-            output: &YoloOutput,
+            output: &MergeDetect2DOutput,
             losses: &YoloLossOutput,
-            target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>>,
+            target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>>,
         ) -> Self
         where
             S: Into<Cow<'static, str>>,

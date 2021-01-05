@@ -212,6 +212,18 @@ impl PartialEq<f64> for Ratio {
     }
 }
 
+impl PartialOrd<R64> for Ratio {
+    fn partial_cmp(&self, other: &R64) -> Option<Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl PartialOrd<f64> for Ratio {
+    fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
+        self.0.raw().partial_cmp(other)
+    }
+}
+
 impl Display for Ratio {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         self.to_f64().fmt(f)

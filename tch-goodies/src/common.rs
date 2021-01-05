@@ -12,6 +12,7 @@ pub use serde::{
 };
 pub use std::{
     borrow::Borrow,
+    cmp::Ordering,
     collections::HashSet,
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},

@@ -3,16 +3,18 @@ mod config;
 mod data;
 mod logging;
 mod message;
+mod model;
 mod util;
 
 use crate::{
     common::*,
     config::{
-        Config, DeviceConfig, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig,
-        WorkerConfig,
+        Config, DarknetModelConfig, DeviceConfig, LoadCheckpoint, LoggingConfig, LossConfig,
+        ModelConfig, NewslabV1ModelConfig, TrainingConfig, WorkerConfig,
     },
     data::{GenericDataset, TrainingRecord, TrainingStream},
     message::LoggingMessage,
+    model::Model,
     util::{LrScheduler, RateCounter},
 };
 
@@ -196,7 +198,7 @@ async fn multi_gpu_training_worker(
         device: Device,
         minibatch_size: usize,
         vs: nn::VarStore,
-        model: YoloModel,
+        model: Model,
         yolo_loss: YoloLoss,
         optimizer: nn::Optimizer<nn::Adam>,
     }
@@ -212,9 +214,9 @@ async fn multi_gpu_training_worker(
         job_index: usize,
         worker_index: usize,
         minibatch_size: usize,
-        output: YoloOutput,
+        output: MergeDetect2DOutput,
         losses: YoloLossOutput,
-        target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledGridBBox<R64>>>,
+        target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
         gradients: Vec<Tensor>,
     }
 
@@ -273,11 +275,12 @@ async fn multi_gpu_training_worker(
                 weight_decay,
                 ..
             } = config.training;
+            let model_config = config.model.clone();
 
             async_std::task::spawn_blocking(move || {
                 let vs = nn::VarStore::new(device);
                 let root = vs.root();
-                let model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+                let model = Model::new(root, &model_config)?;
                 let yolo_loss = YoloLossInit {
                     reduction: Reduction::Mean,
                     match_grid_method: Some(match_grid_method),
@@ -432,10 +435,7 @@ async fn multi_gpu_training_worker(
                                     worker_timing.set_record("to device");
 
                                     // forward pass
-                                    let output = model
-                                        .forward_t(&image, true)?
-                                        .yolo()
-                                        .ok_or_else(|| format_err!("TODO"))?;
+                                    let output = model.forward_t(&image, true)?;
                                     worker_timing.set_record("forward");
 
                                     // compute loss
@@ -603,7 +603,7 @@ async fn multi_gpu_training_worker(
                     })
                     .unzip_n_vec();
 
-                let model_output = YoloOutput::cat(model_output_vec, master_device)?;
+                let model_output = MergeDetect2DOutput::cat(model_output_vec, master_device)?;
                 let target_bboxes: HashMap<_, _> =
                     target_bboxes_vec.into_iter().flatten().collect();
 
@@ -707,6 +707,7 @@ fn single_gpu_training_worker(
     info!("use single device {:?}", device);
 
     let Config {
+        model: ref model_config,
         training:
             TrainingConfig {
                 initial_step: init_training_step,
@@ -734,7 +735,7 @@ fn single_gpu_training_worker(
     let mut training_step = init_training_step;
     let mut vs = nn::VarStore::new(device);
     let root = vs.root();
-    let mut model = yolo_dl::model::yolo_v5_small(&root, input_channels, num_classes);
+    let mut model = Model::new(root, model_config)?;
     let yolo_loss = YoloLossInit {
         reduction: Reduction::Mean,
         match_grid_method: Some(match_grid_method),
@@ -789,10 +790,7 @@ fn single_gpu_training_worker(
         timing.set_record("to device");
 
         // forward pass
-        let output = model
-            .forward_t(&image, true)?
-            .yolo()
-            .ok_or_else(|| format_err!("TODO"))?;
+        let output = model.forward_t(&image, true)?;
         timing.set_record("forward");
 
         // compute loss
