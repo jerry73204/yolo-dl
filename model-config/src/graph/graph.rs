@@ -194,7 +194,7 @@ mod graph {
                 .flat_map(|node| Some((node.path.clone()?, node.key)))
                 .collect();
 
-            let nodes: HashMap<_, _> = node_entires
+            let nodes: IndexMap<_, _> = node_entires
                 .into_iter()
                 .map(|node| (node.key, node))
                 .collect();
