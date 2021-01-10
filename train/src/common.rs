@@ -12,7 +12,6 @@ pub use futures::{
 pub use image::{imageops::FilterType, DynamicImage, FlatSamples, ImageFormat, Pixel};
 pub use indexmap::IndexSet;
 pub use itertools::{izip, Itertools};
-pub use log::{error, info, warn};
 pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
@@ -60,7 +59,7 @@ pub use tch_goodies::{
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::{EventWriter, EventWriterInit};
 pub use tokio::sync::{broadcast, mpsc};
-pub use tracing::Instrument;
+pub use tracing::{error, info, warn, Instrument};
 pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{YoloLoss, YoloLossInit, YoloLossOutput},
