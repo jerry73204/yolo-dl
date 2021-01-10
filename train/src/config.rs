@@ -92,6 +92,7 @@ mod dataset {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessorConfig {
+    pub worker_buf_size: Option<usize>,
     pub cache_dir: PathBuf,
     pub mixup_prob: Ratio,
     pub cutmix_prob: Ratio,

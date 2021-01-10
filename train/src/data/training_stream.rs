@@ -32,6 +32,7 @@ impl TrainingStream {
                 dataset: DatasetConfig { ref kind, .. },
                 preprocessor:
                     PreprocessorConfig {
+                        worker_buf_size,
                         ref cache_dir,
                         out_of_bound_tolerance,
                         min_bbox_size,
@@ -104,6 +105,14 @@ impl TrainingStream {
     pub async fn train_stream(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
+        // parallel stream config
+        let par_config: ParStreamConfig = {
+            match self.config.preprocessor.worker_buf_size {
+                Some(buf_size) => (1.0, buf_size).into(),
+                None => (1.0, 1.0).into(),
+            }
+        };
+
         // repeating
         let stream = stream::repeat(()).enumerate();
 
@@ -162,13 +171,15 @@ impl TrainingStream {
             let mosaic_prob = mosaic_prob.to_f64();
             let dataset = self.dataset.clone();
             let logging_tx = self.logging_tx.clone();
+            let par_config = par_config.clone();
 
-            stream.try_par_then(None, move |args| {
+            stream.try_par_then(par_config.clone(), move |args| {
                 let (index, (step, epoch, record_indexes)) = args;
                 let dataset = dataset.clone();
                 let logging_tx = logging_tx.clone();
                 let mut timing = Timing::new("pipeline");
                 let mut rng = StdRng::from_entropy();
+                let par_config = par_config.clone();
 
                 async move {
                     timing.set_record("data loading start");
@@ -187,7 +198,7 @@ impl TrainingStream {
                     // load images
                     let image_bbox_vec: Vec<_> =
                         stream::iter(record_indexes.into_iter().take(mix_kind.num_samples()))
-                            .par_then(None, move |record_index| {
+                            .par_then(par_config.clone(), move |record_index| {
                                 let dataset = dataset.clone();
 
                                 async move {
@@ -259,10 +270,12 @@ impl TrainingStream {
                 .build()?,
             );
             let logging_tx = self.logging_tx.clone();
+            let par_config = par_config.clone();
 
-            stream.try_par_then(None, move |(index, args)| {
+            stream.try_par_then(par_config.clone(), move |(index, args)| {
                 let random_affine = random_affine.clone();
                 let logging_tx = logging_tx.clone();
+                let par_config = par_config.clone();
 
                 async move {
                     let (step, epoch, data, mut timing) = args;
@@ -270,7 +283,7 @@ impl TrainingStream {
 
                     let mix_kind = data.kind();
                     let pairs: Vec<_> = stream::iter(data.into_iter())
-                        .par_map(None, move |(image, bboxes)| {
+                        .par_map(par_config.clone(), move |(image, bboxes)| {
                             // TODO: fix cumbersome writing
                             let random_affine = random_affine.clone();
                             let mut rng = StdRng::from_entropy();
@@ -337,7 +350,7 @@ impl TrainingStream {
             );
             let logging_tx = self.logging_tx.clone();
 
-            stream.try_par_then_unordered(None, move |(index, args)| {
+            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
                 let mosaic_processor = mosaic_processor.clone();
                 let logging_tx = logging_tx.clone();
 
@@ -391,7 +404,7 @@ impl TrainingStream {
         };
 
         // add batch dimension
-        let stream = stream.try_par_then(None, move |(index, args)| async move {
+        let stream = stream.try_par_then(par_config.clone(), move |(index, args)| async move {
             let (step, epoch, bboxes, image, mut timing) = args;
             timing.set_record("batch dimensions start");
             let new_image = image.unsqueeze(0);
@@ -412,14 +425,14 @@ impl TrainingStream {
             stream
                 .chunks(batch_size.get())
                 .wrapping_enumerate()
-                .par_then(None, |(index, results)| async move {
+                .par_then(par_config.clone(), |(index, results)| async move {
                     let chunk: Vec<_> = results.into_iter().try_collect()?;
                     Fallible::Ok((index, chunk))
                 })
         };
 
         // convert to batched type
-        let stream = stream.try_par_then(None, |(index, chunk)| {
+        let stream = stream.try_par_then(par_config.clone(), |(index, chunk)| {
             // summerizable type
             struct State {
                 pub step: usize,
@@ -474,7 +487,7 @@ impl TrainingStream {
         });
 
         // map to output type
-        let stream = stream.try_par_then(None, move |(index, args)| async move {
+        let stream = stream.try_par_then(par_config.clone(), move |(index, args)| async move {
             let (step, epoch, bboxes, image, timing_vec) = args;
 
             timing_vec[0].report();

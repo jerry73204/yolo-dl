@@ -7,7 +7,7 @@
         "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "kind": {
             "type": "Coco",
-            "image_size": 256,
+            "image_size": 512,
             "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
             "dataset_name": "train2017",
             "classes_file": "cfg/coco.class",
@@ -86,6 +86,7 @@
         "enable_debug_stat": false,
     },
     "preprocessor": {
+        "worker_buf_size": 16,
         "cache_dir": "/home/aeon/yolo-dl-cache",
         "device": "cuda(0)",
         "mixup_prob": 0.0,
@@ -106,17 +107,17 @@
         "min_bbox_size": 0.005,
     },
     "training": {
-        // "batch_size": 64,
-        // "device_config": {
-        //     "type": "SingleDevice",
-        //     "device": "cuda(3)"
-        // },
-        "batch_size": 192,
+        "batch_size": 4,
         "device_config": {
-            "type": "MultiDevice",
-            "minibatch_size": 64,
-            "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
+            "type": "SingleDevice",
+            "device": "cuda(3)"
         },
+        // "batch_size": 12,
+        // "device_config": {
+        //     "type": "MultiDevice",
+        //     "minibatch_size": 4,
+        //     "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
+        // },
         "initial_step": 0,
         "momentum": 0.9,
         "weight_decay": 0.0005,
@@ -138,11 +139,11 @@
             "classification_loss_weight": 0.58,
         },
         "save_checkpoint_steps": 1000,
-        // "load_checkpoint": {
-        //     "type": "Disabled",
-        // },
         "load_checkpoint": {
-            "type": "FromRecent",
+            "type": "Disabled",
         },
+        // "load_checkpoint": {
+        //     "type": "FromRecent",
+        // },
     },
 }

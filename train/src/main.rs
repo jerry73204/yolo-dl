@@ -875,8 +875,6 @@ fn single_gpu_training_worker(
 
         training_step += 1;
     }
-
-    Fallible::Ok(())
 }
 
 fn save_checkpoint(

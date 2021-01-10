@@ -13,7 +13,7 @@ pub use indexmap::IndexSet;
 pub use itertools::{izip, Itertools};
 pub use ndarray::{Array, Array2, Array3, ArrayD};
 pub use noisy_float::prelude::*;
-pub use par_stream::{ParStreamExt, TryParStreamExt};
+pub use par_stream::{ParStreamConfig, ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use rand::{distributions::Distribution, prelude::*, rngs::StdRng, seq::SliceRandom};
 pub use regex::Regex;
