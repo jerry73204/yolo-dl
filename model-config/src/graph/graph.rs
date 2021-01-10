@@ -32,7 +32,7 @@ mod graph {
                 key: NodeKey,
                 path: Option<ModulePath>,
                 layer: &'a Module,
-            };
+            }
 
             #[derive(Debug, Clone, PartialEq, Eq, Hash)]
             enum InputPaths {

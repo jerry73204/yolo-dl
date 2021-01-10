@@ -22,7 +22,6 @@ mod yolo_model {
                 ref mut layers,
                 output_key,
             } = *self;
-            let (_batch_size, _channels, height, width) = input.size4().unwrap();
             let mut module_outputs: HashMap<NodeKey, ModuleOutput> = HashMap::new();
             let mut input = Some(input); // it makes sure the input is consumed at most once
 
