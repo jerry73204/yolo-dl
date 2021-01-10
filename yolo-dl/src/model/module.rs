@@ -136,6 +136,19 @@ mod module_input {
         }
     }
 
+    impl<'a> TryFrom<&'a ModuleOutput> for DataKind<'a> {
+        type Error = Error;
+
+        fn try_from(from: &'a ModuleOutput) -> Result<Self, Self::Error> {
+            let kind = match from {
+                ModuleOutput::Tensor(tensor) => Self::Tensor(tensor),
+                ModuleOutput::Detect2D(detect) => Self::Detect2D(detect),
+                _ => bail!("TODO"),
+            };
+            Ok(kind)
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub enum ModuleInput<'a> {
         None,
@@ -198,6 +211,12 @@ mod module_input {
         }
     }
 
+    impl<'a> From<&'a [Tensor]> for ModuleInput<'a> {
+        fn from(from: &'a [Tensor]) -> Self {
+            Self::Indexed(from.iter().map(|tensor| DataKind::from(tensor)).collect())
+        }
+    }
+
     impl<'a> From<&'a Detect2DOutput> for ModuleInput<'a> {
         fn from(from: &'a Detect2DOutput) -> Self {
             Self::Single(DataKind::from(from))
@@ -212,6 +231,12 @@ mod module_input {
                     .map(|tensor| DataKind::from(tensor))
                     .collect(),
             )
+        }
+    }
+
+    impl<'a> From<&'a [Detect2DOutput]> for ModuleInput<'a> {
+        fn from(from: &'a [Detect2DOutput]) -> Self {
+            Self::Indexed(from.iter().map(|output| DataKind::from(output)).collect())
         }
     }
 
@@ -232,37 +257,28 @@ mod module_input {
         type Error = Error;
 
         fn try_from(from: &'b [&'a ModuleOutput]) -> Result<Self, Self::Error> {
-            let first = from.first().ok_or_else(|| format_err!("TODO"))?;
-            let input = match first {
-                ModuleOutput::Tensor(_) => {
-                    let input: Option<Vec<DataKind<'_>>> = from
-                        .iter()
-                        .cloned()
-                        .map(|output| {
-                            let tensor = output.as_tensor()?;
-                            Some(tensor.into())
-                        })
-                        .collect();
-                    Self::Indexed(input.ok_or_else(|| format_err!("TODO"))?)
-                }
-                ModuleOutput::Detect2D(_) => {
-                    let input: Option<Vec<DataKind<'_>>> = from
-                        .iter()
-                        .cloned()
-                        .map(|output| {
-                            let tensor = output.as_detect_2d()?;
-                            Some(tensor.into())
-                        })
-                        .collect();
-                    Self::Indexed(input.ok_or_else(|| format_err!("TODO"))?)
-                }
-                _ => bail!("TODO"),
-            };
-            Ok(input)
+            let kinds: Vec<DataKind> = from
+                .iter()
+                .cloned()
+                .map(|output| DataKind::try_from(output))
+                .try_collect()?;
+            Ok(Self::Indexed(kinds))
         }
     }
 
-    #[derive(Debug)]
+    impl<'a> TryFrom<&'a [ModuleOutput]> for ModuleInput<'a> {
+        type Error = Error;
+
+        fn try_from(from: &'a [ModuleOutput]) -> Result<Self, Self::Error> {
+            let kinds: Vec<DataKind> = from
+                .iter()
+                .map(|output| DataKind::try_from(output))
+                .try_collect()?;
+            Ok(Self::Indexed(kinds))
+        }
+    }
+
+    #[derive(Debug, TensorLike)]
     pub enum ModuleOutput {
         Tensor(Tensor),
         Detect2D(Detect2DOutput),
