@@ -48,7 +48,7 @@ impl RandomAccessDataset for MmapDataset {
                 ..
             } = *dataset;
 
-            let (image, bboxes, timing) = async_std::task::spawn_blocking(move || -> Result<_> {
+            let (image, bboxes, timing) = tokio::task::spawn_blocking(move || -> Result<_> {
                 let (image, bboxes) = dataset
                     .nth(index)
                     .ok_or_else(|| format_err!("invalid index {}", index))?;
@@ -91,6 +91,7 @@ impl RandomAccessDataset for MmapDataset {
 
                 Ok((image, bboxes, timing))
             })
+            .map(|result| Fallible::Ok(result??))
             .await?;
 
             timing.report();

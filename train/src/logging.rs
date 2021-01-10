@@ -30,7 +30,7 @@ impl LoggingWorker {
             .into_string()
             .unwrap();
 
-        async_std::fs::create_dir_all(&event_dir).await?;
+        tokio::fs::create_dir_all(&event_dir).await?;
 
         let event_writer = EventWriterInit::default()
             .from_prefix_async(event_path_prefix, None)
@@ -140,7 +140,7 @@ impl LoggingWorker {
 
         // compute statistics and plot image
         let (losses, debug_stat, bbox_image, objectness_image, mut timing) =
-            async_std::task::spawn_blocking(move || -> Result<_> {
+            tokio::task::spawn_blocking(move || -> Result<_> {
                 tch::no_grad(|| -> Result<_> {
                     // log statistics
                     let debug_stat = if enable_debug_stat {
@@ -289,6 +289,7 @@ impl LoggingWorker {
                     Ok((losses, debug_stat, bbox_image, objectness_image, timing))
                 })
             })
+            .map(|result| Fallible::Ok(result??))
             .await?;
 
         // log losses
@@ -442,5 +443,5 @@ pub async fn logging_worker(
     rx: broadcast::Receiver<LoggingMessage>,
 ) -> Result<impl Future<Output = Result<()>> + Send> {
     let worker = LoggingWorker::new(config, logging_dir, rx).await?;
-    Ok(async_std::task::spawn(worker.start()))
+    Ok(tokio::task::spawn(worker.start()).map(|result| Fallible::Ok(result??)))
 }

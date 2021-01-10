@@ -50,8 +50,9 @@ impl VocDataset {
         let classes = load_classes_file(&classes_file).await?;
 
         // load samples
-        let samples =
-            async_std::task::spawn_blocking(move || voc_dataset::load(dataset_dir)).await?;
+        let samples = tokio::task::spawn_blocking(move || voc_dataset::load(dataset_dir))
+            .map(|result| Fallible::Ok(result??))
+            .await?;
 
         // build records
         let records: Vec<_> = samples

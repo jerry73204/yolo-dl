@@ -59,7 +59,7 @@ impl IiiDataset {
         // list xml files
         let xml_files = {
             let dataset_dir = dataset_dir.to_owned();
-            async_std::task::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 let xml_files: Vec<_> = glob::glob(&format!("{}/**/*.xml", dataset_dir.display()))?
                     .map(|result| -> Result<_> {
                         let path = result?;
@@ -75,6 +75,7 @@ impl IiiDataset {
                     .try_collect()?;
                 Fallible::Ok(xml_files)
             })
+            .map(|result| Fallible::Ok(result??))
             .await?
         };
 
@@ -83,7 +84,7 @@ impl IiiDataset {
             stream::iter(xml_files.into_iter())
                 .par_then(None, move |annotation_file| {
                     async move {
-                        let xml_content = async_std::fs::read_to_string(&*annotation_file)
+                        let xml_content = tokio::fs::read_to_string(&*annotation_file)
                             .await
                             .with_context(|| {
                                 format!(
@@ -93,9 +94,10 @@ impl IiiDataset {
                             })?;
 
                         let annotation: voc::Annotation = {
-                            async_std::task::spawn_blocking(move || {
+                            tokio::task::spawn_blocking(move || {
                                 serde_xml_rs::from_str(&xml_content)
                             })
+                            .map(|result| Fallible::Ok(result??))
                             .await
                             .with_context(|| {
                                 format!(

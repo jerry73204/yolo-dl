@@ -9,8 +9,8 @@ mod util;
 use crate::{
     common::*,
     config::{
-        Config, DarknetModelConfig, DeviceConfig, LoadCheckpoint, LoggingConfig, LossConfig,
-        ModelConfig, NewslabV1ModelConfig, TrainingConfig, WorkerConfig,
+        Config, DeviceConfig, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig,
+        WorkerConfig,
     },
     data::{GenericDataset, TrainingRecord, TrainingStream},
     message::LoggingMessage,
@@ -28,7 +28,7 @@ struct Args {
     pub config_file: PathBuf,
 }
 
-#[async_std::main]
+#[tokio::main]
 #[tracing::instrument]
 pub async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -49,8 +49,8 @@ pub async fn main() -> Result<()> {
 
     // create dirs and save config
     {
-        async_std::fs::create_dir_all(&*logging_dir).await?;
-        async_std::fs::create_dir_all(&*checkpoint_dir).await?;
+        tokio::fs::create_dir_all(&*logging_dir).await?;
+        tokio::fs::create_dir_all(&*checkpoint_dir).await?;
         let path = logging_dir.join("config.json5");
         let text = serde_json::to_string_pretty(&*config)?;
         std::fs::write(&path, text)?;
@@ -78,21 +78,20 @@ pub async fn main() -> Result<()> {
         logging::logging_worker(config.clone(), logging_dir.clone(), logging_rx).await?;
 
     // feeding worker
-    let training_data_future = {
-        async_std::task::spawn(async move {
-            let mut train_stream = dataset.train_stream().await?;
+    let training_data_future = tokio::task::spawn(async move {
+        let mut train_stream = dataset.train_stream().await?;
 
-            while let Some(result) = train_stream.next().await {
-                let record = result?;
-                data_tx
-                    .send(record)
-                    .await
-                    .map_err(|_| format_err!("failed to send message to training worker"))?;
-            }
+        while let Some(result) = train_stream.next().await {
+            let record = result?;
+            data_tx
+                .send(record)
+                .await
+                .map_err(|_| format_err!("failed to send message to training worker"))?;
+        }
 
-            Fallible::Ok(())
-        })
-    };
+        Fallible::Ok(())
+    })
+    .map(|result| Fallible::Ok(result??));
 
     // training worker
     let training_worker_future = {
@@ -104,7 +103,7 @@ pub async fn main() -> Result<()> {
         async move {
             match config.training.device_config {
                 DeviceConfig::SingleDevice { device } => {
-                    async_std::task::spawn_blocking(move || {
+                    tokio::task::spawn_blocking(move || {
                         single_gpu_training_worker(
                             config,
                             logging_dir,
@@ -116,6 +115,7 @@ pub async fn main() -> Result<()> {
                             device,
                         )
                     })
+                    .map(|result| Fallible::Ok(result??))
                     .await?;
                 }
                 DeviceConfig::MultiDevice {
@@ -129,7 +129,7 @@ pub async fn main() -> Result<()> {
                         .map(|device| (device, minibatch_size))
                         .collect();
 
-                    async_std::task::spawn(async move {
+                    tokio::task::spawn(async move {
                         multi_gpu_training_worker(
                             config,
                             logging_dir,
@@ -142,6 +142,7 @@ pub async fn main() -> Result<()> {
                         )
                         .await
                     })
+                    .map(|result| Fallible::Ok(result??))
                     .await?;
                 }
                 DeviceConfig::NonUniformMultiDevice { ref devices } => {
@@ -156,7 +157,7 @@ pub async fn main() -> Result<()> {
                         })
                         .collect();
 
-                    async_std::task::spawn(async move {
+                    tokio::task::spawn(async move {
                         multi_gpu_training_worker(
                             config,
                             logging_dir,
@@ -169,6 +170,7 @@ pub async fn main() -> Result<()> {
                         )
                         .await
                     })
+                    .map(|result| Fallible::Ok(result??))
                     .await?;
                 }
             }
@@ -277,7 +279,7 @@ async fn multi_gpu_training_worker(
             } = config.training;
             let model_config = config.model.clone();
 
-            async_std::task::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 let vs = nn::VarStore::new(device);
                 let root = vs.root();
                 let model = Model::new(root, &model_config)?;
@@ -310,6 +312,7 @@ async fn multi_gpu_training_worker(
                     optimizer,
                 })
             })
+            .map(|result| Fallible::Ok(result??))
         }))
         .await?
     };
@@ -318,7 +321,7 @@ async fn multi_gpu_training_worker(
     // load checkpoint
     let worker_contexts_ = {
         let config = config.clone();
-        async_std::task::spawn_blocking(move || -> Result<_> {
+        tokio::task::spawn_blocking(move || -> Result<_> {
             try_load_checkpoint(
                 &mut worker_contexts[0].vs,
                 &config.logging.dir,
@@ -326,6 +329,7 @@ async fn multi_gpu_training_worker(
             )?;
             Ok(worker_contexts)
         })
+        .map(|result| Fallible::Ok(result??))
         .await?
     };
     worker_contexts = worker_contexts_;
@@ -356,10 +360,11 @@ async fn multi_gpu_training_worker(
             let first_vs = Arc::new(first_context.vs);
             let other_contexts = future::try_join_all(iter.map(|mut context| {
                 let first_vs = first_vs.clone();
-                async_std::task::spawn_blocking(move || -> Result<_> {
+                tokio::task::spawn_blocking(move || -> Result<_> {
                     context.vs.copy(&*first_vs)?;
                     Ok(context)
                 })
+                .map(|result| Fallible::Ok(result??))
             }))
             .await?;
 
@@ -410,7 +415,7 @@ async fn multi_gpu_training_worker(
             let (worker_contexts_, outputs_per_worker) =
                 future::try_join_all(worker_contexts.into_iter().zip_eq(jobs).enumerate().map(
                     |(worker_index, (mut context, jobs))| {
-                        async_std::task::spawn_blocking(move || -> Result<_> {
+                        tokio::task::spawn_blocking(move || -> Result<_> {
                             let outputs: Vec<_> = jobs
                                 .into_iter()
                                 .map(|job| -> Result<_> {
@@ -472,6 +477,7 @@ async fn multi_gpu_training_worker(
 
                             Ok((context, outputs))
                         })
+                        .map(|result| Fallible::Ok(result??))
                     },
                 ))
                 .await?
@@ -488,7 +494,7 @@ async fn multi_gpu_training_worker(
 
         // backward step
         let worker_outputs = {
-            let (worker_contexts_, outputs) = async_std::task::spawn_blocking(move || {
+            let (worker_contexts_, outputs) = tokio::task::spawn_blocking(move || {
                 let (worker_contexts, outputs) = tch::no_grad(|| {
                     // aggregate gradients
                     let sum_gradients = {
@@ -531,7 +537,7 @@ async fn multi_gpu_training_worker(
                 });
                 (worker_contexts, outputs)
             })
-            .await;
+            .await?;
             worker_contexts = worker_contexts_;
 
             outputs
@@ -539,7 +545,7 @@ async fn multi_gpu_training_worker(
         training_timing.set_record("backward step");
 
         // average losses among workers
-        let (losses, worker_outputs) = async_std::task::spawn_blocking(move || -> Result<_> {
+        let (losses, worker_outputs) = tokio::task::spawn_blocking(move || -> Result<_> {
             let losses = YoloLossOutput::weighted_mean(worker_outputs.iter().map(|output| {
                 (
                     output.losses.to_device(master_device),
@@ -549,6 +555,7 @@ async fn multi_gpu_training_worker(
 
             Ok((losses, worker_outputs))
         })
+        .map(|result| Fallible::Ok(result??))
         .await?;
 
         training_timing.set_record("compute loss");
@@ -639,7 +646,7 @@ async fn multi_gpu_training_worker(
             let losses = losses.shallow_clone();
             let checkpoint_dir = checkpoint_dir.clone();
 
-            let worker_contexts_ = async_std::task::spawn_blocking(move || -> Result<_> {
+            let worker_contexts_ = tokio::task::spawn_blocking(move || -> Result<_> {
                 save_checkpoint(
                     &worker_contexts[0].vs,
                     &checkpoint_dir,
@@ -649,6 +656,7 @@ async fn multi_gpu_training_worker(
 
                 Ok(worker_contexts)
             })
+            .map(|result| Fallible::Ok(result??))
             .await?;
             worker_contexts = worker_contexts_;
             training_timing.set_record("save checkpoint");
@@ -767,6 +775,7 @@ fn single_gpu_training_worker(
         .training
         .save_checkpoint_steps
         .map(|steps| steps.get());
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
 
     // load checkpoint
     try_load_checkpoint(
@@ -778,7 +787,8 @@ fn single_gpu_training_worker(
     // training
     info!("start training");
 
-    while let Ok(record) = async_std::task::block_on(data_rx.recv()) {
+    loop {
+        let record = runtime.block_on(data_rx.recv())?;
         timing.set_record("next record");
 
         let TrainingRecord {

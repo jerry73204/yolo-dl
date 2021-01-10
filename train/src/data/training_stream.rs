@@ -591,10 +591,10 @@ impl From<MixData> for Vec<(Tensor, Vec<LabeledRatioBBox>)> {
 
 pub async fn load_classes_file<P>(path: P) -> Result<IndexSet<String>>
 where
-    P: AsRef<async_std::path::Path>,
+    P: AsRef<Path>,
 {
     let path = path.as_ref();
-    let content = async_std::fs::read_to_string(path).await?;
+    let content = tokio::fs::read_to_string(path).await?;
     let lines: Vec<_> = content.lines().collect();
     let classes: IndexSet<_> = lines.iter().cloned().map(ToOwned::to_owned).collect();
     ensure!(
