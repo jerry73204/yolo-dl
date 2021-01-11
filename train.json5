@@ -86,7 +86,7 @@
         "enable_debug_stat": false,
     },
     "preprocessor": {
-        "worker_buf_size": 16,
+        "worker_buf_size": 11,
         "cache_dir": "/home/aeon/yolo-dl-cache",
         "device": "cuda(0)",
         "mixup_prob": 0.0,
