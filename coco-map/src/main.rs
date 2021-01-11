@@ -1,3 +1,18 @@
+#[derive(Debug)]
+struct PrTable {
+    pr_arr: [f64; 101],  //This stores the 101-interpolated Precision-Recall
+    iou: i32,
+}
+
+impl PrTable {
+    fn new(pr_init_val: f64, iou: i32) -> PrTable {
+        PrTable{
+            pr_arr: [pr_init_val; 101],
+            iou: iou,
+        }
+    }
+}
+
 //AvgPrec Stores the AP calculated along with the IOU, the actual iou stored is the original iou * 100
 #[derive(Debug)]
 struct AvgPrec {
