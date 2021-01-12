@@ -5,10 +5,29 @@ It features [serde](https://crates.io/crates/serde)-compatible configuration, we
 
 ## Usage
 
-To print the summary of YOLOv4 configuration and weights,
+### Show Layer Information
+
+To print the layers and shapes of a configuration file,
 
 ```sh
-cargo run --example info yolov4.cfg yolov4.weights
+cargo run --bin darknet-config info yolov4.cfg
+```
+
+### Plot Computation Graph
+
+To plot the computation graph of the configuration file,
+
+```sh
+cargo run --bin darknet-config \
+    make-dot-file \
+    yolov4.cfg \
+    output.dot
+```
+
+Then, convert the DOT file to SVG file. You can change the `-Tsvg` option to `-Tpng` to export a PNG image.
+
+```sh
+dot -Tsvg output.dot > output.svg
 ```
 
 ## License
