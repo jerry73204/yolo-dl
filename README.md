@@ -6,6 +6,14 @@ It helps us learn good practices to build machine learning machinery in Rust.
 
 It is still under development and is not feature complete.
 
+## Projects
+
+- **darknet-config**: Parsing AlexeyAB's Darknet configuration file.
+- **model-config**: The JSON5 based architecture description format used by this project.
+- **tch-goodies**: Extension to [tch](https://github.com/LaurentMazare/tch-rs) crate.
+- **yolo-dl**: The building blocks of YOLO detection model and preprocessors.
+- **train**: The multi-GPU training program.
+
 ## Get Started
 
 ### Dependencies

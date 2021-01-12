@@ -53,7 +53,7 @@ The example has two paths forking from the input layer, then are summed up toget
                 "kind": "Input",
                 "shape": ["_", 3, 512, 512],
             },
-            
+
             // branch 1
             {
                 // Here "from" is not specified, assuming the previous input layer.
@@ -63,7 +63,7 @@ The example has two paths forking from the input layer, then are summed up toget
                 "k": 3,
                 "s": 2,
             },
-            
+
             // branch 2
             {
                 // The "from" is explicitedly specified.
@@ -74,7 +74,7 @@ The example has two paths forking from the input layer, then are summed up toget
                 "k": 3,
                 "s": 2,
             },
-            
+
             // sum
             {
                 // Sum2D is a multi-input layer. The "from" accepts a list of names here.
