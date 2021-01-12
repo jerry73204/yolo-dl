@@ -23,7 +23,6 @@ par-stream = "0.2"
 futures = "0.3"
 rand = "0.7"
 percent-encoding = "2.1"
-image = "0.23"
 tokio = { version = "1.0", features = ["sync"] }
 tfrecord = { version = "0.5", features = ["full"] }
 ndarray = "0.13"

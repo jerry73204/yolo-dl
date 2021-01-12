@@ -3546,7 +3546,6 @@ dependencies = [
  "envy",
  "futures",
  "getset",
- "image",
  "indexmap",
  "itertools 0.9.0",
  "lazy_static",
