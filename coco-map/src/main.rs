@@ -1,3 +1,71 @@
+use anyhow::{format_err, Result};
+use noisy_float::prelude::*;
+
+#[derive(Debug, Clone)]
+pub struct PrecRec {
+    pub prec: f64,
+    pub rec: f64,
+}
+
+impl PrecRec {
+    pub fn to_checked(&self) -> Option<PrecRecChecked> {
+        let Self { prec, rec } = *self;
+        let prec = R64::try_new(prec)?;
+        let rec = R64::try_new(rec)?;
+
+        if !(prec >= 0.0 && prec <= 1.0 && rec >= 0.0 && rec <= 1.0) {
+            return None;
+        }
+
+        Some(PrecRecChecked { prec, rec })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PrecRecChecked {
+    pub prec: R64,
+    pub rec: R64,
+}
+
+fn calc_map(input: &[PrecRec], num_points: usize) -> Result<()> {
+    // sanity check
+    let checked: Option<Vec<_>> = input.iter().map(|pair| pair.to_checked()).collect();
+    let mut checked = checked.ok_or_else(|| format_err!("invalid input"))?;
+
+    // sort by recall then precision
+    checked.sort_by_cached_key(|pair| (pair.rec, pair.prec));
+
+    // compute stepwise precision
+    let stepwise = to_stepwise(&checked);
+
+    // interpolation
+    todo!("interpolate values by 'num_points' positions");
+}
+
+fn to_stepwise(input: &[PrecRecChecked]) -> Vec<PrecRecChecked> {
+    let max_prec_reversed: Vec<R64> = input
+        .iter()
+        .rev()
+        .map(|prec_rec| prec_rec.prec)
+        .scan(None, |prev_max: &mut Option<R64>, curr| {
+            let curr_max = prev_max.map(|prev| prev.max(curr)).unwrap_or(curr);
+            *prev_max = Some(curr_max);
+            Some(curr_max)
+        })
+        .collect();
+
+    let output: Vec<_> = input
+        .iter()
+        .zip(max_prec_reversed.into_iter().rev())
+        .map(|(prec_rec, new_prec)| PrecRecChecked {
+            prec: new_prec,
+            rec: prec_rec.rec,
+        })
+        .collect();
+
+    output
+}
+
 #[derive(Debug)]
 struct PrTable {
     pr_arr: [f64; 101],  //This stores the 101-interpolated Precision-Recall
