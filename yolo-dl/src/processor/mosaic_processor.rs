@@ -40,8 +40,8 @@ impl MosaicProcessor {
 
             // select pivot point randomly and compute margins per image
             let ranges = {
-                let pivot_row = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin);
-                let pivot_col = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin);
+                let pivot_row = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
+                let pivot_col = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
                 vec![
                     [0.0, pivot_row, 0.0, pivot_col],
                     [0.0, pivot_row, pivot_col, 1.0],
@@ -161,8 +161,8 @@ impl ParallelMosaicProcessor {
 
         // random select pivot point
         let ranges = {
-            let pivot_row = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin);
-            let pivot_col = rng.gen_range(mosaic_margin, 1.0 - mosaic_margin);
+            let pivot_row = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
+            let pivot_col = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
             vec![
                 [0.0, pivot_row, 0.0, pivot_col],
                 [0.0, pivot_row, pivot_col, 1.0],

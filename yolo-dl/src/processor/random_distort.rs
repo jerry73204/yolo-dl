@@ -48,17 +48,17 @@ impl RandomDistort {
             let mut value = hsv.select(0, 2);
 
             if let Some(max_shift) = self.max_hue_shift {
-                let shift = rng.gen_range(-max_shift, max_shift);
+                let shift = rng.gen_range((-max_shift)..max_shift);
                 let _ = hue.g_add_1(shift);
             }
 
             if let Some(max_scale) = self.max_saturation_scale {
-                let scale = rng.gen_range(1.0 / max_scale, max_scale);
+                let scale = rng.gen_range((1.0 / max_scale)..max_scale);
                 let _ = saturation.g_mul_1(scale);
             }
 
             if let Some(max_scale) = self.max_value_scale {
-                let scale = rng.gen_range(1.0 / max_scale, max_scale);
+                let scale = rng.gen_range((1.0 / max_scale)..max_scale);
                 let _ = value.g_mul_1(scale);
             }
 

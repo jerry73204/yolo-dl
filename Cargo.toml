@@ -17,4 +17,3 @@ overflow-checks = true
 
 [patch.crates-io]
 serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
-binread_derive = { git = "https://github.com/jam1garner/binread_derive.git", rev = "23293a5c90d2ae399f3ec3d2b17900bf0fe11eb5" }

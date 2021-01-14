@@ -7,38 +7,38 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tch = "0.3"
-noisy_float = { version = "0.1", features = ["serde-1"] }
-serde = { version = "1.0", features = ["derive"] }
-itertools = "0.9"
-tch-tensor-like = { version = "0.2", features = ["derive"] }
-anyhow = "1.0"
-approx = "0.4"
-unzip-n = "0.1"
-async-std = { version = "1.8", features = ["unstable", "attributes"] }
+tch = "0.3.1"
+noisy_float = { version = "0.1.13", features = ["serde-1"] }
+serde = { version = "1.0.119", features = ["derive"] }
+itertools = "0.10.0"
+tch-tensor-like = { version = "0.2.0", features = ["derive"] }
+anyhow = "1.0.38"
+approx = "0.4.0"
+unzip-n = "0.1.2"
+async-std = { version = "1.8.0", features = ["unstable", "attributes"] }
 # coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
-argh = "0.1"
-par-stream = "0.2"
-futures = "0.3"
-rand = "0.7"
-image = "0.23"
-tokio = { version = "0.3", features = ["sync"] }
-ndarray = "0.13"
-log = "0.4"
-regex = "1.3"
-indexmap = "1.6"
-glob = "0.3"
-num_cpus = "1.13"
-voc-dataset = "0.2"
-serde-xml-rs = "0.4"
+argh = "0.1.4"
+par-stream = "0.2.1"
+futures = "0.3.10"
+rand = "0.8.2"
+image = "0.23.12"
+tokio = { version = "1.0.1", features = ["sync"] }
+ndarray = "0.13.0"
+log = "0.4.13"
+regex = "1.4.3"
+indexmap = "1.6.1"
+glob = "0.3.0"
+num_cpus = "1.13.0"
+voc-dataset = "0.2.2"
+serde-xml-rs = "0.4.1"
 # xz2 = { version = "0.1", features = ["tokio-io", "futures"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
-arraystring = { version = "0.3", features = ["serde-traits"] }
-typenum = "1.12"
-bincode = "1.3"
-memmap = "0.7"
-safe-transmute = "0.11"
-indicatif = "0.15"
-cesu8 = "1.1"
-serde-big-array = "0.3"
-prettytable-rs = "0.8"
+arraystring = { version = "0.3.0", features = ["serde-traits"] }
+typenum = "1.12.0"
+bincode = "1.3.1"
+memmap = "0.7.0"
+safe-transmute = "0.11.0"
+indicatif = "0.15.0"
+cesu8 = "1.1.0"
+serde-big-array = "0.3.1"
+prettytable-rs = "0.8.0"

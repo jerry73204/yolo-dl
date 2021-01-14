@@ -7,16 +7,16 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0"
-tch = "0.3"
-itertools = "0.9"
-image = "0.23"
-noisy_float = { version = "0.1", features = ["serde-1", "approx"] }
-serde = { version = "1.0", features = ["derive"] }
-tch-tensor-like = { version = "0.2", features = ["derive"] }
-approx = "0.4"
-log = "0.4"
-maplit = "1.0"
-getset = "0.1"
-unzip-n = "0.1"
-rand = "0.7"
+anyhow = "1.0.38"
+tch = "0.3.1"
+itertools = "0.10.0"
+image = "0.23.12"
+noisy_float = { version = "0.1.13", features = ["serde-1", "approx"] }
+serde = { version = "1.0.119", features = ["derive"] }
+tch-tensor-like = { version = "0.2.0", features = ["derive"] }
+approx = "0.4.0"
+log = "0.4.13"
+maplit = "1.0.2"
+getset = "0.1.1"
+unzip-n = "0.1.2"
+rand = "0.8.2"

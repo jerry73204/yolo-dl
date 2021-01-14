@@ -7,33 +7,33 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-anyhow = "1.0"
-bindgen = "0.55"
-cmake = "0.1"
-lazy_static = "1.4"
-fs_extra = "1.2"
-glob = "0.3"
+anyhow = "1.0.38"
+bindgen = "0.56.0"
+cmake = "0.1.45"
+lazy_static = "1.4.0"
+fs_extra = "1.2.0"
+glob = "0.3.0"
 
 [dependencies]
-anyhow = "1.0"
+anyhow = "1.0.38"
 darknet-config = { version = "0.1", path = "../darknet-config" }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
-pretty_env_logger = "0.4"
-log = "0.4"
-tch = { version = "0.3" }
-image = "0.23"
-libc = "0.2"
-thiserror = "1.0"
-num-derive = "0.3"
-num-traits = "0.2"
-serde = { version = "1.0", features = ["derive"] }
-structopt = "0.3"
-json5 = "0.3"
-tch-serde = "0.3"
-ndarray = "0.13"
-itertools = "0.9"
-glob = "0.3"
-approx = "0.4"
+pretty_env_logger = "0.4.0"
+log = "0.4.13"
+tch = "0.3.1"
+image = "0.23.12"
+libc = "0.2.82"
+thiserror = "1.0.23"
+num-derive = "0.3.3"
+num-traits = "0.2.14"
+serde = { version = "1.0.119", features = ["derive"] }
+structopt = "0.3.21"
+json5 = "0.3.0"
+tch-serde = "0.3.1"
+ndarray = "0.13.0"
+itertools = "0.10.0"
+glob = "0.3.0"
+approx = "0.4.0"
 
 [features]
 default = ["enable-cuda", "enable-cudnn"]

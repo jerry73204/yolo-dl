@@ -164,7 +164,7 @@ impl RandomAffine {
                 let transform = match (self.scale_prob, self.scale) {
                     (Some(prob), Some((lower, upper))) => {
                         if rng.gen_bool(prob) {
-                            let ratio = rng.gen_range(lower, upper) as f32;
+                            let ratio = rng.gen_range(lower..upper) as f32;
                             let scaling = Tensor::of_slice(
                                 &[
                                     [ratio, 0.0, 0.0], // row 1
@@ -185,7 +185,7 @@ impl RandomAffine {
                 // let transform = match (self.shear_prob, self.shear) {
                 //     (Some(prob), Some(max_shear)) => {
                 //         if rng.gen_bool(prob) {
-                //             let shear = rng.gen_range(-max_shear, max_shear) as f32;
+                //             let shear = rng.gen_range((-max_shear)..max_shear) as f32;
                 //             let shear = Tensor::of_slice(
                 //                 &[
                 //                     [1.0 + shear, 0.0, 0.0], // row 1
@@ -206,7 +206,7 @@ impl RandomAffine {
                 let transform = match (self.rotate_prob, self.rotate_radians) {
                     (Some(prob), Some(max_randians)) => {
                         if rng.gen_bool(prob) {
-                            let angle = rng.gen_range(-max_randians, max_randians);
+                            let angle = rng.gen_range((-max_randians)..max_randians);
                             let cos = angle.cos() as f32;
                             let sin = angle.sin() as f32;
                             let rotation = Tensor::of_slice(
@@ -231,9 +231,9 @@ impl RandomAffine {
                         if rng.gen_bool(prob) {
                             // whole image height/width takes 2 units, so translations are doubled
                             let horizontal_translation =
-                                (rng.gen_range(-max_translation, max_translation) * 2.0) as f32;
+                                (rng.gen_range((-max_translation)..max_translation) * 2.0) as f32;
                             let vertical_translation =
-                                (rng.gen_range(-max_translation, max_translation) * 2.0) as f32;
+                                (rng.gen_range((-max_translation)..max_translation) * 2.0) as f32;
 
                             let translation = Tensor::of_slice(
                                 &[
