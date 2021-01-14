@@ -1,5 +1,6 @@
 use anyhow::Result;
 use model_config::{config::Model, graph::Graph};
+use prettytable::{cell, row, Table};
 use std::{
     fs::File,
     io::BufWriter,
@@ -38,7 +39,31 @@ fn main() -> Result<()> {
 }
 
 fn info(config_file: impl AsRef<Path>) -> Result<()> {
-    let _config = Model::load(config_file)?;
+    let config = Model::load(config_file)?;
+    let graph = Graph::new(&config)?;
+    let nodes = graph.nodes();
+
+    // print layer information
+    {
+        let mut table = Table::new();
+        table.add_row(row!["key", "kind", "path", "input_keys", "output shape"]);
+
+        nodes.iter().for_each(|(&key, node)| {
+            table.add_row(row![
+                key,
+                node.config.as_ref(),
+                node.path
+                    .as_ref()
+                    .map(|path| format!("{}", path))
+                    .unwrap_or(format!("")),
+                format!("{:?}", node.input_keys),
+                format!("{:?}", node.output_shape),
+            ]);
+        });
+
+        table.printstd();
+    }
+
     Ok(())
 }
 

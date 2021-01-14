@@ -12,10 +12,11 @@ pub use graph::*;
 mod graph {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize, getset::Getters)]
     #[derivative(Hash)]
     pub struct Graph {
         #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<NodeKey, Node, _>"))]
+        #[getset(get = "pub")]
         nodes: IndexMap<NodeKey, Node>,
     }
 
@@ -427,10 +428,6 @@ mod graph {
 
             let graph = Graph { nodes };
             Ok(graph)
-        }
-
-        pub fn nodes(&self) -> &IndexMap<NodeKey, Node> {
-            &self.nodes
         }
     }
 
