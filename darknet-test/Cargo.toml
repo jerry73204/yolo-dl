@@ -33,7 +33,7 @@ tch-serde = "0.3.1"
 ndarray = "0.13.0"
 itertools = "0.10.0"
 glob = "0.3.0"
-approx = "0.4.0"
+approx = "0.3.2"
 
 [features]
 default = ["enable-cuda", "enable-cudnn"]
