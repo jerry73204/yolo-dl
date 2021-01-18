@@ -55,15 +55,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "approx"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f2a05fd1bd10b2527e20a2cd32d8873d115b8b39fe219ee25f42a8aca6ba278"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "argh"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -814,7 +805,7 @@ name = "darknet-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "approx 0.4.0",
+ "approx",
  "bindgen",
  "cmake",
  "darknet-config",
@@ -1568,7 +1559,7 @@ name = "mmap-dataset"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "approx 0.4.0",
+ "approx",
  "argh",
  "arraystring",
  "async-std",
@@ -1660,7 +1651,7 @@ version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a14c16cde392a1cd18084ffd8348cb8937525130e62f0478d72dcc683698809d"
 dependencies = [
- "approx 0.3.2",
+ "approx",
  "num-traits",
  "serde",
 ]
@@ -2767,7 +2758,7 @@ name = "tch-goodies"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "approx 0.4.0",
+ "approx",
  "getset",
  "image",
  "itertools 0.10.0",
@@ -3142,7 +3133,7 @@ name = "train"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "approx 0.4.0",
+ "approx",
  "async-std",
  "chrono",
  "coco",
@@ -3520,7 +3511,7 @@ name = "yolo-dl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "approx 0.4.0",
+ "approx",
  "argh",
  "async-std",
  "chrono",
