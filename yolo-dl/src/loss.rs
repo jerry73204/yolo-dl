@@ -2,6 +2,7 @@ use crate::{
     common::*,
     model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput},
     profiling::Timing,
+    utils::{self, AsXY},
 };
 
 pub use focal_loss::*;
@@ -1075,4 +1076,147 @@ mod pred_target_matching {
 
     #[derive(Debug, Clone)]
     pub struct PredTargetMatching(pub HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>);
+}
+
+mod average_precision {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct PrecRec<T>
+    where
+        T: Copy,
+    {
+        pub precision: T,
+        pub recall: T,
+    }
+
+    impl<T> AsXY<T, T> for PrecRec<T>
+    where
+        T: Copy,
+    {
+        fn x(&self) -> T {
+            self.recall
+        }
+
+        fn y(&self) -> T {
+            self.precision
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct SortedPrecRecList(pub(self) Vec<PrecRec<R64>>);
+
+    impl SortedPrecRecList {
+        pub fn from_slices(precision: &[f64], recall: &[f64]) -> Result<Self> {
+            ensure!(
+                precision.len() == recall.len(),
+                "the array length does not match"
+            );
+            Self::from_iterator(precision.iter().cloned().zip(recall.iter().cloned()))
+        }
+
+        pub fn from_iterator<I>(iter: I) -> Result<Self>
+        where
+            I: IntoIterator<Item = (f64, f64)>,
+        {
+            // transform types
+            let mut list: Vec<_> = iter
+                .into_iter()
+                .map(|(precision, recall)| {
+                    let precision = R64::try_new(precision)
+                        .ok_or_else(|| format_err!("invalid precision {}", precision))?;
+                    let recall = R64::try_new(recall)
+                        .ok_or_else(|| format_err!("invalid recall {}", recall))?;
+                    ensure!(
+                        precision >= 0.0 && precision <= 1.0,
+                        "invalid precision {}",
+                        precision
+                    );
+                    ensure!(recall >= 0.0 && recall <= 1.0, "invalid recall {}", recall);
+                    Ok(PrecRec { precision, recall })
+                })
+                .try_collect()?;
+
+            ensure!(!list.is_empty(), "input must not be empty");
+
+            // sort by recall
+            list.sort_by_cached_key(|prec_rec| (prec_rec.recall, prec_rec.precision));
+
+            Ok(Self(list))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum IntegralMethod {
+        Continuous,
+        Interpolation(usize),
+    }
+
+    #[derive(Debug)]
+    pub struct ApCalculator {
+        integral_method: IntegralMethod,
+    }
+
+    impl ApCalculator {
+        pub fn new(integral_method: IntegralMethod) -> Result<Self> {
+            if let IntegralMethod::Interpolation(n_points) = integral_method {
+                ensure!(
+                    n_points >= 1,
+                    "invalid number of interpolated points {}",
+                    n_points
+                );
+            }
+
+            Ok(Self { integral_method })
+        }
+
+        pub fn compute_ap(&self, prec_rec: SortedPrecRecList) -> R64 {
+            let SortedPrecRecList(prec_rec) = prec_rec;
+
+            // append/prepend sentinel values
+            let iter = {
+                let max_recall = prec_rec.last().unwrap().recall;
+
+                iter::once(PrecRec {
+                    precision: r64(0.0),
+                    recall: r64(0.0),
+                })
+                .chain(prec_rec.into_iter())
+                .chain(iter::once(PrecRec {
+                    precision: r64(0.0),
+                    recall: (max_recall + 1e-3).min(r64(1.0)),
+                }))
+            };
+
+            // compute precision envelope
+            let enveloped = {
+                let mut list: Vec<_> = iter
+                    .rev()
+                    .scan(r64(0.0), |max_prec: &mut R64, prec_rec: PrecRec<R64>| {
+                        let PrecRec { precision, recall } = prec_rec;
+                        *max_prec = (*max_prec).max(precision);
+                        Some(PrecRec { recall, precision })
+                    })
+                    .collect();
+                list.reverse();
+                list
+            };
+
+            match self.integral_method {
+                IntegralMethod::Interpolation(n_points) => {
+                    let points_iter =
+                        (0..n_points).map(|index| r64(index as f64 / n_points as f64));
+                    let interpolated: Vec<_> = utils::interpolate_slice(points_iter, &enveloped)
+                        .into_iter()
+                        .map(|(recall, precision)| PrecRec { recall, precision })
+                        .collect();
+                    let ap = utils::trapz(&interpolated);
+                    ap
+                }
+                IntegralMethod::Continuous => {
+                    todo!();
+                }
+            }
+        }
+    }
 }
