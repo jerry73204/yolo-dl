@@ -15,14 +15,14 @@ tch-tensor-like = { version = "0.2.0", features = ["derive"] }
 anyhow = "1.0.38"
 approx = "0.4.0"
 unzip-n = "0.1.2"
-async-std = { version = "1.8.0", features = ["unstable", "attributes"] }
+async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 # coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1.4"
-par-stream = "0.2.1"
-futures = "0.3.10"
+par-stream = { version = "0.3", git = "https://github.com/jerry73204/par-stream.git", features = ["runtime_tokio"] }
+futures = "0.3.12"
 rand = "0.8.2"
 image = "0.23.12"
-tokio = { version = "1.0.1", features = ["sync"] }
+tokio = { version = "1.0.2", features = ["sync"] }
 ndarray = "0.13.0"
 log = "0.4.13"
 regex = "1.4.3"
