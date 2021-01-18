@@ -1193,10 +1193,18 @@ mod detect_2d {
                 + x_offsets.view([1, 1, 1, 1, feature_w]);
 
             // bbox sizes in grid units
-            let h =
-                outputs.i((.., 2..3, .., .., ..)) * anchor_heights.view([1, 1, num_anchors, 1, 1]);
-            let w =
-                outputs.i((.., 3..4, .., .., ..)) * anchor_widths.view([1, 1, num_anchors, 1, 1]);
+            let h = outputs
+                .i((.., 2..3, .., .., ..))
+                .sigmoid()
+                .mul(2.0)
+                .pow(2.0)
+                * anchor_heights.view([1, 1, num_anchors, 1, 1]);
+            let w = outputs
+                .i((.., 3..4, .., .., ..))
+                .sigmoid()
+                .mul(2.0)
+                .pow(2.0)
+                * anchor_widths.view([1, 1, num_anchors, 1, 1]);
 
             // objectness
             let obj = outputs.i((.., 4..5, .., .., ..));
