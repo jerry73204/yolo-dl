@@ -1085,7 +1085,7 @@ mod average_precision {
     #[derive(Debug, Clone)]
     pub struct DetectionForAp<G>
     where
-        G: Eq + Ord + Clone,
+        G: Eq + Ord,
     {
         pub ground_truth: Option<G>,
         pub confidence: R64,
@@ -1191,19 +1191,19 @@ mod average_precision {
             }
         }
 
-        pub fn compute_by_detections<I, G>(
+        pub fn compute_by_detections<'a, I, G>(
             &self,
             rows: I,
             num_ground_truth: usize,
             iou_thresh: R64,
         ) -> R64
         where
-            I: IntoIterator<Item = DetectionForAp<G>>,
-            G: Eq + Ord + Clone,
+            I: IntoIterator<Item = &'a DetectionForAp<G>>,
+            G: Eq + Ord + 'a,
         {
             // sort by ground truth and decreasing IoU
             let mut rows: Vec<_> = rows.into_iter().collect();
-            rows.sort_by_cached_key(|row| (row.ground_truth.clone(), -row.iou));
+            rows.sort_by_cached_key(|row| (&row.ground_truth, -row.iou));
 
             // Mark true positive (tp) for every first detection with IoU >= threshold
             // for every ground truth
@@ -1211,7 +1211,6 @@ mod average_precision {
                 .into_iter()
                 .scan(None, |prev_ground_truth, row| {
                     let is_same_ground_truth = prev_ground_truth
-                        .as_ref()
                         .zip(row.ground_truth.as_ref())
                         .map_or(false, |(prev, curr)| prev == curr);
 
@@ -1221,14 +1220,14 @@ mod average_precision {
                         row.iou >= iou_thresh
                     };
 
-                    *prev_ground_truth = row.ground_truth.clone();
+                    *prev_ground_truth = row.ground_truth.as_ref();
 
                     Some((row, is_tp))
                 })
                 .collect();
 
             // sort by decreasing confidence
-            rows.sort_by_key(|(row, is_tp)| -row.confidence);
+            rows.sort_by_key(|(row, _is_tp)| -row.confidence);
 
             // compute precision and recall, it is ordered by increasing recall automatically
             let prec_rec: Vec<_> = rows
@@ -1254,6 +1253,43 @@ mod average_precision {
             // compute ap
             let ap = self.compute_by_prec_rec(&prec_rec);
             ap
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct CocoMapCalculator {
+        calculator: ApCalculator,
+    }
+
+    impl CocoMapCalculator {
+        pub fn new() -> Result<Self> {
+            Ok(Self {
+                calculator: ApCalculator::new(IntegralMethod::Interpolation(101))?,
+            })
+        }
+
+        pub fn compute_mean_ap<I, G>(
+            &self,
+            rows: &[DetectionForAp<G>],
+            num_ground_truth: usize,
+            iou_thresholds: impl IntoIterator<Item = R64>,
+        ) -> R64
+        where
+            G: Eq + Ord,
+        {
+            let sum_ap: R64 = iou_thresholds
+                .into_iter()
+                .map(|iou_thresh| {
+                    let ap = self.calculator.compute_by_detections(
+                        rows.iter(),
+                        num_ground_truth,
+                        iou_thresh,
+                    );
+                    ap
+                })
+                .sum();
+            let mean_ap = sum_ap / rows.len() as f64;
+            mean_ap
         }
     }
 }
