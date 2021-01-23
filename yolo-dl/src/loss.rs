@@ -5,6 +5,7 @@ use crate::{
     utils::{self, AsXY},
 };
 
+pub use average_precision::*;
 pub use focal_loss::*;
 pub use misc::*;
 pub use multi_bce_with_logit_loss::*;
@@ -1082,6 +1083,16 @@ mod average_precision {
     use super::*;
 
     #[derive(Debug, Clone)]
+    pub struct DetectionForAp<G>
+    where
+        G: Eq + Ord + Clone,
+    {
+        pub ground_truth: Option<G>,
+        pub confidence: R64,
+        pub iou: R64,
+    }
+
+    #[derive(Debug, Clone)]
     pub struct PrecRec<T>
     where
         T: Copy,
@@ -1100,49 +1111,6 @@ mod average_precision {
 
         fn y(&self) -> T {
             self.precision
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct SortedPrecRecList(pub(self) Vec<PrecRec<R64>>);
-
-    impl SortedPrecRecList {
-        pub fn from_slices(precision: &[f64], recall: &[f64]) -> Result<Self> {
-            ensure!(
-                precision.len() == recall.len(),
-                "the array length does not match"
-            );
-            Self::from_iterator(precision.iter().cloned().zip(recall.iter().cloned()))
-        }
-
-        pub fn from_iterator<I>(iter: I) -> Result<Self>
-        where
-            I: IntoIterator<Item = (f64, f64)>,
-        {
-            // transform types
-            let mut list: Vec<_> = iter
-                .into_iter()
-                .map(|(precision, recall)| {
-                    let precision = R64::try_new(precision)
-                        .ok_or_else(|| format_err!("invalid precision {}", precision))?;
-                    let recall = R64::try_new(recall)
-                        .ok_or_else(|| format_err!("invalid recall {}", recall))?;
-                    ensure!(
-                        precision >= 0.0 && precision <= 1.0,
-                        "invalid precision {}",
-                        precision
-                    );
-                    ensure!(recall >= 0.0 && recall <= 1.0, "invalid recall {}", recall);
-                    Ok(PrecRec { precision, recall })
-                })
-                .try_collect()?;
-
-            ensure!(!list.is_empty(), "input must not be empty");
-
-            // sort by recall
-            list.sort_by_cached_key(|prec_rec| (prec_rec.recall, prec_rec.precision));
-
-            Ok(Self(list))
         }
     }
 
@@ -1170,30 +1138,33 @@ mod average_precision {
             Ok(Self { integral_method })
         }
 
-        pub fn compute_ap(&self, prec_rec: SortedPrecRecList) -> R64 {
-            let SortedPrecRecList(prec_rec) = prec_rec;
-
-            // append/prepend sentinel values
-            let iter = {
-                let max_recall = prec_rec.last().unwrap().recall;
-
-                iter::once(PrecRec {
-                    precision: r64(0.0),
-                    recall: r64(0.0),
-                })
-                .chain(prec_rec.into_iter())
-                .chain(iter::once(PrecRec {
-                    precision: r64(0.0),
-                    recall: (max_recall + 1e-3).min(r64(1.0)),
-                }))
-            };
-
+        /// Compute average precision from a precision/recall curve.
+        ///
+        /// The input precision/recall list must be ordered by non-increasing recall.
+        pub fn compute_by_prec_rec(&self, sorted_prec_rec: &[PrecRec<R64>]) -> R64 {
             // compute precision envelope
             let enveloped = {
+                let max_recall = sorted_prec_rec.last().unwrap().recall;
+                let first = PrecRec {
+                    precision: r64(0.0),
+                    recall: r64(0.0),
+                };
+                let last = PrecRec {
+                    precision: r64(0.0),
+                    recall: (max_recall + 1e-3).min(r64(1.0)),
+                };
+
+                // append/prepend sentinel values
+                let iter = {
+                    iter::once(&first)
+                        .chain(sorted_prec_rec.iter())
+                        .chain(iter::once(&last))
+                };
+
                 let mut list: Vec<_> = iter
                     .rev()
-                    .scan(r64(0.0), |max_prec: &mut R64, prec_rec: PrecRec<R64>| {
-                        let PrecRec { precision, recall } = prec_rec;
+                    .scan(r64(0.0), |max_prec: &mut R64, prec_rec: &PrecRec<R64>| {
+                        let PrecRec { precision, recall } = *prec_rec;
                         *max_prec = (*max_prec).max(precision);
                         Some(PrecRec { recall, precision })
                     })
@@ -1202,6 +1173,7 @@ mod average_precision {
                 list
             };
 
+            // compute ap
             match self.integral_method {
                 IntegralMethod::Interpolation(n_points) => {
                     let points_iter =
@@ -1217,6 +1189,71 @@ mod average_precision {
                     todo!();
                 }
             }
+        }
+
+        pub fn compute_by_detections<I, G>(
+            &self,
+            rows: I,
+            num_ground_truth: usize,
+            iou_thresh: R64,
+        ) -> R64
+        where
+            I: IntoIterator<Item = DetectionForAp<G>>,
+            G: Eq + Ord + Clone,
+        {
+            // sort by ground truth and decreasing IoU
+            let mut rows: Vec<_> = rows.into_iter().collect();
+            rows.sort_by_cached_key(|row| (row.ground_truth.clone(), -row.iou));
+
+            // Mark true positive (tp) for every first detection with IoU >= threshold
+            // for every ground truth
+            let mut rows: Vec<_> = rows
+                .into_iter()
+                .scan(None, |prev_ground_truth, row| {
+                    let is_same_ground_truth = prev_ground_truth
+                        .as_ref()
+                        .zip(row.ground_truth.as_ref())
+                        .map_or(false, |(prev, curr)| prev == curr);
+
+                    let is_tp = if is_same_ground_truth {
+                        false
+                    } else {
+                        row.iou >= iou_thresh
+                    };
+
+                    *prev_ground_truth = row.ground_truth.clone();
+
+                    Some((row, is_tp))
+                })
+                .collect();
+
+            // sort by decreasing confidence
+            rows.sort_by_key(|(row, is_tp)| -row.confidence);
+
+            // compute precision and recall, it is ordered by increasing recall automatically
+            let prec_rec: Vec<_> = rows
+                .into_iter()
+                .scan((0, 0), |(acc_tp, acc_fp), (_row, is_tp)| {
+                    if is_tp {
+                        *acc_tp += 1;
+                    } else {
+                        *acc_fp += 1;
+                    }
+                    let prec_rec = {
+                        let acc_tp = r64(*acc_tp as f64);
+                        let acc_fp = r64(*acc_fp as f64);
+                        PrecRec {
+                            precision: acc_tp / (acc_tp + acc_fp),
+                            recall: acc_tp / num_ground_truth as f64,
+                        }
+                    };
+                    Some(prec_rec)
+                })
+                .collect();
+
+            // compute ap
+            let ap = self.compute_by_prec_rec(&prec_rec);
+            ap
         }
     }
 }

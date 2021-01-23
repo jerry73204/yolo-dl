@@ -2740,8 +2740,6 @@ dependencies = [
 [[package]]
 name = "tch"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec1d5951adaf4e2de38a094aedf98d44ae0a2e50e6bd7c924f798e0ca944f3"
 dependencies = [
  "half",
  "lazy_static",
@@ -2762,10 +2760,7 @@ dependencies = [
  "getset",
  "image",
  "itertools 0.10.0",
- "log",
- "maplit",
  "noisy_float",
- "rand 0.8.2",
  "serde",
  "tch",
  "tch-tensor-like",
@@ -3032,8 +3027,6 @@ dependencies = [
 [[package]]
 name = "torch-sys"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8354bdb8a9f50da96c0eda743c7bccc747a319294d3ed3ffbce6f9ea2cea68da"
 dependencies = [
  "anyhow",
  "cc",
