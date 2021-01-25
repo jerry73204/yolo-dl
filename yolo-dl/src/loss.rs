@@ -1303,3 +1303,56 @@ mod average_precision {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn focal_loss() -> Result<()> {
+        let mut rng = rand::thread_rng();
+        let device = Device::cuda_if_available();
+
+        let n_batch = 32;
+        let n_class = rng.gen_range(1..10);
+
+        let vs = nn::VarStore::new(device);
+        let root = vs.root();
+        let loss_fn = {
+            let bce = MultiBceWithLogitsLossInit {
+                reduction: Reduction::None,
+                ..Default::default()
+            }
+            .build();
+            let focal =
+                FocalLossInit::default(move |input, target| bce.forward(input, target)).build();
+            focal
+        };
+
+        let input = root.randn("input", &[n_batch, n_class], 0.0, 100.0);
+        let target = Tensor::randn(&[n_batch, n_class], (Kind::Float, device))
+            .ge(0.5)
+            .to_kind(Kind::Float)
+            .set_requires_grad(false);
+
+        let mut optimizer = nn::Adam::default().build(&vs, 1.0)?;
+
+        for _ in 0..1000 {
+            let loss = loss_fn.forward(&input, &target);
+            optimizer.backward_step(&loss);
+        }
+
+        optimizer.set_lr(0.1);
+
+        for _ in 0..10000 {
+            let loss = loss_fn.forward(&input, &target);
+            optimizer.backward_step(&loss);
+        }
+
+        ensure!(
+            bool::from((input.sigmoid() - &target).abs().le(1e-3).all()),
+            "the loss does not coverage"
+        );
+        Ok(())
+    }
+}
