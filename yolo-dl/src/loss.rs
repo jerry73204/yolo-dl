@@ -152,21 +152,33 @@ mod yolo_loss {
                 "classification_loss_weight must be non-negative"
             );
 
-            let bce_class = FocalLossInit {
-                pos_weight: pos_weight.as_ref().map(|weight| weight.shallow_clone()),
-                gamma: focal_loss_gamma,
-                reduction,
-                ..Default::default()
-            }
-            .build();
+            let bce_class = {
+                let bce_loss = MultiBceWithLogitsLossInit {
+                    pos_weight: pos_weight.shallow_clone(),
+                    ..Default::default()
+                }
+                .build();
+                FocalLossInit {
+                    gamma: focal_loss_gamma,
+                    reduction,
+                    ..FocalLossInit::default(move |input, target| bce_loss.forward(input, target))
+                }
+                .build()
+            };
 
-            let bce_objectness = FocalLossInit {
-                pos_weight,
-                gamma: focal_loss_gamma,
-                reduction,
-                ..Default::default()
-            }
-            .build();
+            let bce_objectness = {
+                let bce_loss = MultiBceWithLogitsLossInit {
+                    pos_weight,
+                    ..Default::default()
+                }
+                .build();
+                FocalLossInit {
+                    gamma: focal_loss_gamma,
+                    reduction,
+                    ..FocalLossInit::default(move |input, target| bce_loss.forward(input, target))
+                }
+                .build()
+            };
 
             let bbox_matcher = BBoxMatcherInit {
                 match_grid_method,
@@ -698,26 +710,17 @@ mod multi_bce_with_logit_loss {
             // assume [batch_size, n_classes] shape
             debug_assert_eq!(input.size2().unwrap(), target.size2().unwrap());
 
-            let bce = input.binary_cross_entropy_with_logits(
+            // return zero tensor if (1) input is empty and (2) using mean reduction
+            if input.is_empty() && self.reduction == Reduction::Mean {
+                return Tensor::zeros(&[], (Kind::Float, input.device())).set_requires_grad(false);
+            }
+
+            input.binary_cross_entropy_with_logits(
                 target,
                 self.weight.as_ref(),
                 self.pos_weight.as_ref(),
-                Reduction::None,
-            );
-
-            match self.reduction {
-                Reduction::None => bce,
-                Reduction::Sum => bce.sum(Kind::Float),
-                Reduction::Mean => {
-                    let (len, _entries) = bce.size2().unwrap();
-                    if len != 0 {
-                        bce.mean(Kind::Float)
-                    } else {
-                        Tensor::zeros(&[], (Kind::Float, bce.device())).set_requires_grad(false)
-                    }
-                }
-                _ => unimplemented!(),
-            }
+                self.reduction,
+            )
         }
     }
 }
@@ -725,28 +728,42 @@ mod multi_bce_with_logit_loss {
 mod focal_loss {
     use super::*;
 
-    #[derive(Debug)]
-    pub struct FocalLossInit {
-        pub weight: Option<Tensor>,
-        pub pos_weight: Option<Tensor>,
+    #[derive(Derivative)]
+    #[derivative(Debug)]
+    pub struct FocalLossInit<F>
+    where
+        F: 'static + Fn(&Tensor, &Tensor) -> Tensor + Send,
+    {
+        #[derivative(Debug = "ignore")]
+        pub loss_fn: F,
         pub gamma: f64,
         pub alpha: f64,
         pub reduction: Reduction,
     }
 
-    impl FocalLossInit {
+    impl<F> FocalLossInit<F>
+    where
+        F: 'static + Fn(&Tensor, &Tensor) -> Tensor + Send,
+    {
+        pub fn default(loss_fn: F) -> Self {
+            Self {
+                loss_fn,
+                gamma: 1.5,
+                alpha: 0.25,
+                reduction: Reduction::Mean,
+            }
+        }
+
         pub fn build(self) -> FocalLoss {
             let Self {
-                weight,
-                pos_weight,
+                loss_fn,
                 gamma,
                 alpha,
                 reduction,
             } = self;
 
             FocalLoss {
-                weight,
-                pos_weight,
+                loss_fn: Box::new(loss_fn),
                 gamma,
                 alpha,
                 reduction,
@@ -754,22 +771,11 @@ mod focal_loss {
         }
     }
 
-    impl Default for FocalLossInit {
-        fn default() -> Self {
-            Self {
-                weight: None,
-                pos_weight: None,
-                gamma: 1.5,
-                alpha: 0.25,
-                reduction: Reduction::Mean,
-            }
-        }
-    }
-
-    #[derive(Debug)]
+    #[derive(Derivative)]
+    #[derivative(Debug)]
     pub struct FocalLoss {
-        weight: Option<Tensor>,
-        pos_weight: Option<Tensor>,
+        #[derivative(Debug = "ignore")]
+        loss_fn: Box<dyn Fn(&Tensor, &Tensor) -> Tensor + Send>,
         gamma: f64,
         alpha: f64,
         reduction: Reduction,
@@ -777,37 +783,41 @@ mod focal_loss {
 
     impl FocalLoss {
         pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
+            debug_assert_eq!(
+                input.size2().unwrap(),
+                target.size2().unwrap(),
+                "input and target shape must be equal"
+            );
+
+            // return zero tensor if (1) input is empty and (2) using mean reduction
+            if input.is_empty() && self.reduction == Reduction::Mean {
+                return Tensor::zeros(&[], (Kind::Float, input.device())).set_requires_grad(false);
+            }
+
             let Self {
-                ref weight,
-                ref pos_weight,
+                ref loss_fn,
                 gamma,
                 alpha,
                 reduction,
             } = *self;
 
-            let bce_loss = input.binary_cross_entropy_with_logits(
-                target,
-                weight.as_ref(),
-                pos_weight.as_ref(),
-                Reduction::None,
+            let orig_loss = loss_fn(input, target);
+            debug_assert_eq!(
+                orig_loss.size2().unwrap(),
+                target.size2().unwrap(),
+                "the contained loss function must not apply reduction"
             );
+
             let input_prob = input.sigmoid();
             let p_t: Tensor = target * &input_prob + (1.0 - target) * (1.0 - &input_prob);
             let alpha_factor = target * alpha + (1.0 - target) * (1.0 - alpha);
             let modulating_factor = (-&p_t + 1.0).pow(gamma);
-            let loss: Tensor = &bce_loss * &alpha_factor * &modulating_factor;
+            let loss: Tensor = &orig_loss * &alpha_factor * &modulating_factor;
 
             match reduction {
                 Reduction::None => loss,
                 Reduction::Sum => loss.sum(Kind::Float),
-                Reduction::Mean => {
-                    let (len, _entries) = loss.size2().unwrap();
-                    if len != 0 {
-                        loss.mean(Kind::Float)
-                    } else {
-                        Tensor::zeros(&[], (Kind::Float, loss.device())).set_requires_grad(false)
-                    }
-                }
+                Reduction::Mean => loss.mean(Kind::Float),
                 Reduction::Other(_) => unimplemented!(),
             }
         }

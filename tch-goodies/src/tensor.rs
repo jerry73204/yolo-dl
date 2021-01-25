@@ -65,6 +65,8 @@ pub fn nms(dets: &Tensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor>
 }
 
 pub trait TensorExt {
+    fn is_empty(&self) -> bool;
+
     fn f_sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Result<Tensor>
     where
         T: Borrow<Tensor>,
@@ -78,6 +80,7 @@ pub trait TensorExt {
         let sum = iter.try_fold(first, |lhs, rhs| lhs.f_add(rhs.borrow()))?;
         Ok(sum)
     }
+
     fn f_weighted_mean_tensors<T>(pairs: impl IntoIterator<Item = (T, f64)>) -> Result<Tensor>
     where
         T: Borrow<Tensor>,
@@ -92,6 +95,7 @@ pub trait TensorExt {
         let mean_tensors = sum_tensors.f_div1(sum_weights)?;
         Ok(mean_tensors)
     }
+
     fn f_fill_rect_(
         &mut self,
         top: i64,
@@ -100,6 +104,7 @@ pub trait TensorExt {
         right: i64,
         color: &Tensor,
     ) -> Result<Tensor>;
+
     fn fill_rect_(
         &mut self,
         top: i64,
@@ -110,6 +115,7 @@ pub trait TensorExt {
     ) -> Tensor {
         self.f_fill_rect_(top, left, bottom, right, color).unwrap()
     }
+
     fn f_draw_rect_(
         &mut self,
         top: i64,
@@ -119,6 +125,7 @@ pub trait TensorExt {
         stroke: usize,
         color: &Tensor,
     ) -> Result<Tensor>;
+
     fn draw_rect_(
         &mut self,
         top: i64,
@@ -131,55 +138,79 @@ pub trait TensorExt {
         self.f_draw_rect_(top, left, bottom, right, stroke, color)
             .unwrap()
     }
+
     fn f_batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Result<Tensor>;
+
     fn batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Tensor {
         self.f_batch_fill_rect_(btlbrs, color).unwrap()
     }
+
     fn f_batch_draw_rect_(
         &mut self,
         btlbrs: &[[i64; 5]],
         stroke: usize,
         color: &Tensor,
     ) -> Result<Tensor>;
+
     fn batch_draw_rect_(&mut self, btlbrs: &[[i64; 5]], stroke: usize, color: &Tensor) -> Tensor {
         self.f_batch_draw_rect_(btlbrs, stroke, color).unwrap()
     }
+
     fn f_crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Result<Tensor>;
+
     fn crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Tensor {
         self.f_crop_by_ratio(top, left, bottom, right).unwrap()
     }
+
     fn sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Tensor
     where
         T: Borrow<Tensor>,
     {
         Self::f_sum_tensors(tensors).unwrap()
     }
+
     fn weighted_mean_tensors<T>(pairs: impl IntoIterator<Item = (T, f64)>) -> Tensor
     where
         T: Borrow<Tensor>,
     {
         Self::f_weighted_mean_tensors(pairs).unwrap()
     }
+
     fn resize2d(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
+
     fn resize2d_exact(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
+
     fn resize2d_letterbox(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
+
     fn swish(&self) -> Tensor;
+
     fn hard_swish(&self) -> Tensor;
+
     fn mish(&self) -> Tensor;
+
     fn hard_mish(&self) -> Tensor;
+
     fn f_rgb_to_hsv(&self) -> Result<Tensor>;
+
     fn rgb_to_hsv(&self) -> Tensor {
         self.f_rgb_to_hsv().unwrap()
     }
+
     fn f_hsv_to_rgb(&self) -> Result<Tensor>;
+
     fn hsv_to_rgb(&self) -> Tensor {
         self.f_hsv_to_rgb().unwrap()
     }
+
     // fn normalize_channels(&self) -> Tensor;
     // fn normalize_channels_softmax(&self) -> Tensor;
 }
 
 impl TensorExt for Tensor {
+    fn is_empty(&self) -> bool {
+        self.numel() == 0
+    }
+
     fn f_fill_rect_(
         &mut self,
         top: i64,
