@@ -4,6 +4,33 @@ use crate::common::*;
 #[repr(transparent)]
 pub struct Ratio(R64);
 
+impl Zero for Ratio {
+    fn is_zero(&self) -> bool {
+        self.0.is_zero()
+    }
+
+    fn zero() -> Self {
+        Self(R64::zero())
+    }
+}
+
+impl One for Ratio {
+    fn one() -> Self {
+        Self(R64::one())
+    }
+}
+
+impl Num for Ratio {
+    type FromStrRadixErr = Error;
+
+    fn from_str_radix(text: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+        let value: Self = f64::from_str_radix(text, radix)
+            .map_err(|err| format_err!("{:?}", err))?
+            .try_into()?;
+        Ok(value)
+    }
+}
+
 impl Ratio {
     pub fn to_r64(&self) -> R64 {
         self.0
@@ -191,6 +218,22 @@ impl Div<f64> for Ratio {
 
     fn div(self, rhs: f64) -> Self::Output {
         Self::try_from(self.0 / rhs).unwrap()
+    }
+}
+
+impl Rem<Ratio> for Ratio {
+    type Output = Ratio;
+
+    fn rem(self, rhs: Ratio) -> Self::Output {
+        Self::try_from(self.0 % rhs.0).unwrap()
+    }
+}
+
+impl Rem<f64> for Ratio {
+    type Output = Ratio;
+
+    fn rem(self, rhs: f64) -> Self::Output {
+        Self::try_from(self.0 % rhs).unwrap()
     }
 }
 

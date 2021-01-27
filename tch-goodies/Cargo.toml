@@ -17,3 +17,4 @@ tch-tensor-like = { version = "0.2.0", features = ["derive"] }
 approx = "0.3.2"
 getset = "0.1.1"
 unzip-n = "0.1.2"
+num-traits = "0.2.14"
