@@ -1422,24 +1422,39 @@ mod merge_detect_2d {
 
     #[derive(Debug, TensorLike)]
     pub struct MergeDetect2DOutput {
+        /// Number of predicted classes.
         pub num_classes: usize,
+        /// Tensor of bbox center y coordinates with shape `[batch, 1, instance]`.
         pub cy: Tensor,
+        /// Tensor of bbox center x coordinates with shape `[batch, 1, instance]`.
         pub cx: Tensor,
+        /// Tensor of bbox heights with shape `[batch, 1, instance]`.
         pub h: Tensor,
+        /// Tensor of bbox widths with shape `[batch, 1, instance`.
         pub w: Tensor,
+        /// Tensor of bbox objectness score with shape `[batch, 1, instance]`.
         pub obj: Tensor,
+        /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, instance]`.
         pub class: Tensor,
+        /// Saves the shape of exported feature maps.
         pub info: Vec<DetectionInfo>,
     }
 
     impl MergeDetect2DOutput {
+        /// Gets the device of belonging tensors.
         pub fn device(&self) -> Device {
             self.cy.device()
         }
 
+        /// Gets the batch size of belonging tensors.
         pub fn batch_size(&self) -> i64 {
-            let (batch_size, _entries, _samples) = self.cy.size3().unwrap();
+            let (batch_size, _entries, _instances) = self.cy.size3().unwrap();
             batch_size
+        }
+
+        pub fn num_instances(&self) -> i64 {
+            let (_batch_size, _entries, instances) = self.cy.size3().unwrap();
+            instances
         }
 
         pub fn cat<T>(outputs: impl IntoIterator<Item = T>, device: Device) -> Result<Self>

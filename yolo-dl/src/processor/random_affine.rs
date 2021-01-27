@@ -286,7 +286,8 @@ impl RandomAffine {
                             ref bbox,
                             category_id,
                         } = *label;
-                        let [orig_t, orig_l, orig_b, orig_r] = bbox.map(|val| val.to_f64()).tlbr();
+                        let [orig_t, orig_l, orig_b, orig_r] =
+                            bbox.map_elem(|val| val.to_f64()).tlbr();
                         let orig_t = orig_t as f32;
                         let orig_l = orig_l as f32;
                         let orig_b = orig_b as f32;

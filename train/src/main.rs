@@ -218,7 +218,8 @@ async fn multi_gpu_training_worker(
         minibatch_size: usize,
         output: MergeDetect2DOutput,
         losses: YoloLossOutput,
-        target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
+        // target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
+        loss_auxiliary: YoloLossAuxiliary,
         gradients: Vec<Tensor>,
     }
 
@@ -469,7 +470,8 @@ async fn multi_gpu_training_worker(
                                         minibatch_size,
                                         output,
                                         losses,
-                                        target_bboxes: loss_auxiliary.target_bboxes,
+                                        // target_bboxes: loss_auxiliary.target_bboxes,
+                                        loss_auxiliary,
                                         gradients,
                                     })
                                 })
@@ -579,13 +581,13 @@ async fn multi_gpu_training_worker(
                         let WorkerOutput {
                             minibatch_size,
                             output: model_output,
-                            target_bboxes: orig_target_bboxes,
+                            loss_auxiliary,
                             ..
                         } = worker_output;
 
                         // re-index target_bboxes
                         let batch_index_base = *batch_index_base_mut;
-                        let new_target_bboxes = orig_target_bboxes.into_iter().map(
+                        let new_target_bboxes = loss_auxiliary.target_bboxes.0.into_iter().map(
                             move |(orig_instance_index, bbox)| {
                                 let InstanceIndex {
                                     batch_index,
@@ -854,7 +856,7 @@ fn single_gpu_training_worker(
                     &image,
                     &output,
                     &losses,
-                    Arc::new(loss_auxiliary.target_bboxes),
+                    Arc::new(loss_auxiliary.target_bboxes.0),
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         } else {

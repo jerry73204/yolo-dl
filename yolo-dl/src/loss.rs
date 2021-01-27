@@ -10,6 +10,7 @@ pub use focal_loss::*;
 pub use misc::*;
 pub use multi_bce_with_logit_loss::*;
 pub use pred_target_matching::*;
+// pub use yolo_benchmark::*;
 pub use yolo_loss::*;
 pub use yolo_loss_output::*;
 
@@ -79,6 +80,7 @@ mod yolo_loss_output {
     }
 }
 
+/// Defines loss for training.
 mod yolo_loss {
     use super::*;
 
@@ -153,29 +155,31 @@ mod yolo_loss {
             );
 
             let bce_class = {
-                let bce_loss = MultiBceWithLogitsLossInit {
+                let bce_loss = BceWithLogitsLossInit {
                     pos_weight: pos_weight.shallow_clone(),
-                    ..Default::default()
+                    ..BceWithLogitsLossInit::default(Reduction::None)
                 }
                 .build();
                 FocalLossInit {
                     gamma: focal_loss_gamma,
-                    reduction,
-                    ..FocalLossInit::default(move |input, target| bce_loss.forward(input, target))
+                    ..FocalLossInit::default(reduction, move |input, target| {
+                        bce_loss.forward(input, target)
+                    })
                 }
                 .build()
             };
 
             let bce_objectness = {
-                let bce_loss = MultiBceWithLogitsLossInit {
+                let bce_loss = BceWithLogitsLossInit {
                     pos_weight,
-                    ..Default::default()
+                    ..BceWithLogitsLossInit::default(Reduction::None)
                 }
                 .build();
                 FocalLossInit {
                     gamma: focal_loss_gamma,
-                    reduction,
-                    ..FocalLossInit::default(move |input, target| bce_loss.forward(input, target))
+                    ..FocalLossInit::default(reduction, move |input, target| {
+                        bce_loss.forward(input, target)
+                    })
                 }
                 .build()
             };
@@ -185,6 +189,8 @@ mod yolo_loss {
                 anchor_scale_thresh,
             }
             .build()?;
+
+            let coco_map_calculator = CocoMapCalculator::new();
 
             Ok(YoloLoss {
                 reduction,
@@ -198,6 +204,7 @@ mod yolo_loss {
                 objectness_loss_weight,
                 classification_loss_weight,
                 bbox_matcher,
+                coco_map_calculator,
             })
         }
     }
@@ -234,6 +241,7 @@ mod yolo_loss {
         objectness_loss_weight: f64,
         classification_loss_weight: f64,
         bbox_matcher: BBoxMatcher,
+        coco_map_calculator: CocoMapCalculator,
     }
 
     impl YoloLoss {
@@ -247,13 +255,12 @@ mod yolo_loss {
             // match target bboxes and grids, and group them by detector cells
             // indexed by grid positions
             // let target_bboxes = self.match_target_bboxes(&prediction, target);
-            let PredTargetMatching(target_bboxes) =
-                self.bbox_matcher.match_bboxes(&prediction, target);
+            let matchings = self.bbox_matcher.match_bboxes(&prediction, target);
             timing.set_record("match_target_bboxes");
 
             // collect selected instances
             let (pred_instances, target_instances) =
-                Self::collect_instances(prediction, &target_bboxes);
+                Self::collect_instances(prediction, &matchings);
             timing.set_record("collect_instances");
 
             // IoU loss
@@ -271,7 +278,7 @@ mod yolo_loss {
             );
 
             // objectness loss
-            let objectness_loss = self.objectness_loss(&prediction, &target_bboxes, &iou_score);
+            let objectness_loss = self.objectness_loss(&prediction, &matchings, &iou_score);
             timing.set_record("objectness_loss");
             debug_assert!(!bool::from(objectness_loss.isnan().any()), "NaN detected");
 
@@ -291,98 +298,55 @@ mod yolo_loss {
                     objectness_loss,
                 },
                 YoloLossAuxiliary {
-                    target_bboxes,
+                    target_bboxes: matchings,
                     iou_score,
                 },
             )
         }
 
-        fn iou_loss(
-            &self,
-            pred_instances: &PredInstances,
-            target_instances: &TargetInstances,
-        ) -> (Tensor, Tensor) {
+        fn iou_loss(&self, pred: &PredInstances, target: &TargetInstances) -> (Tensor, Tensor) {
             use std::f64::consts::PI;
             let epsilon = 1e-16;
 
             // prediction bbox properties
-            let PredInstances {
-                cy: pred_cy,
-                cx: pred_cx,
-                height: pred_h,
-                width: pred_w,
-                ..
-            } = pred_instances;
-
-            let pred_t = pred_cy - pred_h / 2.0;
-            let pred_b = pred_cy + pred_h / 2.0;
-            let pred_l = pred_cx - pred_w / 2.0;
-            let pred_r = pred_cx + pred_w / 2.0;
-            let pred_area = pred_h * pred_w;
+            let pred_cycxhw = pred.cycxhw();
+            let pred_tlbr = TlbrTensor::from(pred_cycxhw);
+            let pred_area = pred_tlbr.area();
 
             // target bbox properties
-            let TargetInstances {
-                cy: target_cy,
-                cx: target_cx,
-                height: target_h,
-                width: target_w,
-                ..
-            } = target_instances;
-
-            let target_t = target_cy - target_h / 2.0;
-            let target_b = target_cy + target_h / 2.0;
-            let target_l = target_cx - target_w / 2.0;
-            let target_r = target_cx + target_w / 2.0;
-            let target_area = target_h * target_w;
-
-            // compute intersection area
-            let intersect_t = pred_t.max1(&target_t);
-            let intersect_l = pred_l.max1(&target_l);
-            let intersect_b = pred_b.min1(&target_b);
-            let intersect_r = pred_r.min1(&target_r);
-            let intersect_h = (&intersect_b - &intersect_t).clamp_min(0.0);
-            let intersect_w = (&intersect_r - &intersect_l).clamp_min(0.0);
-            let intersect_area = &intersect_h * &intersect_w;
-
-            debug_assert!(
-                bool::from(intersect_h.ge(0.0).all()) && bool::from(intersect_w.ge(0.0).all()),
-                "negative bbox height or width detected"
-            );
+            let target_cycxhw = target.cycxhw();
+            let target_tlbr = TlbrTensor::from(target_cycxhw);
+            let target_area = target_tlbr.area();
 
             // compute IoU
-            let union_area = &pred_area + &target_area - &intersect_area + epsilon;
-            let iou = &intersect_area / &union_area;
+            let intersect_area = pred_tlbr.intersect_area(&target_tlbr);
+            let union_area =
+                pred_area.area() + target_area.area() - intersect_area.area() + epsilon;
+            let iou = intersect_area.area() / &union_area;
 
             let iou_score = match self.iou_kind {
                 IoUKind::IoU => iou,
                 _ => {
-                    let outer_t = pred_t.min1(&target_t);
-                    let outer_l = pred_l.min1(&target_l);
-                    let outer_b = pred_b.max1(&target_b);
-                    let outer_r = pred_r.max1(&target_r);
-                    let outer_h = &outer_b - &outer_t;
-                    let outer_w = &outer_r - &outer_l;
-
-                    debug_assert!(
-                        bool::from(outer_h.ge(0.0).all()) && bool::from(outer_w.ge(0.0).all()),
-                        "negative bbox height or width detected"
-                    );
+                    let outer_tlbr = pred_tlbr.closure_with(&target_tlbr);
+                    let outer_size = outer_tlbr.size();
 
                     match self.iou_kind {
                         IoUKind::GIoU => {
-                            let outer_area = &outer_h * &outer_w + epsilon;
-                            &iou - (&outer_area - &union_area) / &outer_area
+                            let outer_area = outer_tlbr.area();
+                            &iou - (outer_area.area() - union_area) / (outer_area.area() + epsilon)
                         }
                         _ => {
-                            let diagonal_square = outer_h.pow(2.0) + outer_w.pow(2.0) + epsilon;
-                            let center_dist_square =
-                                (pred_cy - target_cy).pow(2.0) + (pred_cx - target_cx).pow(2.0);
+                            let diagonal_square =
+                                outer_size.h().pow(2.0) + outer_size.w().pow(2.0) + epsilon;
+                            let center_dist_square = (pred_cycxhw.cy() - target_cycxhw.cy())
+                                .pow(2.0)
+                                + (pred_cycxhw.cx() - target_cycxhw.cx()).pow(2.0);
 
                             match self.iou_kind {
                                 IoUKind::DIoU => &iou - &center_dist_square / &diagonal_square,
                                 IoUKind::CIoU => {
-                                    let pred_angle = pred_h.atan2(&pred_w);
-                                    let target_angle = target_h.atan2(&target_w);
+                                    let pred_angle = pred_cycxhw.h().atan2(&pred_cycxhw.w());
+                                    let target_angle = target_cycxhw.h().atan2(&target_cycxhw.w());
 
                                     let shape_loss =
                                         (&pred_angle - &target_angle).pow(2.0) * 4.0 / PI.powi(2);
@@ -405,8 +369,7 @@ mod yolo_loss {
                 match self.reduction {
                     Reduction::None => iou_loss.shallow_clone(),
                     Reduction::Mean => {
-                        let (len, _entries) = iou_loss.size2().unwrap();
-                        if len != 0 {
+                        if !iou_loss.is_empty() {
                             iou_loss.mean(Kind::Float)
                         } else {
                             Tensor::zeros(&[], (Kind::Float, iou_loss.device()))
@@ -421,32 +384,27 @@ mod yolo_loss {
             (iou_loss, iou_score)
         }
 
-        fn classification_loss(
-            &self,
-            pred_instances: &PredInstances,
-            target_instances: &TargetInstances,
-        ) -> Tensor {
+        fn classification_loss(&self, pred: &PredInstances, target: &TargetInstances) -> Tensor {
             // smooth bce values
             let pos = 1.0 - 0.5 * self.smooth_bce_coef;
             let neg = 1.0 - pos;
-            let pred_class = &pred_instances.dense_class;
+            let pred_class = &pred.dense_class();
             let (num_instances, num_classes) = pred_class.size2().unwrap();
             let device = pred_class.device();
 
             // convert sparse index to dense one-hot-like
             let target_class_dense = tch::no_grad(|| {
-                let target_class_sparse = &target_instances.sparse_class;
+                let target_class_sparse = &target.sparse_class();
                 let pos_values =
                     Tensor::full(&target_class_sparse.size(), pos, (Kind::Float, device));
-                let target =
+                let target_dense =
                     pred_class
                         .full_like(neg)
                         .scatter_(1, &target_class_sparse, &pos_values);
 
                 debug_assert!({
-                    let sparse_class_array: ArrayD<i64> =
-                        (&target_instances.sparse_class).try_into().unwrap();
-                    let target_array: ArrayD<f32> = (&target).try_into().unwrap();
+                    let sparse_class_array: ArrayD<i64> = target.sparse_class().try_into().unwrap();
+                    let target_array: ArrayD<f32> = (&target_dense).try_into().unwrap();
                     let expected_array = Array2::<f32>::from_shape_fn(
                         [num_instances as usize, num_classes as usize],
                         |(row, col)| {
@@ -467,7 +425,7 @@ mod yolo_loss {
                     mse.map(|mse| abs_diff_eq!(mse, 0.0)).unwrap_or(true)
                 });
 
-                target
+                target_dense
             });
 
             self.bce_class.forward(&pred_class, &target_class_dense)
@@ -476,7 +434,7 @@ mod yolo_loss {
         fn objectness_loss(
             &self,
             prediction: &MergeDetect2DOutput,
-            target_bboxes: &HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
+            matchings: &PredTargetMatching,
             iou_score: &Tensor,
         ) -> Tensor {
             let device = prediction.device();
@@ -484,7 +442,8 @@ mod yolo_loss {
 
             let pred_objectness = &prediction.obj;
             let target_objectness = tch::no_grad(|| {
-                let (batch_indexes_vec, flat_indexes_vec) = target_bboxes
+                let (batch_indexes_vec, flat_indexes_vec) = matchings
+                    .0
                     .keys()
                     .map(|instance_index| {
                         let batch_index = instance_index.batch_index as i64;
@@ -516,7 +475,8 @@ mod yolo_loss {
                     let iou_loss_array: ArrayD<f32> = iou_score.try_into().unwrap();
                     let mut expect_array =
                         Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
-                    target_bboxes
+                    matchings
+                        .0
                         .keys()
                         .enumerate()
                         .for_each(|(index, instance_index)| {
@@ -548,13 +508,14 @@ mod yolo_loss {
         /// Build HashSet of predictions indexed by per-grid position
         fn collect_instances(
             prediction: &MergeDetect2DOutput,
-            target: &HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
+            matchings: &PredTargetMatching,
         ) -> (PredInstances, TargetInstances) {
             let mut timing = Timing::new("collect_instances");
 
             let device = prediction.device();
-            let pred_instances = {
-                let (batch_indexes_vec, flat_indexes_vec) = target
+            let pred_instances: PredInstances = {
+                let (batch_indexes_vec, flat_indexes_vec) = matchings
+                    .0
                     .keys()
                     .map(|instance_index| {
                         let batch_index = instance_index.batch_index as i64;
@@ -590,20 +551,25 @@ mod yolo_loss {
                     .permute(&[0, 2, 1])
                     .index(&[&batch_indexes, &flat_indexes]);
 
-                PredInstances {
-                    cy,
-                    cx,
-                    height,
-                    width,
+                PredInstancesUnchecked {
+                    cycxhw: CycxhwTensorUnchecked {
+                        cy,
+                        cx,
+                        h: height,
+                        w: width,
+                    },
                     objectness,
                     dense_class: classification,
                 }
+                .try_into()
+                .unwrap()
             };
 
             timing.set_record("build prediction instances");
 
-            let target_instances = tch::no_grad(|| {
-                let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = target
+            let target_instances: TargetInstances = tch::no_grad(|| {
+                let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = matchings
+                    .0
                     .values()
                     .map(|bbox| {
                         let [cy, cx, h, w] = bbox.bbox.cycxhw();
@@ -639,13 +605,17 @@ mod yolo_loss {
                     .set_requires_grad(false)
                     .to_device(device);
 
-                TargetInstances {
-                    cy,
-                    cx,
-                    height,
-                    width,
+                TargetInstancesUnchecked {
+                    cycxhw: CycxhwTensorUnchecked {
+                        cy,
+                        cx,
+                        h: height,
+                        w: width,
+                    },
                     sparse_class: category_id,
                 }
+                .try_into()
+                .unwrap()
             });
 
             timing.set_record("build target instances");
@@ -657,30 +627,170 @@ mod yolo_loss {
 
     #[derive(Debug)]
     pub struct YoloLossAuxiliary {
-        pub target_bboxes: HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>,
+        pub target_bboxes: PredTargetMatching,
         pub iou_score: Tensor,
     }
 }
+
+// /// Defines loss for inference
+// mod yolo_benchmark {
+//     use super::*;
+
+//     #[derive(Debug)]
+//     pub struct YoloBenchmarkInit {
+//         pub iou_threshold: R64,
+//         pub confidence_threshold: R64,
+//     }
+
+//     impl YoloBenchmarkInit {
+//         pub fn build(self) -> Result<YoloBenchmark> {
+//             let Self {
+//                 iou_threshold,
+//                 confidence_threshold,
+//             } = self;
+
+//             ensure!(iou_threshold >= 0.0, "iou_threshold must be non-negative");
+//             ensure!(
+//                 confidence_threshold >= 0.0,
+//                 "confidence_threshold must be non-negative"
+//             );
+
+//             Ok(YoloBenchmark {
+//                 iou_threshold,
+//                 confidence_threshold,
+//             })
+//         }
+//     }
+
+//     #[derive(Debug)]
+//     pub struct YoloBenchmark {
+//         iou_threshold: R64,
+//         confidence_threshold: R64,
+//     }
+
+//     impl YoloBenchmark {
+//         pub fn forward(
+//             &self,
+//             prediction: &MergeDetect2DOutput,
+//             target: &Vec<Vec<LabeledRatioBBox>>,
+//         ) -> Result<()> {
+//             let Self {
+//                 iou_threshold,
+//                 confidence_threshold,
+//             } = *self;
+
+//             let device = prediction.device();
+//             let num_classes = prediction.num_classes;
+//             let num_instances = prediction.num_instances();
+//             let batch_size = prediction.batch_size();
+
+//             // caterian product of predicted and ground truth bboxes
+//             (0..batch_size)
+//                 .zip(target.iter())
+//                 .map(|(batch_index, target_bboxes)| -> Result<_> {
+//                     // get outputs of specified batch index
+//                     // each have shape [n_instances]
+//                     let pred_tlbr = {
+//                         let MergeDetect2DOutput {
+//                             cy,
+//                             cx,
+//                             h,
+//                             w,
+//                             class,
+//                             obj,
+//                             ..
+//                         } = prediction;
+//                         let cycxhw = CycxhwTensor::new(
+//                             &cy.i((batch_index, .., ..)).view([-1]),
+//                             &cx.i((batch_index, .., ..)).view([-1]),
+//                             &h.i((batch_index, .., ..)).view([-1]),
+//                             &w.i((batch_index, .., ..)).view([-1]),
+//                         )?;
+//                         TlbrTensor::from(&cycxhw)
+//                     };
+//                     // let pred_class = class.i((batch_index, .., ..));
+//                     // let pred_obj = obj.i((batch_index, .., ..));
+
+//                     // convert target bboxes to tensors
+//                     let target_tlbr = {
+//                         let target_bboxes: Vec<_> = target_bboxes
+//                             .iter()
+//                             .map(|bbox| bbox.map_elem(|val| val.to_f64() as f32))
+//                             .collect();
+//                         TlbrTensor::from(target_bboxes).to_device(device)
+//                     };
+
+//                     // pair up pred and target bboxes
+//                     // tensors have shape [n_pred * n_target, 2]
+//                     let pred_area = pred_tlbr.area().area();
+//                     let target_area = target_tlbr.area().area();
+//                     let inner_area = pred_tlbr.intersect_area(&pred_tlbr).area();
+//                     let outer_area = pred_area + target_area - inner_area;
+//                     let iou = inner_area / outer_area; // TODO: fix divide by zero
+
+//                     todo!();
+//                 });
+
+//             (0..num_classes).map(|class_index| {
+//                 todo!();
+//             });
+
+//             Ok(())
+//         }
+//     }
+
+//     #[derive(Debug)]
+//     struct Detection {}
+
+//     impl<D, G> DetectionForAp<D, G> for Detection
+//     where
+//         G: Eq + Hash,
+//     {
+//         fn detection(&self) -> &D {
+//             todo!();
+//         }
+
+//         fn ground_truth(&self) -> Option<&G> {
+//             todo!();
+//         }
+
+//         fn confidence(&self) -> R64 {
+//             todo!();
+//         }
+
+//         fn iou(&self) -> R64 {
+//             todo!();
+//         }
+//     }
+// }
 
 mod multi_bce_with_logit_loss {
     use super::*;
 
     #[derive(Debug)]
-    pub struct MultiBceWithLogitsLossInit {
+    pub struct BceWithLogitsLossInit {
         pub weight: Option<Tensor>,
         pub pos_weight: Option<Tensor>,
         pub reduction: Reduction,
     }
 
-    impl MultiBceWithLogitsLossInit {
-        pub fn build(self) -> MultiBceWithLogitsLoss {
+    impl BceWithLogitsLossInit {
+        pub fn default(reduction: Reduction) -> Self {
+            Self {
+                weight: None,
+                pos_weight: None,
+                reduction,
+            }
+        }
+
+        pub fn build(self) -> BceWithLogitsLoss {
             let Self {
                 weight,
                 pos_weight,
                 reduction,
             } = self;
 
-            MultiBceWithLogitsLoss {
+            BceWithLogitsLoss {
                 weight,
                 pos_weight,
                 reduction,
@@ -688,24 +798,14 @@ mod multi_bce_with_logit_loss {
         }
     }
 
-    impl Default for MultiBceWithLogitsLossInit {
-        fn default() -> Self {
-            Self {
-                weight: None,
-                pos_weight: None,
-                reduction: Reduction::Mean,
-            }
-        }
-    }
-
     #[derive(Debug)]
-    pub struct MultiBceWithLogitsLoss {
+    pub struct BceWithLogitsLoss {
         weight: Option<Tensor>,
         pos_weight: Option<Tensor>,
         reduction: Reduction,
     }
 
-    impl MultiBceWithLogitsLoss {
+    impl BceWithLogitsLoss {
         pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
             // assume [batch_size, n_classes] shape
             debug_assert_eq!(
@@ -753,12 +853,12 @@ mod focal_loss {
     where
         F: 'static + Fn(&Tensor, &Tensor) -> Tensor + Send,
     {
-        pub fn default(loss_fn: F) -> Self {
+        pub fn default(reduction: Reduction, loss_fn: F) -> Self {
             Self {
                 loss_fn,
                 gamma: 1.5,
                 alpha: 0.25,
-                reduction: Reduction::Mean,
+                reduction,
             }
         }
 
@@ -861,22 +961,110 @@ mod misc {
     }
 
     #[derive(Debug, TensorLike)]
-    pub struct PredInstances {
-        pub cy: Tensor,
-        pub cx: Tensor,
-        pub height: Tensor,
-        pub width: Tensor,
+    pub struct PredInstancesUnchecked {
+        pub cycxhw: CycxhwTensorUnchecked,
         pub objectness: Tensor,
         pub dense_class: Tensor,
     }
 
     #[derive(Debug, TensorLike)]
-    pub struct TargetInstances {
-        pub cy: Tensor,
-        pub cx: Tensor,
-        pub height: Tensor,
-        pub width: Tensor,
+    pub struct TargetInstancesUnchecked {
+        pub cycxhw: CycxhwTensorUnchecked,
         pub sparse_class: Tensor,
+    }
+
+    #[derive(Debug, TensorLike, Getters)]
+    pub struct PredInstances {
+        #[get = "pub"]
+        cycxhw: CycxhwTensor,
+        #[get = "pub"]
+        objectness: Tensor,
+        #[get = "pub"]
+        dense_class: Tensor,
+    }
+
+    #[derive(Debug, TensorLike, Getters)]
+    pub struct TargetInstances {
+        #[get = "pub"]
+        cycxhw: CycxhwTensor,
+        #[get = "pub"]
+        sparse_class: Tensor,
+    }
+
+    impl TryFrom<PredInstancesUnchecked> for PredInstances {
+        type Error = Error;
+
+        fn try_from(from: PredInstancesUnchecked) -> Result<Self, Self::Error> {
+            let PredInstancesUnchecked {
+                cycxhw,
+                objectness,
+                dense_class,
+            } = from;
+
+            let cycxhw: CycxhwTensor = cycxhw.try_into()?;
+            let cycxhw_len = cycxhw.num_samples();
+            let (obj_len, obj_entries) = objectness.size2()?;
+            let (class_len, _classes) = dense_class.size2()?;
+            ensure!(
+                obj_entries == 1 && cycxhw_len == obj_len && cycxhw_len == class_len,
+                "size mismatch"
+            );
+
+            Ok(Self {
+                cycxhw,
+                objectness,
+                dense_class,
+            })
+        }
+    }
+
+    impl TryFrom<TargetInstancesUnchecked> for TargetInstances {
+        type Error = Error;
+
+        fn try_from(from: TargetInstancesUnchecked) -> Result<Self, Self::Error> {
+            let TargetInstancesUnchecked {
+                cycxhw,
+                sparse_class,
+            } = from;
+
+            let cycxhw: CycxhwTensor = cycxhw.try_into()?;
+            let cycxhw_len = cycxhw.num_samples();
+            let (class_len, _classes) = sparse_class.size2()?;
+            ensure!(cycxhw_len == class_len, "size mismatch");
+
+            Ok(Self {
+                cycxhw,
+                sparse_class,
+            })
+        }
+    }
+
+    impl From<PredInstances> for PredInstancesUnchecked {
+        fn from(from: PredInstances) -> Self {
+            let PredInstances {
+                cycxhw,
+                objectness,
+                dense_class,
+            } = from;
+            Self {
+                cycxhw: cycxhw.into(),
+                objectness,
+                dense_class,
+            }
+        }
+    }
+
+    impl From<TargetInstances> for TargetInstancesUnchecked {
+        fn from(from: TargetInstances) -> Self {
+            let TargetInstances {
+                cycxhw,
+                sparse_class,
+            } = from;
+            Self {
+                cycxhw: cycxhw.into(),
+                sparse_class,
+            }
+        }
     }
 }
 
@@ -1104,14 +1292,32 @@ mod pred_target_matching {
 mod average_precision {
     use super::*;
 
-    #[derive(Debug, Clone)]
-    pub struct DetectionForAp<G>
+    pub trait DetectionForAp<D, G> {
+        fn detection(&self) -> &D;
+        fn ground_truth(&self) -> Option<&G>;
+        fn confidence(&self) -> R64;
+        fn iou(&self) -> R64;
+    }
+
+    impl<T, D, G> DetectionForAp<D, G> for &T
     where
-        G: Eq + Ord,
+        T: DetectionForAp<D, G>,
     {
-        pub ground_truth: Option<G>,
-        pub confidence: R64,
-        pub iou: R64,
+        fn detection(&self) -> &D {
+            (*self).detection()
+        }
+
+        fn ground_truth(&self) -> Option<&G> {
+            (*self).ground_truth()
+        }
+
+        fn confidence(&self) -> R64 {
+            (*self).confidence()
+        }
+
+        fn iou(&self) -> R64 {
+            (*self).iou()
+        }
     }
 
     #[derive(Debug, Clone)]
@@ -1163,10 +1369,10 @@ mod average_precision {
         /// Compute average precision from a precision/recall curve.
         ///
         /// The input precision/recall list must be ordered by non-increasing recall.
-        pub fn compute_by_prec_rec(&self, sorted_prec_rec: &[PrecRec<R64>]) -> R64 {
+        pub fn compute_by_prec_rec(&self, sorted_prec_rec: &[impl Borrow<PrecRec<R64>>]) -> R64 {
             // compute precision envelope
             let enveloped = {
-                let max_recall = sorted_prec_rec.last().unwrap().recall;
+                let max_recall = sorted_prec_rec.last().unwrap().borrow().recall;
                 let first = PrecRec {
                     precision: r64(0.0),
                     recall: r64(0.0),
@@ -1179,7 +1385,7 @@ mod average_precision {
                 // append/prepend sentinel values
                 let iter = {
                     iter::once(&first)
-                        .chain(sorted_prec_rec.iter())
+                        .chain(sorted_prec_rec.iter().map(Borrow::borrow))
                         .chain(iter::once(&last))
                 };
 
@@ -1213,48 +1419,58 @@ mod average_precision {
             }
         }
 
-        pub fn compute_by_detections<'a, I, G>(
+        pub fn compute_by_detections<I, T, D, G>(
             &self,
-            rows: I,
+            dets: I,
             num_ground_truth: usize,
             iou_thresh: R64,
+            conf_thresh: R64,
         ) -> R64
         where
-            I: IntoIterator<Item = &'a DetectionForAp<G>>,
-            G: Eq + Ord + 'a,
+            I: IntoIterator<Item = T>,
+            T: DetectionForAp<D, G>,
+            G: Eq + Hash,
         {
-            // sort by ground truth and decreasing IoU
-            let mut rows: Vec<_> = rows.into_iter().collect();
-            rows.sort_by_cached_key(|row| (&row.ground_truth, -row.iou));
+            let dets: Vec<_> = dets.into_iter().collect();
+
+            // group by ground truth and each group sorts by decreasing IoU
+            let dets = dets
+                .iter()
+                .map(|det| (det.ground_truth(), det))
+                .into_group_map()
+                .into_iter()
+                .flat_map(|(_, mut dets)| {
+                    dets.sort_by_cached_key(|det| -det.iou());
+                    dets
+                });
 
             // Mark true positive (tp) for every first detection with IoU >= threshold
             // for every ground truth
-            let mut rows: Vec<_> = rows
-                .into_iter()
-                .scan(None, |prev_ground_truth, row| {
+            let mut dets: Vec<_> = dets
+                .scan(None, |prev_ground_truth, det| {
                     let is_same_ground_truth = prev_ground_truth
-                        .zip(row.ground_truth.as_ref())
+                        .zip(det.ground_truth())
                         .map_or(false, |(prev, curr)| prev == curr);
 
                     let is_tp = if is_same_ground_truth {
                         false
                     } else {
-                        row.iou >= iou_thresh
+                        det.iou() >= iou_thresh && det.confidence() >= conf_thresh
                     };
 
-                    *prev_ground_truth = row.ground_truth.as_ref();
+                    *prev_ground_truth = det.ground_truth();
 
-                    Some((row, is_tp))
+                    Some((det, is_tp))
                 })
                 .collect();
 
             // sort by decreasing confidence
-            rows.sort_by_key(|(row, _is_tp)| -row.confidence);
+            dets.sort_by_key(|(det, _is_tp)| -det.confidence());
 
             // compute precision and recall, it is ordered by increasing recall automatically
-            let prec_rec: Vec<_> = rows
+            let prec_rec: Vec<_> = dets
                 .into_iter()
-                .scan((0, 0), |(acc_tp, acc_fp), (_row, is_tp)| {
+                .scan((0, 0), |(acc_tp, acc_fp), (_det, is_tp)| {
                     if is_tp {
                         *acc_tp += 1;
                     } else {
@@ -1284,33 +1500,35 @@ mod average_precision {
     }
 
     impl CocoMapCalculator {
-        pub fn new() -> Result<Self> {
-            Ok(Self {
-                calculator: ApCalculator::new(IntegralMethod::Interpolation(101))?,
-            })
+        pub fn new() -> Self {
+            Self {
+                calculator: ApCalculator::new(IntegralMethod::Interpolation(101)).unwrap(),
+            }
         }
 
-        pub fn compute_mean_ap<I, G>(
+        pub fn compute_mean_ap<I, D, G>(
             &self,
-            rows: &[DetectionForAp<G>],
+            dets: &[impl DetectionForAp<D, G>],
             num_ground_truth: usize,
             iou_thresholds: impl IntoIterator<Item = R64>,
+            conf_thresh: R64,
         ) -> R64
         where
-            G: Eq + Ord,
+            G: Eq + Hash,
         {
             let sum_ap: R64 = iou_thresholds
                 .into_iter()
                 .map(|iou_thresh| {
                     let ap = self.calculator.compute_by_detections(
-                        rows.iter(),
+                        dets.iter(),
                         num_ground_truth,
                         iou_thresh,
+                        conf_thresh,
                     );
                     ap
                 })
                 .sum();
-            let mean_ap = sum_ap / rows.len() as f64;
+            let mean_ap = sum_ap / dets.len() as f64;
             mean_ap
         }
     }
@@ -1331,13 +1549,11 @@ mod tests {
         let vs = nn::VarStore::new(device);
         let root = vs.root();
         let loss_fn = {
-            let bce = MultiBceWithLogitsLossInit {
-                reduction: Reduction::None,
-                ..Default::default()
-            }
+            let bce = BceWithLogitsLossInit::default(Reduction::None).build();
+            let focal = FocalLossInit::default(Reduction::Mean, move |input, target| {
+                bce.forward(input, target)
+            })
             .build();
-            let focal =
-                FocalLossInit::default(move |input, target| bce.forward(input, target)).build();
             focal
         };
 
