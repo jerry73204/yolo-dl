@@ -67,6 +67,12 @@ pub fn nms(dets: &Tensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor>
 pub trait TensorExt {
     fn is_empty(&self) -> bool;
 
+    fn f_cartesian_product_nd(tensors: &[impl Borrow<Tensor>]) -> Result<Tensor>;
+
+    fn cartesian_product_nd(tensors: &[impl Borrow<Tensor>]) -> Tensor {
+        Self::f_cartesian_product_nd(tensors).unwrap()
+    }
+
     fn f_sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Result<Tensor>
     where
         T: Borrow<Tensor>,
@@ -209,6 +215,28 @@ pub trait TensorExt {
 impl TensorExt for Tensor {
     fn is_empty(&self) -> bool {
         self.numel() == 0
+    }
+
+    fn f_cartesian_product_nd(tensors: &[impl Borrow<Tensor>]) -> Result<Tensor> {
+        let num_tensors = tensors.len();
+        let tuples: Vec<_> = tensors
+            .iter()
+            .map(|tensor| -> Result<_> {
+                let tensor = tensor.borrow();
+                let shape = tensor.size();
+                let flattened = tensor.f_flatten(0, shape.len() as i64)?;
+                Ok((shape, flattened))
+            })
+            .try_collect()?;
+        let (shapes, tensors) = tuples.into_iter().unzip_n_vec();
+
+        let new_shape: Vec<_> = shapes
+            .into_iter()
+            .flatten()
+            .chain(iter::once(num_tensors as i64))
+            .collect();
+        let output = Tensor::cartesian_prod(&tensors).view(new_shape.as_slice());
+        Ok(output)
     }
 
     fn f_fill_rect_(
