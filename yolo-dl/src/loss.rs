@@ -6,9 +6,9 @@ use crate::{
 };
 
 pub use average_precision::*;
+pub use bce_with_logit_loss::*;
 pub use focal_loss::*;
 pub use misc::*;
-pub use multi_bce_with_logit_loss::*;
 pub use non_max_suppression::*;
 pub use pred_target_matching::*;
 pub use yolo_loss::*;
@@ -91,13 +91,14 @@ mod yolo_loss {
         pub focal_loss_gamma: Option<f64>,
         pub match_grid_method: Option<MatchGrid>,
         pub iou_kind: Option<IoUKind>,
-        pub iou_threshold: Option<R64>,
         pub smooth_bce_coef: Option<f64>,
         pub objectness_iou_ratio: Option<f64>,
         pub anchor_scale_thresh: Option<f64>,
         pub iou_loss_weight: Option<f64>,
         pub objectness_loss_weight: Option<f64>,
         pub classification_loss_weight: Option<f64>,
+        pub nms_iou_threshold: Option<R64>,
+        pub nms_confidence_threshold: Option<R64>,
     }
 
     impl YoloLossInit {
@@ -108,19 +109,19 @@ mod yolo_loss {
                 focal_loss_gamma,
                 match_grid_method,
                 iou_kind,
-                iou_threshold,
                 smooth_bce_coef,
                 objectness_iou_ratio,
                 anchor_scale_thresh,
                 iou_loss_weight,
                 objectness_loss_weight,
                 classification_loss_weight,
+                nms_iou_threshold,
+                nms_confidence_threshold,
             } = self;
 
             let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
             let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
             let iou_kind = iou_kind.unwrap_or(IoUKind::DIoU);
-            let iou_threshold = iou_threshold.map(|val| val.raw()).unwrap_or(0.5);
             let smooth_bce_coef = smooth_bce_coef.unwrap_or(0.01);
             let objectness_iou_ratio = objectness_iou_ratio.unwrap_or(1.0);
             let anchor_scale_thresh = anchor_scale_thresh.unwrap_or(4.0);
@@ -144,7 +145,6 @@ mod yolo_loss {
                 iou_loss_weight >= 0.0,
                 "iou_loss_weight must be non-negative"
             );
-            ensure!(iou_threshold >= 0.0, "iou_threshold must be non-negative");
             ensure!(
                 objectness_loss_weight >= 0.0,
                 "objectness_loss_weight must be non-negative"
@@ -190,21 +190,32 @@ mod yolo_loss {
             }
             .build()?;
 
-            let coco_map_calculator = CocoMapCalculator::new();
+            let nms = {
+                let mut init = NonMaxSuppressionInit::default();
+                if let Some(iou_threshold) = nms_iou_threshold {
+                    init.iou_threshold = iou_threshold;
+                }
+                if let Some(confidence_threshold) = nms_confidence_threshold {
+                    init.confidence_threshold = confidence_threshold;
+                }
+                init.build()?
+            };
+
+            let map_calculator = MeanApCalculator::new_coco();
 
             Ok(YoloLoss {
                 reduction,
                 bce_class,
                 bce_objectness,
                 iou_kind,
-                iou_threshold,
                 smooth_bce_coef,
                 objectness_iou_ratio,
                 iou_loss_weight,
                 objectness_loss_weight,
                 classification_loss_weight,
                 bbox_matcher,
-                coco_map_calculator,
+                nms,
+                map_calculator,
             })
         }
     }
@@ -217,13 +228,14 @@ mod yolo_loss {
                 focal_loss_gamma: None,
                 match_grid_method: None,
                 iou_kind: None,
-                iou_threshold: None,
                 smooth_bce_coef: None,
                 objectness_iou_ratio: None,
                 anchor_scale_thresh: None,
                 iou_loss_weight: None,
                 objectness_loss_weight: None,
                 classification_loss_weight: None,
+                nms_iou_threshold: None,
+                nms_confidence_threshold: None,
             }
         }
     }
@@ -234,14 +246,14 @@ mod yolo_loss {
         bce_class: FocalLoss,
         bce_objectness: FocalLoss,
         iou_kind: IoUKind,
-        iou_threshold: f64,
         smooth_bce_coef: f64,
         objectness_iou_ratio: f64,
         iou_loss_weight: f64,
         objectness_loss_weight: f64,
         classification_loss_weight: f64,
         bbox_matcher: BBoxMatcher,
-        coco_map_calculator: CocoMapCalculator,
+        nms: NonMaxSuppression,
+        map_calculator: MeanApCalculator,
     }
 
     impl YoloLoss {
@@ -679,37 +691,14 @@ mod non_max_suppression {
         conf: Tensor,
     }
 
-    #[derive(Debug, TensorLike)]
-    pub struct TlbrConfTensor {
-        pub t: Tensor,
-        pub l: Tensor,
-        pub b: Tensor,
-        pub r: Tensor,
-        pub conf: Tensor,
-    }
-
     #[derive(Debug, PartialEq, Eq, Hash, TensorLike)]
     pub struct BatchClassIndex {
         pub batch: i64,
         pub class: i64,
     }
 
-    impl TlbrConfTensor {
-        pub fn select(&self, indexes: &Tensor) -> Self {
-            let Self {
-                t, l, b, r, conf, ..
-            } = self;
-            let t = t.index_select(0, indexes);
-            let l = l.index_select(0, indexes);
-            let b = b.index_select(0, indexes);
-            let r = r.index_select(0, indexes);
-            let conf = conf.index_select(0, indexes);
-            Self { t, l, b, r, conf }
-        }
-    }
-
     #[derive(Debug)]
-    pub struct NonMaxSuppressionOutput(HashMap<BatchClassIndex, TlbrConfTensor>);
+    pub struct NonMaxSuppressionOutput(pub HashMap<BatchClassIndex, TlbrConfTensor>);
 
     #[derive(Debug)]
     pub struct NonMaxSuppression {
@@ -765,17 +754,19 @@ mod non_max_suppression {
                     .index_select(1, &classes)
                     .index_select(2, &instances);
 
-                (
-                    TlbrConfTensor {
+                let bbox: TlbrConfTensor = TlbrConfTensorUnchecked {
+                    tlbr: TlbrTensorUnchecked {
                         t: new_t,
                         l: new_l,
                         b: new_b,
                         r: new_r,
-                        conf: new_conf,
                     },
-                    batches,
-                    classes,
-                )
+                    conf: new_conf,
+                }
+                .try_into()
+                .unwrap();
+
+                (bbox, batches, classes)
             };
 
             // group bboxes by batch and class indexes
@@ -793,8 +784,11 @@ mod non_max_suppression {
                     .map(|((batch, class), select_indexes)| {
                         // select bboxes of specfic batch and class
                         let select_indexes = Tensor::of_slice(&select_indexes);
-                        let candidate_pred = selected_pred.select(&select_indexes);
-                        let TlbrConfTensor { t, l, b, r, conf } = candidate_pred.shallow_clone();
+                        let candidate_pred = selected_pred.index_select(&select_indexes);
+                        let TlbrConfTensorUnchecked {
+                            tlbr: TlbrTensorUnchecked { t, l, b, r },
+                            conf,
+                        } = candidate_pred.shallow_clone().into();
 
                         // run NMS
                         let nms_indexes = tch_goodies::nms(
@@ -805,7 +799,7 @@ mod non_max_suppression {
                         .unwrap();
 
                         let nms_index = BatchClassIndex { batch, class };
-                        let nms_pred = candidate_pred.select(&nms_indexes);
+                        let nms_pred = candidate_pred.index_select(&nms_indexes);
 
                         (nms_index, nms_pred)
                     })
@@ -827,7 +821,7 @@ mod non_max_suppression {
     }
 }
 
-mod multi_bce_with_logit_loss {
+mod bce_with_logit_loss {
     use super::*;
 
     #[derive(Debug)]
@@ -1417,6 +1411,10 @@ mod average_precision {
     }
 
     impl ApCalculator {
+        pub fn new_coco() -> Self {
+            Self::new(IntegralMethod::Interpolation(101)).unwrap()
+        }
+
         pub fn new(integral_method: IntegralMethod) -> Result<Self> {
             if let IntegralMethod::Interpolation(n_points) = integral_method {
                 ensure!(
@@ -1487,7 +1485,6 @@ mod average_precision {
             dets: I,
             num_ground_truth: usize,
             iou_thresh: R64,
-            conf_thresh: R64,
         ) -> R64
         where
             I: IntoIterator<Item = T>,
@@ -1497,33 +1494,26 @@ mod average_precision {
             let dets: Vec<_> = dets.into_iter().collect();
 
             // group by ground truth and each group sorts by decreasing IoU
-            let dets = dets
+            let det_groups = dets
                 .iter()
                 .map(|det| (det.ground_truth(), det))
-                .into_group_map()
-                .into_iter()
-                .flat_map(|(_, mut dets)| {
-                    dets.sort_by_cached_key(|det| -det.iou());
-                    dets
-                });
+                .into_group_map();
 
             // Mark true positive (tp) for every first detection with IoU >= threshold
             // for every ground truth
-            let mut dets: Vec<_> = dets
-                .scan(None, |prev_ground_truth, det| {
-                    let is_same_ground_truth = prev_ground_truth
-                        .zip(det.ground_truth())
-                        .map_or(false, |(prev, curr)| prev == curr);
+            let mut dets: Vec<_> = det_groups
+                .into_iter()
+                .flat_map(|(_ground_truth, mut dets)| {
+                    dets.sort_by_cached_key(|det| -det.iou());
+                    let mut dets = dets.into_iter();
 
-                    let is_tp = if is_same_ground_truth {
-                        false
-                    } else {
-                        det.iou() >= iou_thresh && det.confidence() >= conf_thresh
-                    };
-
-                    *prev_ground_truth = det.ground_truth();
-
-                    Some((det, is_tp))
+                    let first = dets.next().into_iter().map(|det| {
+                        let is_tp = det.iou() >= iou_thresh;
+                        (det, is_tp)
+                    });
+                    let remaining = dets.map(|det| (det, false));
+                    let iter = first.chain(remaining);
+                    iter
                 })
                 .collect();
 
@@ -1558,40 +1548,57 @@ mod average_precision {
     }
 
     #[derive(Debug)]
-    pub struct CocoMapCalculator {
-        calculator: ApCalculator,
+    pub struct MeanApCalculator {
+        ap_calculator: ApCalculator,
+        iou_thresholds: Vec<R64>,
     }
 
-    impl CocoMapCalculator {
-        pub fn new() -> Self {
+    impl MeanApCalculator {
+        pub fn new_coco() -> Self {
+            let iou_thresholds: Vec<_> = (0..10)
+                .map(|ind| 0.5 + ind as f64 * 0.05)
+                .map(r64)
+                .collect();
             Self {
-                calculator: ApCalculator::new(IntegralMethod::Interpolation(101)).unwrap(),
+                ap_calculator: ApCalculator::new_coco(),
+                iou_thresholds,
             }
+        }
+
+        pub fn new(integral_method: IntegralMethod, iou_thresholds: Vec<R64>) -> Result<Self> {
+            ensure!(
+                !iou_thresholds.is_empty(),
+                "iou_thresholds must be non-empty"
+            );
+
+            Ok(Self {
+                ap_calculator: ApCalculator::new(integral_method).unwrap(),
+                iou_thresholds,
+            })
         }
 
         pub fn compute_mean_ap<I, D, G>(
             &self,
             dets: &[impl DetectionForAp<D, G>],
             num_ground_truth: usize,
-            iou_thresholds: impl IntoIterator<Item = R64>,
-            conf_thresh: R64,
         ) -> R64
         where
             G: Eq + Hash,
         {
-            let sum_ap: R64 = iou_thresholds
-                .into_iter()
+            let sum_ap: R64 = self
+                .iou_thresholds
+                .iter()
+                .cloned()
                 .map(|iou_thresh| {
-                    let ap = self.calculator.compute_by_detections(
+                    let ap = self.ap_calculator.compute_by_detections(
                         dets.iter(),
                         num_ground_truth,
                         iou_thresh,
-                        conf_thresh,
                     );
                     ap
                 })
                 .sum();
-            let mean_ap = sum_ap / dets.len() as f64;
+            let mean_ap = sum_ap / self.iou_thresholds.len() as f64;
             mean_ap
         }
     }
