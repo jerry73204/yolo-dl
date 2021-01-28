@@ -595,7 +595,7 @@ async fn multi_gpu_training_worker(
                                     anchor_index,
                                     grid_col,
                                     grid_row,
-                                } = *orig_instance_index.as_ref();
+                                } = orig_instance_index;
                                 let new_instance_index = InstanceIndex {
                                     batch_index: batch_index + batch_index_base,
                                     layer_index,
@@ -603,7 +603,7 @@ async fn multi_gpu_training_worker(
                                     grid_col,
                                     grid_row,
                                 };
-                                (Arc::new(new_instance_index), bbox)
+                                (new_instance_index, bbox)
                             },
                         );
 
@@ -613,14 +613,15 @@ async fn multi_gpu_training_worker(
                     .unzip_n_vec();
 
                 let model_output = MergeDetect2DOutput::cat(model_output_vec, master_device)?;
-                let target_bboxes: HashMap<_, _> =
-                    target_bboxes_vec.into_iter().flatten().collect();
+                let target_bboxes =
+                    PredTargetMatching(target_bboxes_vec.into_iter().flatten().collect());
 
                 assert!(target_bboxes
+                    .0
                     .keys()
                     .all(|index| index.batch_index < model_output.batch_size() as usize));
 
-                (model_output, Arc::new(target_bboxes))
+                (model_output, target_bboxes)
             };
 
             logging_tx
@@ -856,7 +857,7 @@ fn single_gpu_training_worker(
                     &image,
                     &output,
                     &losses,
-                    Arc::new(loss_auxiliary.target_bboxes.0),
+                    loss_auxiliary.target_bboxes,
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
         } else {

@@ -22,7 +22,7 @@ mod logging_message {
             input: Tensor,
             output: MergeDetect2DOutput,
             losses: YoloLossOutput,
-            target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>>,
+            target_bboxes: PredTargetMatching,
         },
         Images {
             images: Vec<Tensor>,
@@ -52,7 +52,7 @@ mod logging_message {
             input: &Tensor,
             output: &MergeDetect2DOutput,
             losses: &YoloLossOutput,
-            target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>>,
+            target_bboxes: PredTargetMatching,
         ) -> Self
         where
             S: Into<Cow<'static, str>>,

@@ -122,7 +122,7 @@ impl LoggingWorker {
         input: Tensor,
         output: MergeDetect2DOutput,
         losses: YoloLossOutput,
-        target_bboxes: Arc<HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>>,
+        target_bboxes: PredTargetMatching,
     ) -> Result<()> {
         let Config {
             logging:
@@ -165,15 +165,16 @@ impl LoggingWorker {
                         // btlbr = batch + tlbr
                         let (batch_index_vec, batch_indexes_vec, flat_indexes_vec, target_btlbrs) =
                             target_bboxes
+                                .0
                                 .iter()
                                 .map(|(pred_index, target_bbox_ratio)| -> Result<_> {
                                     let InstanceIndex {
                                         batch_index,
                                         layer_index,
                                         ..
-                                    } = *pred_index.as_ref();
+                                    } = *pred_index;
                                     let flat_index =
-                                        output.instance_to_flat_index(pred_index.as_ref()).unwrap();
+                                        output.instance_to_flat_index(pred_index).unwrap();
                                     let target_bbox_pixel: LabeledPixelBBox<_> = target_bbox_ratio
                                         .to_r64_bbox(image_h as usize, image_w as usize);
                                     let [target_t, target_l, target_b, target_r] =

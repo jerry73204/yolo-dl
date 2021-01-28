@@ -1257,13 +1257,13 @@ mod pred_target_matching {
                     })
                     .cartesian_product(neighbor_grid_indexes.into_iter())
                     .map(move |(anchor_index, (grid_row, grid_col))| {
-                        let instance_index = Arc::new(InstanceIndex {
+                        let instance_index = InstanceIndex {
                             batch_index,
                             layer_index,
                             anchor_index: anchor_index as i64,
                             grid_row,
                             grid_col,
-                        });
+                        };
 
                         (instance_index, target_bbox.clone())
                     })
@@ -1286,7 +1286,7 @@ mod pred_target_matching {
     }
 
     #[derive(Debug, Clone)]
-    pub struct PredTargetMatching(pub HashMap<Arc<InstanceIndex>, Arc<LabeledRatioBBox>>);
+    pub struct PredTargetMatching(pub HashMap<InstanceIndex, Arc<LabeledRatioBBox>>);
 }
 
 mod average_precision {

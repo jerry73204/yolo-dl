@@ -61,7 +61,7 @@ pub use tokio::sync::{broadcast, mpsc};
 pub use tracing::{error, info, warn, Instrument};
 pub use uuid::Uuid;
 pub use yolo_dl::{
-    loss::{YoloLoss, YoloLossAuxiliary, YoloLossInit, YoloLossOutput},
+    loss::{PredTargetMatching, YoloLoss, YoloLossAuxiliary, YoloLossInit, YoloLossOutput},
     model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput, YoloModel},
     processor::{CacheLoader, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
