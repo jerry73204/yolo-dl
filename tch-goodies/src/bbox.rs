@@ -77,6 +77,27 @@ mod bbox_tensor {
         pub r: Tensor,
     }
 
+    #[derive(Debug, TensorLike)]
+    pub struct TlbrConfTensorUnchecked {
+        pub tlbr: TlbrTensorUnchecked,
+        pub conf: Tensor,
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct TlbrConfTensor {
+        tlbr: TlbrTensor,
+        conf: Tensor,
+    }
+
+    impl TlbrConfTensor {
+        pub fn index_select(&self, indexes: &Tensor) -> Self {
+            let Self { tlbr, conf, .. } = self;
+            let tlbr = tlbr.index_select(indexes);
+            let conf = conf.index_select(0, indexes);
+            Self { tlbr, conf }
+        }
+    }
+
     impl SizeTensor {
         pub fn num_samples(&self) -> i64 {
             let (num, _) = self.h.size2().unwrap();
@@ -125,6 +146,15 @@ mod bbox_tensor {
                 b: b.i((range.clone(), ..)),
                 r: r.i((range, ..)),
             }
+        }
+
+        pub fn index_select(&self, indexes: &Tensor) -> Self {
+            let Self { t, l, b, r } = self;
+            let t = t.index_select(0, indexes);
+            let l = l.index_select(0, indexes);
+            let b = b.index_select(0, indexes);
+            let r = r.index_select(0, indexes);
+            Self { t, l, b, r }
         }
 
         pub fn size(&self) -> SizeTensor {
@@ -201,6 +231,23 @@ mod bbox_tensor {
             let outer_area = self.area().area() + other.area().area() - inter_area.area() + epsilon;
             let iou = inter_area.area() / outer_area;
             iou
+        }
+    }
+
+    impl TryFrom<TlbrConfTensorUnchecked> for TlbrConfTensor {
+        type Error = Error;
+
+        fn try_from(from: TlbrConfTensorUnchecked) -> Result<Self, Self::Error> {
+            let TlbrConfTensorUnchecked { tlbr, conf } = from;
+            let tlbr = TlbrTensor::try_from(tlbr)?;
+
+            match conf.size2()? {
+                (n_samples, 1) => ensure!(n_samples == tlbr.num_samples(), "size mismatch"),
+                _ => bail!("size mismatch"),
+            }
+            ensure!(conf.device() == tlbr.device(), "device mismatch");
+
+            Ok(Self { tlbr, conf })
         }
     }
 
@@ -318,6 +365,16 @@ mod bbox_tensor {
         fn from(from: TlbrTensor) -> Self {
             let TlbrTensor { t, l, b, r } = from;
             Self { t, l, b, r }
+        }
+    }
+
+    impl From<TlbrConfTensor> for TlbrConfTensorUnchecked {
+        fn from(from: TlbrConfTensor) -> Self {
+            let TlbrConfTensor { tlbr, conf } = from;
+            Self {
+                tlbr: tlbr.into(),
+                conf,
+            }
         }
     }
 
