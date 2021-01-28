@@ -1,36 +1,21 @@
-use crate::common::*;
+use crate::{bbox::TlbrTensor, common::*};
 
-pub fn nms(dets: &Tensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor> {
+pub fn nms(bboxes: &TlbrTensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor> {
     tch::no_grad(|| -> Result<_> {
-        let (n_dets, four) = dets
-            .size2()
-            .map_err(|_| format_err!("boxes should be a 2d tensor"))?;
+        let n_bboxes = bboxes.num_samples();
         let n_scores = scores
             .size1()
             .map_err(|_| format_err!("scores should be a 1d tensor"))?;
-        ensure!(four == 4, "boxes should have 4 elements in dimension 1");
         ensure!(
-            n_dets == n_scores,
+            n_bboxes == n_scores,
             "boxes and scores should have same number of elements in dimension 0"
         );
-        let device = dets.device();
-
-        let bbox_t = dets.select(1, 0);
-        let bbox_l = dets.select(1, 1);
-        let bbox_b = dets.select(1, 2);
-        let bbox_r = dets.select(1, 3);
-        let area = (&bbox_b - &bbox_r) * (&bbox_r - &bbox_l);
+        let device = bboxes.device();
         let (_, order) = scores.sort(0, /* descending = */ true);
-
-        let bbox_t: Vec<f32> = bbox_t.into();
-        let bbox_l: Vec<f32> = bbox_l.into();
-        let bbox_b: Vec<f32> = bbox_b.into();
-        let bbox_r: Vec<f32> = bbox_r.into();
-        let area: Vec<f32> = area.into();
         let order: Vec<u8> = order.into();
 
-        let n_dets = n_dets as usize;
-        let mut suppressed = vec![false; n_dets];
+        let n_bboxes = n_bboxes as usize;
+        let mut suppressed = vec![false; n_bboxes];
         let mut keep: Vec<i64> = vec![];
 
         for li in order.into_iter().map(|index| index as usize) {
@@ -38,20 +23,12 @@ pub fn nms(dets: &Tensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor>
                 continue;
             }
             keep.push(li as i64);
-            let curr_t = bbox_t[li];
-            let curr_l = bbox_l[li];
-            let curr_b = bbox_b[li];
-            let curr_r = bbox_r[li];
-            let curr_area = area[li];
+            let lhs_bbox = bboxes.select(li as i64);
 
-            for ri in (li + 1)..n_dets {
-                let inter_t = curr_t.max(bbox_t[ri]);
-                let inter_l = curr_l.max(bbox_l[ri]);
-                let inter_b = curr_b.min(bbox_b[ri]);
-                let inter_r = curr_r.min(bbox_r[ri]);
+            for ri in (li + 1)..n_bboxes {
+                let rhs_bbox = bboxes.select(ri as i64);
 
-                let inter_area = (inter_b - inter_t) * (inter_r - inter_l);
-                let iou = inter_area / (curr_area + area[ri] - inter_area);
+                let iou = f32::from(lhs_bbox.iou_with(&rhs_bbox));
                 if iou as f64 > iou_threshold {
                     suppressed[ri] = true;
                 }
