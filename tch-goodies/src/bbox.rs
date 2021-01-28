@@ -82,12 +82,20 @@ mod bbox_tensor {
             let (num, _) = self.h.size2().unwrap();
             num
         }
+
+        pub fn device(&self) -> Device {
+            self.h.device()
+        }
     }
 
     impl AreaTensor {
         pub fn num_samples(&self) -> i64 {
             let (num, _) = self.area.size2().unwrap();
             num
+        }
+
+        pub fn device(&self) -> Device {
+            self.area.device()
         }
     }
 
@@ -102,6 +110,21 @@ mod bbox_tensor {
         pub fn num_samples(&self) -> i64 {
             let (num, _) = self.t.size2().unwrap();
             num
+        }
+
+        pub fn device(&self) -> Device {
+            self.t.device()
+        }
+
+        pub fn select(&self, index: i64) -> Self {
+            let Self { t, l, b, r } = self;
+            let range = index..(index + 1);
+            Self {
+                t: t.i((range.clone(), ..)),
+                l: l.i((range.clone(), ..)),
+                b: b.i((range.clone(), ..)),
+                r: r.i((range, ..)),
+            }
         }
 
         pub fn size(&self) -> SizeTensor {
@@ -171,6 +194,14 @@ mod bbox_tensor {
                 r: max_r,
             }
         }
+
+        pub fn iou_with(&self, other: &Self) -> Tensor {
+            let epsilon = 1e-4;
+            let inter_area = self.intersect_area(other);
+            let outer_area = self.area().area() + other.area().area() - inter_area.area() + epsilon;
+            let iou = inter_area.area() / outer_area;
+            iou
+        }
     }
 
     impl TryFrom<SizeTensorUnchecked> for SizeTensor {
@@ -182,6 +213,15 @@ mod bbox_tensor {
                 ((h_len, 1), (w_len, 1)) => ensure!(h_len == w_len, "size mismatch"),
                 _ => bail!("size mismatch"),
             };
+            ensure!(
+                hashset! {
+                    h.device(),
+                    w.device(),
+                }
+                .len()
+                    == 1,
+                "device mismatch"
+            );
             Ok(Self { h, w })
         }
     }
@@ -211,6 +251,17 @@ mod bbox_tensor {
                 ),
                 _ => bail!("size mismatch"),
             };
+            ensure!(
+                hashset! {
+                    cy.device(),
+                    cx.device(),
+                    h.device(),
+                    w.device(),
+                }
+                .len()
+                    == 1,
+                "device mismatch"
+            );
             Ok(Self { cy, cx, h, w })
         }
     }
@@ -227,6 +278,17 @@ mod bbox_tensor {
                 ),
                 _ => bail!("size mismatch"),
             };
+            ensure!(
+                hashset! {
+                    t.device(),
+                    l.device(),
+                    b.device(),
+                    r.device(),
+                }
+                .len()
+                    == 1,
+                "device mismatch"
+            );
             Ok(Self { t, l, b, r })
         }
     }

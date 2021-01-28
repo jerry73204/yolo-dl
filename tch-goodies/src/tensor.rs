@@ -65,6 +65,8 @@ pub fn nms(dets: &Tensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor>
 }
 
 pub trait TensorExt {
+    fn unzip_first(&self) -> Option<Vec<Tensor>>;
+
     fn is_empty(&self) -> bool;
 
     fn f_cartesian_product_nd(tensors: &[impl Borrow<Tensor>]) -> Result<Tensor>;
@@ -213,6 +215,12 @@ pub trait TensorExt {
 }
 
 impl TensorExt for Tensor {
+    fn unzip_first(&self) -> Option<Vec<Tensor>> {
+        let first_dim = *self.size().first()?;
+        let tensors: Vec<_> = (0..first_dim).map(|index| self.select(index, 0)).collect();
+        Some(tensors)
+    }
+
     fn is_empty(&self) -> bool {
         self.numel() == 0
     }

@@ -3,6 +3,7 @@ pub use approx::{abs_diff_eq, AbsDiffEq};
 pub use getset::Getters;
 pub use image::{DynamicImage, GenericImageView, ImageBuffer, Pixel};
 pub use itertools::Itertools;
+pub use maplit::hashset;
 pub use noisy_float::prelude::*;
 pub use num_traits::{FromPrimitive, Num, NumOps, One, Zero};
 pub use serde::{
