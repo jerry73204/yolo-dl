@@ -7,7 +7,7 @@
         "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         "kind": {
             "type": "Coco",
-            "image_size": 512,
+            "image_size": 256,
             "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
             "dataset_name": "train2017",
             "classes_file": "cfg/coco.class",
@@ -86,7 +86,7 @@
         "enable_debug_stat": false,
     },
     "preprocessor": {
-        "worker_buf_size": 11,
+        // "worker_buf_size": 36,
         "cache_dir": "/home/aeon/yolo-dl-cache",
         "device": "cuda(0)",
         "mixup_prob": 0.0,
@@ -107,43 +107,48 @@
         "min_bbox_size": 0.005,
     },
     "training": {
-        "batch_size": 4,
+        // "batch_size": 4,
+        "batch_size": 30,
         "device_config": {
             "type": "SingleDevice",
-            "device": "cuda(3)"
+            "device": "cuda(0)"
+
+            // "type": "MultiDevice",
+            // "minibatch_size": 4,
+            // "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
         },
-        // "batch_size": 12,
-        // "device_config": {
-        //     "type": "MultiDevice",
-        //     "minibatch_size": 4,
-        //     "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
-        // },
         "initial_step": 0,
         "momentum": 0.9,
         "weight_decay": 0.0005,
         "lr_schedule": {
             "type": "StepWise",
+
+            // "steps": [
+            //     [0, 0.01],
+            // ],
+
             // "steps": [
             //     [0, 0.001],
             // ],
+
             "steps": [
                 [0, 0.01],
-                [6000, 0.001],
+                [1200, 0.001],
             ],
         },
         "loss": {
             "match_grid_method": "Rect4",
             "iou_kind": "DIoU",
-            "iou_loss_weight": 0.05,
+            "iou_loss_weight": 0.31,
             "objectness_loss_weight": 1.0,
-            "classification_loss_weight": 0.58,
+            "classification_loss_weight": 0.87,
         },
         "save_checkpoint_steps": 1000,
         "load_checkpoint": {
-            "type": "Disabled",
+            // "type": "Disabled",
+            "type": "FromRecent",
+            // "type": "FromFile",
+            // "file": "logs-coco/2021-01-29-05-00-26.463+0800/checkpoints/2021-01-29-05-06-38.722+0800_001000_00.42787.ckpt",
         },
-        // "load_checkpoint": {
-        //     "type": "FromRecent",
-        // },
     },
 }
