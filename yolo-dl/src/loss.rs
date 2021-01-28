@@ -9,8 +9,8 @@ pub use average_precision::*;
 pub use focal_loss::*;
 pub use misc::*;
 pub use multi_bce_with_logit_loss::*;
+pub use non_max_suppression::*;
 pub use pred_target_matching::*;
-// pub use yolo_benchmark::*;
 pub use yolo_loss::*;
 pub use yolo_loss_output::*;
 
@@ -632,137 +632,200 @@ mod yolo_loss {
     }
 }
 
-// /// Defines loss for inference
-// mod yolo_benchmark {
-//     use super::*;
+mod non_max_suppression {
+    use super::*;
 
-//     #[derive(Debug)]
-//     pub struct YoloBenchmarkInit {
-//         pub iou_threshold: R64,
-//         pub confidence_threshold: R64,
-//     }
+    #[derive(Debug)]
+    pub struct NonMaxSuppressionInit {
+        pub iou_threshold: R64,
+        pub confidence_threshold: R64,
+    }
 
-//     impl YoloBenchmarkInit {
-//         pub fn build(self) -> Result<YoloBenchmark> {
-//             let Self {
-//                 iou_threshold,
-//                 confidence_threshold,
-//             } = self;
+    impl Default for NonMaxSuppressionInit {
+        fn default() -> Self {
+            Self {
+                iou_threshold: r64(0.6),
+                confidence_threshold: r64(0.1),
+            }
+        }
+    }
 
-//             ensure!(iou_threshold >= 0.0, "iou_threshold must be non-negative");
-//             ensure!(
-//                 confidence_threshold >= 0.0,
-//                 "confidence_threshold must be non-negative"
-//             );
+    impl NonMaxSuppressionInit {
+        pub fn build(self) -> Result<NonMaxSuppression> {
+            let Self {
+                iou_threshold,
+                confidence_threshold,
+            } = self;
 
-//             Ok(YoloBenchmark {
-//                 iou_threshold,
-//                 confidence_threshold,
-//             })
-//         }
-//     }
+            ensure!(iou_threshold >= 0.0, "iou_threshold must be non-negative");
+            ensure!(
+                confidence_threshold >= 0.0,
+                "confidence_threshold must be non-negative"
+            );
 
-//     #[derive(Debug)]
-//     pub struct YoloBenchmark {
-//         iou_threshold: R64,
-//         confidence_threshold: R64,
-//     }
+            Ok(NonMaxSuppression {
+                iou_threshold,
+                confidence_threshold,
+            })
+        }
+    }
 
-//     impl YoloBenchmark {
-//         pub fn forward(
-//             &self,
-//             prediction: &MergeDetect2DOutput,
-//             target: &Vec<Vec<LabeledRatioBBox>>,
-//         ) -> Result<()> {
-//             let Self {
-//                 iou_threshold,
-//                 confidence_threshold,
-//             } = *self;
+    #[derive(Debug, TensorLike)]
+    struct BatchPrediction {
+        t: Tensor,
+        l: Tensor,
+        b: Tensor,
+        r: Tensor,
+        conf: Tensor,
+    }
 
-//             let device = prediction.device();
-//             let num_classes = prediction.num_classes;
-//             let num_instances = prediction.num_instances();
-//             let batch_size = prediction.batch_size();
+    #[derive(Debug, TensorLike)]
+    pub struct TlbrConfTensor {
+        pub t: Tensor,
+        pub l: Tensor,
+        pub b: Tensor,
+        pub r: Tensor,
+        pub conf: Tensor,
+    }
 
-//             // caterian product of predicted and ground truth bboxes
-//             (0..batch_size)
-//                 .zip(target.iter())
-//                 .map(|(batch_index, target_bboxes)| -> Result<_> {
-//                     // get outputs of specified batch index
-//                     // each have shape [n_instances]
-//                     let pred_tlbr = {
-//                         let MergeDetect2DOutput {
-//                             cy,
-//                             cx,
-//                             h,
-//                             w,
-//                             class,
-//                             obj,
-//                             ..
-//                         } = prediction;
-//                         let cycxhw = CycxhwTensor::new(
-//                             &cy.i((batch_index, .., ..)).view([-1]),
-//                             &cx.i((batch_index, .., ..)).view([-1]),
-//                             &h.i((batch_index, .., ..)).view([-1]),
-//                             &w.i((batch_index, .., ..)).view([-1]),
-//                         )?;
-//                         TlbrTensor::from(&cycxhw)
-//                     };
-//                     // let pred_class = class.i((batch_index, .., ..));
-//                     // let pred_obj = obj.i((batch_index, .., ..));
+    #[derive(Debug, PartialEq, Eq, Hash, TensorLike)]
+    pub struct BatchClassIndex {
+        pub batch: i64,
+        pub class: i64,
+    }
 
-//                     // convert target bboxes to tensors
-//                     let target_tlbr = {
-//                         let target_bboxes: Vec<_> = target_bboxes
-//                             .iter()
-//                             .map(|bbox| bbox.map_elem(|val| val.to_f64() as f32))
-//                             .collect();
-//                         TlbrTensor::from(target_bboxes).to_device(device)
-//                     };
+    impl TlbrConfTensor {
+        pub fn select(&self, indexes: &Tensor) -> Self {
+            let Self {
+                t, l, b, r, conf, ..
+            } = self;
+            let t = t.index_select(0, indexes);
+            let l = l.index_select(0, indexes);
+            let b = b.index_select(0, indexes);
+            let r = r.index_select(0, indexes);
+            let conf = conf.index_select(0, indexes);
+            Self { t, l, b, r, conf }
+        }
+    }
 
-//                     // pair up pred and target bboxes
-//                     // tensors have shape [n_pred * n_target, 2]
-//                     let pred_area = pred_tlbr.area().area();
-//                     let target_area = target_tlbr.area().area();
-//                     let inner_area = pred_tlbr.intersect_area(&pred_tlbr).area();
-//                     let outer_area = pred_area + target_area - inner_area;
-//                     let iou = inner_area / outer_area; // TODO: fix divide by zero
+    #[derive(Debug)]
+    pub struct NonMaxSuppressionOutput(HashMap<BatchClassIndex, TlbrConfTensor>);
 
-//                     todo!();
-//                 });
+    #[derive(Debug)]
+    pub struct NonMaxSuppression {
+        iou_threshold: R64,
+        confidence_threshold: R64,
+    }
 
-//             (0..num_classes).map(|class_index| {
-//                 todo!();
-//             });
+    impl NonMaxSuppression {
+        pub fn forward(&self, prediction: &MergeDetect2DOutput) -> NonMaxSuppressionOutput {
+            let Self {
+                iou_threshold,
+                confidence_threshold,
+            } = *self;
 
-//             Ok(())
-//         }
-//     }
+            let batch_pred = {
+                let MergeDetect2DOutput {
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    class,
+                    obj,
+                    ..
+                } = prediction;
 
-//     #[derive(Debug)]
-//     struct Detection {}
+                // compute confidence score (= objectness * class_score)
+                let conf = obj.sigmoid() * class.sigmoid();
 
-//     impl<D, G> DetectionForAp<D, G> for Detection
-//     where
-//         G: Eq + Hash,
-//     {
-//         fn detection(&self) -> &D {
-//             todo!();
-//         }
+                // compute tlbr bbox
+                let t = cy - h / 2.0;
+                let b = cy + h / 2.0;
+                let l = cx - w / 2.0;
+                let r = cx + w / 2.0;
 
-//         fn ground_truth(&self) -> Option<&G> {
-//             todo!();
-//         }
+                BatchPrediction { t, b, l, r, conf }
+            };
 
-//         fn confidence(&self) -> R64 {
-//             todo!();
-//         }
+            // select bboxes which confidence is above threshold
+            let (selected_pred, batch_indexes, class_indexes) = {
+                let BatchPrediction { t, l, b, r, conf } = batch_pred;
 
-//         fn iou(&self) -> R64 {
-//             todo!();
-//         }
-//     }
-// }
+                let indexes = conf.ge(confidence_threshold.raw()).nonzero();
+                let batches = indexes.i((.., 0));
+                let classes = indexes.i((.., 1));
+                let instances = indexes.i((.., 2));
+
+                let new_t = t.index_select(0, &batches).index_select(2, &instances);
+                let new_l = l.index_select(0, &batches).index_select(2, &instances);
+                let new_b = b.index_select(0, &batches).index_select(2, &instances);
+                let new_r = r.index_select(0, &batches).index_select(2, &instances);
+                let new_conf = conf
+                    .index_select(0, &batches)
+                    .index_select(1, &classes)
+                    .index_select(2, &instances);
+
+                (
+                    TlbrConfTensor {
+                        t: new_t,
+                        l: new_l,
+                        b: new_b,
+                        r: new_r,
+                        conf: new_conf,
+                    },
+                    batches,
+                    classes,
+                )
+            };
+
+            // group bboxes by batch and class indexes
+            let nms_pred = {
+                let batch_vec: Vec<i64> = batch_indexes.into();
+                let class_vec: Vec<i64> = class_indexes.into();
+
+                let nms_pred: HashMap<_, _> = batch_vec
+                    .into_iter()
+                    .zip_eq(class_vec.into_iter())
+                    .enumerate()
+                    .map(|(select_index, (batch, class))| ((batch, class), select_index as i64))
+                    .into_group_map()
+                    .into_iter()
+                    .map(|((batch, class), select_indexes)| {
+                        // select bboxes of specfic batch and class
+                        let select_indexes = Tensor::of_slice(&select_indexes);
+                        let candidate_pred = selected_pred.select(&select_indexes);
+                        let TlbrConfTensor { t, l, b, r, conf } = candidate_pred.shallow_clone();
+
+                        // run NMS
+                        let nms_indexes = tch_goodies::nms(
+                            &TlbrTensorUnchecked { t, l, b, r }.try_into().unwrap(),
+                            &conf,
+                            iou_threshold.raw(),
+                        )
+                        .unwrap();
+
+                        let nms_index = BatchClassIndex { batch, class };
+                        let nms_pred = candidate_pred.select(&nms_indexes);
+
+                        (nms_index, nms_pred)
+                    })
+                    .collect();
+
+                nms_pred
+            };
+
+            NonMaxSuppressionOutput(nms_pred)
+        }
+    }
+
+    #[derive(Debug)]
+    struct BatchCycxhwTensorUnchecked {
+        pub cy: Tensor,
+        pub cx: Tensor,
+        pub h: Tensor,
+        pub w: Tensor,
+    }
+}
 
 mod multi_bce_with_logit_loss {
     use super::*;
