@@ -117,7 +117,7 @@
             // "minibatch_size": 4,
             // "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
         },
-        "initial_step": 0,
+        // "override_initial_step": 0,
         "momentum": 0.9,
         "weight_decay": 0.0005,
         "lr_schedule": {

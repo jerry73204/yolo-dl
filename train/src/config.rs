@@ -126,8 +126,7 @@ mod training {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct TrainingConfig {
         pub batch_size: NonZeroUsize,
-        #[serde(default = "default_initial_step")]
-        pub initial_step: usize,
+        pub override_initial_step: Option<usize>,
         pub lr_schedule: LearningRateSchedule,
         pub momentum: R64,
         pub weight_decay: R64,
@@ -188,11 +187,6 @@ mod training {
 
 fn empty_hashset<T>() -> HashSet<T> {
     HashSet::new()
-}
-
-fn default_initial_step() -> usize {
-    info!("use default initail step 0");
-    0
 }
 
 mod serde_vec_device {
