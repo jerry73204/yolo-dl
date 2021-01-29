@@ -55,7 +55,7 @@
             {
                 "name": "input",
                 "kind": "Input",
-                "shape": ["_", 3, 512, 512],
+                "shape": ["_", 3, 256, 256],
             },
             // initial layers, no forks
             {
