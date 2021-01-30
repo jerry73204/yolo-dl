@@ -93,21 +93,25 @@ impl LoggingWorker {
     ) -> Result<()> {
         let step = step as i64;
         self.event_writer
-            .write_scalar_async(format!("{}-loss", tag), step, losses.total_loss.into())
+            .write_scalar_async(
+                format!("{}/total_loss", tag),
+                step,
+                losses.total_loss.into(),
+            )
             .await?;
         self.event_writer
-            .write_scalar_async(format!("{}-iou_loss", tag), step, losses.iou_loss.into())
+            .write_scalar_async(format!("{}/iou_loss", tag), step, losses.iou_loss.into())
             .await?;
         self.event_writer
             .write_scalar_async(
-                format!("{}-classification_loss", tag),
+                format!("{}/classification_loss", tag),
                 step,
                 losses.classification_loss.into(),
             )
             .await?;
         self.event_writer
             .write_scalar_async(
-                format!("{}-objectness_loss", tag),
+                format!("{}/objectness_loss", tag),
                 step,
                 losses.objectness_loss.into(),
             )
