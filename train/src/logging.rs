@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{Config, LoggingConfig},
     message::{LoggingMessage, LoggingMessageKind},
-    util::RateCounter,
+    utils::RateCounter,
 };
 use async_std::{fs::File, io::BufWriter};
 

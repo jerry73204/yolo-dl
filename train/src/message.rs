@@ -1,4 +1,4 @@
-use crate::{common::*, util::CowTensor};
+use crate::{common::*, utils::CowTensor};
 
 pub use logging_message::*;
 
