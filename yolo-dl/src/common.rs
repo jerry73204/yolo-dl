@@ -4,6 +4,7 @@ pub use argh::FromArgs;
 pub use async_std::sync::RwLock;
 pub use chrono::{DateTime, Local};
 pub use coco::Category;
+pub use cv_convert::TryIntoCv;
 pub use dashmap::DashSet;
 pub use derivative::Derivative;
 pub use futures::{

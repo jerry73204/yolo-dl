@@ -19,21 +19,22 @@ anyhow = "1.0.38"
 darknet-config = { version = "0.1", path = "../darknet-config" }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 pretty_env_logger = "0.4.0"
-log = "0.4.13"
+log = "0.4.14"
 tch = "0.3.1"
 image = "0.23.12"
-libc = "0.2.82"
+libc = "0.2.84"
 thiserror = "1.0.23"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
-serde = { version = "1.0.119", features = ["derive"] }
+serde = { version = "1.0.123", features = ["derive"] }
 structopt = "0.3.21"
 json5 = "0.3.0"
 tch-serde = "0.3.1"
-ndarray = "0.13.0"
+ndarray = "0.14.0"
 itertools = "0.10.0"
 glob = "0.3.0"
 approx = "0.3.2"
+cv-convert = { version = "0.3.0", default-features = false, features = ["tch", "ndarray"] }
 
 [features]
 default = ["enable-cuda", "enable-cudnn"]

@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tch = "0.3.1"
 noisy_float = { version = "0.1.13", features = ["serde-1", "approx"] }
-serde = { version = "1.0.119", features = ["derive"] }
+serde = { version = "1.0.123", features = ["derive"] }
 itertools = "0.10.0"
 tch-tensor-like = { version = "0.2.0", features = ["derive"] }
 anyhow = "1.0.38"
@@ -22,12 +22,12 @@ coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"]
 json5 = "0.3.0"
 par-stream = { version = "0.3", git = "https://github.com/jerry73204/par-stream.git", features = ["runtime_tokio"] }
 futures = "0.3.12"
-rand = "0.8.2"
+rand = "0.8.3"
 percent-encoding = "2.1.0"
 image = "0.23.12"
-tokio = { version = "1.0.2", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
+tokio = { version = "1.1.1", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
 tfrecord = { version = "0.5.0", features = ["full"] }
-ndarray = "0.13.0"
+ndarray = "0.14.0"
 tch-serde = "0.3.1"
 chrono = "0.4.19"
 uuid = { version = "0.8.2", features = ["v4"] }

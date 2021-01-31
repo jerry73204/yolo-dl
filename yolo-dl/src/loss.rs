@@ -415,8 +415,9 @@ mod yolo_loss {
                         .scatter_(1, &target_class_sparse, &pos_values);
 
                 debug_assert!({
-                    let sparse_class_array: ArrayD<i64> = target.sparse_class().try_into().unwrap();
-                    let target_array: ArrayD<f32> = (&target_dense).try_into().unwrap();
+                    let sparse_class_array: ArrayD<i64> =
+                        target.sparse_class().try_into_cv().unwrap();
+                    let target_array: ArrayD<f32> = (&target_dense).try_into_cv().unwrap();
                     let expected_array = Array2::<f32>::from_shape_fn(
                         [num_instances as usize, num_classes as usize],
                         |(row, col)| {
@@ -483,8 +484,8 @@ mod yolo_loss {
                 debug_assert!({
                     let (batch_size, _num_entries, num_instances) =
                         pred_objectness.size3().unwrap();
-                    let target_array: ArrayD<f32> = (&target_objectness).try_into().unwrap();
-                    let iou_loss_array: ArrayD<f32> = iou_score.try_into().unwrap();
+                    let target_array: ArrayD<f32> = (&target_objectness).try_into_cv().unwrap();
+                    let iou_loss_array: ArrayD<f32> = iou_score.try_into_cv().unwrap();
                     let mut expect_array =
                         Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
                     matchings
