@@ -22,9 +22,17 @@ struct Args {
 }
 
 #[tokio::main]
-#[tracing::instrument]
 pub async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // setup tracing
+    {
+        let fmt_layer = tracing_subscriber::fmt::layer().with_target(true).compact();
+        let filter_layer = EnvFilter::from_default_env();
+
+        tracing_subscriber::registry()
+            .with(filter_layer)
+            .with(fmt_layer)
+            .init();
+    }
 
     let Args { config_file } = Args::from_args();
     let config = Arc::new(

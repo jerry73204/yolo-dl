@@ -6,6 +6,7 @@ use crate::{
 };
 use async_std::{fs::File, io::BufWriter};
 
+#[derive(Debug)]
 struct LoggingWorker {
     config: Arc<Config>,
     debug_step: i64,
