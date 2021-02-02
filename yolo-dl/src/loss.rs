@@ -1429,7 +1429,7 @@ mod average_precision {
 
         /// Compute average precision from a precision/recall curve.
         ///
-        /// The input precision/recall list must be ordered by non-increasing recall.
+        /// The input precision/recall list must be ordered by non-decreasing recall.
         pub fn compute_by_prec_rec(&self, sorted_prec_rec: &[impl Borrow<PrecRec<R64>>]) -> R64 {
             // compute precision envelope
             let enveloped = {
@@ -1450,28 +1450,56 @@ mod average_precision {
                         .chain(iter::once(&last))
                 };
 
-                let mut list: Vec<_> = iter
-                    .rev()
-                    .scan(r64(0.0), |max_prec: &mut R64, prec_rec: &PrecRec<R64>| {
-                        let PrecRec { precision, recall } = *prec_rec;
-                        *max_prec = (*max_prec).max(precision);
-                        Some(PrecRec { recall, precision })
-                    })
-                    .collect();
+                let mut list: Vec<PrecRec<R64>> = vec![];
+
+                for &PrecRec { precision, recall } in iter.rev() {
+                    match list.last_mut() {
+                        Some(last) => {
+                            let max_precision = last.precision.max(precision);
+                            if last.recall == recall {
+                                last.precision = last.precision.max(precision);
+                            } else {
+                                list.push(PrecRec {
+                                    recall,
+                                    precision: max_precision,
+                                });
+                            }
+                        }
+                        None => list.push(PrecRec { precision, recall }),
+                    }
+                }
+                /*
+                                let mut list: Vec<_> = iter
+                                    .rev()
+                                    .scan(r64(0.0), |max_prec: &mut R64, prec_rec: &PrecRec<R64>| {
+                                        let PrecRec { precision, recall } = *prec_rec;
+                                        *max_prec = (*max_prec).max(precision);
+                                        Some(PrecRec { recall, precision: *max_prec })
+                                    })
+                                    .collect();
+                */
                 list.reverse();
                 list
             };
+
+            //dbg!(&enveloped);
 
             // compute ap
             match self.integral_method {
                 IntegralMethod::Interpolation(n_points) => {
                     let points_iter =
-                        (0..n_points).map(|index| r64(index as f64 / n_points as f64));
-                    let interpolated: Vec<_> = utils::interpolate_slice(points_iter, &enveloped)
+                        (0..n_points).map(|index| r64(index as f64 / (n_points - 1) as f64));
+                    let interpolated: Vec<_> =
+                        utils::interpolate_stepwise_values(points_iter, &enveloped)
+                            .into_iter()
+                            .map(|(recall, precision)| PrecRec { recall, precision })
+                            .collect();
+                    //dbg!(&interpolated);
+                    let ap = interpolated
                         .into_iter()
-                        .map(|(recall, precision)| PrecRec { recall, precision })
-                        .collect();
-                    let ap = utils::trapz(&interpolated);
+                        .map(|prec_rec| prec_rec.precision)
+                        .sum::<R64>()
+                        / r64(n_points as f64);
                     ap
                 }
                 IntegralMethod::Continuous => {
@@ -1482,7 +1510,7 @@ mod average_precision {
 
         pub fn compute_by_detections<I, T, D, G>(
             &self,
-            dets: I,
+            dets: I, // I = Vec<test_xxx>
             num_ground_truth: usize,
             iou_thresh: R64,
         ) -> R64
@@ -1607,6 +1635,130 @@ mod average_precision {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[derive(Debug, Clone)]
+    struct test_detection {
+        detection: i32,
+        ground_truth: Option<i32>,
+        m_iou: R64,
+    }
+    impl DetectionForAp<i32, i32> for test_detection {
+        // add code here
+        fn detection(&self) -> &i32 {
+            &self.detection
+        }
+        fn ground_truth(&self) -> Option<&i32> {
+            self.ground_truth.as_ref()
+        }
+        fn confidence(&self) -> R64 {
+            R64::new(0.0)
+        }
+        fn iou(&self) -> R64 {
+            self.m_iou
+        }
+    }
+
+    impl test_detection {
+        fn new(d: i32, gt: Option<i32>, Iou: f64) -> test_detection {
+            test_detection {
+                detection: d,
+                ground_truth: gt,
+                m_iou: R64::new(Iou),
+            }
+        }
+    }
+
+    #[test]
+    fn t_compute_by_prec_rec() -> Result<()> {
+        let ap_cal = ApCalculator::new(IntegralMethod::Interpolation(11))?;
+
+        let mut vec: Vec<PrecRec<R64>> = Vec::new();
+        let mut pr1 = PrecRec {
+            precision: r64(0.5),
+            recall: r64(0.625),
+        };
+        let mut pr2 = PrecRec {
+            precision: r64(0.556),
+            recall: r64(0.625),
+        };
+        let mut pr3 = PrecRec {
+            precision: r64(0.625),
+            recall: r64(0.625),
+        };
+        let mut pr4 = PrecRec {
+            precision: r64(0.714),
+            recall: r64(0.625),
+        };
+        let mut pr5 = PrecRec {
+            precision: r64(0.833),
+            recall: r64(0.625),
+        };
+        let mut pr6 = PrecRec {
+            precision: r64(0.800),
+            recall: r64(0.500),
+        };
+        let mut pr7 = PrecRec {
+            precision: r64(0.750),
+            recall: r64(0.375),
+        };
+        let mut pr8 = PrecRec {
+            precision: r64(1.0),
+            recall: r64(0.375),
+        };
+        let mut pr9 = PrecRec {
+            precision: r64(1.0),
+            recall: r64(0.250),
+        };
+        let mut pr10 = PrecRec {
+            precision: r64(1.0),
+            recall: r64(0.125),
+        };
+        let mut vec = vec![
+            PrecRec {
+                precision: r64(0.5),
+                recall: r64(0.625),
+            },
+            PrecRec {
+                precision: r64(0.556),
+                recall: r64(0.625),
+            },
+            PrecRec {
+                precision: r64(0.625),
+                recall: r64(0.625),
+            },
+            PrecRec {
+                precision: r64(0.714),
+                recall: r64(0.625),
+            },
+            PrecRec {
+                precision: r64(0.833),
+                recall: r64(0.625),
+            },
+            PrecRec {
+                precision: r64(0.800),
+                recall: r64(0.500),
+            },
+            PrecRec {
+                precision: r64(0.750),
+                recall: r64(0.375),
+            },
+            PrecRec {
+                precision: r64(1.0),
+                recall: r64(0.375),
+            },
+            PrecRec {
+                precision: r64(1.0),
+                recall: r64(0.250),
+            },
+            PrecRec {
+                precision: r64(1.0),
+                recall: r64(0.125),
+            },
+        ];
+        vec = vec.into_iter().rev().collect();
+        let res = ap_cal.compute_by_prec_rec(&vec);
+        println!("{:?}", res);
+        Ok(())
+    }
 
     #[test]
     fn focal_loss() -> Result<()> {

@@ -31,7 +31,10 @@ where
     }
 }
 
-pub fn interpolate_slice<T>(points: impl IntoIterator<Item = R64>, values: &[T]) -> Vec<(R64, R64)>
+pub fn interpolate_stepwise_values<T>(
+    points: impl IntoIterator<Item = R64>,
+    values: &[T],
+) -> Vec<(R64, R64)>
 where
     T: AsXY<R64, R64>,
 {
@@ -44,9 +47,9 @@ where
     let mut interpolated = vec![];
 
     loop {
-        match (former.x() <= inter_x, inter_x <= latter.x()) {
+        match (former.x() <= inter_x, latter.x() <= inter_x) {
             (false, false) => match points_iter.next() {
-                Some(inter_x_) => inter_x = inter_x_,
+                Some(new_inter_x) => inter_x = new_inter_x,
                 None => {
                     if abs_diff_eq!(inter_x, former.x()) {
                         interpolated.push((former.x(), former.y()));
@@ -55,9 +58,12 @@ where
                 }
             },
             (true, false) => {
-                let inter_y = interpolate(inter_x, former, latter);
-
+                let inter_y = latter.y();
                 interpolated.push((inter_x, inter_y));
+                match points_iter.next() {
+                    Some(new_inter_x) => inter_x = new_inter_x,
+                    None => break,
+                }
             }
             (true, true) => match values_iter.next() {
                 Some((former_, latter_)) => {
@@ -66,7 +72,7 @@ where
                 }
                 None => {
                     if abs_diff_eq!(inter_x, latter.x()) {
-                        interpolated.push((latter.x(), latter.y()));
+                        interpolated.push((latter.x(), r64(0.0)));
                     }
                     break;
                 }
@@ -96,4 +102,22 @@ where
         .zip(iter.skip(1))
         .map(|(left, right)| (left.y() + right.y()) * (right.x() - left.x()) / 2.0)
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interpolate_test() {
+        let values = vec![(r64(0.0), r64(3.0)), (r64(1.0), r64(-5.0))];
+        let points = vec![r64(0.2)];
+        match interpolate_stepwise_values(points, &values).as_slice() {
+            &[(x, y)] => {
+                assert_eq!(x, 0.2);
+                assert!((y + 5.0).abs() <= 1e-5);
+            }
+            _ => panic!(),
+        }
+    }
 }
