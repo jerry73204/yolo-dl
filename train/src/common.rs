@@ -62,7 +62,10 @@ pub use tracing::{error, info, warn, Instrument};
 pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 pub use yolo_dl::{
-    loss::{PredTargetMatching, YoloLoss, YoloLossAuxiliary, YoloLossInit, YoloLossOutput},
+    loss::{
+        PredTargetMatching, YoloBenchmark, YoloBenchmarkInit, YoloLoss, YoloLossAuxiliary,
+        YoloLossInit, YoloLossOutput,
+    },
     model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput, YoloModel},
     processor::{CacheLoader, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
