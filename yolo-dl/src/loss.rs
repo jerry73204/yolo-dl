@@ -1708,7 +1708,7 @@ mod average_precision {
             })
         }
 
-        pub fn compute_mean_ap<I, D, G>(
+        pub fn compute_mean_ap<D, G>(
             &self,
             dets: &[impl DetectionForAp<D, G>],
             num_ground_truth: usize,
@@ -1755,8 +1755,8 @@ mod tests {
     }
     impl PartialEq for MDetection {
         fn eq(&self, other: &MDetection) -> bool {
-            self.id == other.id
-            //self.x1 == other.x1 && self.x2 == other.x2 && self.y1 == other.y1 && self.y2 == other.y2 && self.conf == other.conf && self.cls_conf == other.cls_conf
+            //self.id == other.id
+            self.x1 == other.x1 && self.x2 == other.x2 && self.y1 == other.y1 && self.y2 == other.y2 && self.conf == other.conf && self.cls_conf == other.cls_conf
         }
     }
 
@@ -1815,7 +1815,7 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     struct TestDetection {
         detection: MDetection,
         ground_truth: Option<MDetection>,
@@ -2051,6 +2051,50 @@ mod tests {
         v_det
     }
 
+    fn split_detection_class(vec_det: &Vec<TestDetection>) -> Vec<Vec<TestDetection>>{
+        let mut vec_ret:Vec<Vec<TestDetection>> = Vec::new();
+        let mut cls_id_to_vec_id:Vec<i32> = Vec::new();
+        let mut cls_id:i32;
+        let mut vec_tmp:Vec<TestDetection>;
+        for i in 0..vec_det.len(){
+            cls_id = vec_det[i].detection.cls_id;
+            if cls_id_to_vec_id.iter().any(|&k| k==cls_id) {
+                //The class is seen
+                
+                let index = cls_id_to_vec_id.iter().position(|&r| r == cls_id).unwrap();
+                vec_ret[index].push(vec_det[i]);
+            }
+            else{
+                cls_id_to_vec_id.push(cls_id);
+                vec_tmp = Vec::new();
+                vec_tmp.push(vec_det[i]);
+                vec_ret.push(vec_tmp);
+            }
+        }
+
+        //dbg!(&vec_ret);
+        vec_ret
+    }
+                                                            //(cls_id, num of gt)
+    fn get_gt_cnt_per_class(m_gt_vec: &Vec<MDetection>) -> Vec<(i32, usize)>{
+        let mut vec_ret :Vec<(i32, usize)> = Vec::new();
+        let mut class_seen:Vec<i32> = Vec::new();
+        for i in 0..m_gt_vec.len(){
+            let cls_id = m_gt_vec[i].cls_id;
+            if class_seen.iter().any(|&k| k==cls_id){
+                //The class is seen
+                let index = class_seen.iter().position(|&r| r == cls_id).unwrap();
+                vec_ret[index].1 += 1;
+            }
+            else{
+                class_seen.push(cls_id);
+                vec_ret.push((cls_id, 1));
+            }
+        }
+        //dbg!(&vec_ret);
+        vec_ret
+    }
+
     #[test]
     fn t_compute_by_detections() -> Result<()> {
         
@@ -2060,9 +2104,9 @@ mod tests {
 60.00000 0.00000 137.03310 412.75354 410.12421
 40.00000 160.14066 101.55579 245.92610 240.79890";
 
-        let text_d = "178.89390 105.51570 234.73500 243.34320 0.99960 0.99970 40.00000
-112.96630 14.85980 168.57140 346.21250 0.97220 0.98940 39.00000
-200.27660 40.65520 342.54550 215.68790 0.97430 0.98610 56.00000";
+        let text_d = "159.15750 105.84630 247.27790 245.03130 0.99870 0.99960 40.00000
+55.24000 31.11770 150.80330 362.72990 0.99670 0.99930 39.00000
+200.69280 35.67050 411.24700 206.84590 0.78630 0.97070 56.00000";
         let d_vec: Result<Vec<Vec<f64>>> = text_d
             .lines()
             .map(|line| {
@@ -2094,14 +2138,86 @@ mod tests {
             .collect();
         let gt_vec = gt_vec?;
         let m_gt_vec = vecg_to_mdetection(gt_vec);
+        let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
         let t_vec: Vec<TestDetection>;
         t_vec = match_d_g(&m_d_vec, &m_gt_vec);
+        let class_split_vec = split_detection_class(&t_vec);
         
 
 
         let ap_cal = ApCalculator::new_coco();
         let ret = ap_cal.compute_by_detections(t_vec, 4, R64::new(0.5));
         dbg!(&ret);
+
+
+        Ok(())
+    }
+
+        #[test]
+    fn t_mean_average_precision_cal() -> Result<()> {
+        
+        let text = "39.00000 61.40888 27.67710 141.49845 230.31445
+56.00000 0.22360 92.69645 58.11374 148.82400
+56.00000 144.48242 43.56290 416.00021 231.43224
+60.00000 0.00000 137.03310 412.75354 410.12421
+40.00000 160.14066 101.55579 245.92610 240.79890";
+
+        let text_d = "159.15750 105.84630 247.27790 245.03130 0.99870 0.99960 40.00000
+55.24000 31.11770 150.80330 362.72990 0.99670 0.99930 39.00000
+200.69280 35.67050 411.24700 206.84590 0.78630 0.97070 56.00000";
+        let d_vec: Result<Vec<Vec<f64>>> = text_d
+            .lines()
+            .map(|line| {
+                let values: Result<Vec<_>> = line
+                    .split(" ")
+                    .map(|token| -> Result<_> {
+                        let value: f64 = token.parse()?;
+                        Ok(value)
+                    })
+                    .collect();
+                values
+            })
+            .collect();
+        let d_vec = d_vec?;
+        let m_d_vec = vecd_to_mdetection(d_vec);
+
+        let gt_vec: Result<Vec<Vec<f64>>> = text
+            .lines()
+            .map(|line| {
+                let values: Result<Vec<_>> = line
+                    .split(" ")
+                    .map(|token| -> Result<_> {
+                        let value: f64 = token.parse()?;
+                        Ok(value)
+                    })
+                    .collect();
+                values
+            })
+            .collect();
+        let gt_vec = gt_vec?;
+        let m_gt_vec = vecg_to_mdetection(gt_vec);
+        let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
+        let t_vec: Vec<TestDetection>;
+        t_vec = match_d_g(&m_d_vec, &m_gt_vec);
+        let class_split_vec = split_detection_class(&t_vec);
+        
+
+        let map_cal = MeanApCalculator::new_coco();
+        for i in 0..class_split_vec.len(){
+            let cls_id = class_split_vec[i][0].detection.cls_id;
+            let mut num_gt :usize = 0;
+            for gt_cnt_cls in gt_cnt.iter(){
+                if gt_cnt_cls.0 == cls_id{
+                    num_gt = gt_cnt_cls.1;
+                    break;
+                }
+            }
+
+            let ret = map_cal.compute_mean_ap(&class_split_vec[i], num_gt);
+            dbg!(&cls_id);
+            dbg!(&ret);
+        }
+
 
 
         Ok(())
