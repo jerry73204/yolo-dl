@@ -1858,14 +1858,6 @@ mod tests {
     fn match_d_g(dets: &[MDetection], gts: &[MDetection]) -> Vec<TestDetection> {
         let mut bbox_d: (R64, R64, R64, R64);
         let mut bbox_g: (R64, R64, R64, R64);
-        // debug_assert!(bbox_d.0 >= 0.0);
-        // debug_assert!({
-        // brute force algorithm
-        // ...
-
-        // let result = a ==b;
-        // result
-        // });
         let mut max_iou: R64;
         let mut tmp_iou: R64;
         let mut sel_g: usize;
@@ -1958,6 +1950,7 @@ mod tests {
 
     #[test]
     fn t_compute_by_detections() -> Result<()> {
+        
         let text = "39.00000 61.40888 27.67710 141.49845 230.31445
 56.00000 0.22360 92.69645 58.11374 148.82400
 56.00000 144.48242 43.56290 416.00021 231.43224
