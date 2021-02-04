@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tch = "0.3.1"
 noisy_float = { version = "0.1.13", features = ["serde-1"] }
-serde = { version = "1.0.119", features = ["derive"] }
+serde = { version = "1.0.123", features = ["derive"] }
 itertools = "0.10.0"
 tch-tensor-like = { version = "0.2.0", features = ["derive"] }
 anyhow = "1.0.38"
@@ -20,11 +20,11 @@ async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 argh = "0.1.4"
 par-stream = { version = "0.3", git = "https://github.com/jerry73204/par-stream.git", features = ["runtime_tokio"] }
 futures = "0.3.12"
-rand = "0.8.2"
+rand = "0.8.3"
 image = "0.23.12"
-tokio = { version = "1.0.2", features = ["sync"] }
-ndarray = "0.13.0"
-log = "0.4.13"
+tokio = { version = "1.1.1", features = ["sync"] }
+ndarray = "0.14.0"
+log = "0.4.14"
 regex = "1.4.3"
 indexmap = "1.6.1"
 glob = "0.3.0"

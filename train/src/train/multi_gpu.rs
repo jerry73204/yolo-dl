@@ -130,21 +130,20 @@ pub async fn multi_gpu_training_worker(
             worker_contexts = worker_contexts_;
             training_timing.set_record("backward step");
 
-            // average losses among workers
+            // merge outputs and losses
             let (losses, worker_outputs) = tokio::task::spawn_blocking(move || -> Result<_> {
-                let losses = YoloLossOutput::weighted_mean(worker_outputs.iter().map(|output| {
+                let weighted_outputs = worker_outputs.iter().map(|output| {
                     (
                         output.losses.to_device(master_device),
                         output.minibatch_size as f64,
                     )
-                }))?;
+                });
+                let losses = YoloLossOutput::weighted_mean(weighted_outputs)?;
 
                 Ok((losses, worker_outputs))
             })
             .map(|result| Fallible::Ok(result??))
             .await?;
-
-            training_timing.set_record("compute loss");
 
             // check NaN and infinite number
             tch::no_grad(|| {
@@ -155,16 +154,62 @@ pub async fn multi_gpu_training_worker(
                 Ok(())
             })?;
 
+            training_timing.set_record("compute loss");
+
+            // merge output
+            let (model_output, target_bboxes) = {
+                let (model_output_vec, target_bboxes_vec) = worker_outputs
+                    .iter()
+                    .scan(0, |batch_index_base_mut, worker_output| {
+                        let WorkerOutput {
+                            minibatch_size,
+                            output: ref model_output,
+                            ref loss_auxiliary,
+                            ..
+                        } = *worker_output;
+
+                        // re-index target_bboxes
+                        let batch_index_base = *batch_index_base_mut;
+                        let new_target_bboxes = loss_auxiliary.target_bboxes.0.iter().map(
+                            move |(instance_index, bbox)| {
+                                let new_instance_index = InstanceIndex {
+                                    batch_index: instance_index.batch_index + batch_index_base,
+                                    ..*instance_index
+                                };
+                                (new_instance_index, bbox.to_owned())
+                            },
+                        );
+
+                        *batch_index_base_mut += minibatch_size;
+                        Some((model_output, new_target_bboxes))
+                    })
+                    .unzip_n_vec();
+
+                let model_output = MergeDetect2DOutput::cat(model_output_vec, master_device)?;
+                let target_bboxes =
+                    PredTargetMatching(target_bboxes_vec.into_iter().flatten().collect());
+
+                (model_output, target_bboxes)
+            };
+
+            training_timing.set_record("merge outputs");
+
+            // compute benchmark
+            // {
+            //     let benchmark = YoloBenchmarkInit::default().build()?;
+            //     benchmark.forward(&model_output);
+            // }
+
             // send output to logger
             {
                 let losses = losses.shallow_clone();
                 log_outputs(
                     config.clone(),
-                    master_device,
                     logging_tx.clone(),
                     training_step,
                     image,
-                    worker_outputs,
+                    model_output,
+                    target_bboxes,
                     losses,
                 )
                 .await?;
@@ -558,21 +603,14 @@ fn backward_step(
 
 async fn log_outputs(
     config: Arc<Config>,
-    master_device: Device,
     logging_tx: broadcast::Sender<LoggingMessage>,
     training_step: usize,
     image: Tensor,
-    worker_outputs: Vec<WorkerOutput>,
+    model_output: MergeDetect2DOutput,
+    target_bboxes: PredTargetMatching,
     losses: YoloLossOutput,
 ) -> Result<()> {
     let Config {
-        training:
-            TrainingConfig {
-                batch_size,
-                save_checkpoint_steps,
-                ref lr_schedule,
-                ..
-            },
         logging: LoggingConfig {
             enable_training_output,
             ..
@@ -583,56 +621,6 @@ async fn log_outputs(
     // send to logger
     if enable_training_output {
         // aggregate worker outputs
-        let (model_output, target_bboxes) = {
-            let (model_output_vec, target_bboxes_vec) = worker_outputs
-                .into_iter()
-                .scan(0, |batch_index_base_mut, worker_output| {
-                    let WorkerOutput {
-                        minibatch_size,
-                        output: model_output,
-                        loss_auxiliary,
-                        ..
-                    } = worker_output;
-
-                    // re-index target_bboxes
-                    let batch_index_base = *batch_index_base_mut;
-                    let new_target_bboxes = loss_auxiliary.target_bboxes.0.into_iter().map(
-                        move |(orig_instance_index, bbox)| {
-                            let InstanceIndex {
-                                batch_index,
-                                layer_index,
-                                anchor_index,
-                                grid_col,
-                                grid_row,
-                            } = orig_instance_index;
-                            let new_instance_index = InstanceIndex {
-                                batch_index: batch_index + batch_index_base,
-                                layer_index,
-                                anchor_index,
-                                grid_col,
-                                grid_row,
-                            };
-                            (new_instance_index, bbox)
-                        },
-                    );
-
-                    *batch_index_base_mut += minibatch_size;
-                    Some((model_output, new_target_bboxes))
-                })
-                .unzip_n_vec();
-
-            let model_output = MergeDetect2DOutput::cat(model_output_vec, master_device)?;
-            let target_bboxes =
-                PredTargetMatching(target_bboxes_vec.into_iter().flatten().collect());
-
-            assert!(target_bboxes
-                .0
-                .keys()
-                .all(|index| index.batch_index < model_output.batch_size() as usize));
-
-            (model_output, target_bboxes)
-        };
-
         logging_tx
             .send(LoggingMessage::new_training_output(
                 "training-output",

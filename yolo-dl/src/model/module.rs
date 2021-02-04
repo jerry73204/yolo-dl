@@ -1473,7 +1473,7 @@ mod merge_detect_2d {
                 class_vec,
             ): (
                 HashSet<i64>,
-                Vec<usize>,
+                HashSet<usize>,
                 HashSet<Vec<DetectionInfo>>,
                 Vec<Tensor>,
                 Vec<Tensor>,
@@ -1512,9 +1512,10 @@ mod merge_detect_2d {
                 })
                 .unzip_n();
 
+            let num_outputs = cy_vec.len();
             let batch_size = {
                 ensure!(batch_size_set.len() == 1, "batch_size must be equal");
-                batch_size_set.into_iter().next().unwrap()
+                batch_size_set.into_iter().next().unwrap() * num_outputs as i64
             };
             let num_classes = {
                 ensure!(num_classes_set.len() == 1, "num_classes must be equal");

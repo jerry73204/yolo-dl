@@ -1,5 +1,6 @@
 use anyhow::{ensure, Result};
 use approx::abs_diff_eq;
+pub use cv_convert::{FromCv, TryIntoCv};
 use darknet_config::{torch::LayerOutput, DarknetModel, TchModel};
 use darknet_test::{
     config::{Config, InputConfig},
@@ -7,13 +8,9 @@ use darknet_test::{
 };
 use itertools::Itertools;
 use log::info;
-use ndarray::{Array3, ArrayD};
-use std::{
-    convert::{TryFrom, TryInto},
-    fs,
-    path::PathBuf,
-};
-pub use structopt::StructOpt;
+use ndarray::Array3;
+use std::{fs, path::PathBuf};
+use structopt::StructOpt;
 use tch::{nn, vision, Kind, Tensor};
 use tch_goodies::TensorExt;
 
@@ -105,13 +102,10 @@ fn main() -> Result<()> {
             let (_rust_output, rust_feature_maps) = rust_model.forward_t(&rust_input, false)?;
 
             // forward darknet model
-            let darknet_input: Array3<f32> = {
-                let array: ArrayD<f32> = (&rust_input
-                    .view([in_c as i64, in_h as i64, in_w as i64])
-                    .permute(&[2, 1, 0]))
-                    .try_into()?;
-                array.into_shape((in_w, in_w, in_c)).unwrap()
-            };
+            let darknet_input: Array3<f32> = rust_input
+                .view([in_c as i64, in_h as i64, in_w as i64])
+                .permute(&[2, 1, 0])
+                .try_into_cv()?;
 
             let _darknet_output = darknet_model.predict(&darknet_input, 0.8, 0.5, 0.45, true);
 
@@ -123,8 +117,6 @@ fn main() -> Result<()> {
                 .enumerate()
                 .try_for_each(
                     |(layer_index, (darknet_layer, rust_feature_map))| -> Result<_> {
-                        // dbg!(darknet_layer.type_());
-
                         let darknet_feature_map = darknet_layer.output_array();
 
                         match rust_feature_map {
@@ -162,7 +154,7 @@ fn main() -> Result<()> {
 
                                 // convert feature map type
                                 let darknet_feature_map =
-                                    Tensor::try_from(darknet_feature_map.into_owned())?
+                                    Tensor::from_cv(darknet_feature_map.into_owned())
                                         // [b, w, h, c] to [b, c, h, w]
                                         .permute(&[0, 3, 2, 1])
                                         .to_device(rust_device);

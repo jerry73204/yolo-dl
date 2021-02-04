@@ -11,8 +11,115 @@ pub use focal_loss::*;
 pub use misc::*;
 pub use non_max_suppression::*;
 pub use pred_target_matching::*;
+pub use yolo_benchmark::*;
 pub use yolo_loss::*;
 pub use yolo_loss_output::*;
+
+mod yolo_benchmark {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct YoloBenchmarkInit {
+        pub nms_iou_threshold: Option<R64>,
+        pub nms_confidence_threshold: Option<R64>,
+    }
+
+    impl YoloBenchmarkInit {
+        pub fn build(self) -> Result<YoloBenchmark> {
+            let Self {
+                nms_iou_threshold,
+                nms_confidence_threshold,
+            } = self;
+
+            let nms = {
+                let mut init = NonMaxSuppressionInit::default();
+                if let Some(iou_threshold) = nms_iou_threshold {
+                    init.iou_threshold = iou_threshold;
+                }
+                if let Some(confidence_threshold) = nms_confidence_threshold {
+                    init.confidence_threshold = confidence_threshold;
+                }
+                init.build()?
+            };
+
+            Ok(YoloBenchmark { nms })
+        }
+    }
+
+    impl Default for YoloBenchmarkInit {
+        fn default() -> Self {
+            Self {
+                nms_iou_threshold: None,
+                nms_confidence_threshold: None,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct YoloBenchmark {
+        nms: NonMaxSuppression,
+    }
+
+    impl YoloBenchmark {
+        pub fn forward(&self, prediction: &MergeDetect2DOutput) {
+            // comput mAP
+            {
+                // nms
+                let _nms_output = self.nms.forward(prediction);
+
+                // group target bboxes by (batch, class)
+                // let target_bboxes: HashMap<_, _> = target
+                //     .iter()
+                //     .enumerate()
+                //     .flat_map(|(batch_index, bboxes)| {
+                //         bboxes.iter().map(move |bbox| {
+                //             let index = BatchClassIndex {
+                //                 batch: batch_index as i64,
+                //                 class: bbox.category_id as i64,
+                //             };
+                //             (index, bbox)
+                //         })
+                //     })
+                //     .into_group_map()
+                //     .into_iter()
+                //     .map(|(index, bboxes)| {
+                //         let (t_vec, l_vec, b_vec, r_vec) = bboxes
+                //             .iter()
+                //             .map(|bbox| {
+                //                 let [t, l, b, r] = bbox.tlbr();
+                //                 (
+                //                     t.to_f64() as f32,
+                //                     l.to_f64() as f32,
+                //                     b.to_f64() as f32,
+                //                     r.to_f64() as f32,
+                //                 )
+                //             })
+                //             .unzip_n_vec();
+
+                //         let t = Tensor::of_slice(&t_vec);
+                //         let l = Tensor::of_slice(&l_vec);
+                //         let b = Tensor::of_slice(&b_vec);
+                //         let r = Tensor::of_slice(&r_vec);
+                //         let tlbr: TlbrTensor =
+                //             TlbrTensorUnchecked { t, l, b, r }.try_into().unwrap();
+                //         (index, tlbr)
+                //     })
+                //     .collect();
+
+                // let pred_keys: HashSet<_> = nms_output.0.keys().collect();
+                // let target_keys: HashSet<_> = target_bboxes.keys().collect();
+                // let common_keys = pred_keys.intersection(&target_keys);
+
+                // // compute IoU against target bboxes
+                // common_keys.into_iter().map(|index| {
+                //     let pred_bboxes = &nms_output.0[index];
+                //     let target_bboxes = &target_bboxes[index];
+                //     todo!();
+                // });
+            }
+        }
+    }
+}
 
 mod yolo_loss_output {
     use super::*;
@@ -97,8 +204,6 @@ mod yolo_loss {
         pub iou_loss_weight: Option<f64>,
         pub objectness_loss_weight: Option<f64>,
         pub classification_loss_weight: Option<f64>,
-        pub nms_iou_threshold: Option<R64>,
-        pub nms_confidence_threshold: Option<R64>,
     }
 
     impl YoloLossInit {
@@ -115,8 +220,6 @@ mod yolo_loss {
                 iou_loss_weight,
                 objectness_loss_weight,
                 classification_loss_weight,
-                nms_iou_threshold,
-                nms_confidence_threshold,
             } = self;
 
             let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
@@ -190,17 +293,6 @@ mod yolo_loss {
             }
             .build()?;
 
-            let nms = {
-                let mut init = NonMaxSuppressionInit::default();
-                if let Some(iou_threshold) = nms_iou_threshold {
-                    init.iou_threshold = iou_threshold;
-                }
-                if let Some(confidence_threshold) = nms_confidence_threshold {
-                    init.confidence_threshold = confidence_threshold;
-                }
-                init.build()?
-            };
-
             let map_calculator = MeanApCalculator::new_coco();
 
             Ok(YoloLoss {
@@ -214,7 +306,6 @@ mod yolo_loss {
                 objectness_loss_weight,
                 classification_loss_weight,
                 bbox_matcher,
-                nms,
                 map_calculator,
             })
         }
@@ -234,8 +325,6 @@ mod yolo_loss {
                 iou_loss_weight: None,
                 objectness_loss_weight: None,
                 classification_loss_weight: None,
-                nms_iou_threshold: None,
-                nms_confidence_threshold: None,
             }
         }
     }
@@ -252,7 +341,6 @@ mod yolo_loss {
         objectness_loss_weight: f64,
         classification_loss_weight: f64,
         bbox_matcher: BBoxMatcher,
-        nms: NonMaxSuppression,
         map_calculator: MeanApCalculator,
     }
 
@@ -415,8 +503,9 @@ mod yolo_loss {
                         .scatter_(1, &target_class_sparse, &pos_values);
 
                 debug_assert!({
-                    let sparse_class_array: ArrayD<i64> = target.sparse_class().try_into().unwrap();
-                    let target_array: ArrayD<f32> = (&target_dense).try_into().unwrap();
+                    let sparse_class_array: ArrayD<i64> =
+                        target.sparse_class().try_into_cv().unwrap();
+                    let target_array: ArrayD<f32> = (&target_dense).try_into_cv().unwrap();
                     let expected_array = Array2::<f32>::from_shape_fn(
                         [num_instances as usize, num_classes as usize],
                         |(row, col)| {
@@ -483,8 +572,8 @@ mod yolo_loss {
                 debug_assert!({
                     let (batch_size, _num_entries, num_instances) =
                         pred_objectness.size3().unwrap();
-                    let target_array: ArrayD<f32> = (&target_objectness).try_into().unwrap();
-                    let iou_loss_array: ArrayD<f32> = iou_score.try_into().unwrap();
+                    let target_array: ArrayD<f32> = (&target_objectness).try_into_cv().unwrap();
+                    let iou_loss_array: ArrayD<f32> = iou_score.try_into_cv().unwrap();
                     let mut expect_array =
                         Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
                     matchings
@@ -708,107 +797,121 @@ mod non_max_suppression {
 
     impl NonMaxSuppression {
         pub fn forward(&self, prediction: &MergeDetect2DOutput) -> NonMaxSuppressionOutput {
-            let Self {
-                iou_threshold,
-                confidence_threshold,
-            } = *self;
+            tch::no_grad(|| {
+                let Self {
+                    iou_threshold,
+                    confidence_threshold,
+                } = *self;
+                let device = prediction.device();
 
-            let batch_pred = {
-                let MergeDetect2DOutput {
-                    cy,
-                    cx,
-                    h,
-                    w,
-                    class,
-                    obj,
-                    ..
-                } = prediction;
+                let batch_pred = {
+                    let MergeDetect2DOutput {
+                        cy,
+                        cx,
+                        h,
+                        w,
+                        class,
+                        obj,
+                        ..
+                    } = prediction;
 
-                // compute confidence score (= objectness * class_score)
-                let conf = obj.sigmoid() * class.sigmoid();
+                    // compute confidence score (= objectness * class_score)
+                    let conf = obj.sigmoid() * class.sigmoid();
 
-                // compute tlbr bbox
-                let t = cy - h / 2.0;
-                let b = cy + h / 2.0;
-                let l = cx - w / 2.0;
-                let r = cx + w / 2.0;
+                    // compute tlbr bbox
+                    let t = cy - h / 2.0;
+                    let b = cy + h / 2.0;
+                    let l = cx - w / 2.0;
+                    let r = cx + w / 2.0;
 
-                BatchPrediction { t, b, l, r, conf }
-            };
+                    BatchPrediction { t, b, l, r, conf }
+                };
 
-            // select bboxes which confidence is above threshold
-            let (selected_pred, batch_indexes, class_indexes) = {
-                let BatchPrediction { t, l, b, r, conf } = batch_pred;
+                // select bboxes which confidence is above threshold
+                let (selected_pred, batch_indexes, class_indexes) = {
+                    let BatchPrediction { t, l, b, r, conf } = batch_pred;
 
-                let indexes = conf.ge(confidence_threshold.raw()).nonzero();
-                let batches = indexes.i((.., 0));
-                let classes = indexes.i((.., 1));
-                let instances = indexes.i((.., 2));
+                    let mask = conf.ge(confidence_threshold.raw());
+                    let indexes = mask.nonzero();
+                    let batches = indexes.select(1, 0);
+                    let classes = indexes.select(1, 1);
+                    let instances = indexes.select(1, 2);
 
-                let new_t = t.index_select(0, &batches).index_select(2, &instances);
-                let new_l = l.index_select(0, &batches).index_select(2, &instances);
-                let new_b = b.index_select(0, &batches).index_select(2, &instances);
-                let new_r = r.index_select(0, &batches).index_select(2, &instances);
-                let new_conf = conf
-                    .index_select(0, &batches)
-                    .index_select(1, &classes)
-                    .index_select(2, &instances);
+                    let new_t = t
+                        .permute(&[0, 2, 1])
+                        .index(&[&batches, &instances])
+                        .view([-1, 1]);
+                    let new_l = l
+                        .permute(&[0, 2, 1])
+                        .index(&[&batches, &instances])
+                        .view([-1, 1]);
+                    let new_b = b
+                        .permute(&[0, 2, 1])
+                        .index(&[&batches, &instances])
+                        .view([-1, 1]);
+                    let new_r = r
+                        .permute(&[0, 2, 1])
+                        .index(&[&batches, &instances])
+                        .view([-1, 1]);
+                    let new_conf = conf.index(&[&batches, &classes, &instances]).view([-1, 1]);
 
-                let bbox: TlbrConfTensor = TlbrConfTensorUnchecked {
-                    tlbr: TlbrTensorUnchecked {
-                        t: new_t,
-                        l: new_l,
-                        b: new_b,
-                        r: new_r,
-                    },
-                    conf: new_conf,
-                }
-                .try_into()
-                .unwrap();
+                    let bbox: TlbrConfTensor = TlbrConfTensorUnchecked {
+                        tlbr: TlbrTensorUnchecked {
+                            t: new_t,
+                            l: new_l,
+                            b: new_b,
+                            r: new_r,
+                        },
+                        conf: new_conf,
+                    }
+                    .try_into()
+                    .unwrap();
 
-                (bbox, batches, classes)
-            };
+                    (bbox, batches, classes)
+                };
 
-            // group bboxes by batch and class indexes
-            let nms_pred = {
-                let batch_vec: Vec<i64> = batch_indexes.into();
-                let class_vec: Vec<i64> = class_indexes.into();
+                // group bboxes by batch and class indexes
+                let nms_pred = {
+                    let batch_vec: Vec<i64> = batch_indexes.into();
+                    let class_vec: Vec<i64> = class_indexes.into();
 
-                let nms_pred: HashMap<_, _> = batch_vec
-                    .into_iter()
-                    .zip_eq(class_vec.into_iter())
-                    .enumerate()
-                    .map(|(select_index, (batch, class))| ((batch, class), select_index as i64))
-                    .into_group_map()
-                    .into_iter()
-                    .map(|((batch, class), select_indexes)| {
-                        // select bboxes of specfic batch and class
-                        let select_indexes = Tensor::of_slice(&select_indexes);
-                        let candidate_pred = selected_pred.index_select(&select_indexes);
-                        let TlbrConfTensorUnchecked {
-                            tlbr: TlbrTensorUnchecked { t, l, b, r },
-                            conf,
-                        } = candidate_pred.shallow_clone().into();
+                    let nms_pred: HashMap<_, _> = batch_vec
+                        .into_iter()
+                        .zip_eq(class_vec.into_iter())
+                        .enumerate()
+                        .map(|(select_index, (batch, class))| ((batch, class), select_index as i64))
+                        .into_group_map()
+                        .into_iter()
+                        .map(|((batch, class), select_indexes)| {
+                            // select bboxes of specfic batch and class
+                            let select_indexes =
+                                Tensor::of_slice(&select_indexes).to_device(device);
+                            let candidate_pred = selected_pred.index_select(&select_indexes);
+                            let TlbrConfTensorUnchecked {
+                                tlbr: TlbrTensorUnchecked { t, l, b, r },
+                                conf,
+                            } = candidate_pred.shallow_clone().into();
 
-                        // run NMS
-                        let nms_indexes = tch_goodies::nms(
-                            &TlbrTensorUnchecked { t, l, b, r }.try_into().unwrap(),
-                            &conf,
-                            iou_threshold.raw(),
-                        )
-                        .unwrap();
+                            // run NMS
+                            let nms_indexes = tch_goodies::nms(
+                                &TlbrTensorUnchecked { t, l, b, r }.try_into().unwrap(),
+                                &conf.view([-1]),
+                                iou_threshold.raw(),
+                            )
+                            .unwrap();
 
-                        let nms_index = BatchClassIndex { batch, class };
-                        let nms_pred = candidate_pred.index_select(&nms_indexes);
+                            let nms_index = BatchClassIndex { batch, class };
+                            let nms_pred = candidate_pred.index_select(&nms_indexes);
 
-                        (nms_index, nms_pred)
-                    })
-                    .collect();
+                            (nms_index, nms_pred)
+                        })
+                        .collect();
 
-                nms_pred
-            };
+                    nms_pred
+                };
 
-            NonMaxSuppressionOutput(nms_pred)
+                NonMaxSuppressionOutput(nms_pred)
+            })
         }
     }
 
