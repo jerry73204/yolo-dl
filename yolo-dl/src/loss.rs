@@ -1635,83 +1635,386 @@ mod average_precision {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[derive(Debug, Clone)]
-    struct test_detection {
-        detection: i32,
-        ground_truth: Option<i32>,
-        m_iou: R64,
+    /// structure of detection output
+    /// (x1, y1): coordinates of top-left corner of object with scale 416x416
+    /// (x2, y2): coordinates of bottom-right corner of object with scale 416x416
+
+    #[derive(Debug, Clone, Eq, Copy)]
+    struct MDetection {
+        id: i32,
+        x1: R64,
+        y1: R64,
+        x2: R64,
+        y2: R64,
+        conf: R64,
+        cls_conf: R64,
+        cls_id: i32,
     }
-    impl DetectionForAp<i32, i32> for test_detection {
-        // add code here
-        fn detection(&self) -> &i32 {
-            &self.detection
-        }
-        fn ground_truth(&self) -> Option<&i32> {
-            self.ground_truth.as_ref()
-        }
-        fn confidence(&self) -> R64 {
-            R64::new(0.0)
-        }
-        fn iou(&self) -> R64 {
-            self.m_iou
+    impl PartialEq for MDetection {
+        fn eq(&self, other: &MDetection) -> bool {
+            self.id == other.id
+            //self.x1 == other.x1 && self.x2 == other.x2 && self.y1 == other.y1 && self.y2 == other.y2 && self.conf == other.conf && self.cls_conf == other.cls_conf
         }
     }
 
-    impl test_detection {
-        fn new(d: i32, gt: Option<i32>, Iou: f64) -> test_detection {
-            test_detection {
-                detection: d,
-                ground_truth: gt,
-                m_iou: R64::new(Iou),
+    impl Hash for MDetection {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.id.hash(state);
+            //self.phone.hash(state);
+        }
+    }
+
+    impl MDetection {
+        fn new_f64(
+            id: i32,
+            x1: f64,
+            y1: f64,
+            x2: f64,
+            y2: f64,
+            conf: f64,
+            cls_conf: f64,
+            cls_id: i32,
+        ) -> MDetection {
+            MDetection {
+                id,
+                x1: r64(x1),
+                y1: r64(y1),
+                x2: r64(x2),
+                y2: r64(y2),
+                conf: r64(conf),
+                cls_conf: r64(cls_conf),
+                cls_id,
             }
         }
+        fn new(
+            id: i32,
+            x1: R64,
+            y1: R64,
+            x2: R64,
+            y2: R64,
+            conf: R64,
+            cls_conf: R64,
+            cls_id: i32,
+        ) -> MDetection {
+            MDetection {
+                id,
+                x1,
+                y1,
+                x2,
+                y2,
+                conf,
+                cls_conf,
+                cls_id,
+            }
+        }
+        fn get_xyxy(&self) -> (R64, R64, R64, R64) {
+            (self.x1, self.y1, self.x2, self.y2)
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct TestDetection {
+        detection: MDetection,
+        ground_truth: Option<MDetection>,
+    }
+    impl DetectionForAp<MDetection, MDetection> for TestDetection {
+        // add code here
+        fn detection(&self) -> &MDetection {
+            &self.detection
+        }
+        fn ground_truth(&self) -> Option<&MDetection> {
+            self.ground_truth.as_ref()
+        }
+        fn confidence(&self) -> R64 {
+            self.detection.cls_conf
+            //self.detection.conf*self.detection.cls_conf
+        }
+        fn iou(&self) -> R64 {
+            match &self.ground_truth {
+                None => r64(0.0),
+                Some(gt) => {
+                    let xa = std::cmp::max(self.detection.x1, gt.x1);
+                    let ya = std::cmp::max(self.detection.y1, gt.y1);
+                    let xb = std::cmp::min(self.detection.x2, gt.x2);
+                    let yb = std::cmp::min(self.detection.y2, gt.y2);
+                    let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
+                        * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+                    let box_a_area = (self.detection.x2 - self.detection.x1 + r64(1.0))
+                        * (self.detection.y2 - self.detection.y1 + r64(1.0));
+                    let box_b_area = (gt.x2 - gt.x1 + r64(1.0)) * (gt.y2 - gt.y1 + r64(1.0));
+                    let iou = inter_area / (box_a_area + box_b_area - inter_area);
+                    iou
+                }
+            }
+        }
+    }
+
+    impl TestDetection {
+        fn new_f64(
+            d_id: i32,
+            d_x1: f64,
+            d_y1: f64,
+            d_x2: f64,
+            d_y2: f64,
+            d_conf: f64,
+            d_cls_conf: f64,
+            d_cls_id: i32,
+            g_id: i32,
+            g_cls_id: i32,
+            g_x1: f64,
+            g_y1: f64,
+            g_x2: f64,
+            g_y2: f64,
+        ) -> TestDetection {
+            TestDetection {
+                detection: MDetection::new_f64(
+                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
+                ),
+                ground_truth: Some(MDetection::new_f64(
+                    g_id, g_x1, g_y1, g_x2, g_y2, 1.0000, 1.0000, g_cls_id,
+                )),
+            }
+        }
+        fn new_no_gt_f64(
+            d_id: i32,
+            d_x1: f64,
+            d_y1: f64,
+            d_x2: f64,
+            d_y2: f64,
+            d_conf: f64,
+            d_cls_conf: f64,
+            d_cls_id: i32,
+        ) -> TestDetection {
+            TestDetection {
+                detection: MDetection::new_f64(
+                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
+                ),
+                ground_truth: None,
+            }
+        }
+        fn new(
+            d_id: i32,
+            d_x1: R64,
+            d_y1: R64,
+            d_x2: R64,
+            d_y2: R64,
+            d_conf: R64,
+            d_cls_conf: R64,
+            d_cls_id: i32,
+            g_id: i32,
+            g_cls_id: i32,
+            g_x1: R64,
+            g_y1: R64,
+            g_x2: R64,
+            g_y2: R64,
+        ) -> TestDetection {
+            TestDetection {
+                detection: MDetection::new(
+                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
+                ),
+                ground_truth: Some(MDetection::new(
+                    g_id,
+                    g_x1,
+                    g_y1,
+                    g_x2,
+                    g_y2,
+                    r64(1.0000),
+                    r64(1.0000),
+                    g_cls_id,
+                )),
+            }
+        }
+        fn new_no_gt(
+            d_id: i32,
+            d_x1: R64,
+            d_y1: R64,
+            d_x2: R64,
+            d_y2: R64,
+            d_conf: R64,
+            d_cls_conf: R64,
+            d_cls_id: i32,
+        ) -> TestDetection {
+            TestDetection {
+                detection: MDetection::new(
+                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
+                ),
+                ground_truth: None,
+            }
+        }
+    }
+    fn cal_iou_xxyys(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
+        let xa = std::cmp::max(bbox_a.0, bbox_b.0);
+        let ya = std::cmp::max(bbox_a.1, bbox_b.1);
+        let xb = std::cmp::min(bbox_a.2, bbox_b.2);
+        let yb = std::cmp::min(bbox_a.3, bbox_b.3);
+        let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
+            * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+        let box_a_area = (bbox_a.2 - bbox_a.0 + r64(1.0)) * (bbox_a.3 - bbox_a.1 + r64(1.0));
+        let box_b_area = (bbox_b.2 - bbox_b.0 + r64(1.0)) * (bbox_b.3 - bbox_b.1 + r64(1.0));
+        let iou = inter_area / (box_a_area + box_b_area - inter_area);
+        iou
+    }
+
+    fn match_d_g(dets: &[MDetection], gts: &[MDetection]) -> Vec<TestDetection> {
+        let mut bbox_d: (R64, R64, R64, R64);
+        let mut bbox_g: (R64, R64, R64, R64);
+        // debug_assert!(bbox_d.0 >= 0.0);
+        // debug_assert!({
+        // brute force algorithm
+        // ...
+
+        // let result = a ==b;
+        // result
+        // });
+        let mut max_iou: R64;
+        let mut tmp_iou: R64;
+        let mut sel_g: usize;
+        let mut td: TestDetection;
+        let mut t_vec: Vec<TestDetection> = Vec::new();
+        for d_id in 0..dets.len() {
+            max_iou = r64(0.0);
+            sel_g = 0;
+            bbox_d = dets[d_id].get_xyxy();
+            for g_id in 0..gts.len() {
+                bbox_g = gts[g_id].get_xyxy();
+                tmp_iou = cal_iou_xxyys(bbox_d, bbox_g);
+                if gts[g_id].cls_id == dets[d_id].cls_id && max_iou < tmp_iou {
+                    max_iou = tmp_iou;
+                    sel_g = g_id;
+                }
+            }
+            if max_iou == r64(0.0) {
+                td = TestDetection::new_no_gt(
+                    d_id as i32,
+                    dets[d_id].x1,
+                    dets[d_id].y1,
+                    dets[d_id].x2,
+                    dets[d_id].y2,
+                    dets[d_id].conf,
+                    dets[d_id].cls_conf,
+                    dets[d_id].cls_id,
+                );
+            } else {
+                td = TestDetection::new(
+                    d_id as i32,
+                    dets[d_id].x1,
+                    dets[d_id].y1,
+                    dets[d_id].x2,
+                    dets[d_id].y2,
+                    dets[d_id].conf,
+                    dets[d_id].cls_conf,
+                    dets[d_id].cls_id,
+                    sel_g as i32,
+                    gts[sel_g].cls_id,
+                    gts[sel_g].x1,
+                    gts[sel_g].y1,
+                    gts[sel_g].x2,
+                    gts[sel_g].y2,
+                );
+            }
+            t_vec.push(td);
+        }
+        t_vec
+    }
+
+    fn vecd_to_mdetection(in_vec: Vec<Vec<f64>>) -> Vec<MDetection> {
+        let mut v_det: Vec<MDetection> = Vec::new();
+        let mut mdt: MDetection;
+        for i in 0..in_vec.len() {
+            mdt = MDetection::new_f64(
+                i as i32,
+                in_vec[i][0],
+                in_vec[i][1],
+                in_vec[i][2],
+                in_vec[i][3],
+                in_vec[i][4],
+                in_vec[i][5],
+                in_vec[i][6] as i32,
+            );
+            v_det.push(mdt);
+        }
+
+        v_det
+    }
+    fn vecg_to_mdetection(in_vec: Vec<Vec<f64>>) -> Vec<MDetection> {
+        let mut v_det: Vec<MDetection> = Vec::new();
+        let mut mdt: MDetection;
+        for i in 0..in_vec.len() {
+            mdt = MDetection::new_f64(
+                i as i32,
+                in_vec[i][1],
+                in_vec[i][2],
+                in_vec[i][3],
+                in_vec[i][4],
+                1.0,
+                1.0,
+                in_vec[i][0] as i32,
+            );
+            v_det.push(mdt);
+        }
+
+        v_det
+    }
+
+    #[test]
+    fn t_compute_by_detections() -> Result<()> {
+        let text = "39.00000 61.40888 27.67710 141.49845 230.31445
+56.00000 0.22360 92.69645 58.11374 148.82400
+56.00000 144.48242 43.56290 416.00021 231.43224
+60.00000 0.00000 137.03310 412.75354 410.12421
+40.00000 160.14066 101.55579 245.92610 240.79890";
+
+        let text_d = "178.89390 105.51570 234.73500 243.34320 0.99960 0.99970 40.00000
+112.96630 14.85980 168.57140 346.21250 0.97220 0.98940 39.00000
+200.27660 40.65520 342.54550 215.68790 0.97430 0.98610 56.00000";
+        let d_vec: Result<Vec<Vec<f64>>> = text_d
+            .lines()
+            .map(|line| {
+                let values: Result<Vec<_>> = line
+                    .split(" ")
+                    .map(|token| -> Result<_> {
+                        let value: f64 = token.parse()?;
+                        Ok(value)
+                    })
+                    .collect();
+                values
+            })
+            .collect();
+        let d_vec = d_vec?;
+        let m_d_vec = vecd_to_mdetection(d_vec);
+
+        let gt_vec: Result<Vec<Vec<f64>>> = text
+            .lines()
+            .map(|line| {
+                let values: Result<Vec<_>> = line
+                    .split(" ")
+                    .map(|token| -> Result<_> {
+                        let value: f64 = token.parse()?;
+                        Ok(value)
+                    })
+                    .collect();
+                values
+            })
+            .collect();
+        let gt_vec = gt_vec?;
+        let m_gt_vec = vecg_to_mdetection(gt_vec);
+        let t_vec: Vec<TestDetection>;
+        t_vec = match_d_g(&m_d_vec, &m_gt_vec);
+        
+
+
+        let ap_cal = ApCalculator::new_coco();
+        let ret = ap_cal.compute_by_detections(t_vec, 4, R64::new(0.5));
+        dbg!(&ret);
+
+
+        Ok(())
     }
 
     #[test]
     fn t_compute_by_prec_rec() -> Result<()> {
         let ap_cal = ApCalculator::new(IntegralMethod::Interpolation(11))?;
 
-        let mut vec: Vec<PrecRec<R64>> = Vec::new();
-        let mut pr1 = PrecRec {
-            precision: r64(0.5),
-            recall: r64(0.625),
-        };
-        let mut pr2 = PrecRec {
-            precision: r64(0.556),
-            recall: r64(0.625),
-        };
-        let mut pr3 = PrecRec {
-            precision: r64(0.625),
-            recall: r64(0.625),
-        };
-        let mut pr4 = PrecRec {
-            precision: r64(0.714),
-            recall: r64(0.625),
-        };
-        let mut pr5 = PrecRec {
-            precision: r64(0.833),
-            recall: r64(0.625),
-        };
-        let mut pr6 = PrecRec {
-            precision: r64(0.800),
-            recall: r64(0.500),
-        };
-        let mut pr7 = PrecRec {
-            precision: r64(0.750),
-            recall: r64(0.375),
-        };
-        let mut pr8 = PrecRec {
-            precision: r64(1.0),
-            recall: r64(0.375),
-        };
-        let mut pr9 = PrecRec {
-            precision: r64(1.0),
-            recall: r64(0.250),
-        };
-        let mut pr10 = PrecRec {
-            precision: r64(1.0),
-            recall: r64(0.125),
-        };
         let mut vec = vec![
             PrecRec {
                 precision: r64(0.5),
