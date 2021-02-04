@@ -1559,6 +1559,7 @@ mod average_precision {
                     match list.last_mut() {
                         Some(last) => {
                             let max_precision = last.precision.max(precision);
+
                             if last.recall == recall {
                                 last.precision = last.precision.max(precision);
                             } else {
@@ -1585,19 +1586,17 @@ mod average_precision {
                 list
             };
 
-            //dbg!(&enveloped);
-
             // compute ap
             match self.integral_method {
                 IntegralMethod::Interpolation(n_points) => {
                     let points_iter =
                         (0..n_points).map(|index| r64(index as f64 / (n_points - 1) as f64));
+
                     let interpolated: Vec<_> =
                         utils::interpolate_stepwise_values(points_iter, &enveloped)
                             .into_iter()
                             .map(|(recall, precision)| PrecRec { recall, precision })
                             .collect();
-                    //dbg!(&interpolated);
                     let ap = interpolated
                         .into_iter()
                         .map(|prec_rec| prec_rec.precision)
@@ -2220,9 +2219,17 @@ mod tests {
 
     #[test]
     fn t_compute_by_prec_rec() -> Result<()> {
-        let ap_cal = ApCalculator::new(IntegralMethod::Interpolation(11))?;
+        let ap_cal_11 = ApCalculator::new(IntegralMethod::Interpolation(11))?;
+        let ap_cal = ApCalculator::new_coco();
+        let mut vec = vec![PrecRec {
+            precision: r64(1.0),
+            recall: r64(1.0),
+        }];
+        vec = vec.into_iter().rev().collect();
+        let res = ap_cal.compute_by_prec_rec(&vec);
+        assert_eq!(res, r64(1.0));
 
-        let mut vec = vec![
+        vec = vec![
             PrecRec {
                 precision: r64(0.5),
                 recall: r64(0.625),
@@ -2264,9 +2271,10 @@ mod tests {
                 recall: r64(0.125),
             },
         ];
+
         vec = vec.into_iter().rev().collect();
-        let res = ap_cal.compute_by_prec_rec(&vec);
-        println!("{:?}", res);
+        let res = ap_cal_11.compute_by_prec_rec(&vec);
+        assert!(abs_diff_eq!(res, r64(0.5908181818181819)));
         Ok(())
     }
 

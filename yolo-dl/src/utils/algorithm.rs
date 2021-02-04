@@ -71,7 +71,9 @@ where
                     latter = latter_;
                 }
                 None => {
-                    if abs_diff_eq!(inter_x, latter.x()) {
+                    if latter.x() == 1.0 {
+                        interpolated.push((latter.x(), latter.y()));
+                    } else if abs_diff_eq!(inter_x, latter.x()) {
                         interpolated.push((latter.x(), r64(0.0)));
                     }
                     break;
