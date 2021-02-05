@@ -83,18 +83,28 @@ mod bbox_tensor {
         pub conf: Tensor,
     }
 
-    #[derive(Debug, TensorLike)]
+    #[derive(Debug, TensorLike, Getters)]
     pub struct TlbrConfTensor {
+        #[get = "pub"]
         tlbr: TlbrTensor,
+        #[get = "pub"]
         conf: Tensor,
     }
 
     impl TlbrConfTensor {
+        pub fn num_samples(&self) -> i64 {
+            self.tlbr.num_samples()
+        }
+
         pub fn index_select(&self, indexes: &Tensor) -> Self {
             let Self { tlbr, conf, .. } = self;
             let tlbr = tlbr.index_select(indexes);
             let conf = conf.index_select(0, indexes);
             Self { tlbr, conf }
+        }
+
+        pub fn device(&self) -> Device {
+            self.tlbr.device()
         }
     }
 
