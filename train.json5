@@ -13,10 +13,6 @@
             "classes_file": "cfg/coco.class",
         },
         // "kind": {
-        //     "type": "Mmap",
-        //     "dataset_file": "iii.mmap",
-        // },
-        // "kind": {
         //     "type": "Iii",
         //     "image_size": 256,
         //     "dataset_dir": "/home/aeon/dataset/iii-small",

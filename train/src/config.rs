@@ -84,9 +84,6 @@ mod dataset {
             #[serde(default = "empty_hashset::<PathBuf>")]
             blacklist_files: HashSet<PathBuf>,
         },
-        Mmap {
-            dataset_file: PathBuf,
-        },
     }
 }
 

@@ -5,7 +5,6 @@ members = [
     "darknet-config",
     "darknet-test",
     "tch-goodies",
-    "mmap-dataset",
     "model-config",
     "coco-map",
 ]

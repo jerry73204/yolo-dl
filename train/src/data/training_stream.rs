@@ -87,11 +87,6 @@ impl TrainingStream {
                     let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
                     dataset
                 }
-                DatasetKind::Mmap { dataset_file, .. } => {
-                    let dataset: Box<dyn RandomAccessDataset> =
-                        Box::new(MmapDataset::load(dataset_file, device).await?);
-                    dataset
-                }
             }
         };
 
