@@ -2099,15 +2099,16 @@ mod tests {
 
     #[test]
     fn t_compute_by_detections() -> Result<()> {
-        let text = "39.00000 61.40888 27.67710 141.49845 230.31445
-56.00000 0.22360 92.69645 58.11374 148.82400
-56.00000 144.48242 43.56290 416.00021 231.43224
-60.00000 0.00000 137.03310 412.75354 410.12421
-40.00000 160.14066 101.55579 245.92610 240.79890";
+        let text = "0.00000 227.16200 219.68274 312.70200 410.39253
+0.00000 284.18624 189.21947 335.15290 404.17874
+0.00000 0.60445 237.66579 24.34890 415.77453
+0.00000 174.27155 155.53200 246.64890 359.78800
+34.00000 8.58000 330.53821 31.98000 411.12074";
 
-        let text_d = "159.15750 105.84630 247.27790 245.03130 0.99870 0.99960 40.00000
-55.24000 31.11770 150.80330 362.72990 0.99670 0.99930 39.00000
-200.69280 35.67050 411.24700 206.84590 0.78630 0.97070 56.00000";
+        let text_d = "175.30000 170.77000 245.34000 324.72000 0.99968 0.99998 0.00000
+284.07000 191.51000 336.73000 351.94000 0.98834 0.99999 0.00000
+229.29000 222.98000 314.37000 358.82000 0.98327 0.99990 0.00000
+0.35714 234.53000 29.80900 361.46000 0.89682 0.99831 0.00000";
         let d_vec: Result<Vec<Vec<f64>>> = text_d
             .lines()
             .map(|line| {
@@ -2146,8 +2147,7 @@ mod tests {
 
         let ap_cal = ApCalculator::new_coco();
         let ret = ap_cal.compute_by_detections(t_vec, 4, R64::new(0.5));
-        dbg!(&ret);
-
+        assert_eq!(ret, r64(1.0));
         Ok(())
     }
 
@@ -2197,7 +2197,7 @@ mod tests {
         let t_vec: Vec<TestDetection>;
         t_vec = match_d_g(&m_d_vec, &m_gt_vec);
         let class_split_vec = split_detection_class(&t_vec);
-
+        let mut sum_ret = r64(0.0);
         let map_cal = MeanApCalculator::new_coco();
         for i in 0..class_split_vec.len() {
             let cls_id = class_split_vec[i][0].detection.cls_id;
@@ -2210,9 +2210,13 @@ mod tests {
             }
 
             let ret = map_cal.compute_mean_ap(&class_split_vec[i], num_gt);
-            dbg!(&cls_id);
-            dbg!(&ret);
+            sum_ret += ret;
         }
+        let map = sum_ret / gt_cnt.len() as f64;
+        assert!(abs_diff_eq!(
+            map,
+            (r64(0.9) + r64(0.1) + r64(0.19801980198019803)) / gt_cnt.len() as f64
+        ));
 
         Ok(())
     }
