@@ -18,7 +18,7 @@ unzip-n = "0.1.2"
 async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 # coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1.4"
-par-stream = { version = "0.3", git = "https://github.com/jerry73204/par-stream.git", features = ["runtime_tokio"] }
+par-stream = { version = "0.3", features = ["runtime_tokio"] }
 futures = "0.3.12"
 rand = "0.8.3"
 image = "0.23.12"
