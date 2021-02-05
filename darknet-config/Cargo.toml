@@ -22,7 +22,7 @@ ndarray = "0.14.0"
 tch = { version = "0.3.1", optional = true }
 unzip-n = "0.1.2"
 strum = { version = "0.20.0", features = ["derive"] }
-image = "0.23.12"
+image = "0.23.13"
 maplit = "1.0.2"
 tch-tensor-like = { version = "0.2.0", features = ["derive"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }

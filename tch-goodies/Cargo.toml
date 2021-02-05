@@ -10,7 +10,7 @@ edition = "2018"
 anyhow = "1.0.38"
 tch = "0.3.1"
 itertools = "0.10.0"
-image = "0.23.12"
+image = "0.23.13"
 noisy_float = { version = "0.1.13", features = ["serde-1", "approx"] }
 serde = { version = "1.0.123", features = ["derive"] }
 tch-tensor-like = { version = "0.2.0", features = ["derive"] }

@@ -18,10 +18,10 @@ unzip-n = "0.1.2"
 async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 # coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1.4"
-par-stream = { version = "0.3", features = ["runtime_tokio"] }
+par-stream = { version = "0.3.0", features = ["runtime_tokio"] }
 futures = "0.3.12"
 rand = "0.8.3"
-image = "0.23.12"
+image = "0.23.13"
 tokio = { version = "1.1.1", features = ["sync"] }
 ndarray = "0.14.0"
 log = "0.4.14"
@@ -37,7 +37,7 @@ arraystring = { version = "0.3.0", features = ["serde-traits"] }
 typenum = "1.12.0"
 bincode = "1.3.1"
 memmap = "0.7.0"
-safe-transmute = "0.11.0"
+safe-transmute = "0.11.1"
 indicatif = "0.15.0"
 cesu8 = "1.1.0"
 serde-big-array = "0.3.1"
