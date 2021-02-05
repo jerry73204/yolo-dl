@@ -875,9 +875,7 @@ mod non_max_suppression {
                     let batch_vec: Vec<i64> = batch_indexes.into();
                     let class_vec: Vec<i64> = class_indexes.into();
 
-                    let nms_pred: HashMap<_, _> = batch_vec
-                        .into_iter()
-                        .zip_eq(class_vec.into_iter())
+                    let nms_pred: HashMap<_, _> = izip!(batch_vec, class_vec)
                         .enumerate()
                         .map(|(select_index, (batch, class))| ((batch, class), select_index as i64))
                         .into_group_map()
@@ -887,18 +885,9 @@ mod non_max_suppression {
                             let select_indexes =
                                 Tensor::of_slice(&select_indexes).to_device(device);
                             let candidate_pred = selected_pred.index_select(&select_indexes);
-                            let TlbrConfTensorUnchecked {
-                                tlbr: TlbrTensorUnchecked { t, l, b, r },
-                                conf,
-                            } = candidate_pred.shallow_clone().into();
 
                             // run NMS
-                            let nms_indexes = tch_goodies::nms(
-                                &TlbrTensorUnchecked { t, l, b, r }.try_into().unwrap(),
-                                &conf.view([-1]),
-                                iou_threshold.raw(),
-                            )
-                            .unwrap();
+                            let nms_indexes = nms(&candidate_pred, iou_threshold.raw()).unwrap();
 
                             let nms_index = BatchClassIndex { batch, class };
                             let nms_pred = candidate_pred.index_select(&nms_indexes);
@@ -921,6 +910,84 @@ mod non_max_suppression {
         pub cx: Tensor,
         pub h: Tensor,
         pub w: Tensor,
+    }
+
+    // TODO: The algorithm is very slow. It deserves a fix.
+    fn nms(bboxes: &TlbrConfTensor, iou_threshold: f64) -> Result<Tensor> {
+        struct BndBox {
+            t: f32,
+            l: f32,
+            b: f32,
+            r: f32,
+        }
+
+        impl BndBox {
+            pub fn h(&self) -> f32 {
+                self.b - self.t
+            }
+
+            pub fn w(&self) -> f32 {
+                self.r - self.l
+            }
+
+            pub fn area(&self) -> f32 {
+                self.h() * self.w()
+            }
+
+            pub fn intersection_area_with(&self, other: &Self) -> f32 {
+                let max_t = self.t.max(other.t);
+                let max_l = self.l.max(other.l);
+                let min_b = self.b.max(other.b);
+                let min_r = self.r.max(other.r);
+                let h = (min_b - max_t).max(0.0);
+                let w = (min_r - max_l).max(0.0);
+                h * w
+            }
+
+            pub fn iou_with(&self, other: &Self) -> f32 {
+                let inter_area = self.intersection_area_with(other);
+                let union_area = self.area() + other.area() - inter_area + 1e-8;
+                inter_area / union_area
+            }
+        }
+
+        let n_bboxes = bboxes.num_samples() as usize;
+        let device = bboxes.device();
+
+        let conf_vec = Vec::<f32>::from(bboxes.conf());
+        let bboxes: Vec<_> = izip!(
+            Vec::<f32>::from(bboxes.tlbr().t()),
+            Vec::<f32>::from(bboxes.tlbr().l()),
+            Vec::<f32>::from(bboxes.tlbr().b()),
+            Vec::<f32>::from(bboxes.tlbr().r()),
+        )
+        .map(|(t, l, b, r)| BndBox { t, l, b, r })
+        .collect();
+
+        let permutation = PermD::from_sort_by_cached_key(conf_vec.as_slice(), |&conf| -r32(conf));
+        let mut suppressed = vec![false; n_bboxes];
+        let mut keep: Vec<i64> = vec![];
+
+        for &li in permutation.indices().iter() {
+            if suppressed[li] {
+                continue;
+            }
+            keep.push(li as i64);
+            let lhs_bbox = &bboxes[li];
+
+            for ri in (li + 1)..n_bboxes {
+                let rhs_bbox = &bboxes[ri];
+
+                let iou = lhs_bbox.iou_with(&rhs_bbox);
+                if iou as f64 > iou_threshold {
+                    suppressed[ri] = true;
+                }
+            }
+        }
+
+        Ok(Tensor::of_slice(&keep)
+            .set_requires_grad(false)
+            .to_device(device))
     }
 }
 

@@ -1,45 +1,4 @@
-use crate::{bbox::TlbrTensor, common::*};
-
-pub fn nms(bboxes: &TlbrTensor, scores: &Tensor, iou_threshold: f64) -> Result<Tensor> {
-    tch::no_grad(|| -> Result<_> {
-        let n_bboxes = bboxes.num_samples();
-        let n_scores = scores
-            .size1()
-            .map_err(|_| format_err!("scores should be a 1d tensor"))?;
-        ensure!(
-            n_bboxes == n_scores,
-            "boxes and scores should have same number of elements in dimension 0"
-        );
-        let device = bboxes.device();
-        let (_, order) = scores.sort(0, /* descending = */ true);
-        let order: Vec<u8> = order.into();
-
-        let n_bboxes = n_bboxes as usize;
-        let mut suppressed = vec![false; n_bboxes];
-        let mut keep: Vec<i64> = vec![];
-
-        for li in order.into_iter().map(|index| index as usize) {
-            if suppressed[li] {
-                continue;
-            }
-            keep.push(li as i64);
-            let lhs_bbox = bboxes.select(li as i64);
-
-            for ri in (li + 1)..n_bboxes {
-                let rhs_bbox = bboxes.select(ri as i64);
-
-                let iou = f32::from(lhs_bbox.iou_with(&rhs_bbox));
-                if iou as f64 > iou_threshold {
-                    suppressed[ri] = true;
-                }
-            }
-        }
-
-        Ok(Tensor::of_slice(&keep)
-            .set_requires_grad(false)
-            .to_device(device))
-    })
-}
+use crate::common::*;
 
 pub trait TensorExt {
     fn unzip_first(&self) -> Option<Vec<Tensor>>;

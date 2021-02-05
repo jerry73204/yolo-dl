@@ -26,6 +26,7 @@ pub use percent_encoding::NON_ALPHANUMERIC;
 pub use petgraph::graphmap::DiGraphMap;
 pub use rand::{prelude::*, rngs::StdRng};
 pub use regex::Regex;
+pub use rusty_perm::{prelude::*, PermD};
 pub use serde::{
     de::{Error as DeserializeError, Visitor},
     ser::{Error as SerializeError, SerializeSeq},
