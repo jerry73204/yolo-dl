@@ -180,7 +180,7 @@ We add the groups unit file to `includes` list in the model configuration, so th
 The command plots the computation graph of a model file in a [GraphViz](https://graphviz.org/) DOT file.
 
 ```sh
-cargo run --bin model-config \
+cargo run --bin model-config -- \
     make-dot-file \
     model-config/tests/cfg/yolov4-csp.json5 \
     output.dot
