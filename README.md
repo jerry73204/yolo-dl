@@ -67,6 +67,24 @@ The `profiling` feature allows you to profile the timing of the data pipeline. I
 cargo run --release --bin train --features profiling --manifest-path train/Cargo.toml
 ```
 
+### Show Statistics in TensorBoard
+
+Set the logging diretory in `train.json` configuration file.
+
+```json
+"logging": {
+    "dir": "logs-coco",
+    ...
+}
+
+```
+
+After your training program is started, you can open a TensorBoard server to read the saved statistics.
+
+```sh
+tensorboard --bind_all --logdir logs-coco/
+```
+
 ### Inspect a NEWSLABv1 Model Configuration File
 
 NEWSLABv1 is a model description format used by NEWSLAB. To inspect a configuration file `model-config/tests/cfg/yolov4-csp.json5` for example,
