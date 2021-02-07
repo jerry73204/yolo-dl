@@ -5,6 +5,7 @@ use crate::{
     message::LoggingMessage,
 };
 
+/// Asynchonous data stream for training.
 #[derive(Debug)]
 pub struct TrainingStream {
     config: Arc<Config>,

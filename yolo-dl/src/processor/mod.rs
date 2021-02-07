@@ -1,3 +1,5 @@
+//! Data preprocessing building blocks.
+
 pub mod cache_loader;
 pub mod mosaic_processor;
 pub mod random_affine;

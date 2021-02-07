@@ -21,7 +21,7 @@ pub use sum_2d::*;
 pub use up_sample_2d::*;
 
 mod module {
-    pub use super::*;
+    use super::*;
 
     #[derive(Derivative)]
     #[derivative(Debug)]
@@ -100,7 +100,7 @@ mod module {
 }
 
 mod module_input {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone)]
     pub enum DataKind<'a> {
@@ -562,7 +562,7 @@ mod concat_2d {
 }
 
 mod conv_bn_2d {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct ConvBn2DInit {
@@ -666,7 +666,7 @@ mod conv_bn_2d {
 }
 
 mod conv_block {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone)]
     pub struct ConvBlockInit {
@@ -733,7 +733,7 @@ mod conv_block {
 }
 
 mod bottleneck {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone)]
     pub struct BottleneckInit {
@@ -800,7 +800,7 @@ mod bottleneck {
 }
 
 mod bottleneck_csp {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone)]
     pub struct BottleneckCspInit {
@@ -908,7 +908,7 @@ mod bottleneck_csp {
 }
 
 mod spp {
-    pub use super::*;
+    use super::*;
 
     pub struct SppInit {
         pub in_c: usize,
@@ -979,7 +979,7 @@ mod spp {
 }
 
 mod focus {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone)]
     pub struct FocusInit {
@@ -1120,7 +1120,7 @@ mod dark_csp_2d {
 }
 
 mod detect_2d {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug, Clone)]
     pub struct Detect2DInit {
@@ -1317,7 +1317,7 @@ mod detect_2d {
 }
 
 mod merge_detect_2d {
-    pub use super::*;
+    use super::*;
 
     #[derive(Debug)]
     pub struct MergeDetect2D {}

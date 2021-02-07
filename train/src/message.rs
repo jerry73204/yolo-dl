@@ -1,3 +1,5 @@
+//! Exchanged message types in the training program.
+
 use crate::{common::*, utils::CowTensor};
 
 pub use logging_message::*;

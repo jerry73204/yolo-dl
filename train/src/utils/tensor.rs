@@ -2,6 +2,7 @@ use crate::common::*;
 
 // CowTensorSlice
 
+/// A helper type to save either a borrowed or an owned [Tensor](tch::Tensor) type.
 pub enum CowTensor<'a> {
     Borrowed(&'a Tensor),
     Owned(Tensor),

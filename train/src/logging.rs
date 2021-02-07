@@ -1,3 +1,5 @@
+//! Data logging toolkit.
+
 use crate::{
     common::*,
     config::{Config, LoggingConfig},
@@ -7,7 +9,7 @@ use crate::{
 use async_std::{fs::File, io::BufWriter};
 
 #[derive(Debug)]
-struct LoggingWorker {
+pub struct LoggingWorker {
     config: Arc<Config>,
     debug_step: i64,
     event_writer: EventWriter<BufWriter<File>>,

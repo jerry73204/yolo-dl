@@ -1,3 +1,5 @@
+//! The Mosaic mixing algorithm.
+
 use crate::common::*;
 
 #[derive(Debug, Clone)]

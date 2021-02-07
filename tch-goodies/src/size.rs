@@ -4,6 +4,7 @@ use crate::{
     unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
 
+/// Generic size type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Hash, Deserialize, TensorLike)]
 pub struct Size<T, U>
 where

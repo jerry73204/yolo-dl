@@ -1,8 +1,10 @@
 use crate::common::*;
 
+/// A trait that extends the functionality of [Tensor](tch::Tensor) type.
 pub trait TensorExt {
     fn unzip_first(&self) -> Option<Vec<Tensor>>;
 
+    /// Reports if the tensor has zero dimension.
     fn is_empty(&self) -> bool;
 
     fn f_cartesian_product_nd(tensors: &[impl Borrow<Tensor>]) -> Result<Tensor>;
@@ -11,6 +13,7 @@ pub trait TensorExt {
         Self::f_cartesian_product_nd(tensors).unwrap()
     }
 
+    /// Sums up a collection of tensors.
     fn f_sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Result<Tensor>
     where
         T: Borrow<Tensor>,
@@ -25,6 +28,7 @@ pub trait TensorExt {
         Ok(sum)
     }
 
+    /// Compute weighted sum of tensors.
     fn f_weighted_mean_tensors<T>(pairs: impl IntoIterator<Item = (T, f64)>) -> Result<Tensor>
     where
         T: Borrow<Tensor>,
@@ -40,6 +44,7 @@ pub trait TensorExt {
         Ok(mean_tensors)
     }
 
+    /// Draw a filled rectangle on tensor.
     fn f_fill_rect_(
         &mut self,
         top: i64,
@@ -49,6 +54,7 @@ pub trait TensorExt {
         color: &Tensor,
     ) -> Result<Tensor>;
 
+    /// Draw a filled rectangle on tensor.
     fn fill_rect_(
         &mut self,
         top: i64,
@@ -60,6 +66,7 @@ pub trait TensorExt {
         self.f_fill_rect_(top, left, bottom, right, color).unwrap()
     }
 
+    /// Draw a non-filled rectangle on tensor.
     fn f_draw_rect_(
         &mut self,
         top: i64,
@@ -70,6 +77,7 @@ pub trait TensorExt {
         color: &Tensor,
     ) -> Result<Tensor>;
 
+    /// Draw a non-filled rectangle on tensor.
     fn draw_rect_(
         &mut self,
         top: i64,
@@ -83,8 +91,10 @@ pub trait TensorExt {
             .unwrap()
     }
 
+    /// Draw filled rectangles on a tensor of a batch of images.
     fn f_batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Result<Tensor>;
 
+    /// Draw filled rectangles on a tensor of a batch of images.
     fn batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Tensor {
         self.f_batch_fill_rect_(btlbrs, color).unwrap()
     }
@@ -96,16 +106,20 @@ pub trait TensorExt {
         color: &Tensor,
     ) -> Result<Tensor>;
 
+    /// Draw non-filled rectangles on a tensor of a batch of images.
     fn batch_draw_rect_(&mut self, btlbrs: &[[i64; 5]], stroke: usize, color: &Tensor) -> Tensor {
         self.f_batch_draw_rect_(btlbrs, stroke, color).unwrap()
     }
 
+    /// Crop the tensor by specifying margins.
     fn f_crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Result<Tensor>;
 
+    /// Crop the tensor by specifying margins.
     fn crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Tensor {
         self.f_crop_by_ratio(top, left, bottom, right).unwrap()
     }
 
+    /// Sum up a collection of tensors.
     fn sum_tensors<T>(tensors: impl IntoIterator<Item = T>) -> Tensor
     where
         T: Borrow<Tensor>,
@@ -113,6 +127,7 @@ pub trait TensorExt {
         Self::f_sum_tensors(tensors).unwrap()
     }
 
+    /// Compute weighted sum of tensors.
     fn weighted_mean_tensors<T>(pairs: impl IntoIterator<Item = (T, f64)>) -> Tensor
     where
         T: Borrow<Tensor>,
@@ -120,28 +135,39 @@ pub trait TensorExt {
         Self::f_weighted_mean_tensors(pairs).unwrap()
     }
 
+    /// Resize the tensor of an image and keep the ratio.
     fn resize2d(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
 
+    /// Resize the tensor of an image without keeping the ratio.
     fn resize2d_exact(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
 
+    /// Resize the tensor of an image and keep the ratio.
     fn resize2d_letterbox(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
 
+    /// Swish activation function.
     fn swish(&self) -> Tensor;
 
+    /// Hard-Swish activation function.
     fn hard_swish(&self) -> Tensor;
 
+    /// Mish activation function.
     fn mish(&self) -> Tensor;
 
+    /// Hard-Mish activation function.
     fn hard_mish(&self) -> Tensor;
 
+    /// Convert from RGB to HSV color space.
     fn f_rgb_to_hsv(&self) -> Result<Tensor>;
 
+    /// Convert from RGB to HSV color space.
     fn rgb_to_hsv(&self) -> Tensor {
         self.f_rgb_to_hsv().unwrap()
     }
 
+    /// Convert from HSV to RGB color space.
     fn f_hsv_to_rgb(&self) -> Result<Tensor>;
 
+    /// Convert from HSV to RGB color space.
     fn hsv_to_rgb(&self) -> Tensor {
         self.f_hsv_to_rgb().unwrap()
     }

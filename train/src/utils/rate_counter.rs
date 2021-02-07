@@ -1,5 +1,6 @@
 use crate::common::*;
 
+/// An utility that calculates message rate per period of time.
 #[derive(Debug)]
 pub struct RateCounter {
     count: f64,

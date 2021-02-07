@@ -1,3 +1,5 @@
+//! Safe bounding box types and functions.
+
 use crate::{
     common::*,
     ratio::Ratio,
@@ -613,6 +615,7 @@ mod labeled_bbox {
     //     pub(super) _phantom: PhantomData<U>,
     // }
 
+    /// Generic bounding box with an extra class ID.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct LabeledBBox<T, U>
     where

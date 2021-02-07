@@ -1,3 +1,5 @@
+//! Darknet configuration toolkit.
+
 mod common;
 pub mod config;
 pub mod darknet;

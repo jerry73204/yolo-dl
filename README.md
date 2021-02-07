@@ -110,13 +110,15 @@ dot -Tsvg image.dot > image.svg
 
 ## Documentation
 
-Most documenation are inline in the code for now. To open the document in browser,
+Most documenation are inline in the code for now.
+
+Compile the documenation and open it in browser. Please search for `yolo-dl-doc` crate to see the full documenation.
 
 ```sh
 cargo doc --open
 ```
 
-If you are developing on the remote site, you can open the document server by
+If you are developing on the remote site, you can open a remotedocument server with `cargo-docserve`. Please search for `yolo-dl-doc` crate in your browser.
 
 ```sh
 // install if you run cargo-docserve for the first time

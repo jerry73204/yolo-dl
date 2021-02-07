@@ -1,3 +1,5 @@
+//! The random affine transformation algorithm.
+
 use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

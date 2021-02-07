@@ -2,6 +2,7 @@ use crate::{common::*, config::LoadCheckpoint};
 
 pub const FILE_STRFTIME: &str = "%Y-%m-%d-%H-%M-%S.%3f%z";
 
+/// Save parameters to a checkpoint file.
 pub fn save_checkpoint(
     vs: &nn::VarStore,
     checkpoint_dir: &Path,
@@ -19,6 +20,7 @@ pub fn save_checkpoint(
     Ok(())
 }
 
+/// Load parameters from a diretory with specified checkpoint loading method.
 pub fn try_load_checkpoint(
     vs: &mut nn::VarStore,
     logging_dir: &Path,

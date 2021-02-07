@@ -1,3 +1,5 @@
+//! The data caching implementation.
+
 use crate::{common::*, profiling::Timing};
 
 // cache loader

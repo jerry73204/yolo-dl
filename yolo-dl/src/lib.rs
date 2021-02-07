@@ -1,3 +1,5 @@
+//! The building blocks of deep detection model.
+
 mod common;
 pub mod loss;
 pub mod model;

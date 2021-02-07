@@ -1,23 +1,31 @@
+//! The model adaptor.
+
 use crate::{
     common::*,
     config::{DarknetModelConfig, ModelConfig, NewslabV1ModelConfig},
 };
 
+/// The generic model adaptor.
 #[derive(Debug)]
 pub enum Model {
+    /// Model built from Darknet configuration. It is not supported yet.
     Darknet(DarknetModel),
+    /// Model built from NEWSLABv1 configuration.
     NewslabV1(NewslabV1Model),
 }
 
+/// Model built from Darknet configuration. It is not supported yet.
 #[derive(Debug)]
 pub struct DarknetModel {}
 
+/// Model built from Darknet configuration.
 #[derive(Debug)]
 pub struct NewslabV1Model {
     model: YoloModel,
 }
 
 impl Model {
+    /// Builds a model adaptor from a configuration file.
     pub fn new<'a>(path: impl Borrow<nn::Path<'a>>, config: &ModelConfig) -> Result<Self> {
         match config {
             ModelConfig::Darknet(DarknetModelConfig { .. }) => {

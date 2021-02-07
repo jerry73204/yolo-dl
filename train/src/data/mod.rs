@@ -1,3 +1,5 @@
+//! Dataset processing toolkit.
+
 mod cached;
 mod coco_;
 mod dataset;

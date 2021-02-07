@@ -1,3 +1,5 @@
+//! Misc utilities.
+
 mod checkpoint;
 mod lr_scheduler;
 mod rate_counter;

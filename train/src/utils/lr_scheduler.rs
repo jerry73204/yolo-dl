@@ -1,5 +1,6 @@
 use crate::{common::*, config::LearningRateSchedule};
 
+/// Learning rate scheduling algorithm.
 #[derive(Debug, Clone)]
 pub enum LrScheduler {
     Constant {

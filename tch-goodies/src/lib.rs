@@ -1,3 +1,5 @@
+//! The crate provides extension to [Tensor](tch::Tensor) type and utilities.
+
 pub mod bbox;
 mod common;
 pub mod detection;

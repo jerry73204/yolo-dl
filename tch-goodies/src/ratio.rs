@@ -1,5 +1,6 @@
 use crate::common::*;
 
+/// A floating point wrapper that restricts its range from 0 to 1.
 #[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Ratio(R64);

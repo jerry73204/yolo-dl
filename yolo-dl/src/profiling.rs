@@ -1,3 +1,5 @@
+//! The profiling toolkit that can be disabled in compile-time.
+
 use crate::common::*;
 
 lazy_static! {

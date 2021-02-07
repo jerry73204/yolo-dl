@@ -1,3 +1,5 @@
+//! Loss function building blocks.
+
 use crate::{
     common::*,
     model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput},

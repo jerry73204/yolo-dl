@@ -1,3 +1,5 @@
+//! The random color distortion algorithm.
+
 use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

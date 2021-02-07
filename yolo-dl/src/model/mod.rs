@@ -1,3 +1,5 @@
+//! The model implementation.
+
 mod misc;
 mod model;
 mod module;

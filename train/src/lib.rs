@@ -1,11 +1,13 @@
-mod common;
+//! The training program for yolo-dl project.
+
+pub mod common;
 pub mod config;
-mod data;
-mod logging;
-mod message;
-mod model;
-mod train;
-mod utils;
+pub mod data;
+pub mod logging;
+pub mod message;
+pub mod model;
+pub mod train;
+pub mod utils;
 
 use crate::{
     common::*,
@@ -13,6 +15,7 @@ use crate::{
     data::{GenericDataset, TrainingStream},
 };
 
+/// The entry of training program.
 pub async fn start(config: Arc<Config>) -> Result<()> {
     let start_time = Local::now();
     let logging_dir = Arc::new(
