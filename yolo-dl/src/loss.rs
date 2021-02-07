@@ -2352,7 +2352,7 @@ mod tests {
     #[test]
     fn focal_loss() -> Result<()> {
         let mut rng = rand::thread_rng();
-        let device = Device::cuda_if_available();
+        let device = Device::Cpu;
 
         let n_batch = 32;
         let n_class = rng.gen_range(1..10);
