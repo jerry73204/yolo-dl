@@ -74,7 +74,7 @@ Set the logging diretory in `train.json` configuration file.
 ```json
 "logging": {
     "dir": "logs-coco",
-    ...
+    // ...
 }
 
 ```
@@ -169,8 +169,7 @@ PASCAL Visual Object Classes (VOC) dataset toolkit.
 - [coco-rs](https://github.com/jerry73204/coco-rs)
 COCO dataset toolkit.
 
-- [Formosa dataset](https://www.iii.org.tw/Product/TransferDBDetail.aspx?tdp_sqno=3345&fm_sqno=23) from Institute for Information Industry in Taiwan
-The dataset the project mainly works on.
+- [Formosa dataset](https://www.iii.org.tw/Product/TransferDBDetail.aspx?tdp_sqno=3345&fm_sqno=23) from Institute for Information Industry in Taiwan which the project mainly works on.
 
 ## License
 
