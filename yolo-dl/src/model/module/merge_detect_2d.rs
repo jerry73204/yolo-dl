@@ -426,14 +426,22 @@ pub struct DetectionInfo {
     pub flat_index_range: Range<i64>,
 }
 
+/// Represents the output feature map of a layer.
+///
+/// Every belonging tensor has shape `[batch, entry, anchor, height, width]`.
 #[derive(Debug, TensorLike)]
 pub struct FeatureMap {
-    // tensors have shape [batch, entry, anchor, height, width]
+    /// The bounding box center y position in ratio unit. It has 1 entry.
     pub cy: Tensor,
+    /// The bounding box center x position in ratio unit. It has 1 entry.
     pub cx: Tensor,
+    /// The bounding box height in ratio unit. It has 1 entry.
     pub h: Tensor,
+    /// The bounding box width in ratio unit. It has 1 entry.
     pub w: Tensor,
+    /// The likelihood score an object in the position. It has 1 entry.
     pub objectness: Tensor,
+    /// The scores the object is of that class. It number of entries is the number of classes.
     pub classification: Tensor,
 }
 

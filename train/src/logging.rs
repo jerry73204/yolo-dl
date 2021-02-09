@@ -303,7 +303,7 @@ impl LoggingWorker {
         // log losses
         self.event_writer
             .write_scalar_async(
-                format!("{}/loss/total-loss", tag),
+                format!("{}/loss/total_loss", tag),
                 step,
                 losses.total_loss.into(),
             )

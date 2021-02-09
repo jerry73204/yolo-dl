@@ -70,6 +70,48 @@ impl Detect2D {
         let cx = (outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_w as f64
             + x_offsets.view([1, 1, 1, 1, feature_w]);
 
+        debug_assert!({
+            let expect_cy = {
+                let array: Array5<f32> = outputs
+                    .i((.., 0..1, .., .., ..))
+                    .sigmoid()
+                    .try_into_cv()
+                    .unwrap();
+                let mut expect_cy = array.clone();
+                array
+                    .indexed_iter()
+                    .for_each(|((batch, entry, anchor, row, col), val)| {
+                        expect_cy[(batch, entry, anchor, row, col)] =
+                            (val * 2.0 - 0.5 + row as f32) / feature_h as f32;
+                    });
+                expect_cy
+            };
+            let expect_cx = {
+                let array: Array5<f32> = outputs
+                    .i((.., 1..2, .., .., ..))
+                    .sigmoid()
+                    .try_into_cv()
+                    .unwrap();
+                let mut expect_cx = array.clone();
+                array
+                    .indexed_iter()
+                    .for_each(|((batch, entry, anchor, row, col), val)| {
+                        expect_cx[(batch, entry, anchor, row, col)] =
+                            (val * 2.0 - 0.5 + col as f32) / feature_w as f32;
+                    });
+                expect_cx
+            };
+
+            let cy: Array5<f32> = (&cy).try_into_cv().unwrap();
+            let cx: Array5<f32> = (&cx).try_into_cv().unwrap();
+
+            cy.indexed_iter()
+                .all(|(index, &actual)| abs_diff_eq!(actual, expect_cy[index]))
+                && cx
+                    .indexed_iter()
+                    .all(|(index, &actual)| abs_diff_eq!(actual, expect_cx[index]))
+        });
+
         // bbox sizes in grid units
         let h = outputs
             .i((.., 2..3, .., .., ..))
