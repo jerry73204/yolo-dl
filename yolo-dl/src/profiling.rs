@@ -59,7 +59,10 @@ impl Timing {
         }
 
         #[cfg(not(feature = "profiling"))]
-        Self
+        {
+            let _ = name;
+            Self
+        }
     }
 
     pub fn set_record<'a>(&mut self, name: &'static str) {
@@ -68,6 +71,9 @@ impl Timing {
             self.elapsed.push((name, self.instant.elapsed()));
             self.instant = Instant::now();
         }
+
+        #[cfg(not(feature = "profiling"))]
+        let _ = name;
     }
 
     pub fn report(&self) {
