@@ -58,8 +58,8 @@ impl CacheLoader {
         } = *self;
         let image_path = image_path.as_ref();
         let PixelSize {
-            height: orig_h,
-            width: orig_w,
+            h: orig_h,
+            w: orig_w,
             ..
         } = *orig_size;
 

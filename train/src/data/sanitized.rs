@@ -27,17 +27,14 @@ where
             .map(|record| -> Result<_> {
                 let FileRecord {
                     ref path,
-                    size: PixelSize { height, width, .. },
+                    size: PixelSize { h, w, .. },
                     ref bboxes,
                 } = *record.as_ref();
 
-                ensure!(
-                    height > 0 && width > 0,
-                    "image height and width must be positive"
-                );
+                ensure!(h > 0 && w > 0, "image height and w must be positive");
 
-                let range_h = (-out_of_bound_tolerance)..(out_of_bound_tolerance + height as f64);
-                let range_w = (-out_of_bound_tolerance)..(out_of_bound_tolerance + width as f64);
+                let range_h = (-out_of_bound_tolerance)..(out_of_bound_tolerance + h as f64);
+                let range_w = (-out_of_bound_tolerance)..(out_of_bound_tolerance + w as f64);
 
                 let bboxes: Vec<_> = bboxes
                     .iter()
@@ -60,24 +57,24 @@ where
                         );
 
                         // crop out out of bound parts
-                        let sanitized_t = clamp(orig_t, R64::new(0.0), R64::new(height as f64));
-                        let sanitized_b = clamp(orig_b, R64::new(0.0), R64::new(height as f64));
-                        let sanitized_l = clamp(orig_l, R64::new(0.0), R64::new(width as f64));
-                        let sanitized_r = clamp(orig_r, R64::new(0.0), R64::new(width as f64));
+                        let sanitized_t = clamp(orig_t, R64::new(0.0), R64::new(h as f64));
+                        let sanitized_b = clamp(orig_b, R64::new(0.0), R64::new(h as f64));
+                        let sanitized_l = clamp(orig_l, R64::new(0.0), R64::new(w as f64));
+                        let sanitized_r = clamp(orig_r, R64::new(0.0), R64::new(w as f64));
 
                         debug_assert!(
-                            (0.0..=(height as f64)).contains(&sanitized_t.raw())
-                                && (0.0..=(height as f64)).contains(&sanitized_b.raw())
-                                && (0.0..=(width as f64)).contains(&sanitized_l.raw())
-                                && (0.0..=(width as f64)).contains(&sanitized_r.raw())
+                            (0.0..=(h as f64)).contains(&sanitized_t.raw())
+                                && (0.0..=(h as f64)).contains(&sanitized_b.raw())
+                                && (0.0..=(w as f64)).contains(&sanitized_l.raw())
+                                && (0.0..=(w as f64)).contains(&sanitized_r.raw())
                         );
 
                         // kick of small bboxes
                         let sanitized_h = sanitized_b - sanitized_t;
                         let sanitized_w = sanitized_r - sanitized_l;
 
-                        if sanitized_h / height as f64 <= min_bbox_size
-                            || sanitized_w / width as f64 <= min_bbox_size
+                        if sanitized_h / h as f64 <= min_bbox_size
+                            || sanitized_w / w as f64 <= min_bbox_size
                         {
                             warn!("filtered out a small bbox from '{}'", path.display());
                             return Ok(None);
@@ -102,7 +99,7 @@ where
 
                 Ok(Arc::new(FileRecord {
                     path: path.clone(),
-                    size: PixelSize::new(height, width),
+                    size: PixelSize::new(h, w),
                     bboxes,
                 }))
             })

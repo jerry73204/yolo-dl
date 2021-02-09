@@ -220,8 +220,8 @@ impl MultiDenseDetection {
 
                 let num_anchors = anchors.len() as i64;
                 let GridSize {
-                    height: feature_h,
-                    width: feature_w,
+                    h: feature_h,
+                    w: feature_w,
                     ..
                 } = feature_size;
 
@@ -337,14 +337,11 @@ impl MultiDenseDetection {
 
         let LayerMeta {
             ref flat_index_range,
-            feature_size: GridSize { height, width, .. },
+            feature_size: GridSize { h, w, .. },
             ..
         } = self.layer_meta[layer_index];
 
-        let flat_index =
-            flat_index_range.start + grid_col + width * (grid_row + height * anchor_index);
-
-        flat_index
+        flat_index_range.start + grid_col + w * (grid_row + h * anchor_index)
     }
 }
 

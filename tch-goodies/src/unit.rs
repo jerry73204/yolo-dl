@@ -1,19 +1,11 @@
 //! Unit marker types.
 
-use crate::{common::*, ratio::Ratio};
+use crate::common::*;
 
-pub trait Unit {
-    type Type;
-}
-impl Unit for PixelUnit {
-    type Type = usize;
-}
-impl Unit for GridUnit {
-    type Type = R64;
-}
-impl Unit for RatioUnit {
-    type Type = Ratio;
-}
+pub trait Unit {}
+impl Unit for PixelUnit {}
+impl Unit for GridUnit {}
+impl Unit for RatioUnit {}
 
 /// The pixel unit marker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]

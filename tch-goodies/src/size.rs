@@ -5,13 +5,13 @@ use crate::{
 };
 
 /// Generic size type.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Hash, Deserialize, TensorLike)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike)]
 pub struct Size<T, U>
 where
     U: Unit,
 {
-    pub height: T,
-    pub width: T,
+    pub h: T,
+    pub w: T,
     #[tensor_like(copy)]
     _phantom: PhantomData<U>,
 }
@@ -20,10 +20,10 @@ impl<T, U> Size<T, U>
 where
     U: Unit,
 {
-    pub fn new(height: T, width: T) -> Self {
+    pub fn new(h: T, w: T) -> Self {
         Self {
-            height,
-            width,
+            h,
+            w,
             _phantom: PhantomData,
         }
     }
@@ -33,8 +33,8 @@ where
         F: FnMut(&T) -> R,
     {
         Size {
-            height: f(&self.height),
-            width: f(&self.width),
+            h: f(&self.h),
+            w: f(&self.w),
             _phantom: PhantomData,
         }
     }

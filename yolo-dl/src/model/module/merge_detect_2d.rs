@@ -49,8 +49,8 @@ impl MergeDetect2D {
 
                 let num_anchors = anchors.len();
                 let GridSize {
-                    height: feature_h,
-                    width: feature_w,
+                    h: feature_h,
+                    w: feature_w,
                     ..
                 } = *feature_size;
 
@@ -217,11 +217,11 @@ impl MergeDetect2DOutput {
             .iter()
             .map(|meta| {
                 let DetectionInfo {
-                    feature_size: GridSize { height, width, .. },
+                    feature_size: GridSize { h, w, .. },
                     ref anchors,
                     ..
                 } = *meta;
-                height * width * anchors.len() as i64
+                h * w * anchors.len() as i64
             })
             .sum();
 
@@ -277,8 +277,8 @@ impl MergeDetect2DOutput {
             DetectionInfo {
                 feature_size:
                     GridSize {
-                        height: feature_h,
-                        width: feature_w,
+                        h: feature_h,
+                        w: feature_w,
                         ..
                     },
                 anchors,
@@ -321,12 +321,11 @@ impl MergeDetect2DOutput {
 
         let DetectionInfo {
             ref flat_index_range,
-            feature_size: GridSize { height, width, .. },
+            feature_size: GridSize { h, w, .. },
             ..
         } = self.info.get(layer_index)?;
 
-        let flat_index =
-            flat_index_range.start + grid_col + width * (grid_row + height * anchor_index);
+        let flat_index = flat_index_range.start + grid_col + w * (grid_row + h * anchor_index);
 
         Some(flat_index)
     }
@@ -346,8 +345,8 @@ impl MergeDetect2DOutput {
                 let DetectionInfo {
                     feature_size:
                         GridSize {
-                            height: feature_h,
-                            width: feature_w,
+                            h: feature_h,
+                            w: feature_w,
                             ..
                         },
                     ref anchors,

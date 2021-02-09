@@ -177,8 +177,8 @@ impl Detect2D {
                         .cloned()
                         .map(|anchor_size| {
                             let RatioSize {
-                                height: anchor_h,
-                                width: anchor_w,
+                                h: anchor_h,
+                                w: anchor_w,
                                 ..
                             } = anchor_size;
                             (anchor_h.to_f64() as f32, anchor_w.to_f64() as f32)

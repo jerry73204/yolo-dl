@@ -72,8 +72,8 @@ impl BBoxMatcher {
                 let DetectionInfo {
                     feature_size:
                         GridSize {
-                            height: feature_h,
-                            width: feature_w,
+                            h: feature_h,
+                            w: feature_w,
                             ..
                         },
                     ref anchors,
@@ -172,8 +172,8 @@ impl BBoxMatcher {
                     .filter_map(move |(anchor_index, anchor_size)| {
                         // filter by anchor sizes
                         let RatioSize {
-                            height: anchor_h,
-                            width: anchor_w,
+                            h: anchor_h,
+                            w: anchor_w,
                             ..
                         } = anchor_size;
 

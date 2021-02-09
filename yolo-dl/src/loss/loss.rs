@@ -1,7 +1,6 @@
 //! Defines loss for training.
 
 use super::{
-    average_precision::MeanApCalculator,
     bce_with_logit_loss::BceWithLogitsLossInit,
     focal_loss::{FocalLoss, FocalLossInit},
     misc::{
@@ -120,8 +119,6 @@ mod yolo_loss {
             }
             .build()?;
 
-            let map_calculator = MeanApCalculator::new_coco();
-
             Ok(YoloLoss {
                 reduction,
                 bce_class,
@@ -133,7 +130,6 @@ mod yolo_loss {
                 objectness_loss_weight,
                 classification_loss_weight,
                 bbox_matcher,
-                map_calculator,
             })
         }
     }
@@ -168,7 +164,6 @@ mod yolo_loss {
         objectness_loss_weight: f64,
         classification_loss_weight: f64,
         bbox_matcher: BBoxMatcher,
-        map_calculator: MeanApCalculator,
     }
 
     impl YoloLoss {
