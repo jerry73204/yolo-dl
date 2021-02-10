@@ -195,10 +195,10 @@ pub async fn multi_gpu_training_worker(
             training_timing.set_record("merge outputs");
 
             // compute benchmark
-            // {
-            //     let benchmark = YoloBenchmarkInit::default().build()?;
-            //     benchmark.forward(&model_output);
-            // }
+            {
+                let benchmark = YoloBenchmarkInit::default().build()?;
+                benchmark.forward(&model_output);
+            }
 
             // send output to logger
             {
