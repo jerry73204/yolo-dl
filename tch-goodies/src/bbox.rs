@@ -14,6 +14,8 @@ pub use labeled_bbox::*;
 mod bbox_tensor {
     use super::*;
 
+    const EPSILON: f64 = 1e-16;
+
     #[derive(Debug, TensorLike, Getters)]
     pub struct SizeTensor {
         #[get = "pub"]
@@ -137,6 +139,82 @@ mod bbox_tensor {
             let (num, _) = self.cy.size2().unwrap();
             num
         }
+
+        pub fn area(&self) -> AreaTensor {
+            let Self { h, w, .. } = self;
+            let area = h * w;
+            AreaTensor { area }
+        }
+
+        pub fn size(&self) -> SizeTensor {
+            let Self { h, w, .. } = self;
+            SizeTensor {
+                h: h.shallow_clone(),
+                w: w.shallow_clone(),
+            }
+        }
+
+        pub fn intersect_area_with(&self, other: &Self) -> AreaTensor {
+            TlbrTensor::from(self).intersect_area_with(&TlbrTensor::from(other))
+        }
+
+        pub fn closure_with(&self, other: &Self) -> CycxhwTensor {
+            (&TlbrTensor::from(self).closure_with(&TlbrTensor::from(other))).into()
+        }
+
+        pub fn iou_with(&self, other: &Self) -> Tensor {
+            let inter_area = self.intersect_area_with(other);
+            let outer_area = self.area().area() + other.area().area() - inter_area.area() + EPSILON;
+            let iou = inter_area.area() / outer_area;
+            iou
+        }
+
+        pub fn giou_with(&self, other: &Self) -> Tensor {
+            let inter_area = self.intersect_area_with(other);
+            let outer_area = self.area().area() + other.area().area() - inter_area.area() + EPSILON;
+            let closure = self.closure_with(&other);
+            let closure_area = closure.area();
+            let iou = inter_area.area() / &outer_area;
+            iou - (closure_area.area() - &outer_area) / (closure_area.area() + EPSILON)
+        }
+
+        pub fn diou_with(&self, other: &Self) -> Tensor {
+            let iou = self.iou_with(other);
+
+            let closure = TlbrTensor::from(self).closure_with(&TlbrTensor::from(other));
+            let closure_size = closure.size();
+
+            let diagonal_square = closure_size.h().pow(2.0) + closure_size.w().pow(2.0) + EPSILON;
+            let center_dist_square =
+                (self.cy() - other.cy()).pow(2.0) + (self.cx() - other.cx()).pow(2.0);
+
+            iou - center_dist_square / diagonal_square
+        }
+
+        pub fn ciou_with(&self, other: &Self) -> Tensor {
+            use std::f64::consts::PI;
+
+            let iou = self.iou_with(other);
+
+            let closure = TlbrTensor::from(self).closure_with(&TlbrTensor::from(other));
+            let closure_size = closure.size();
+
+            let pred_angle = self.h().atan2(&self.w());
+            let target_angle = other.h().atan2(&other.w());
+
+            let diagonal_square = closure_size.h().pow(2.0) + closure_size.w().pow(2.0) + EPSILON;
+            let center_dist_square =
+                (self.cy() - other.cy()).pow(2.0) + (self.cx() - other.cx()).pow(2.0);
+
+            let shape_loss = (&pred_angle - &target_angle).pow(2.0) * 4.0 / PI.powi(2);
+            let shape_loss_coef = tch::no_grad(|| &shape_loss / (1.0 - &iou + &shape_loss));
+
+            iou - center_dist_square / diagonal_square + shape_loss_coef * shape_loss
+        }
+
+        pub fn hausdorff_distance_to(&self, other: &Self) -> Tensor {
+            TlbrTensor::from(self).hausdorff_distance_to(&TlbrTensor::from(other))
+        }
     }
 
     impl TlbrTensor {
@@ -183,7 +261,7 @@ mod bbox_tensor {
             AreaTensor { area }
         }
 
-        pub fn intersect_area(&self, other: &Self) -> AreaTensor {
+        pub fn intersect_area_with(&self, other: &Self) -> AreaTensor {
             let Self {
                 t: lhs_t,
                 l: lhs_l,
@@ -237,12 +315,44 @@ mod bbox_tensor {
             }
         }
 
-        pub fn iou_with(&self, other: &Self) -> Tensor {
-            let epsilon = 1e-4;
-            let inter_area = self.intersect_area(other);
-            let outer_area = self.area().area() + other.area().area() - inter_area.area() + epsilon;
-            let iou = inter_area.area() / outer_area;
-            iou
+        pub fn hausdorff_distance_to(&self, other: &Self) -> Tensor {
+            let TlbrTensor {
+                t: tl,
+                l: ll,
+                b: bl,
+                r: rl,
+            } = self;
+            let TlbrTensor {
+                t: tr,
+                l: lr,
+                b: br,
+                r: rr,
+            } = other;
+
+            let dt = tr - tl;
+            let dl = lr - ll;
+            let db = bl - br;
+            let dr = rl - rr;
+
+            let dt_l = dt.clamp_min(0.0);
+            let dl_l = dl.clamp_min(0.0);
+            let db_l = db.clamp_min(0.0);
+            let dr_l = dr.clamp_min(0.0);
+
+            let dt_r = (-&dt).clamp_min(0.0);
+            let dl_r = (-&dl).clamp_min(0.0);
+            let db_r = (-&db).clamp_min(0.0);
+            let dr_r = (-&dr).clamp_min(0.0);
+
+            (dt_l.pow(2.0) + dl_l.pow(2.0))
+                .max1(&(dt_l.pow(2.0) + dr_l.pow(2.0)))
+                .max1(&(db_l.pow(2.0) + dl_l.pow(2.0)))
+                .max1(&(db_l.pow(2.0) + dr_l.pow(2.0)))
+                .max1(&(dt_r.pow(2.0) + dl_r.pow(2.0)))
+                .max1(&(dt_r.pow(2.0) + dr_r.pow(2.0)))
+                .max1(&(db_r.pow(2.0) + dl_r.pow(2.0)))
+                .max1(&(db_r.pow(2.0) + dr_r.pow(2.0)))
+                .sqrt()
         }
     }
 
@@ -400,6 +510,17 @@ mod bbox_tensor {
             let r = cx + w / 2.0;
 
             Self { t, l, b, r }
+        }
+    }
+
+    impl From<&TlbrTensor> for CycxhwTensor {
+        fn from(from: &TlbrTensor) -> Self {
+            let TlbrTensor { t, l, b, r } = from;
+            let h = b - t;
+            let w = r - l;
+            let cy = t + &h / 2.0;
+            let cx = l + &w / 2.0;
+            Self { cy, cx, h, w }
         }
     }
 

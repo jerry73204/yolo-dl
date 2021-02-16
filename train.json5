@@ -136,7 +136,7 @@
         },
         "loss": {
             "match_grid_method": "Rect4",
-            "iou_kind": "DIoU",
+            "box_metric": "Hausdorff",
             "iou_loss_weight": 0.31,
             "objectness_loss_weight": 1.0,
             "classification_loss_weight": 0.87,

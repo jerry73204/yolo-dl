@@ -4,7 +4,7 @@ use super::{
     bce_with_logit_loss::BceWithLogitsLossInit,
     focal_loss::{FocalLoss, FocalLossInit},
     misc::{
-        IoUKind, MatchGrid, PredInstances, PredInstancesUnchecked, TargetInstances,
+        BoxMetric, MatchGrid, PredInstances, PredInstancesUnchecked, TargetInstances,
         TargetInstancesUnchecked,
     },
     pred_target_matching::{BBoxMatcher, BBoxMatcherInit, PredTargetMatching},
@@ -23,9 +23,9 @@ mod yolo_loss {
         pub reduction: Reduction,
         pub focal_loss_gamma: Option<f64>,
         pub match_grid_method: Option<MatchGrid>,
-        pub iou_kind: Option<IoUKind>,
-        pub smooth_bce_coef: Option<f64>,
-        pub objectness_iou_ratio: Option<f64>,
+        pub box_metric: Option<BoxMetric>,
+        pub smooth_classification_coef: Option<f64>,
+        pub smooth_objectness_coef: Option<f64>,
         pub anchor_scale_thresh: Option<f64>,
         pub iou_loss_weight: Option<f64>,
         pub objectness_loss_weight: Option<f64>,
@@ -39,9 +39,9 @@ mod yolo_loss {
                 reduction,
                 focal_loss_gamma,
                 match_grid_method,
-                iou_kind,
-                smooth_bce_coef,
-                objectness_iou_ratio,
+                box_metric,
+                smooth_classification_coef,
+                smooth_objectness_coef,
                 anchor_scale_thresh,
                 iou_loss_weight,
                 objectness_loss_weight,
@@ -50,9 +50,9 @@ mod yolo_loss {
 
             let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
             let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
-            let iou_kind = iou_kind.unwrap_or(IoUKind::DIoU);
-            let smooth_bce_coef = smooth_bce_coef.unwrap_or(0.01);
-            let objectness_iou_ratio = objectness_iou_ratio.unwrap_or(1.0);
+            let box_metric = box_metric.unwrap_or(BoxMetric::DIoU);
+            let smooth_classification_coef = smooth_classification_coef.unwrap_or(0.01);
+            let smooth_objectness_coef = smooth_objectness_coef.unwrap_or(0.0);
             let anchor_scale_thresh = anchor_scale_thresh.unwrap_or(4.0);
             let iou_loss_weight = iou_loss_weight.unwrap_or(0.05);
             let objectness_loss_weight = objectness_loss_weight.unwrap_or(1.0);
@@ -63,12 +63,12 @@ mod yolo_loss {
                 "focal_loss_gamma must be non-negative"
             );
             ensure!(
-                smooth_bce_coef >= 0.0 && smooth_bce_coef <= 1.0,
-                "smooth_bce_coef must be in range [0, 1]"
+                smooth_classification_coef >= 0.0 && smooth_classification_coef <= 1.0,
+                "smooth_classification_coef must be in range [0, 1]"
             );
             ensure!(
-                objectness_iou_ratio >= 0.0 && objectness_iou_ratio <= 1.0,
-                "objectness_iou_ratio must be in range [0, 1]"
+                smooth_objectness_coef >= 0.0 && smooth_objectness_coef <= 1.0,
+                "smooth_objectness_coef must be in range [0, 1]"
             );
             ensure!(
                 iou_loss_weight >= 0.0,
@@ -123,9 +123,9 @@ mod yolo_loss {
                 reduction,
                 bce_class,
                 bce_objectness,
-                iou_kind,
-                smooth_bce_coef,
-                objectness_iou_ratio,
+                box_metric,
+                smooth_classification_coef,
+                smooth_objectness_coef,
                 iou_loss_weight,
                 objectness_loss_weight,
                 classification_loss_weight,
@@ -141,9 +141,9 @@ mod yolo_loss {
                 reduction: Reduction::Mean,
                 focal_loss_gamma: None,
                 match_grid_method: None,
-                iou_kind: None,
-                smooth_bce_coef: None,
-                objectness_iou_ratio: None,
+                box_metric: None,
+                smooth_classification_coef: None,
+                smooth_objectness_coef: None,
                 anchor_scale_thresh: None,
                 iou_loss_weight: None,
                 objectness_loss_weight: None,
@@ -157,9 +157,9 @@ mod yolo_loss {
         reduction: Reduction,
         bce_class: FocalLoss,
         bce_objectness: FocalLoss,
-        iou_kind: IoUKind,
-        smooth_bce_coef: f64,
-        objectness_iou_ratio: f64,
+        box_metric: BoxMetric,
+        smooth_classification_coef: f64,
+        smooth_objectness_coef: f64,
         iou_loss_weight: f64,
         objectness_loss_weight: f64,
         classification_loss_weight: f64,
@@ -189,7 +189,6 @@ mod yolo_loss {
             let (iou_loss, iou_score) = self.iou_loss(&pred_instances, &target_instances);
             timing.set_record("iou_loss");
             debug_assert!(!bool::from(iou_loss.isnan().any()), "NaN detected");
-            debug_assert!(!bool::from(iou_score.isnan().any()), "NaN detected");
 
             // classification loss
             let classification_loss = self.classification_loss(&pred_instances, &target_instances);
@@ -200,7 +199,7 @@ mod yolo_loss {
             );
 
             // objectness loss
-            let objectness_loss = self.objectness_loss(&prediction, &matchings, &iou_score);
+            let objectness_loss = self.objectness_loss(&prediction, &matchings, iou_score.as_ref());
             timing.set_record("objectness_loss");
             debug_assert!(!bool::from(objectness_loss.isnan().any()), "NaN detected");
 
@@ -226,89 +225,58 @@ mod yolo_loss {
             )
         }
 
-        fn iou_loss(&self, pred: &PredInstances, target: &TargetInstances) -> (Tensor, Tensor) {
-            use std::f64::consts::PI;
-            let epsilon = 1e-16;
-
-            // prediction bbox properties
+        fn iou_loss(
+            &self,
+            pred: &PredInstances,
+            target: &TargetInstances,
+        ) -> (Tensor, Option<Tensor>) {
             let pred_cycxhw = pred.cycxhw();
-            let pred_tlbr = TlbrTensor::from(pred_cycxhw);
-            let pred_area = pred_tlbr.area();
-
-            // target bbox properties
             let target_cycxhw = target.cycxhw();
-            let target_tlbr = TlbrTensor::from(target_cycxhw);
-            let target_area = target_tlbr.area();
 
-            // compute IoU
-            let intersect_area = pred_tlbr.intersect_area(&target_tlbr);
-            let union_area =
-                pred_area.area() + target_area.area() - intersect_area.area() + epsilon;
-            let iou = intersect_area.area() / &union_area;
+            let (loss, iou_scores) = match self.box_metric {
+                BoxMetric::Hausdorff => {
+                    let distance = pred_cycxhw.hausdorff_distance_to(&target_cycxhw);
+                    (distance, None)
+                }
+                BoxMetric::IoU | BoxMetric::GIoU | BoxMetric::DIoU | BoxMetric::CIoU => {
+                    // compute IoU
+                    let iou_score = match self.box_metric {
+                        BoxMetric::IoU => pred_cycxhw.iou_with(&target_cycxhw),
+                        BoxMetric::GIoU => pred_cycxhw.giou_with(&target_cycxhw),
+                        BoxMetric::DIoU => pred_cycxhw.diou_with(&target_cycxhw),
+                        BoxMetric::CIoU => pred_cycxhw.ciou_with(&target_cycxhw),
+                        _ => unreachable!(),
+                    };
 
-            let iou_score = match self.iou_kind {
-                IoUKind::IoU => iou,
-                _ => {
-                    let outer_tlbr = pred_tlbr.closure_with(&target_tlbr);
-                    let outer_size = outer_tlbr.size();
+                    // IoU loss
+                    let iou_loss = 1.0 - &iou_score;
 
-                    match self.iou_kind {
-                        IoUKind::GIoU => {
-                            let outer_area = outer_tlbr.area();
-                            &iou - (outer_area.area() - union_area) / (outer_area.area() + epsilon)
-                        }
-                        _ => {
-                            let diagonal_square =
-                                outer_size.h().pow(2.0) + outer_size.w().pow(2.0) + epsilon;
-                            let center_dist_square = (pred_cycxhw.cy() - target_cycxhw.cy())
-                                .pow(2.0)
-                                + (pred_cycxhw.cx() - target_cycxhw.cx()).pow(2.0);
-
-                            match self.iou_kind {
-                                IoUKind::DIoU => &iou - &center_dist_square / &diagonal_square,
-                                IoUKind::CIoU => {
-                                    let pred_angle = pred_cycxhw.h().atan2(&pred_cycxhw.w());
-                                    let target_angle = target_cycxhw.h().atan2(&target_cycxhw.w());
-
-                                    let shape_loss =
-                                        (&pred_angle - &target_angle).pow(2.0) * 4.0 / PI.powi(2);
-                                    let shape_loss_coef =
-                                        tch::no_grad(|| &shape_loss / (1.0 - &iou + &shape_loss));
-
-                                    &iou - &center_dist_square / &diagonal_square
-                                        + &shape_loss_coef * &shape_loss
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
+                    (iou_loss, Some(iou_score))
                 }
             };
 
-            // IoU loss
-            let iou_loss = {
-                let iou_loss: Tensor = 1.0 - &iou_score;
+            let loss = {
                 match self.reduction {
-                    Reduction::None => iou_loss.shallow_clone(),
+                    Reduction::None => loss.shallow_clone(),
                     Reduction::Mean => {
-                        if !iou_loss.is_empty() {
-                            iou_loss.mean(Kind::Float)
+                        if !loss.is_empty() {
+                            loss.mean(Kind::Float)
                         } else {
-                            Tensor::zeros(&[], (Kind::Float, iou_loss.device()))
+                            Tensor::zeros(&[], (Kind::Float, loss.device()))
                                 .set_requires_grad(false)
                         }
                     }
-                    Reduction::Sum => iou_loss.sum(Kind::Float),
+                    Reduction::Sum => loss.sum(Kind::Float),
                     _ => panic!("reduction {:?} is not supported", self.reduction),
                 }
             };
 
-            (iou_loss, iou_score)
+            (loss, iou_scores)
         }
 
         fn classification_loss(&self, pred: &PredInstances, target: &TargetInstances) -> Tensor {
             // smooth bce values
-            let pos = 1.0 - 0.5 * self.smooth_bce_coef;
+            let pos = 1.0 - 0.5 * self.smooth_classification_coef;
             let neg = 1.0 - pos;
             let pred_class = &pred.dense_class();
             let (num_instances, num_classes) = pred_class.size2().unwrap();
@@ -358,10 +326,15 @@ mod yolo_loss {
             &self,
             prediction: &MergeDetect2DOutput,
             matchings: &PredTargetMatching,
-            iou_score: &Tensor,
+            scores: Option<impl Borrow<Tensor>>,
         ) -> Tensor {
             let device = prediction.device();
             let batch_size = prediction.batch_size();
+            let num_targets = matchings.0.len();
+            debug_assert!(scores
+                .as_ref()
+                .map(|scores| scores.borrow().size2().unwrap() == (num_targets as i64, 1))
+                .unwrap_or(true));
 
             let pred_objectness = &prediction.obj;
             let target_objectness = tch::no_grad(|| {
@@ -388,12 +361,25 @@ mod yolo_loss {
 
                 let target_objectness = {
                     let target = pred_objectness.zeros_like();
-                    let values = &iou_score.detach().clamp(0.0, 1.0) * self.objectness_iou_ratio
-                        + (1.0 - self.objectness_iou_ratio);
+                    let target_scores = {
+                        let mut target_scores = Tensor::full(
+                            &[num_targets as i64, 1],
+                            1.0 - self.smooth_objectness_coef,
+                            (Kind::Float, device),
+                        );
+
+                        if let Some(scores) = &scores {
+                            target_scores +=
+                                scores.borrow().clamp(0.0, 1.0) * self.smooth_objectness_coef;
+                        }
+
+                        let target_scores = target_scores.set_requires_grad(false);
+                        target_scores
+                    };
 
                     let _ = target.permute(&[0, 2, 1]).index_put_(
                         &[&batch_indexes, &flat_indexes],
-                        &values,
+                        &target_scores,
                         false,
                     );
                     target
@@ -403,7 +389,8 @@ mod yolo_loss {
                     let (batch_size, _num_entries, num_instances) =
                         pred_objectness.size3().unwrap();
                     let target_array: ArrayD<f32> = (&target_objectness).try_into_cv().unwrap();
-                    let iou_loss_array: ArrayD<f32> = iou_score.try_into_cv().unwrap();
+                    let scores_array: Option<ArrayD<f32>> =
+                        scores.map(|scores| scores.borrow().try_into_cv().unwrap());
                     let mut expect_array =
                         Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
                     matchings
@@ -414,10 +401,16 @@ mod yolo_loss {
                             let batch_index = instance_index.batch_index as i64;
                             let flat_index =
                                 prediction.instance_to_flat_index(instance_index).unwrap();
+                            let target_score = {
+                                let mut target_score = (1.0 - self.smooth_objectness_coef) as f32;
+                                if let Some(scores_array) = &scores_array {
+                                    target_score += scores_array[[index, 0]].clamp(0.0, 1.0)
+                                        * self.smooth_objectness_coef as f32;
+                                }
+                                target_score
+                            };
                             expect_array[[batch_index as usize, 0, flat_index as usize]] =
-                                iou_loss_array[[index, 0]].clamp(0.0, 1.0)
-                                    * self.objectness_iou_ratio as f32
-                                    + (1.0 - self.objectness_iou_ratio) as f32;
+                                target_score;
                         });
 
                     let mse = (target_array - expect_array)
@@ -559,7 +552,7 @@ mod yolo_loss {
     #[derive(Debug)]
     pub struct YoloLossAuxiliary {
         pub target_bboxes: PredTargetMatching,
-        pub iou_score: Tensor,
+        pub iou_score: Option<Tensor>,
     }
 }
 

@@ -301,7 +301,7 @@ async fn initialize_worker_contexts(
                 loss:
                     LossConfig {
                         match_grid_method,
-                        iou_kind,
+                        box_metric,
                         iou_loss_weight,
                         objectness_loss_weight,
                         classification_loss_weight,
@@ -320,7 +320,7 @@ async fn initialize_worker_contexts(
                 let yolo_loss = YoloLossInit {
                     reduction: Reduction::Mean,
                     match_grid_method: Some(match_grid_method),
-                    iou_kind: Some(iou_kind),
+                    box_metric: Some(box_metric),
                     iou_loss_weight: iou_loss_weight.map(R64::raw),
                     objectness_loss_weight: objectness_loss_weight.map(R64::raw),
                     classification_loss_weight: classification_loss_weight.map(R64::raw),

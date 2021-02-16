@@ -1,7 +1,7 @@
 //! Training program configuration format.
 
 use crate::common::*;
-use yolo_dl::loss::{IoUKind, MatchGrid};
+use yolo_dl::loss::{BoxMetric, MatchGrid};
 
 pub use dataset::*;
 pub use model::*;
@@ -232,8 +232,8 @@ mod training {
     pub struct LossConfig {
         /// The method to match ground truth to predicted bounding boxes.
         pub match_grid_method: MatchGrid,
-        /// The choice of IoU function.
-        pub iou_kind: IoUKind,
+        /// The choice of bounding box metric.
+        pub box_metric: BoxMetric,
         /// The weighting factor of IoU loss.
         pub iou_loss_weight: Option<R64>,
         /// The weighting factor of objectness loss.

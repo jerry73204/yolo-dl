@@ -7,11 +7,12 @@ pub enum MatchGrid {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum IoUKind {
+pub enum BoxMetric {
     IoU,
     GIoU,
     DIoU,
     CIoU,
+    Hausdorff,
 }
 
 #[derive(Debug, TensorLike)]

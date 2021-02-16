@@ -27,7 +27,7 @@ pub fn single_gpu_training_worker(
                 ref lr_schedule,
                 loss:
                     LossConfig {
-                        iou_kind,
+                        box_metric,
                         match_grid_method,
                         iou_loss_weight,
                         objectness_loss_weight,
@@ -54,7 +54,7 @@ pub fn single_gpu_training_worker(
     let yolo_loss = YoloLossInit {
         reduction: Reduction::Mean,
         match_grid_method: Some(match_grid_method),
-        iou_kind: Some(iou_kind),
+        box_metric: Some(box_metric),
         iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
         objectness_loss_weight: objectness_loss_weight.map(|val| val.raw()),
         classification_loss_weight: classification_loss_weight.map(|val| val.raw()),

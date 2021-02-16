@@ -238,6 +238,26 @@ impl BBoxMatcher {
                 },
             );
 
+        debug_assert!(target_bboxes.iter().all(|(instance_index, target_bbox)| {
+            let InstanceIndex {
+                layer_index,
+                grid_row,
+                grid_col,
+                ..
+            } = *instance_index;
+            let GridSize {
+                h: feature_h,
+                w: feature_w,
+                ..
+            } = prediction.info[layer_index].feature_size;
+            let target_bbox_grid: LabeledGridBBox<_> =
+                target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize);
+            let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
+
+            (target_cy - grid_row as f64).abs() <= 1.0 + snap_thresh
+                && (target_cx - grid_col as f64).abs() <= 1.0 + snap_thresh
+        }));
+
         PredTargetMatching(target_bboxes)
     }
 }
