@@ -602,19 +602,6 @@ mod into_tch_element {
 mod labeled_bbox {
     use super::*;
 
-    // #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    // pub struct Corners<T, U>
-    // where
-    //     T: Num + Copy,
-    //     U: Unit,
-    // {
-    //     pub tl: [T; 2],
-    //     pub tr: [T; 2],
-    //     pub bl: [T; 2],
-    //     pub br: [T; 2],
-    //     pub(super) _phantom: PhantomData<U>,
-    // }
-
     /// Generic bounding box with an extra class ID.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct LabeledBBox<T, U>
@@ -784,20 +771,6 @@ mod bbox {
         T: Num + Copy,
         U: Unit,
     {
-        // pub fn corners(&self) -> Corners<T, U>
-        // where
-        //     T: Num,
-        // {
-        //     let [t, l, b, r] = self.tlbr();
-        //     Corners {
-        //         tl: [t, l],
-        //         tr: [t, r],
-        //         bl: [b, l],
-        //         br: [b, r],
-        //         _phantom: PhantomData,
-        //     }
-        // }
-
         pub fn tlbr(&self) -> [T; 4] {
             let two = T::one() + T::one();
             let [cy, cx, h, w] = self.cycxhw;
@@ -899,7 +872,7 @@ mod bbox {
         }
     }
 
-    impl BBox<Ratio, RatioUnit> {
+    impl RatioBBox {
         pub fn try_from_cycxhw(cycxhw: [Ratio; 4]) -> Result<Self> {
             let [cy, cx, h, w] = cycxhw;
 
