@@ -138,7 +138,7 @@ impl BBoxMatcher {
             // pair each target bbox with each anchor
             .flat_map(|args| {
                 let (batch_index, layer_index, target_bbox, neighbor_grid_indexes, anchors) = args;
-                let [target_cy, target_cx, target_h, target_w] = target_bbox.cycxhw();
+                let [_target_cy, _target_cx, target_h, target_w] = target_bbox.cycxhw();
 
                 // pair up anchors and neighbor grid indexes
                 anchors
@@ -200,7 +200,6 @@ impl BBoxMatcher {
                 |mut matchings, (instance_index, target_bbox)| {
                     let InstanceIndex {
                         layer_index,
-                        anchor_index,
                         grid_row,
                         grid_col,
                         ..
@@ -227,7 +226,7 @@ impl BBoxMatcher {
                             };
 
                             if dist_new < dist_orig {
-                                mem::replace(orig_bbox, target_bbox);
+                                let _ = mem::replace(orig_bbox, target_bbox);
                             }
                         }
                         hash_map::Entry::Vacant(entry) => {
