@@ -36,7 +36,7 @@ pub use slice_of_array::{SliceFlatExt, SliceNestExt};
 pub use std::{
     borrow::{Borrow, Cow},
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{hash_map, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     env::{self, VarError},
     fmt,

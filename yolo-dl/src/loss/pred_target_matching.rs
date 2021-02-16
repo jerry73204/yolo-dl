@@ -46,7 +46,7 @@ impl BBoxMatcher {
     ) -> PredTargetMatching {
         let snap_thresh = 0.5;
 
-        let target_bboxes: HashMap<_, _> = target
+        let target_bboxes: HashMap<InstanceIndex, Arc<LabeledRatioBBox>> = target
             .iter()
             .enumerate()
             // filter out small bboxes
@@ -194,18 +194,50 @@ impl BBoxMatcher {
                         (instance_index, target_bbox.clone())
                     })
             })
-            // group up target bboxes which snap to the same grid position
-            .into_group_map()
-            .into_iter()
-            // build 1-to-1 correspondence of target bboxes and instance indexes
-            .scan(
-                rand::thread_rng(),
-                |rng, (instance_index, target_bboxes)| {
-                    let target_bbox = target_bboxes.choose(rng).unwrap().clone();
-                    Some((instance_index, target_bbox))
+            // match each grid per layer per anchor to at most one target bbox
+            .fold(
+                HashMap::new(),
+                |mut matchings, (instance_index, target_bbox)| {
+                    let InstanceIndex {
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                        ..
+                    } = instance_index;
+
+                    match matchings.entry(instance_index) {
+                        hash_map::Entry::Occupied(mut entry) => {
+                            let orig_bbox = entry.get_mut();
+                            let GridSize {
+                                h: feature_h,
+                                w: feature_w,
+                                ..
+                            } = prediction.info[layer_index].feature_size;
+                            let pred_cy = (grid_row as f64 + 0.5) / feature_h as f64;
+                            let pred_cx = (grid_col as f64 + 0.5) / feature_w as f64;
+
+                            let dist_orig = {
+                                let [cy, cx, _h, _w] = orig_bbox.cycxhw();
+                                (pred_cy - cy.to_f64()).powi(2) + (pred_cx - cx.to_f64()).powi(2)
+                            };
+                            let dist_new = {
+                                let [cy, cx, _h, _w] = target_bbox.cycxhw();
+                                (pred_cy - cy.to_f64()).powi(2) + (pred_cx - cx.to_f64()).powi(2)
+                            };
+
+                            if dist_new < dist_orig {
+                                mem::replace(orig_bbox, target_bbox);
+                            }
+                        }
+                        hash_map::Entry::Vacant(entry) => {
+                            entry.insert(target_bbox);
+                        }
+                    }
+
+                    matchings
                 },
-            )
-            .collect();
+            );
 
         PredTargetMatching(target_bboxes)
     }
