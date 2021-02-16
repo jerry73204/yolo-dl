@@ -21,6 +21,8 @@ where
             "out_of_bound_tolerance must be non-negative"
         );
 
+        let mut filtered_bbox_count = 0;
+
         let records: Vec<_> = dataset
             .records()
             .iter()
@@ -28,7 +30,7 @@ where
                 let FileRecord {
                     ref path,
                     size: PixelSize { h, w, .. },
-                    ref bboxes,
+                    bboxes: ref orig_bboxes,
                 } = *record.as_ref();
 
                 ensure!(h > 0 && w > 0, "image height and w must be positive");
@@ -36,7 +38,7 @@ where
                 let range_h = (-out_of_bound_tolerance)..(out_of_bound_tolerance + h as f64);
                 let range_w = (-out_of_bound_tolerance)..(out_of_bound_tolerance + w as f64);
 
-                let bboxes: Vec<_> = bboxes
+                let bboxes: Vec<_> = orig_bboxes
                     .iter()
                     .map(|bbox| -> Result<_> {
                         let LabeledPixelBBox {
@@ -76,7 +78,6 @@ where
                         if sanitized_h / h as f64 <= min_bbox_size
                             || sanitized_w / w as f64 <= min_bbox_size
                         {
-                            warn!("filtered out a small bbox from '{}'", path.display());
                             return Ok(None);
                         }
 
@@ -97,6 +98,8 @@ where
                     .filter_map(|result| result.transpose())
                     .try_collect()?;
 
+                filtered_bbox_count += orig_bboxes.len() - bboxes.len();
+
                 Ok(Arc::new(FileRecord {
                     path: path.clone(),
                     size: PixelSize::new(h, w),
@@ -104,6 +107,13 @@ where
                 }))
             })
             .try_collect()?;
+
+        if filtered_bbox_count > 0 {
+            warn!(
+                "filtered out {} bad objects in the data set",
+                filtered_bbox_count
+            );
+        }
 
         Ok(Self { dataset, records })
     }
