@@ -85,6 +85,8 @@ impl BBoxMatcher {
                     let target_bbox_grid: LabeledGridBBox<_> = target_bbox
                         .to_r64_bbox(feature_h as usize, feature_w as usize);
                     let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
+                    debug_assert!(target_cy >= 0.0 && target_cx >= 0.0);
+
                     let target_row = target_cy.floor().raw() as i64;
                     let target_col = target_cx.floor().raw() as i64;
                     debug_assert!(target_row >= 0 && target_col >= 0);
@@ -151,6 +153,10 @@ impl BBoxMatcher {
                     grid_indexes
                 };
 
+                debug_assert!(neighbor_grid_indexes.iter().cloned().all(|(row, col)| {
+                    row >= 0 && row <= feature_h - 1 && col >= 0 && col <= feature_w - 1
+                }));
+
                 (
                     batch_index,
                     layer_index,
@@ -197,6 +203,21 @@ impl BBoxMatcher {
                             grid_row,
                             grid_col,
                         };
+
+                        debug_assert!({
+                            let GridSize {
+                                h: feature_h,
+                                w: feature_w,
+                                ..
+                            } = prediction.info[layer_index].feature_size;
+                            let target_bbox_grid: LabeledGridBBox<_> =
+                                target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize);
+                            let [target_cy, target_cx, _target_h, _target_w] =
+                                target_bbox_grid.cycxhw();
+
+                            (target_cy - grid_row as f64).abs() <= 1.0 + snap_thresh
+                                && (target_cx - grid_col as f64).abs() <= 1.0 + snap_thresh
+                        });
 
                         (instance_index, target_bbox.clone())
                     })

@@ -88,7 +88,7 @@ impl MergeDetect2D {
         let obj = Tensor::cat(&obj_vec, 2);
         let class = Tensor::cat(&class_vec, 2);
 
-        Ok(MergeDetect2DOutput {
+        let output = MergeDetect2DOutput {
             num_classes,
             cy,
             cx,
@@ -97,7 +97,19 @@ impl MergeDetect2D {
             obj,
             class,
             info,
-        })
+        };
+
+        debug_assert!({
+            let feature_maps = output.feature_maps();
+            izip!(feature_maps, detections).all(|(feature_map, detection)| {
+                feature_map.cy == detection.cy
+                    && feature_map.cx == detection.cx
+                    && feature_map.h == detection.h
+                    && feature_map.w == detection.w
+            })
+        });
+
+        Ok(output)
     }
 }
 

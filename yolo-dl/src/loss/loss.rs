@@ -371,6 +371,14 @@ mod yolo_loss {
                     .map(|instance_index| {
                         let batch_index = instance_index.batch_index as i64;
                         let flat_index = prediction.instance_to_flat_index(instance_index).unwrap();
+
+                        debug_assert!(
+                            &prediction
+                                .flat_to_instance_index(batch_index as usize, flat_index)
+                                .unwrap()
+                                == instance_index
+                        );
+
                         (batch_index, flat_index)
                     })
                     .unzip_n_vec();
