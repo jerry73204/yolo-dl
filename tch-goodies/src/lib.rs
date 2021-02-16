@@ -14,3 +14,7 @@ pub use ratio::*;
 pub use size::*;
 pub use tensor::*;
 pub use unit::*;
+
+pub mod prelude {
+    pub use crate::tensor::{IntoIndexList, IntoTensor, TensorExt, TryIntoTensor};
+}
