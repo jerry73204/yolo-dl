@@ -51,16 +51,14 @@ impl BBoxMatcher {
             .enumerate()
             // filter out small bboxes
             .flat_map(|(batch_index, bboxes)| {
-                bboxes.iter().map(move |bbox| {
+                bboxes.iter().filter_map(move |bbox| {
                     let [_cy, _cx, h, w] = bbox.cycxhw();
                     if abs_diff_eq!(h, 0.0) || abs_diff_eq!(w, 0.0) {
-                        warn!(
-                            "The bounding box {:?} is too small. It may cause division by zero error.",
-                            bbox
-                        );
+                        warn!("Ignore zero-sized bounding box {:?}.", bbox);
+                        return None;
                     }
                     let bbox = Arc::new(bbox.to_owned());
-                    (batch_index, bbox)
+                    Some((batch_index, bbox))
                 })
             })
             // pair up per target bbox and per prediction feature
@@ -81,76 +79,48 @@ impl BBoxMatcher {
                 } = *layer;
 
                 // collect neighbor grid indexes
-                let neighbor_grid_indexes = {
-                    let target_bbox_grid: LabeledGridBBox<_> = target_bbox
-                        .to_r64_bbox(feature_h as usize, feature_w as usize);
+                let neighbor_grid_indexes: Vec<_> = {
+                    let target_bbox_grid: LabeledGridBBox<_> =
+                        target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize);
                     let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
                     debug_assert!(target_cy >= 0.0 && target_cx >= 0.0);
 
                     let target_row = target_cy.floor().raw() as i64;
                     let target_col = target_cx.floor().raw() as i64;
-                    debug_assert!(target_row >= 0 && target_col >= 0);
+                    let target_cy_fract = target_cy.fract();
+                    let target_cx_fract = target_cx.fract();
 
-                    let grid_indexes: Vec<_> = {
-                        let orig_iter = iter::once((target_row, target_col));
-                        match self.match_grid_method {
-                            MatchGrid::Rect2 => {
-                                let top_iter = if target_cy % 1.0 < snap_thresh && target_row > 0 {
-                                    Some((target_row - 1, target_col))
-                                } else {
-                                    None
-                                }
-                                .into_iter();
-                                let left_iter = if target_cx < snap_thresh && target_col > 0 {
-                                    Some((target_row, target_col - 1))
-                                } else {
-                                    None
-                                }
-                                .into_iter();
+                    let orig_iter = iter::once((target_row, target_col));
 
-                                orig_iter.chain(top_iter).chain(left_iter).collect()
-                            }
-                            MatchGrid::Rect4 => {
-                                let top_iter = if target_cy % 1.0 < snap_thresh && target_row > 0 {
-                                    Some((target_row - 1, target_col))
-                                } else {
-                                    None
-                                }
-                                .into_iter();
-                                let left_iter = if target_cx < snap_thresh && target_col > 0 {
-                                    Some((target_row, target_col - 1))
-                                } else {
-                                    None
-                                }
-                                .into_iter();
-                                let bottom_iter = if target_cy % 1.0 > (1.0 - snap_thresh)
-                                    && target_row <= feature_h - 2
-                                {
-                                    Some((target_row + 1, target_col))
-                                } else {
-                                    None
-                                }
-                                .into_iter();
-                                let right_iter = if target_cx % 1.0 > (1.0 - snap_thresh)
-                                    && target_col <= feature_w - 2
-                                {
-                                    Some((target_row, target_col + 1))
-                                } else {
-                                    None
-                                }
-                                .into_iter();
+                    match self.match_grid_method {
+                        MatchGrid::Rect2 => {
+                            let top = (target_cy_fract < snap_thresh && target_row >= 1)
+                                .then(|| (target_row - 1, target_col));
+                            let left = (target_cx_fract < snap_thresh && target_col >= 1)
+                                .then(|| (target_row, target_col - 1));
 
-                                orig_iter
-                                    .chain(top_iter)
-                                    .chain(left_iter)
-                                    .chain(bottom_iter)
-                                    .chain(right_iter)
-                                    .collect()
-                            }
+                            orig_iter.chain(top).chain(left).collect()
                         }
-                    };
+                        MatchGrid::Rect4 => {
+                            let top = (target_cy_fract < snap_thresh && target_row >= 1)
+                                .then(|| (target_row - 1, target_col));
+                            let left = (target_cx_fract < snap_thresh && target_col >= 1)
+                                .then(|| (target_row, target_col - 1));
+                            let bottom = (target_cy_fract > (1.0 - snap_thresh)
+                                && target_row <= feature_h - 2)
+                                .then(|| (target_row + 1, target_col));
+                            let right = (target_cx_fract > (1.0 - snap_thresh)
+                                && target_col <= feature_w - 2)
+                                .then(|| (target_row, target_col + 1));
 
-                    grid_indexes
+                            orig_iter
+                                .chain(top)
+                                .chain(left)
+                                .chain(bottom)
+                                .chain(right)
+                                .collect()
+                        }
+                    }
                 };
 
                 debug_assert!(neighbor_grid_indexes.iter().cloned().all(|(row, col)| {
@@ -168,7 +138,7 @@ impl BBoxMatcher {
             // pair each target bbox with each anchor
             .flat_map(|args| {
                 let (batch_index, layer_index, target_bbox, neighbor_grid_indexes, anchors) = args;
-                let [_target_cy, _target_cx, target_h, target_w] = target_bbox.cycxhw();
+                let [target_cy, target_cx, target_h, target_w] = target_bbox.cycxhw();
 
                 // pair up anchors and neighbor grid indexes
                 anchors
@@ -183,23 +153,25 @@ impl BBoxMatcher {
                             ..
                         } = anchor_size;
 
+                        let target_h = target_h.to_f64();
+                        let target_w = target_w.to_f64();
+                        let anchor_h = anchor_h.to_f64();
+                        let anchor_w = anchor_w.to_f64();
+
                         // convert ratio to float to avoid range checking
-                        if target_h.to_f64() / anchor_h.to_f64() <= self.anchor_scale_thresh
-                            && anchor_h.to_f64() / target_h.to_f64() <= self.anchor_scale_thresh
-                            && target_w.to_f64() / anchor_w.to_f64() <= self.anchor_scale_thresh
-                            && anchor_w.to_f64() / target_w.to_f64() <= self.anchor_scale_thresh
-                        {
-                            Some(anchor_index)
-                        } else {
-                            None
-                        }
+                        let is_size_bounded = target_h / anchor_h <= self.anchor_scale_thresh
+                            && anchor_h / target_h <= self.anchor_scale_thresh
+                            && target_w / anchor_w <= self.anchor_scale_thresh
+                            && anchor_w / target_w <= self.anchor_scale_thresh;
+
+                        is_size_bounded.then(|| anchor_index as i64)
                     })
                     .cartesian_product(neighbor_grid_indexes.into_iter())
                     .map(move |(anchor_index, (grid_row, grid_col))| {
                         let instance_index = InstanceIndex {
                             batch_index,
                             layer_index,
-                            anchor_index: anchor_index as i64,
+                            anchor_index,
                             grid_row,
                             grid_col,
                         };
