@@ -4,6 +4,7 @@ use crate::{common::*, profiling::Timing};
 
 // cache loader
 
+/// Image caching processor.
 #[derive(Debug, Clone)]
 pub struct CacheLoader {
     cache_dir: async_std::path::PathBuf,
@@ -13,6 +14,12 @@ pub struct CacheLoader {
 }
 
 impl CacheLoader {
+    /// Build a new image caching processor.
+    ///
+    /// * `cache_dir` - The directory to store caches.
+    /// * `image_size` - The outcome image size in pixels.
+    /// * `image_channels` - The expected number of image channels.
+    /// * `device` - The outcome image device. It defaults to CPU if set to `None`.
     pub async fn new<P>(
         cache_dir: P,
         image_size: usize,
@@ -38,6 +45,10 @@ impl CacheLoader {
         Ok(loader)
     }
 
+    /// Load image and boxes.
+    ///
+    /// If cache hit, it loads the cached image and boxes from cache directory.
+    /// If cache miss, it loads and resizes the image from original path and saves it to cache directory.
     pub async fn load_cache<P, B>(
         &self,
         image_path: P,

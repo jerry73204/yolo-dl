@@ -1,5 +1,6 @@
 use crate::common::*;
 
+/// The representation of a two dimensional point.
 pub trait AsXY<TX, TY> {
     fn x(&self) -> TX;
     fn y(&self) -> TY;
@@ -31,13 +32,10 @@ where
     }
 }
 
-pub fn interpolate_stepwise_values<T>(
+pub fn interpolate_stepwise_values(
     points: impl IntoIterator<Item = R64>,
-    values: &[T],
-) -> Vec<(R64, R64)>
-where
-    T: AsXY<R64, R64>,
-{
+    values: &[impl AsXY<R64, R64>],
+) -> Vec<(R64, R64)> {
     let mut points_iter = points.into_iter();
     let mut values_iter = values.iter().zip(values.iter().skip(1));
 

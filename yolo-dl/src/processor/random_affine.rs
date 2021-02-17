@@ -2,17 +2,26 @@
 
 use crate::common::*;
 
+/// Random affine transformation processor initializer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RandomAffineInit {
+    /// The probability to apply rotation.
     pub rotate_prob: Option<Ratio>,
+    /// The maximum rotation angle in radians.
     pub rotate_radians: Option<R64>,
+    /// The probability to translate image location.
     pub translation_prob: Option<Ratio>,
+    /// The maximum translation distance along X and Y axises in ratio unit.
     pub translation: Option<R64>,
+    /// The probability to scale up or down the image size.
     pub scale_prob: Option<Ratio>,
+    /// The pair of minimum and maximum scaling ratio.
     pub scale: Option<(R64, R64)>,
     // pub shear_prob: Option<Ratio>,
     // pub shear: Option<R64>,
+    /// The probability to apply horizontal flip.
     pub horizontal_flip_prob: Option<Ratio>,
+    /// The probability to apply vertical flip.
     pub vertical_flip_prob: Option<Ratio>,
 }
 
@@ -90,6 +99,7 @@ impl Default for RandomAffineInit {
     }
 }
 
+/// Random affine transformation processor.
 #[derive(Debug, Clone)]
 pub struct RandomAffine {
     rotate_prob: Option<f64>,
@@ -105,6 +115,7 @@ pub struct RandomAffine {
 }
 
 impl RandomAffine {
+    /// Apply random affine transformation on an image and boxes.
     pub fn forward(
         &self,
         orig_image: &Tensor,

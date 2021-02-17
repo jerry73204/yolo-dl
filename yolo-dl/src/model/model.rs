@@ -10,6 +10,7 @@ pub use yolo_model::*;
 mod yolo_model {
     use super::*;
 
+    /// The model running on libtorch.
     #[derive(Debug)]
     pub struct YoloModel {
         pub(crate) layers: IndexMap<NodeKey, Layer>,
@@ -17,6 +18,7 @@ mod yolo_model {
     }
 
     impl YoloModel {
+        /// Run forward pass.
         pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<ModuleOutput> {
             let Self {
                 ref mut layers,
@@ -62,6 +64,7 @@ mod yolo_model {
             Ok(output)
         }
 
+        /// Build a model from a computation graph.
         pub fn from_graph<'p>(
             path: impl Borrow<nn::Path<'p>>,
             orig_graph: &'_ model_config::graph::Graph,

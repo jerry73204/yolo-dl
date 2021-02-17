@@ -2,8 +2,10 @@
 
 use crate::common::*;
 
+/// Mosaic processor initializer.
 #[derive(Debug, Clone)]
 pub struct MosaicProcessorInit {
+    /// The distance from pivot point to image boundary in ratio unit.
     pub mosaic_margin: f64,
 }
 
@@ -19,12 +21,14 @@ impl MosaicProcessorInit {
     }
 }
 
+/// Mosaic processor.
 #[derive(Debug, Clone)]
 pub struct MosaicProcessor {
     mosaic_margin: f64,
 }
 
 impl MosaicProcessor {
+    /// Apply mosaic mixup on a set of 4 images and boxes.
     pub fn forward<PairIntoIter, BBoxIntoIter>(
         &self,
         input: PairIntoIter,
@@ -113,6 +117,7 @@ impl MosaicProcessor {
     }
 }
 
+/// Multi-threaded mosaic processor initializer.
 #[derive(Debug, Clone)]
 pub struct ParallelMosaicProcessorInit {
     pub mosaic_margin: f64,
@@ -137,6 +142,7 @@ impl ParallelMosaicProcessorInit {
     }
 }
 
+/// Multi-threaded mosaic processor.
 #[derive(Debug, Clone)]
 pub struct ParallelMosaicProcessor {
     mosaic_margin: f64,
@@ -144,6 +150,7 @@ pub struct ParallelMosaicProcessor {
 }
 
 impl ParallelMosaicProcessor {
+    /// Apply mosaic mixup on a set of 4 images and boxes.
     pub async fn forward<PairIntoIter, BBoxIntoIter>(
         &self,
         input: PairIntoIter,
