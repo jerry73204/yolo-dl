@@ -61,10 +61,24 @@ cargo run --release --bin train -- [--config train.json5]
 
 ### Profile the Training
 
-The `profiling` feature allows you to profile the timing of the data pipeline. It is useful to determine the performance bottleneck.
+The `profiling` Cargo feature allows you to profile the timing of the data pipeline. It is useful to investigate the performance bottleneck.
 
 ```sh
-cargo run --release --bin train --features profiling --manifest-path train/Cargo.toml
+cargo run --release --bin train --features profiling
+```
+
+It shows available timing profiles on terminal.
+
+```
+Feb 17 19:32:02.184  INFO yolo_dl::profiling:registered timing profile 'pipeline'
+Feb 17 19:32:02.185  INFO yolo_dl::profiling:registered timing profile 'cache loader'
+```
+
+You can set `YOLODL_PROFILING_WHITELIST` environment varianble to show specific timing profile.
+
+```sh
+env YOLODL_PROFILING_WHITELIST='pipeline' \
+    cargo run --release --bin train --features profiling
 ```
 
 ### Show Statistics in TensorBoard
