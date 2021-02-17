@@ -136,6 +136,7 @@ impl Timing {
         }
     }
 
+    #[cfg(feature = "profiling")]
     fn build_ptree_recursive(
         &self,
         builder: &mut ptree::TreeBuilder,
