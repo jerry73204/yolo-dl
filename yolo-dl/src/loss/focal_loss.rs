@@ -1,15 +1,20 @@
 use crate::common::*;
 
+/// Focal loss initializer.
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct FocalLossInit<F>
 where
     F: 'static + Fn(&Tensor, &Tensor) -> Tensor + Send,
 {
+    /// The wrapped loss function.
     #[derivative(Debug = "ignore")]
     pub loss_fn: F,
+    /// The gamma coefficient.
     pub gamma: f64,
+    /// The alpha coefficient.
     pub alpha: f64,
+    /// The reduction method applied on output loss.
     pub reduction: Reduction,
 }
 
@@ -26,6 +31,7 @@ where
         }
     }
 
+    /// Build a focal loss calculator.
     pub fn build(self) -> FocalLoss {
         let Self {
             loss_fn,
@@ -43,6 +49,7 @@ where
     }
 }
 
+/// Focal loss calculator.
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct FocalLoss {
@@ -54,6 +61,7 @@ pub struct FocalLoss {
 }
 
 impl FocalLoss {
+    /// Compute focal loss from an input against to a ground truth.
     pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
         debug_assert_eq!(
             input.size2().unwrap(),

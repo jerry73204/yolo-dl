@@ -7,6 +7,7 @@ use crate::{
     utils::{self, LrScheduler, RateCounter},
 };
 
+/// Start the single-GPU training worker.
 pub fn single_gpu_training_worker(
     config: Arc<Config>,
     _logging_dir: Arc<PathBuf>,

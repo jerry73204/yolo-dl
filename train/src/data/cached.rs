@@ -1,6 +1,7 @@
 use super::*;
 use crate::common::*;
 
+/// The dataset backed with image data caching.
 #[derive(Debug)]
 pub struct CachedDataset<D>
 where

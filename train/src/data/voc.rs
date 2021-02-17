@@ -4,6 +4,7 @@ use crate::{
     config::{Config, DatasetConfig, DatasetKind},
 };
 
+/// The Pascal VOC dataset.
 #[derive(Debug, Clone)]
 pub struct VocDataset {
     pub config: Arc<Config>,

@@ -7,6 +7,7 @@ pub use logging_message::*;
 mod logging_message {
     use super::*;
 
+    /// The message type that is accepted by the logging worker.
     #[derive(Debug, Clone)]
     pub struct LoggingMessage {
         pub tag: Cow<'static, str>,

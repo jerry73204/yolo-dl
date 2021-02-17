@@ -8,6 +8,7 @@ use crate::{
 };
 use async_std::{fs::File, io::BufWriter};
 
+/// The data logging worker.
 #[derive(Debug)]
 pub struct LoggingWorker {
     config: Arc<Config>,
@@ -18,6 +19,7 @@ pub struct LoggingWorker {
 }
 
 impl LoggingWorker {
+    /// Create a data logging worker.
     async fn new(
         config: Arc<Config>,
         logging_dir: Arc<PathBuf>,
@@ -49,6 +51,7 @@ impl LoggingWorker {
         })
     }
 
+    /// Start the data logging worker.
     async fn start(mut self) -> Result<()> {
         loop {
             let LoggingMessage { tag, kind } = match self.rx.recv().await {

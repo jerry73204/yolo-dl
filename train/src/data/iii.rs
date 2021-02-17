@@ -7,6 +7,7 @@ use voc_dataset as voc;
 
 const III_DEPTH: usize = 3;
 
+/// The Formosa dataset from Institute for Information Industry.
 #[derive(Debug, Clone)]
 pub struct IiiDataset {
     pub config: Arc<Config>,

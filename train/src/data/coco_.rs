@@ -4,6 +4,7 @@ use crate::{
     config::{Config, DatasetConfig, DatasetKind},
 };
 
+/// The Microsoft COCO dataset.
 #[derive(Debug, Clone)]
 pub struct CocoDataset {
     pub config: Arc<Config>,

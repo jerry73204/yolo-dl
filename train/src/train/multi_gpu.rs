@@ -34,6 +34,7 @@ struct WorkerOutput {
     gradients: Vec<Tensor>,
 }
 
+/// Start the multi-GPU training worker.
 pub async fn multi_gpu_training_worker(
     config: Arc<Config>,
     _logging_dir: Arc<PathBuf>,

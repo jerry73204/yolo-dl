@@ -1,7 +1,6 @@
 use crate::common::*;
 
-// record types
-
+/// The record with image path and boxes, but without image pixels.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileRecord {
     pub path: PathBuf,
@@ -10,6 +9,7 @@ pub struct FileRecord {
     pub bboxes: Vec<LabeledPixelBBox<R64>>,
 }
 
+/// The record with image pixels and boxes.
 #[derive(Debug, TensorLike)]
 pub struct DataRecord {
     pub image: Tensor,
@@ -17,6 +17,7 @@ pub struct DataRecord {
     pub bboxes: Vec<LabeledRatioBBox>,
 }
 
+/// The record that is accepted by training worker.
 #[derive(Debug, TensorLike)]
 pub struct TrainingRecord {
     pub epoch: usize,

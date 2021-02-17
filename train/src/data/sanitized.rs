@@ -1,6 +1,7 @@
 use super::*;
 use crate::common::*;
 
+/// The dataset that filters out bad boxes.
 #[derive(Debug)]
 pub struct SanitizedDataset<D>
 where
