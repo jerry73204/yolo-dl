@@ -64,14 +64,8 @@ pub async fn multi_gpu_training_worker(
         let Config {
             training:
                 TrainingConfig {
-                    batch_size,
                     save_checkpoint_steps,
                     ref lr_schedule,
-                    ..
-                },
-            logging:
-                LoggingConfig {
-                    enable_training_output,
                     ..
                 },
             ..

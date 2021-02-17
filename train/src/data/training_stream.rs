@@ -33,7 +33,6 @@ impl TrainingStream {
                 dataset: DatasetConfig { ref kind, .. },
                 preprocessor:
                     PreprocessorConfig {
-                        worker_buf_size,
                         ref cache_dir,
                         out_of_bound_tolerance,
                         min_bbox_size,

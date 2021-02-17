@@ -178,11 +178,7 @@ impl LoggingWorker {
                                 .0
                                 .iter()
                                 .map(|(pred_index, target_bbox_ratio)| -> Result<_> {
-                                    let InstanceIndex {
-                                        batch_index,
-                                        layer_index,
-                                        ..
-                                    } = *pred_index;
+                                    let InstanceIndex { batch_index, .. } = *pred_index;
                                     let flat_index =
                                         output.instance_to_flat_index(pred_index).unwrap();
                                     let target_bbox_pixel: LabeledPixelBBox<_> = target_bbox_ratio
