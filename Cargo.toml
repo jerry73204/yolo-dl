@@ -3,10 +3,9 @@ members = [
     "yolo-dl",
     "train",
     "darknet-config",
-    "darknet-test",
+    # "darknet-test",
     "tch-goodies",
     "model-config",
-    "coco-map",
     "yolo-dl-doc",
 ]
 
