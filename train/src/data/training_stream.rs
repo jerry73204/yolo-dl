@@ -168,7 +168,7 @@ impl TrainingStream {
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
 
-            stream.try_par_then(par_config.clone(), move |args| {
+            stream.try_par_then_unordered(par_config.clone(), move |args| {
                 let (index, (step, epoch, record_indexes)) = args;
                 let dataset = dataset.clone();
                 let logging_tx = logging_tx.clone();
@@ -267,7 +267,7 @@ impl TrainingStream {
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
 
-            stream.try_par_then(par_config.clone(), move |(index, args)| {
+            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
                 let random_affine = random_affine.clone();
                 let logging_tx = logging_tx.clone();
                 let par_config = par_config.clone();
@@ -399,13 +399,14 @@ impl TrainingStream {
         };
 
         // add batch dimension
-        let stream = stream.try_par_then(par_config.clone(), move |(index, args)| async move {
-            let (step, epoch, bboxes, image, mut timing) = args;
-            timing.add_event("batch dimensions start");
-            let new_image = image.unsqueeze(0);
-            timing.add_event("batch dimensions end");
-            Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
-        });
+        let stream =
+            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| async move {
+                let (step, epoch, bboxes, image, mut timing) = args;
+                timing.add_event("batch dimensions start");
+                let new_image = image.unsqueeze(0);
+                timing.add_event("batch dimensions end");
+                Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
+            });
 
         // reorder items
         let stream = stream.try_reorder_enumerated();
@@ -420,14 +421,14 @@ impl TrainingStream {
             stream
                 .chunks(batch_size.get())
                 .wrapping_enumerate()
-                .par_then(par_config.clone(), |(index, results)| async move {
+                .par_then_unordered(par_config.clone(), |(index, results)| async move {
                     let chunk: Vec<_> = results.into_iter().try_collect()?;
                     Fallible::Ok((index, chunk))
                 })
         };
 
         // convert to batched type
-        let stream = stream.try_par_then(par_config.clone(), |(index, chunk)| {
+        let stream = stream.try_par_then_unordered(par_config.clone(), |(index, mut chunk)| {
             // summerizable type
             struct State {
                 pub step: usize,
@@ -467,6 +468,11 @@ impl TrainingStream {
             }
 
             async move {
+                chunk.iter_mut().for_each(|args| {
+                    let (_step, _epoch, _bboxes, _image, timing) = args;
+                    timing.add_event("batching start");
+                });
+
                 let State {
                     step,
                     epoch,
@@ -476,26 +482,28 @@ impl TrainingStream {
                 } = chunk.into_iter().sum();
 
                 let image_batch = Tensor::cat(&image_vec, 0);
+                let timing = Timing::merge("batching end", timing_vec).unwrap();
 
-                Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch, timing_vec)))
+                Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch, timing)))
             }
         });
 
         // map to output type
-        let stream = stream.try_par_then(par_config.clone(), move |(index, args)| async move {
-            let (step, epoch, bboxes, image, timing_vec) = args;
-            let timing = Timing::merge("batching", timing_vec).unwrap();
+        let stream =
+            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| async move {
+                let (step, epoch, bboxes, image, mut timing) = args;
+                timing.add_event("map to training record");
 
-            let record = TrainingRecord {
-                epoch,
-                step,
-                image: image.set_requires_grad(false),
-                bboxes,
-                timing,
-            };
+                let record = TrainingRecord {
+                    epoch,
+                    step,
+                    image: image.set_requires_grad(false),
+                    bboxes,
+                    timing,
+                };
 
-            Ok((index, record))
-        });
+                Ok((index, record))
+            });
 
         // reorder back
         let stream = stream.try_reorder_enumerated();
