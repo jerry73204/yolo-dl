@@ -15,7 +15,7 @@ tch-tensor-like = { version = "0.2.0", features = ["derive"] }
 anyhow = "1.0.38"
 approx = "0.3.2"
 unzip-n = "0.1.2"
-serde_json = "1.0.61"
+serde_json = "1.0.62"
 async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", features = ["async"] }
 argh = "0.1.4"
@@ -23,7 +23,7 @@ par-stream = { version = "0.3.0", features = ["runtime_tokio"] }
 futures = "0.3.12"
 rand = "0.8.3"
 percent-encoding = "2.1.0"
-tokio = { version = "1.1.1", features = ["sync"] }
+tokio = { version = "1.2.0", features = ["sync"] }
 tfrecord = { version = "0.5.0", features = ["full"] }
 ndarray = "0.14.0"
 log = "0.4.14"
