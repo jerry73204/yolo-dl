@@ -107,7 +107,6 @@ pub fn single_gpu_training_worker(
     {
         info!("start training");
         let mut training_step = init_training_step;
-        let mut timing = Timing::new("training loop");
         let mut rate_counter = RateCounter::with_second_intertal();
         let runtime = tokio::runtime::Builder::new_current_thread().build()?;
         let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
@@ -120,27 +119,27 @@ pub fn single_gpu_training_worker(
 
         loop {
             let record = runtime.block_on(data_rx.recv())?;
-            timing.set_record("next record");
 
             let TrainingRecord {
                 epoch,
                 step: _record_step,
                 image,
                 bboxes,
+                mut timing,
             } = record.to_device(device);
-            timing.set_record("to device");
+            timing.add_event("next record");
 
             // forward pass
             let output = model.forward_t(&image, true)?;
-            timing.set_record("forward");
+            timing.add_event("forward");
 
             // compute loss
             let (losses, loss_auxiliary) = yolo_loss.forward(&output, &bboxes);
-            timing.set_record("loss");
+            timing.add_event("loss");
 
             // optimizer
             optimizer.backward_step(&losses.total_loss);
-            timing.set_record("backward");
+            timing.add_event("backward");
 
             // print message
             rate_counter.add(1.0);
@@ -203,10 +202,7 @@ pub fn single_gpu_training_worker(
             training_step_tensor.copy_(&Tensor::from(training_step as f32));
 
             // report profiling
-            {
-                timing.report();
-                timing = Timing::new("training loop");
-            }
+            timing.report();
         }
     }
 }

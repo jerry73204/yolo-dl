@@ -107,7 +107,7 @@ impl CacheLoader {
             false
         };
 
-        timing.set_record("check cache validity");
+        timing.add_event("check cache validity");
 
         // write cache if the cache is not valid
         let cached_image = if is_valid {
@@ -126,7 +126,7 @@ impl CacheLoader {
             })
             .await?;
 
-            timing.set_record("load cache");
+            timing.add_event("load cache");
 
             image
         } else {
@@ -156,11 +156,11 @@ impl CacheLoader {
                             .g_div1(255.0);
                         Ok(image)
                     })?;
-                    timing.set_record("load & resize");
+                    timing.add_event("load & resize");
 
                     let mut buffer = vec![0; cache_bytes];
                     image.copy_data_u8(&mut buffer, cache_components);
-                    timing.set_record("rehape & copy");
+                    timing.add_event("rehape & copy");
 
                     Ok((image, buffer, timing))
                 })
@@ -172,7 +172,7 @@ impl CacheLoader {
             writer.write_all(&buffer).await?;
             writer.flush().await?; // make sure the file is ready in the next cache hit
 
-            timing.set_record("write cache");
+            timing.add_event("write cache");
 
             tensor
         };
@@ -196,7 +196,7 @@ impl CacheLoader {
                 .set_requires_grad(false)
         });
 
-        timing.set_record("pad");
+        timing.add_event("pad");
 
         // compute new bboxes
         let output_bboxes: Vec<_> = {
@@ -229,7 +229,7 @@ impl CacheLoader {
                 .try_collect()?
         };
 
-        timing.set_record("compute bboxes");
+        timing.add_event("compute bboxes");
 
         timing.report();
 

@@ -178,21 +178,21 @@ mod yolo_loss {
             // indexed by grid positions
             // let target_bboxes = self.match_target_bboxes(&prediction, target);
             let matchings = self.bbox_matcher.match_bboxes(&prediction, target);
-            timing.set_record("match_target_bboxes");
+            timing.add_event("match_target_bboxes");
 
             // collect selected instances
             let (pred_instances, target_instances) =
                 Self::collect_instances(prediction, &matchings);
-            timing.set_record("collect_instances");
+            timing.add_event("collect_instances");
 
             // IoU loss
             let (iou_loss, iou_score) = self.iou_loss(&pred_instances, &target_instances);
-            timing.set_record("iou_loss");
+            timing.add_event("iou_loss");
             debug_assert!(!bool::from(iou_loss.isnan().any()), "NaN detected");
 
             // classification loss
             let classification_loss = self.classification_loss(&pred_instances, &target_instances);
-            timing.set_record("classification_loss");
+            timing.add_event("classification_loss");
             debug_assert!(
                 !bool::from(classification_loss.isnan().any()),
                 "NaN detected"
@@ -200,14 +200,14 @@ mod yolo_loss {
 
             // objectness loss
             let objectness_loss = self.objectness_loss(&prediction, &matchings, iou_score.as_ref());
-            timing.set_record("objectness_loss");
+            timing.add_event("objectness_loss");
             debug_assert!(!bool::from(objectness_loss.isnan().any()), "NaN detected");
 
             // normalize and balancing
             let total_loss = self.iou_loss_weight * &iou_loss
                 + self.classification_loss_weight * &classification_loss
                 + self.objectness_loss_weight * &objectness_loss;
-            timing.set_record("sum_losses");
+            timing.add_event("sum_losses");
 
             timing.report();
 
@@ -489,7 +489,7 @@ mod yolo_loss {
                 .unwrap()
             };
 
-            timing.set_record("build prediction instances");
+            timing.add_event("build prediction instances");
 
             let target_instances: TargetInstances = tch::no_grad(|| {
                 let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = matchings
@@ -542,7 +542,7 @@ mod yolo_loss {
                 .unwrap()
             });
 
-            timing.set_record("build target instances");
+            timing.add_event("build target instances");
             timing.report();
 
             (pred_instances, target_instances)

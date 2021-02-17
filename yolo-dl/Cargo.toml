@@ -44,6 +44,7 @@ petgraph = "0.5.1"
 derivative = "2.2.0"
 cv-convert = { version = "0.3.0", default-features = false, features = ["tch", "ndarray"] }
 rusty-perm = "0.2.0"
+ptree = "0.3.1"
 # by_address = "1.0.4"
 # cv-convert = { version = "0.3", default-features = false, feature = ["ndarray", "tch"] }
 

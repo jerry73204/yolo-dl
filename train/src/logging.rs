@@ -163,7 +163,7 @@ impl LoggingWorker {
                         None
                     };
 
-                    timing.set_record("compute_statistics");
+                    timing.add_event("compute_statistics");
 
                     // plot bboxes
                     let bbox_image = if enable_images {
@@ -263,7 +263,7 @@ impl LoggingWorker {
                         // draw target bboxes
                         let _ = canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
 
-                        timing.set_record("draw bboxes");
+                        timing.add_event("draw bboxes");
                         Some(canvas)
                     } else {
                         None
@@ -355,7 +355,7 @@ impl LoggingWorker {
                 .write_image_list_async(format!("{}/image/bboxes", tag), step, bbox_image)
                 .await?;
 
-            timing.set_record("write events");
+            timing.add_event("write events");
         }
 
         if let Some(objectness_image) = objectness_image {
@@ -363,7 +363,7 @@ impl LoggingWorker {
                 .write_image_list_async(format!("{}/image/objectness", tag), step, objectness_image)
                 .await?;
 
-            timing.set_record("write events");
+            timing.add_event("write events");
         }
 
         timing.report();

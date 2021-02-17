@@ -83,7 +83,6 @@ pub async fn multi_gpu_training_worker(
         let (master_device, _) = workers[0];
 
         let mut rate_counter = RateCounter::with_second_intertal();
-        let mut training_timing = Timing::new("training loop");
         let mut training_step = init_training_step;
         let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
 
@@ -101,14 +100,15 @@ pub async fn multi_gpu_training_worker(
                 epoch,
                 image,
                 bboxes,
+                mut timing,
                 ..
             } = data_rx.recv().await?.to_device(master_device);
 
-            training_timing.set_record("wait for data");
+            timing.add_event("wait for data");
 
             // sync weights among workers
             worker_contexts = sync_weights(worker_contexts).await?;
-            training_timing.set_record("sync weights");
+            timing.add_event("sync weights");
 
             // forward step
             let (worker_contexts_, outputs) = {
@@ -116,7 +116,7 @@ pub async fn multi_gpu_training_worker(
                 forward_step(config.clone(), worker_contexts, image, &bboxes).await?
             };
             worker_contexts = worker_contexts_;
-            training_timing.set_record("forward step");
+            timing.add_event("forward step");
 
             // backward step
             let (worker_contexts_, worker_outputs) = {
@@ -129,7 +129,7 @@ pub async fn multi_gpu_training_worker(
                 .await?
             };
             worker_contexts = worker_contexts_;
-            training_timing.set_record("backward step");
+            timing.add_event("backward step");
 
             // merge outputs and losses
             let (losses, worker_outputs) = tokio::task::spawn_blocking(move || -> Result<_> {
@@ -155,7 +155,7 @@ pub async fn multi_gpu_training_worker(
                 Ok(())
             })?;
 
-            training_timing.set_record("compute loss");
+            timing.add_event("compute loss");
 
             // merge output
             let (model_output, target_bboxes) = {
@@ -193,7 +193,7 @@ pub async fn multi_gpu_training_worker(
                 (model_output, target_bboxes)
             };
 
-            training_timing.set_record("merge outputs");
+            timing.add_event("merge outputs");
 
             // compute benchmark
             // {
@@ -234,7 +234,7 @@ pub async fn multi_gpu_training_worker(
                 })
                 .map(|result| Fallible::Ok(result??))
                 .await?;
-                training_timing.set_record("save checkpoint");
+                timing.add_event("save checkpoint");
             }
 
             // print message
@@ -274,13 +274,10 @@ pub async fn multi_gpu_training_worker(
                     .copy_(&Tensor::from(training_step as f32))
             });
 
-            training_timing.set_record("finalize");
+            timing.add_event("finalize");
 
             // report elapsed time
-            {
-                training_timing.report();
-                training_timing = Timing::new("training loop");
-            }
+            timing.report();
         }
     }
 }
@@ -355,7 +352,7 @@ async fn initialize_worker_contexts(
         }))
         .await?;
 
-    init_timing.set_record("init worker contexts");
+    init_timing.add_event("init worker contexts");
 
     // load checkpoint (to first worker)
     worker_contexts = {
@@ -372,7 +369,7 @@ async fn initialize_worker_contexts(
         .map(|result| Fallible::Ok(result??))
         .await?
     };
-    init_timing.set_record("load checkpoint");
+    init_timing.add_event("load checkpoint");
 
     // load initial training step
     let init_training_step = {
@@ -496,20 +493,20 @@ async fn forward_step(
                             } = job;
 
                             let image = image.to_device(device);
-                            worker_timing.set_record("to device");
+                            worker_timing.add_event("to device");
 
                             // forward pass
                             let output = model.forward_t(&image, true)?;
-                            worker_timing.set_record("forward");
+                            worker_timing.add_event("forward");
 
                             // compute loss
                             let (losses, loss_auxiliary) = yolo_loss.forward(&output, &bboxes);
-                            worker_timing.set_record("loss");
+                            worker_timing.add_event("loss");
 
                             // compute gradients
                             optimizer.zero_grad();
                             losses.total_loss.backward();
-                            worker_timing.set_record("backward");
+                            worker_timing.add_event("backward");
 
                             let gradients = vs
                                 .trainable_variables()
@@ -517,7 +514,7 @@ async fn forward_step(
                                 .map(|tensor| tensor.grad() * minibatch_size as f64)
                                 .collect_vec();
                             optimizer.zero_grad();
-                            worker_timing.set_record("extract gradients");
+                            worker_timing.add_event("extract gradients");
 
                             worker_timing.report();
 

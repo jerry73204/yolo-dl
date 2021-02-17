@@ -178,7 +178,7 @@ impl TrainingStream {
                 let par_config = par_config.clone();
 
                 async move {
-                    timing.set_record("data loading start");
+                    timing.add_event("data loading start");
 
                     // sample mix method
                     let mix_kind = [
@@ -228,7 +228,7 @@ impl TrainingStream {
                         let _ = logging_tx.send(msg);
                     }
 
-                    timing.set_record("data loading end");
+                    timing.add_event("data loading end");
                     Fallible::Ok((index, (step, epoch, data, timing)))
                 }
             })
@@ -275,7 +275,7 @@ impl TrainingStream {
 
                 async move {
                     let (step, epoch, data, mut timing) = args;
-                    timing.set_record("random affine start");
+                    timing.add_event("random affine start");
 
                     let mix_kind = data.kind();
                     let pairs: Vec<_> = stream::iter(data.into_iter())
@@ -310,7 +310,7 @@ impl TrainingStream {
                         ))
                         .unwrap();
 
-                    timing.set_record("random affine end");
+                    timing.add_event("random affine end");
                     Fallible::Ok((index, (step, epoch, new_data, timing)))
                 }
             })
@@ -352,7 +352,7 @@ impl TrainingStream {
 
                 async move {
                     let (step, epoch, data, mut timing) = args;
-                    timing.set_record("mosaic processor start");
+                    timing.add_event("mosaic processor start");
 
                     let (mixed_image, mixed_bboxes) = match data {
                         MixData::None(pairs) => {
@@ -393,7 +393,7 @@ impl TrainingStream {
                         ))
                         .unwrap();
 
-                    timing.set_record("mosaic processor end");
+                    timing.add_event("mosaic processor end");
                     Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
                 }
             })
@@ -402,9 +402,9 @@ impl TrainingStream {
         // add batch dimension
         let stream = stream.try_par_then(par_config.clone(), move |(index, args)| async move {
             let (step, epoch, bboxes, image, mut timing) = args;
-            timing.set_record("batch dimensions start");
+            timing.add_event("batch dimensions start");
             let new_image = image.unsqueeze(0);
-            timing.set_record("batch dimensions end");
+            timing.add_event("batch dimensions end");
             Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
         });
 
@@ -485,14 +485,14 @@ impl TrainingStream {
         // map to output type
         let stream = stream.try_par_then(par_config.clone(), move |(index, args)| async move {
             let (step, epoch, bboxes, image, timing_vec) = args;
-
-            timing_vec[0].report();
+            let timing = Timing::merge("batching", timing_vec).unwrap();
 
             let record = TrainingRecord {
                 epoch,
                 step,
                 image: image.set_requires_grad(false),
                 bboxes,
+                timing,
             };
 
             Ok((index, record))

@@ -25,4 +25,6 @@ pub struct TrainingRecord {
     pub image: Tensor,
     #[tensor_like(clone)]
     pub bboxes: Vec<Vec<LabeledRatioBBox>>,
+    #[tensor_like(clone)]
+    pub timing: Timing,
 }
