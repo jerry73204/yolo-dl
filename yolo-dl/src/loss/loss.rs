@@ -360,7 +360,7 @@ mod yolo_loss {
                 let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
 
                 let target_objectness = {
-                    let target = pred_objectness.zeros_like();
+                    let mut target = pred_objectness.zeros_like();
                     let target_scores = {
                         let mut target_scores = Tensor::full(
                             &[num_targets as i64, 1],
@@ -377,8 +377,8 @@ mod yolo_loss {
                         target_scores
                     };
 
-                    let _ = target.permute(&[0, 2, 1]).index_put_(
-                        &[&batch_indexes, &flat_indexes],
+                    let _ = target.index_put_opt_(
+                        (&batch_indexes, NONE_INDEX, &flat_indexes),
                         &target_scores,
                         false,
                     );
@@ -452,28 +452,24 @@ mod yolo_loss {
 
                 let cy = prediction
                     .cy
-                    .permute(&[0, 2, 1])
-                    .index(&[&batch_indexes, &flat_indexes]);
+                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
                 let cx = prediction
                     .cx
-                    .permute(&[0, 2, 1])
-                    .index(&[&batch_indexes, &flat_indexes]);
+                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
                 let height = prediction
                     .h
-                    .permute(&[0, 2, 1])
-                    .index(&[&batch_indexes, &flat_indexes]);
+                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
                 let width = prediction
                     .w
-                    .permute(&[0, 2, 1])
-                    .index(&[&batch_indexes, &flat_indexes]);
-                let objectness = prediction
-                    .obj
-                    .permute(&[0, 2, 1])
-                    .index(&[&batch_indexes, &flat_indexes]);
-                let classification = prediction
-                    .class
-                    .permute(&[0, 2, 1])
-                    .index(&[&batch_indexes, &flat_indexes]);
+                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+                let objectness =
+                    prediction
+                        .obj
+                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+                let classification =
+                    prediction
+                        .class
+                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
 
                 PredInstancesUnchecked {
                     cycxhw: CycxhwTensorUnchecked {

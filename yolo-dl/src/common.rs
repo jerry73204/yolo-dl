@@ -66,6 +66,7 @@ pub use tch_goodies::{
     BBox, CycxhwTensor, CycxhwTensorUnchecked, GridBBox, GridSize, LabeledGridBBox,
     LabeledPixelBBox, LabeledRatioBBox, PixelBBox, PixelSize, Ratio, RatioBBox, RatioSize,
     TensorExt, TlbrConfTensor, TlbrConfTensorUnchecked, TlbrTensor, TlbrTensorUnchecked,
+    NONE_INDEX,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;

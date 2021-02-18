@@ -101,22 +101,10 @@ impl NonMaxSuppression {
                 let classes = indexes.select(1, 1);
                 let instances = indexes.select(1, 2);
 
-                let new_t = t
-                    .permute(&[0, 2, 1])
-                    .index(&[&batches, &instances])
-                    .view([-1, 1]);
-                let new_l = l
-                    .permute(&[0, 2, 1])
-                    .index(&[&batches, &instances])
-                    .view([-1, 1]);
-                let new_b = b
-                    .permute(&[0, 2, 1])
-                    .index(&[&batches, &instances])
-                    .view([-1, 1]);
-                let new_r = r
-                    .permute(&[0, 2, 1])
-                    .index(&[&batches, &instances])
-                    .view([-1, 1]);
+                let new_t = t.index_opt((&batches, NONE_INDEX, &instances));
+                let new_l = l.index_opt((&batches, NONE_INDEX, &instances));
+                let new_b = b.index_opt((&batches, NONE_INDEX, &instances));
+                let new_r = r.index_opt((&batches, NONE_INDEX, &instances));
                 let new_conf = conf.index(&[&batches, &classes, &instances]).view([-1, 1]);
 
                 let bbox: TlbrConfTensor = TlbrConfTensorUnchecked {

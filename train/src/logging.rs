@@ -136,63 +136,64 @@ mod logging_worker {
 
                             // gather data from each bbox
                             // btlbr = batch + tlbr
-                            let (
-                                batch_index_vec,
-                                batch_indexes_vec,
-                                flat_indexes_vec,
-                                target_btlbrs,
-                            ) = target_bboxes
-                                .0
-                                .iter()
-                                .map(|(pred_index, target_bbox_ratio)| -> Result<_> {
-                                    let InstanceIndex { batch_index, .. } = *pred_index;
-                                    let flat_index =
-                                        output.instance_to_flat_index(pred_index).unwrap();
-                                    let target_bbox_pixel: LabeledPixelBBox<_> = target_bbox_ratio
-                                        .to_r64_bbox(image_h as usize, image_w as usize);
-                                    let [target_t, target_l, target_b, target_r] =
-                                        target_bbox_pixel.tlbr();
+                            let (batch_indexes_vec, flat_indexes_vec, target_btlbrs) =
+                                target_bboxes
+                                    .0
+                                    .iter()
+                                    .map(|(pred_index, target_bbox_ratio)| {
+                                        let InstanceIndex { batch_index, .. } = *pred_index;
+                                        let flat_index =
+                                            output.instance_to_flat_index(pred_index).unwrap();
+                                        let target_bbox_pixel: LabeledPixelBBox<_> =
+                                            target_bbox_ratio
+                                                .to_r64_bbox(image_h as usize, image_w as usize);
+                                        let [target_t, target_l, target_b, target_r] =
+                                            target_bbox_pixel.tlbr();
 
-                                    let target_t = (target_t.raw() as i64).max(0).min(image_h - 1);
-                                    let target_b = (target_b.raw() as i64).max(0).min(image_h - 1);
-                                    let target_l = (target_l.raw() as i64).max(0).min(image_w - 1);
-                                    let target_r = (target_r.raw() as i64).max(0).min(image_w - 1);
+                                        let target_t =
+                                            (target_t.raw() as i64).max(0).min(image_h - 1);
+                                        let target_b =
+                                            (target_b.raw() as i64).max(0).min(image_h - 1);
+                                        let target_l =
+                                            (target_l.raw() as i64).max(0).min(image_w - 1);
+                                        let target_r =
+                                            (target_r.raw() as i64).max(0).min(image_w - 1);
 
-                                    let target_btlbr = [
-                                        batch_index as i64,
-                                        target_t,
-                                        target_l,
-                                        target_b,
-                                        target_r,
-                                    ];
+                                        let target_btlbr = [
+                                            batch_index as i64,
+                                            target_t,
+                                            target_l,
+                                            target_b,
+                                            target_r,
+                                        ];
 
-                                    Ok((batch_index, batch_index as i64, flat_index, target_btlbr))
-                                })
-                                .collect::<Fallible<Vec<_>>>()?
-                                .into_iter()
-                                .unzip_n_vec();
+                                        (batch_index as i64, flat_index, target_btlbr)
+                                    })
+                                    .unzip_n_vec();
 
                             // draw predicted bboxes
                             {
                                 let batch_indexes = Tensor::of_slice(&batch_indexes_vec);
                                 let flat_indexes = Tensor::of_slice(&flat_indexes_vec);
 
-                                let pred_cy = output
-                                    .cy
-                                    .permute(&[0, 2, 1])
-                                    .index(&[&batch_indexes, &flat_indexes]);
-                                let pred_cx = output
-                                    .cx
-                                    .permute(&[0, 2, 1])
-                                    .index(&[&batch_indexes, &flat_indexes]);
-                                let pred_h = output
-                                    .h
-                                    .permute(&[0, 2, 1])
-                                    .index(&[&batch_indexes, &flat_indexes]);
-                                let pred_w = output
-                                    .w
-                                    .permute(&[0, 2, 1])
-                                    .index(&[&batch_indexes, &flat_indexes]);
+                                let pred_cy = output.cy.index_opt((
+                                    &batch_indexes,
+                                    NONE_INDEX,
+                                    &flat_indexes,
+                                ));
+                                let pred_cx = output.cx.index_opt((
+                                    &batch_indexes,
+                                    NONE_INDEX,
+                                    &flat_indexes,
+                                ));
+                                let pred_h =
+                                    output
+                                        .h
+                                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+                                let pred_w =
+                                    output
+                                        .w
+                                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
 
                                 let pred_t: Vec<f64> = (&pred_cy - &pred_h / 2.0).into();
                                 let pred_b: Vec<f64> = (&pred_cy + &pred_h / 2.0).into();
@@ -200,7 +201,7 @@ mod logging_worker {
                                 let pred_r: Vec<f64> = (&pred_cx + &pred_w / 2.0).into();
 
                                 let pred_btlbrs =
-                                    izip!(batch_index_vec, pred_t, pred_l, pred_b, pred_r)
+                                    izip!(batch_indexes_vec, pred_t, pred_l, pred_b, pred_r)
                                         .map(|args| {
                                             let (batch_index, t, l, b, r) = args;
                                             let t = ((t * image_h as f64) as i64)
