@@ -89,14 +89,14 @@ pub async fn multi_gpu_training_worker(
         }
 
         loop {
-            // load input data
+            let record = data_rx.recv().await?;
             let TrainingRecord {
                 epoch,
                 image,
                 bboxes,
                 mut timing,
                 ..
-            } = data_rx.recv().await?.to_device(master_device);
+            } = tokio::task::spawn_blocking(move || record.to_device(master_device)).await?;
 
             timing.add_event("wait for data");
 

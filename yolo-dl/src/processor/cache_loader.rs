@@ -86,7 +86,7 @@ impl CacheLoader {
         let cache_w = (orig_w as f64 * resize_ratio) as usize;
         let cache_components = cache_h * cache_w * image_channels;
         let cache_bytes = cache_components * mem::size_of::<f32>();
-        let mut timing = Timing::new("cache loader");
+        let mut timing = Timing::new("cache_loader");
 
         // construct cache path
         let cache_path = self.cache_dir.join(format!(
@@ -134,35 +134,35 @@ impl CacheLoader {
             let image_path = image_path.to_owned();
             let (tensor, buffer, timing_) =
                 async_std::task::spawn_blocking(move || -> Result<_> {
-                    let image = vision::image::load(image_path)?;
-                    {
-                        let shape = image.size3()?;
-                        let expect_shape = (image_channels as i64, orig_h as i64, orig_w as i64);
-                        ensure!(
-                            shape == expect_shape,
-                            "image size does not match, expect {:?}, but get {:?}",
-                            expect_shape,
-                            shape
-                        );
-                    }
-                    let image = tch::no_grad(|| -> Result<_> {
+                    tch::no_grad(|| -> Result<_> {
+                        let image = vision::image::load(image_path)?;
+                        {
+                            let shape = image.size3()?;
+                            let expect_shape =
+                                (image_channels as i64, orig_h as i64, orig_w as i64);
+                            ensure!(
+                                shape == expect_shape,
+                                "image size does not match, expect {:?}, but get {:?}",
+                                expect_shape,
+                                shape
+                            );
+                        }
                         let image = image
-                            .set_requires_grad(false)
                             // resize on cpu before moving to CUDA due to this issue
                             // https://github.com/LaurentMazare/tch-rs/issues/286
                             .resize2d_exact(cache_h as i64, cache_w as i64)?
                             .to_device(device)
                             .to_kind(Kind::Float)
-                            .g_div1(255.0);
-                        Ok(image)
-                    })?;
-                    timing.add_event("load & resize");
+                            .g_div1(255.0)
+                            .set_requires_grad(false);
+                        timing.add_event("load & resize");
 
-                    let mut buffer = vec![0; cache_bytes];
-                    image.copy_data_u8(&mut buffer, cache_components);
-                    timing.add_event("rehape & copy");
+                        let mut buffer = vec![0; cache_bytes];
+                        image.copy_data_u8(&mut buffer, cache_components);
+                        timing.add_event("rehape & copy");
 
-                    Ok((image, buffer, timing))
+                        Ok((image, buffer, timing))
+                    })
                 })
                 .await?;
             timing = timing_;

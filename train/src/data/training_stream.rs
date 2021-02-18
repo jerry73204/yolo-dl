@@ -104,7 +104,7 @@ impl TrainingStream {
         let par_config: ParStreamConfig = {
             match self.config.preprocessor.worker_buf_size {
                 Some(buf_size) => (1.0, buf_size).into(),
-                None => (1.0, 1.0).into(),
+                None => (1.0, 2.0).into(),
             }
         };
 
