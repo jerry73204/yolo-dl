@@ -9,6 +9,8 @@ use crate::{
 pub use cycxhw::*;
 pub use tlbr::*;
 
+const EPSILON: f64 = 1e-16;
+
 mod tlbr {
     use super::*;
 
@@ -51,6 +53,14 @@ mod tlbr {
             Size::new(h, w).unwrap()
         }
 
+        pub fn to_cycxhw(&self) -> CyCxHW<T, U> {
+            self.into()
+        }
+
+        pub fn area(&self) -> T {
+            self.size().area()
+        }
+
         /// Compute intersection area in TLBR format.
         pub fn intersect_with(&self, other: &Self) -> Option<Self> {
             let zero = T::zero();
@@ -76,8 +86,75 @@ mod tlbr {
             })
         }
 
-        pub fn to_cycxhw(&self) -> CyCxHW<T, U> {
-            self.into()
+        pub fn intersect_area_with(&self, other: &Self) -> T {
+            self.intersect_with(other)
+                .map(|size| size.area())
+                .unwrap_or_else(|| T::zero())
+        }
+
+        /// Compute intersection area in TLBR format.
+        pub fn closure_with(&self, other: &Self) -> Self {
+            let t = self.t().min(other.t());
+            let l = self.l().min(other.l());
+            let b = self.b().max(other.b());
+            let r = self.r().max(other.r());
+
+            Self {
+                t,
+                l,
+                b,
+                r,
+                _phantom: PhantomData,
+            }
+        }
+
+        pub fn iou_with(&self, other: &Self) -> T {
+            let inter_area = self.intersect_area_with(other);
+            let union_area = self.area() + other.area() - inter_area + T::from(EPSILON).unwrap();
+            inter_area / union_area
+        }
+
+        pub fn hausdorff_distance_to(&self, other: &Self) -> T {
+            let zero = T::zero();
+            let Self {
+                t: tl,
+                l: ll,
+                b: bl,
+                r: rl,
+                ..
+            } = *self;
+            let Self {
+                t: tr,
+                l: lr,
+                b: br,
+                r: rr,
+                ..
+            } = *other;
+
+            let dt = tr - tl;
+            let dl = lr - ll;
+            let db = bl - br;
+            let dr = rl - rr;
+
+            let dt_l = dt.max(zero);
+            let dl_l = dl.max(zero);
+            let db_l = db.max(zero);
+            let dr_l = dr.max(zero);
+
+            let dt_r = (-dt).max(zero);
+            let dl_r = (-dl).max(zero);
+            let db_r = (-db).max(zero);
+            let dr_r = (-dr).max(zero);
+
+            (dt_l.powi(2) + dl_l.powi(2))
+                .max(dt_l.powi(2) + dr_l.powi(2))
+                .max(db_l.powi(2) + dl_l.powi(2))
+                .max(db_l.powi(2) + dr_l.powi(2))
+                .max(dt_r.powi(2) + dl_r.powi(2))
+                .max(dt_r.powi(2) + dr_r.powi(2))
+                .max(db_r.powi(2) + dl_r.powi(2))
+                .max(db_r.powi(2) + dr_r.powi(2))
+                .sqrt()
         }
     }
 
@@ -269,6 +346,14 @@ mod cycxhw {
                 w,
                 _phantom: PhantomData,
             })
+        }
+
+        pub fn iou_with(&self, other: &Self) -> T {
+            self.to_tlbr().iou_with(&other.to_tlbr())
+        }
+
+        pub fn hausdorff_distance_to(&self, other: &Self) -> T {
+            self.to_tlbr().hausdorff_distance_to(&other.to_tlbr())
         }
     }
 

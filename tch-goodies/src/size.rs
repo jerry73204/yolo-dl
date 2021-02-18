@@ -7,7 +7,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike, CopyGetters)]
 pub struct Size<T, U>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive,
+    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
     U: Unit,
 {
     #[get_copy = "pub"]
@@ -20,7 +20,7 @@ where
 
 impl<T, U> Size<T, U>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive,
+    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
     U: Unit,
 {
     pub fn new(h: T, w: T) -> Result<Self> {
@@ -43,7 +43,7 @@ where
 
     pub fn cast<S>(&self) -> Option<Size<S, U>>
     where
-        S: NumCast + Zero + PartialOrd + Copy + ToPrimitive,
+        S: NumCast + Zero + PartialOrd + Copy + ToPrimitive + Mul<S, Output = S>,
     {
         let h = <S as NumCast>::from(self.h)?;
         let w = <S as NumCast>::from(self.w)?;
@@ -52,6 +52,11 @@ where
             w,
             _phantom: PhantomData,
         })
+    }
+
+    pub fn area(&self) -> T {
+        let Self { h, w, .. } = *self;
+        h * w
     }
 }
 
