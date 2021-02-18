@@ -220,22 +220,13 @@ mod tensor_ext {
                 )
                 .map(|index| index as i64)
                 .collect();
-            let inverse_perm = {
-                let mut inverse_perm = vec![0; perm.len()];
-                perm.iter().enumerate().for_each(|(dst, &src)| {
-                    inverse_perm[src as usize] = dst as i64;
-                });
-                inverse_perm
-            };
 
             let output = {
                 let tch_indexes: Vec<_> = occurrences
                     .iter()
                     .map(|&index| indexes[index].as_ref().unwrap())
                     .collect();
-                self.f_permute(&perm)?
-                    .f_index(&tch_indexes)?
-                    .f_permute(&inverse_perm)?
+                self.f_permute(&perm)?.f_index(&tch_indexes)?
             };
 
             Ok(output)
@@ -965,6 +956,8 @@ mod into_index_list {
         fn into_index_list(self, device: Device) -> Vec<Option<Tensor>>;
     }
 
+    pub const NONE_INDEX: Option<Tensor> = None;
+
     // slice
     impl<T> IntoIndexList for &[T]
     where
@@ -988,4 +981,53 @@ mod into_index_list {
                 .collect()
         }
     }
+
+    // tuple
+    macro_rules! impl_tuple {
+        ( $(($input_ty:ident, $input_arg:ident)),* ) => {
+            impl< $($input_ty),* > IntoIndexList for ( $($input_ty,)* )
+            where
+                $($input_ty: IntoTensorIndex),*
+            {
+                fn into_index_list(self, device: Device) -> Vec<Option<Tensor>> {
+                    let ($($input_arg,)*) = self;
+                    [ $( <$input_ty as IntoTensorIndex>::into_tensor_index(& $input_arg, device) ),* ]
+                        .into_index_list(device)
+                }
+            }
+        };
+    }
+
+    impl_tuple!((T0, arg0));
+    impl_tuple!((T0, arg0), (T1, arg1));
+    impl_tuple!((T0, arg0), (T1, arg1), (T2, arg2));
+    impl_tuple!((T0, arg0), (T1, arg1), (T2, arg2), (T3, arg3));
+    impl_tuple!((T0, arg0), (T1, arg1), (T2, arg2), (T3, arg3), (T4, arg4));
+    impl_tuple!(
+        (T0, arg0),
+        (T1, arg1),
+        (T2, arg2),
+        (T3, arg3),
+        (T4, arg4),
+        (T5, arg5)
+    );
+    impl_tuple!(
+        (T0, arg0),
+        (T1, arg1),
+        (T2, arg2),
+        (T3, arg3),
+        (T4, arg4),
+        (T5, arg5),
+        (T6, arg6)
+    );
+    impl_tuple!(
+        (T0, arg0),
+        (T1, arg1),
+        (T2, arg2),
+        (T3, arg3),
+        (T4, arg4),
+        (T5, arg5),
+        (T6, arg6),
+        (T7, arg7)
+    );
 }
