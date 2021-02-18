@@ -9,72 +9,9 @@ pub use area_tensor::*;
 pub use cycxhw_tensor::*;
 use into_tch_element::*;
 pub use size_tensor::*;
-pub use tlbr_conf_tensor::*;
 pub use tlbr_tensor::*;
 
 const EPSILON: f64 = 1e-16;
-
-mod tlbr_conf_tensor {
-    use super::*;
-
-    #[derive(Debug, TensorLike, Getters)]
-    pub struct TLBRConfTensor {
-        #[get = "pub"]
-        tlbr: TLBRTensor,
-        #[get = "pub"]
-        conf: Tensor,
-    }
-
-    #[derive(Debug, TensorLike)]
-    pub struct TLBRConfTensorUnchecked {
-        pub tlbr: TLBRTensorUnchecked,
-        pub conf: Tensor,
-    }
-
-    impl TLBRConfTensor {
-        pub fn num_samples(&self) -> i64 {
-            self.tlbr.num_samples()
-        }
-
-        pub fn index_select(&self, indexes: &Tensor) -> Self {
-            let Self { tlbr, conf, .. } = self;
-            let tlbr = tlbr.index_select(indexes);
-            let conf = conf.index_select(0, indexes);
-            Self { tlbr, conf }
-        }
-
-        pub fn device(&self) -> Device {
-            self.tlbr.device()
-        }
-    }
-
-    impl TryFrom<TLBRConfTensorUnchecked> for TLBRConfTensor {
-        type Error = Error;
-
-        fn try_from(from: TLBRConfTensorUnchecked) -> Result<Self, Self::Error> {
-            let TLBRConfTensorUnchecked { tlbr, conf } = from;
-            let tlbr = TLBRTensor::try_from(tlbr)?;
-
-            match conf.size2()? {
-                (n_samples, 1) => ensure!(n_samples == tlbr.num_samples(), "size mismatch"),
-                _ => bail!("size mismatch"),
-            }
-            ensure!(conf.device() == tlbr.device(), "device mismatch");
-
-            Ok(Self { tlbr, conf })
-        }
-    }
-
-    impl From<TLBRConfTensor> for TLBRConfTensorUnchecked {
-        fn from(from: TLBRConfTensor) -> Self {
-            let TLBRConfTensor { tlbr, conf } = from;
-            Self {
-                tlbr: tlbr.into(),
-                conf,
-            }
-        }
-    }
-}
 
 mod area_tensor {
     use super::*;
@@ -328,6 +265,50 @@ mod cycxhw_tensor {
             let cy = t + &h / 2.0;
             let cx = l + &w / 2.0;
             Self { cy, cx, h, w }
+        }
+    }
+
+    impl<U> From<&CyCxHWTensor> for Vec<BBox<R64, U>>
+    where
+        U: Unit,
+    {
+        fn from(from: &CyCxHWTensor) -> Self {
+            let bboxes: Vec<_> = izip!(
+                Vec::<f32>::from(from.cy()),
+                Vec::<f32>::from(from.cx()),
+                Vec::<f32>::from(from.h()),
+                Vec::<f32>::from(from.w()),
+            )
+            .map(|(cy, cx, h, w)| {
+                BBox::<R64, _>::try_from_cycxhw([
+                    r64(cy as f64),
+                    r64(cx as f64),
+                    r64(h as f64),
+                    r64(w as f64),
+                ])
+                .unwrap()
+            })
+            .collect();
+            bboxes
+        }
+    }
+
+    impl<U> From<&CyCxHWTensor> for Vec<BBox<f64, U>>
+    where
+        U: Unit,
+    {
+        fn from(from: &CyCxHWTensor) -> Self {
+            let bboxes: Vec<_> = izip!(
+                Vec::<f32>::from(from.cy()),
+                Vec::<f32>::from(from.cx()),
+                Vec::<f32>::from(from.h()),
+                Vec::<f32>::from(from.w()),
+            )
+            .map(|(cy, cx, h, w)| {
+                BBox::<f64, _>::try_from_cycxhw([cy as f64, cx as f64, h as f64, w as f64]).unwrap()
+            })
+            .collect();
+            bboxes
         }
     }
 }
@@ -618,6 +599,24 @@ mod tlbr_tensor {
     {
         fn from(from: Vec<LabeledBBox<T, U>>) -> Self {
             bboxes_to_tlbr_tensor(from.as_slice())
+        }
+    }
+
+    impl<U> From<&TLBRTensor> for Vec<BBox<R64, U>>
+    where
+        U: Unit,
+    {
+        fn from(from: &TLBRTensor) -> Self {
+            (&CyCxHWTensor::from(from)).into()
+        }
+    }
+
+    impl<U> From<&TLBRTensor> for Vec<BBox<f64, U>>
+    where
+        U: Unit,
+    {
+        fn from(from: &TLBRTensor) -> Self {
+            (&CyCxHWTensor::from(from)).into()
         }
     }
 

@@ -215,7 +215,7 @@ impl CacheLoader {
                         let resized_cx = orig_cx * resize_ratio + left_pad as f64;
                         let resized_h = orig_h * resize_ratio;
                         let resized_w = orig_w * resize_ratio;
-                        let resized_bbox = PixelBBox::try_from_cycxhw([
+                        let resized_bbox = PixelBBox::<R64>::try_from_cycxhw([
                             resized_cy, resized_cx, resized_h, resized_w,
                         ])?;
                         resized_bbox

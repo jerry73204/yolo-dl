@@ -3,7 +3,7 @@
 use crate::{
     common::*,
     ratio::Ratio,
-    unit::{GridUnit, PixelUnit, RatioUnit, Unit},
+    unit::{GridUnit, PixelUnit, RatioUnit, Unit, Unitless},
 };
 
 pub use bbox::*;
@@ -175,6 +175,7 @@ mod bbox {
     pub type RatioBBox = BBox<Ratio, RatioUnit>;
     pub type GridBBox<T> = BBox<T, GridUnit>;
     pub type PixelBBox<T> = BBox<T, PixelUnit>;
+    pub type UnitlessBBox<T> = BBox<T, Unitless>;
 
     impl<T, U> BBox<T, U>
     where
@@ -216,6 +217,20 @@ mod bbox {
                 cycxhw: [cy * h_scale, cx * w_scale, h * h_scale, w * w_scale],
                 _phantom: PhantomData,
             }
+        }
+    }
+
+    impl<U> BBox<f64, U>
+    where
+        U: Unit,
+    {
+        pub fn try_from_cycxhw(cycxhw: [f64; 4]) -> Result<Self> {
+            let [_cy, _cx, h, w] = cycxhw;
+            ensure!(h >= 0.0 && w >= 0.0, "invalid cycxhw {:?}", cycxhw);
+            Ok(Self {
+                cycxhw,
+                _phantom: PhantomData,
+            })
         }
     }
 
@@ -268,9 +283,7 @@ mod bbox {
             let ratio_h = Ratio::try_from(orig_h / max_height)?;
             let ratio_w = Ratio::try_from(orig_w / max_width)?;
 
-            Ok(RatioBBox::try_from_cycxhw([
-                ratio_cy, ratio_cx, ratio_h, ratio_w,
-            ])?)
+            RatioBBox::try_from_cycxhw([ratio_cy, ratio_cx, ratio_h, ratio_w])
         }
 
         pub fn scale(&self, scale: R64) -> Self {
