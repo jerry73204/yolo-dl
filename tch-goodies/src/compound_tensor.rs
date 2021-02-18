@@ -16,11 +16,13 @@ const EPSILON: f64 = 1e-16;
 mod area_tensor {
     use super::*;
 
+    /// Unchecked tensor of batched areas.
     #[derive(Debug, TensorLike)]
     pub struct AreaTensorUnchecked {
         pub area: Tensor,
     }
 
+    /// Checked tensor of batched areas.
     #[derive(Debug, TensorLike, Getters)]
     pub struct AreaTensor {
         #[get = "pub"]
@@ -62,12 +64,14 @@ mod area_tensor {
 mod size_tensor {
     use super::*;
 
+    /// Unchecked tensor of batched sizes.
     #[derive(Debug, TensorLike)]
     pub struct SizeTensorUnchecked {
         pub h: Tensor,
         pub w: Tensor,
     }
 
+    /// Checked tensor of batched sizes.
     #[derive(Debug, TensorLike, Getters)]
     pub struct SizeTensor {
         #[get = "pub"]
@@ -120,6 +124,7 @@ mod size_tensor {
 mod cycxhw_tensor {
     use super::*;
 
+    /// Checked tensor of batched box parameters in CyCxHW format.
     #[derive(Debug, TensorLike, Getters)]
     pub struct CyCxHWTensor {
         #[get = "pub"]
@@ -132,6 +137,7 @@ mod cycxhw_tensor {
         pub(crate) w: Tensor,
     }
 
+    /// Unchecked tensor of batched box parameters in CyCxHW format.
     #[derive(Debug, TensorLike)]
     pub struct CyCxHWTensorUnchecked {
         pub cy: Tensor,
@@ -146,12 +152,14 @@ mod cycxhw_tensor {
             num
         }
 
+        /// Compute box area.
         pub fn area(&self) -> AreaTensor {
             let Self { h, w, .. } = self;
             let area = h * w;
             AreaTensor { area }
         }
 
+        /// Compute box size.
         pub fn size(&self) -> SizeTensor {
             let Self { h, w, .. } = self;
             SizeTensor {
@@ -160,14 +168,17 @@ mod cycxhw_tensor {
             }
         }
 
+        /// Compute the intersection area with the other box tensor.
         pub fn intersect_area_with(&self, other: &Self) -> AreaTensor {
             TLBRTensor::from(self).intersect_area_with(&TLBRTensor::from(other))
         }
 
+        /// Compute the rectanble closure with the other box tensor.
         pub fn closure_with(&self, other: &Self) -> CyCxHWTensor {
             (&TLBRTensor::from(self).closure_with(&TLBRTensor::from(other))).into()
         }
 
+        /// Compute the IoU score with the other box tensor.
         pub fn iou_with(&self, other: &Self) -> Tensor {
             let inter_area = self.intersect_area_with(other);
             let outer_area = self.area().area() + other.area().area() - inter_area.area() + EPSILON;
@@ -175,6 +186,7 @@ mod cycxhw_tensor {
             iou
         }
 
+        /// Compute the GIoU score with the other box tensor.
         pub fn giou_with(&self, other: &Self) -> Tensor {
             let inter_area = self.intersect_area_with(other);
             let outer_area = self.area().area() + other.area().area() - inter_area.area() + EPSILON;
@@ -184,6 +196,7 @@ mod cycxhw_tensor {
             iou - (closure_area.area() - &outer_area) / (closure_area.area() + EPSILON)
         }
 
+        /// Compute the DIoU score with the other box tensor.
         pub fn diou_with(&self, other: &Self) -> Tensor {
             let iou = self.iou_with(other);
 
@@ -197,6 +210,7 @@ mod cycxhw_tensor {
             iou - center_dist_square / diagonal_square
         }
 
+        /// Compute the CIoU score with the other box tensor.
         pub fn ciou_with(&self, other: &Self) -> Tensor {
             use std::f64::consts::PI;
 
@@ -218,6 +232,7 @@ mod cycxhw_tensor {
             iou - center_dist_square / diagonal_square + shape_loss_coef * shape_loss
         }
 
+        /// Compute the Hausdorff distance with the other box tensor.
         pub fn hausdorff_distance_to(&self, other: &Self) -> Tensor {
             TLBRTensor::from(self).hausdorff_distance_to(&TLBRTensor::from(other))
         }
@@ -316,6 +331,7 @@ mod cycxhw_tensor {
 mod tlbr_tensor {
     use super::*;
 
+    /// Checked tensor of batched box parameters in TLBR format.
     #[derive(Debug, TensorLike, Getters)]
     pub struct TLBRTensor {
         #[get = "pub"]
@@ -328,6 +344,7 @@ mod tlbr_tensor {
         pub(crate) r: Tensor,
     }
 
+    /// Unchecked tensor of batched box parameters in TLBR format.
     #[derive(Debug, TensorLike)]
     pub struct TLBRTensorUnchecked {
         pub t: Tensor,
@@ -366,6 +383,7 @@ mod tlbr_tensor {
             Self { t, l, b, r }
         }
 
+        /// Compute the box size.
         pub fn size(&self) -> SizeTensor {
             let Self { t, l, b, r } = self;
             let h = b - t;
@@ -374,12 +392,14 @@ mod tlbr_tensor {
             SizeTensor { h, w }
         }
 
+        /// Compute the box area.
         pub fn area(&self) -> AreaTensor {
             let SizeTensor { h, w } = self.size();
             let area = h * w;
             AreaTensor { area }
         }
 
+        /// Compute the intersection area with the other box tensor.
         pub fn intersect_area_with(&self, other: &Self) -> AreaTensor {
             let Self {
                 t: lhs_t,
@@ -407,6 +427,7 @@ mod tlbr_tensor {
             AreaTensor { area }
         }
 
+        /// Compute the rectangle closure with the other box tensor.
         pub fn closure_with(&self, other: &Self) -> Self {
             let Self {
                 t: lhs_t,
@@ -434,6 +455,7 @@ mod tlbr_tensor {
             }
         }
 
+        /// Compute the Hausdorff distance with the other box tensor.
         pub fn hausdorff_distance_to(&self, other: &Self) -> Tensor {
             let TLBRTensor {
                 t: tl,
