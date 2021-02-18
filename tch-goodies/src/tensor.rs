@@ -10,6 +10,22 @@ mod tensor_ext {
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
     pub trait TensorExt {
+        fn f_index_put_opt_(
+            &mut self,
+            indexes: impl IntoIndexList,
+            values: &Tensor,
+            accumulate: bool,
+        ) -> Result<Tensor>;
+
+        fn index_put_opt_(
+            &mut self,
+            indexes: impl IntoIndexList,
+            values: &Tensor,
+            accumulate: bool,
+        ) -> Tensor {
+            self.f_index_put_opt_(indexes, values, accumulate).unwrap()
+        }
+
         fn f_index_opt(&self, indexes: impl IntoIndexList) -> Result<Tensor>;
 
         fn index_opt(&self, indexes: impl IntoIndexList) -> Tensor {
@@ -196,6 +212,48 @@ mod tensor_ext {
     }
 
     impl TensorExt for Tensor {
+        fn f_index_put_opt_(
+            &mut self,
+            indexes: impl IntoIndexList,
+            values: &Tensor,
+            accumulate: bool,
+        ) -> Result<Tensor> {
+            let device = self.device();
+            let indexes = indexes.into_index_list(device);
+
+            let occurrences: Vec<_> = indexes
+                .iter()
+                .enumerate()
+                .filter_map(|(index, tensor)| tensor.as_ref().map(|_| index))
+                .collect();
+
+            let perm: Vec<_> = occurrences
+                .iter()
+                .cloned()
+                .chain(
+                    indexes
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, tensor)| match tensor {
+                            Some(_) => None,
+                            None => Some(index),
+                        }),
+                )
+                .map(|index| index as i64)
+                .collect();
+
+            let output = {
+                let tch_indexes: Vec<_> = occurrences
+                    .iter()
+                    .map(|&index| indexes[index].as_ref().unwrap())
+                    .collect();
+                self.f_permute(&perm)?
+                    .f_index_put_(&tch_indexes, values, accumulate)?
+            };
+
+            Ok(output)
+        }
+
         fn f_index_opt(&self, indexes: impl IntoIndexList) -> Result<Tensor> {
             let device = self.device();
             let indexes = indexes.into_index_list(device);
