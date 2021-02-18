@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     common::*,
     config::{Config, DatasetConfig, DatasetKind, PreprocessorConfig, TrainingConfig},
-    message::LoggingMessage,
+    logging::LoggingMessage,
 };
 
 /// Asynchonous data stream for training.

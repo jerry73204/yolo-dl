@@ -1,8 +1,8 @@
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig},
+    config::{Config, LoadCheckpoint, LossConfig, TrainingConfig},
     data::TrainingRecord,
-    message::LoggingMessage,
+    logging::LoggingMessage,
     model::Model,
     utils::{self, LrScheduler, RateCounter},
 };
@@ -36,10 +36,6 @@ pub fn single_gpu_training_worker(
                     },
                 ..
             },
-        logging: LoggingConfig {
-            enable_training_output,
-            ..
-        },
         ..
     } = *config;
 
@@ -176,26 +172,16 @@ pub fn single_gpu_training_worker(
             }
 
             // send to logger
-            if enable_training_output {
-                logging_tx
-                    .send(LoggingMessage::new_training_output(
-                        "training-output",
-                        training_step,
-                        &image,
-                        &output,
-                        &losses,
-                        loss_auxiliary.target_bboxes,
-                    ))
-                    .map_err(|_err| format_err!("cannot send message to logger"))?;
-            } else {
-                logging_tx
-                    .send(LoggingMessage::new_training_step(
-                        "loss",
-                        training_step,
-                        &losses,
-                    ))
-                    .map_err(|_err| format_err!("cannot send message to logger"))?;
-            }
+            logging_tx
+                .send(LoggingMessage::new_training_output(
+                    "training-output",
+                    training_step,
+                    &image,
+                    &output,
+                    &losses,
+                    loss_auxiliary.target_bboxes,
+                ))
+                .map_err(|_err| format_err!("cannot send message to logger"))?;
 
             // update training step
             training_step += 1;

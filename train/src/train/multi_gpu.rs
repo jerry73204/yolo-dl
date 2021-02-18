@@ -1,8 +1,8 @@
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LoggingConfig, LossConfig, TrainingConfig},
+    config::{Config, LoadCheckpoint, LossConfig, TrainingConfig},
     data::TrainingRecord,
-    message::LoggingMessage,
+    logging::LoggingMessage,
     model::Model,
     utils::{self, LrScheduler, RateCounter},
 };
@@ -594,7 +594,7 @@ fn backward_step(
 }
 
 async fn log_outputs(
-    config: Arc<Config>,
+    _config: Arc<Config>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     training_step: usize,
     image: Tensor,
@@ -602,36 +602,16 @@ async fn log_outputs(
     target_bboxes: PredTargetMatching,
     losses: YoloLossOutput,
 ) -> Result<()> {
-    let Config {
-        logging: LoggingConfig {
-            enable_training_output,
-            ..
-        },
-        ..
-    } = *config;
-
-    // send to logger
-    if enable_training_output {
-        // aggregate worker outputs
-        logging_tx
-            .send(LoggingMessage::new_training_output(
-                "training-output",
-                training_step,
-                &image,
-                &model_output,
-                &losses,
-                target_bboxes,
-            ))
-            .map_err(|_err| format_err!("cannot send message to logger"))?;
-    } else {
-        logging_tx
-            .send(LoggingMessage::new_training_step(
-                "loss",
-                training_step,
-                &losses,
-            ))
-            .map_err(|_err| format_err!("cannot send message to logger"))?;
-    }
+    logging_tx
+        .send(LoggingMessage::new_training_output(
+            "training-output",
+            training_step,
+            &image,
+            &model_output,
+            &losses,
+            target_bboxes,
+        ))
+        .map_err(|_err| format_err!("cannot send message to logger"))?;
 
     Ok(())
 }

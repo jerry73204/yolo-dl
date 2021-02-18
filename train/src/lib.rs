@@ -4,7 +4,6 @@ pub mod common;
 pub mod config;
 pub mod data;
 pub mod logging;
-pub mod message;
 pub mod model;
 pub mod train;
 pub mod utils;
