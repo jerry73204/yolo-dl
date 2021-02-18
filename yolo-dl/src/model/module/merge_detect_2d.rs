@@ -49,11 +49,7 @@ impl MergeDetect2D {
                 } = *detection;
 
                 let num_anchors = anchors.len();
-                let GridSize {
-                    h: feature_h,
-                    w: feature_w,
-                    ..
-                } = *feature_size;
+                let [feature_h, feature_w] = feature_size.hw_params();
 
                 // flatten tensors
                 let cy_flat = cy.view([batch_size, 1, -1]);
@@ -246,10 +242,11 @@ impl MergeDetect2DOutput {
             .iter()
             .map(|meta| {
                 let DetectionInfo {
-                    feature_size: GridSize { h, w, .. },
+                    ref feature_size,
                     ref anchors,
                     ..
                 } = *meta;
+                let [h, w] = feature_size.hw_params();
                 h * w * anchors.len() as i64
             })
             .sum();
@@ -304,12 +301,7 @@ impl MergeDetect2DOutput {
         let (
             layer_index,
             DetectionInfo {
-                feature_size:
-                    GridSize {
-                        h: feature_h,
-                        w: feature_w,
-                        ..
-                    },
+                feature_size,
                 anchors,
                 flat_index_range,
                 ..
@@ -321,9 +313,9 @@ impl MergeDetect2DOutput {
             .find(|(_layer_index, meta)| flat_index < meta.flat_index_range.end)?;
 
         let remainder = flat_index - flat_index_range.start;
-        let grid_col = remainder % feature_w;
-        let grid_row = remainder / feature_w % feature_h;
-        let anchor_index = remainder / feature_w / feature_h;
+        let grid_col = remainder % feature_size.w();
+        let grid_row = remainder / feature_size.w() % feature_size.h();
+        let anchor_index = remainder / feature_size.w() / feature_size.h();
 
         if anchor_index >= anchors.len() as i64 {
             return None;
@@ -349,11 +341,13 @@ impl MergeDetect2DOutput {
 
         let DetectionInfo {
             ref flat_index_range,
-            feature_size: GridSize { h, w, .. },
+            ref feature_size,
             ..
         } = self.info.get(layer_index)?;
 
-        let flat_index = flat_index_range.start + grid_col + w * (grid_row + h * anchor_index);
+        let flat_index = flat_index_range.start
+            + grid_col
+            + feature_size.w() * (grid_row + feature_size.h() * anchor_index);
 
         Some(flat_index)
     }
@@ -371,17 +365,13 @@ impl MergeDetect2DOutput {
             .enumerate()
             .map(|(_layer_index, meta)| {
                 let DetectionInfo {
-                    feature_size:
-                        GridSize {
-                            h: feature_h,
-                            w: feature_w,
-                            ..
-                        },
+                    ref feature_size,
                     ref anchors,
                     ref flat_index_range,
                     ..
                 } = *meta;
                 let num_anchors = anchors.len() as i64;
+                let [feature_h, feature_w] = feature_size.hw_params();
 
                 let cy_map = self.cy.i((.., .., flat_index_range.clone())).view([
                     batch_size,
@@ -448,7 +438,7 @@ pub struct DetectionInfo {
     pub feature_size: GridSize<i64>,
     /// Anchros (height, width) in grid units
     #[tensor_like(clone)]
-    pub anchors: Vec<RatioSize>,
+    pub anchors: Vec<RatioSize<R64>>,
     #[tensor_like(clone)]
     pub flat_index_range: Range<i64>,
 }

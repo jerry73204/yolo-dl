@@ -7,7 +7,7 @@ use super::{
         BoxMetric, MatchGrid, PredInstances, PredInstancesUnchecked, TargetInstances,
         TargetInstancesUnchecked,
     },
-    pred_target_matching::{BBoxMatcher, BBoxMatcherInit, PredTargetMatching},
+    pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, PredTargetMatching},
 };
 use crate::{common::*, model::MergeDetect2DOutput, profiling::Timing};
 
@@ -113,7 +113,7 @@ mod yolo_loss {
                 .build()
             };
 
-            let bbox_matcher = BBoxMatcherInit {
+            let bbox_matcher = CyCxHWMatcherInit {
                 match_grid_method,
                 anchor_scale_thresh,
             }
@@ -163,14 +163,14 @@ mod yolo_loss {
         iou_loss_weight: f64,
         objectness_loss_weight: f64,
         classification_loss_weight: f64,
-        bbox_matcher: BBoxMatcher,
+        bbox_matcher: CyCxHWMatcher,
     }
 
     impl YoloLoss {
         pub fn forward(
             &self,
             prediction: &MergeDetect2DOutput,
-            target: &Vec<Vec<LabeledRatioBBox>>,
+            target: &Vec<Vec<RatioLabel>>,
         ) -> (YoloLossOutput, YoloLossAuxiliary) {
             let mut timing = Timing::new("loss function");
 
@@ -492,15 +492,9 @@ mod yolo_loss {
                     .0
                     .values()
                     .map(|bbox| {
-                        let [cy, cx, h, w] = bbox.bbox.cycxhw();
+                        let [cy, cx, h, w] = bbox.cycxhw.cast::<f32>().unwrap().cycxhw_params();
                         let category_id = bbox.category_id;
-                        (
-                            cy.to_f64() as f32,
-                            cx.to_f64() as f32,
-                            h.to_f64() as f32,
-                            w.to_f64() as f32,
-                            category_id as i64,
-                        )
+                        (cy, cx, h, w, category_id as i64)
                     })
                     .unzip_n_vec();
 

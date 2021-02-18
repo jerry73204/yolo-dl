@@ -21,7 +21,7 @@ struct WorkerJob {
     job_index: usize,
     minibatch_size: usize,
     image: Tensor,
-    bboxes: Vec<Vec<LabeledRatioBBox>>,
+    bboxes: Vec<Vec<RatioLabel>>,
 }
 
 struct WorkerOutput {
@@ -421,7 +421,7 @@ async fn forward_step(
     config: Arc<Config>,
     worker_contexts: Vec<WorkerContext>,
     image: Tensor,
-    bboxes: &[Vec<LabeledRatioBBox>],
+    bboxes: &[Vec<RatioLabel>],
 ) -> Result<(Vec<WorkerContext>, Vec<WorkerOutput>)> {
     let Config {
         training: TrainingConfig { batch_size, .. },

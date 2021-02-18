@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct Detect2DInit {
     pub num_classes: usize,
-    pub anchors: Vec<RatioSize>,
+    pub anchors: Vec<RatioSize<R64>>,
 }
 
 impl Detect2DInit {
@@ -31,7 +31,7 @@ impl Detect2DInit {
 #[derive(Debug)]
 pub struct Detect2D {
     num_classes: usize,
-    anchors: Vec<RatioSize>,
+    anchors: Vec<RatioSize<R64>>,
     device: Device,
     cache: Option<(GridSize<i64>, Cache)>,
 }
@@ -44,7 +44,7 @@ impl Detect2D {
             ..
         } = *self;
         let (batch_size, channels, feature_h, feature_w) = tensor.size4()?;
-        let feature_size = GridSize::new(feature_h, feature_w);
+        let feature_size = GridSize::new(feature_h, feature_w).unwrap();
         let anchors = anchors.to_owned();
 
         // load cached data
@@ -156,7 +156,7 @@ impl Detect2D {
             } = *self;
 
             let (_b, _c, feature_h, feature_w) = tensor.size4()?;
-            let expect_size = GridSize::new(feature_h, feature_w);
+            let expect_size = GridSize::new(feature_h, feature_w).unwrap();
 
             let is_hit = cache
                 .as_ref()
@@ -176,12 +176,8 @@ impl Detect2D {
                         .iter()
                         .cloned()
                         .map(|anchor_size| {
-                            let RatioSize {
-                                h: anchor_h,
-                                w: anchor_w,
-                                ..
-                            } = anchor_size;
-                            (anchor_h.to_f64() as f32, anchor_w.to_f64() as f32)
+                            let [h, w] = anchor_size.cast::<f32>().unwrap().hw_params();
+                            (h, w)
                         })
                         .unzip_n_vec();
 
@@ -226,7 +222,7 @@ pub struct Detect2DOutput {
     pub feature_size: GridSize<i64>,
     pub num_classes: usize,
     #[tensor_like(clone)]
-    pub anchors: Vec<RatioSize>,
+    pub anchors: Vec<RatioSize<R64>>,
     pub cy: Tensor,
     pub cx: Tensor,
     pub h: Tensor,

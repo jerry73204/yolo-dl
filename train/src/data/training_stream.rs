@@ -204,7 +204,10 @@ impl TrainingStream {
                                     // scale bboxes
                                     let bboxes: Vec<_> = bboxes
                                         .into_iter()
-                                        .map(|bbox| bbox.scale(bbox_scaling))
+                                        .map(|bbox| RatioLabel {
+                                            cycxhw: bbox.cycxhw.scale_size(bbox_scaling).unwrap(),
+                                            category_id: bbox.category_id,
+                                        })
                                         .collect();
                                     Fallible::Ok((image, bboxes))
                                 }
@@ -375,8 +378,9 @@ impl TrainingStream {
                     let mixed_bboxes: Vec<_> = mixed_bboxes
                         .into_iter()
                         .filter_map(|bbox| {
-                            let [_cy, _cx, h, w] = bbox.cycxhw();
-                            if h >= min_bbox_size && w >= min_bbox_size {
+                            if bbox.h() >= min_bbox_size.to_r64()
+                                && bbox.w() >= min_bbox_size.to_r64()
+                            {
                                 Some(bbox)
                             } else {
                                 None
@@ -433,15 +437,15 @@ impl TrainingStream {
             struct State {
                 pub step: usize,
                 pub epoch: usize,
-                pub bboxes_vec: Vec<Vec<LabeledRatioBBox>>,
+                pub bboxes_vec: Vec<Vec<RatioLabel>>,
                 pub image_vec: Vec<Tensor>,
                 pub timing_vec: Vec<Timing>,
             }
 
-            impl Sum<(usize, usize, Vec<LabeledRatioBBox>, Tensor, Timing)> for State {
+            impl Sum<(usize, usize, Vec<RatioLabel>, Tensor, Timing)> for State {
                 fn sum<I>(mut iter: I) -> Self
                 where
-                    I: Iterator<Item = (usize, usize, Vec<LabeledRatioBBox>, Tensor, Timing)>,
+                    I: Iterator<Item = (usize, usize, Vec<RatioLabel>, Tensor, Timing)>,
                 {
                     let (mut min_step, mut min_epoch, bboxes, image, timing) =
                         iter.next().expect("the iterator canont be empty");
@@ -533,14 +537,14 @@ impl MixKind {
 
 #[derive(Debug)]
 enum MixData {
-    None([(Tensor, Vec<LabeledRatioBBox>); 1]),
-    MixUp([(Tensor, Vec<LabeledRatioBBox>); 2]),
-    CutMix([(Tensor, Vec<LabeledRatioBBox>); 2]),
-    Mosaic([(Tensor, Vec<LabeledRatioBBox>); 4]),
+    None([(Tensor, Vec<RatioLabel>); 1]),
+    MixUp([(Tensor, Vec<RatioLabel>); 2]),
+    CutMix([(Tensor, Vec<RatioLabel>); 2]),
+    Mosaic([(Tensor, Vec<RatioLabel>); 4]),
 }
 
 impl MixData {
-    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<LabeledRatioBBox>)>) -> Result<Self> {
+    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<RatioLabel>)>) -> Result<Self> {
         let data = (|| {
             let data = match kind {
                 MixKind::None => Self::None(pairs.try_into()?),
@@ -569,7 +573,7 @@ impl MixData {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<LabeledRatioBBox>)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<RatioLabel>)> {
         match self {
             Self::None(array) => array.iter(),
             Self::MixUp(array) => array.iter(),
@@ -578,13 +582,13 @@ impl MixData {
         }
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<LabeledRatioBBox>)> {
+    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<RatioLabel>)> {
         Vec::from(self).into_iter()
     }
 }
 
-impl AsRef<[(Tensor, Vec<LabeledRatioBBox>)]> for MixData {
-    fn as_ref(&self) -> &[(Tensor, Vec<LabeledRatioBBox>)] {
+impl AsRef<[(Tensor, Vec<RatioLabel>)]> for MixData {
+    fn as_ref(&self) -> &[(Tensor, Vec<RatioLabel>)] {
         match self {
             Self::None(array) => array.as_ref(),
             Self::MixUp(array) => array.as_ref(),
@@ -594,7 +598,7 @@ impl AsRef<[(Tensor, Vec<LabeledRatioBBox>)]> for MixData {
     }
 }
 
-impl From<MixData> for Vec<(Tensor, Vec<LabeledRatioBBox>)> {
+impl From<MixData> for Vec<(Tensor, Vec<RatioLabel>)> {
     fn from(data: MixData) -> Self {
         match data {
             MixData::None(array) => array.into(),

@@ -1,7 +1,11 @@
 use crate::{
+    bbox::{CyCxHW, TLBR},
     common::*,
-    size::{GridSize, PixelSize},
+    size::{GridSize, PixelSize, Size},
+    unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
+
+pub use label::*;
 
 #[derive(Debug, TensorLike)]
 pub struct DenseDetectionInit {
@@ -123,7 +127,7 @@ impl TryFrom<DenseDetectionInit> for DenseDetection {
                 "classification has invalid shape"
             );
 
-            (batch_size, GridSize::new(height, width))
+            (batch_size, GridSize::new(height, width).unwrap())
         };
 
         Ok(Self {
@@ -219,11 +223,7 @@ impl MultiDenseDetection {
                 } = detection;
 
                 let num_anchors = anchors.len() as i64;
-                let GridSize {
-                    h: feature_h,
-                    w: feature_w,
-                    ..
-                } = feature_size;
+                let [feature_h, feature_w] = feature_size.hw_params();
 
                 // compute flat index
                 let flat_index_range = {
@@ -240,7 +240,7 @@ impl MultiDenseDetection {
                 let grid_size = {
                     let grid_h = image_height as f64 / feature_h as f64;
                     let grid_w = image_width as f64 / feature_w as f64;
-                    PixelSize::new(grid_h, grid_w)
+                    PixelSize::new(grid_h, grid_w).unwrap()
                 };
 
                 let meta = LayerMeta {
@@ -301,7 +301,7 @@ impl MultiDenseDetection {
         };
 
         // image size
-        let image_size = PixelSize::new(image_height as i64, image_width as i64);
+        let image_size = PixelSize::new(image_height as i64, image_width as i64).unwrap();
 
         // concatenate tensors
         let bbox_cy = Tensor::cat(&bbox_cy_vec, 2);
@@ -337,9 +337,10 @@ impl MultiDenseDetection {
 
         let LayerMeta {
             ref flat_index_range,
-            feature_size: GridSize { h, w, .. },
+            ref feature_size,
             ..
         } = self.layer_meta[layer_index];
+        let [h, w] = feature_size.hw_params();
 
         flat_index_range.start + grid_col + w * (grid_row + h * anchor_index)
     }
@@ -364,4 +365,85 @@ pub struct InstanceIndex {
     pub anchor_index: i64,
     pub grid_row: i64,
     pub grid_col: i64,
+}
+
+mod label {
+    use super::*;
+
+    /// Generic bounding box with an extra class ID.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct Label<T, U>
+    where
+        T: Float,
+        U: Unit,
+    {
+        pub cycxhw: CyCxHW<T, U>,
+        pub category_id: usize,
+    }
+
+    pub type RatioLabel = Label<R64, RatioUnit>;
+    pub type PixelLabel = Label<R64, PixelUnit>;
+    pub type GridLabel = Label<R64, GridUnit>;
+
+    impl<T, U> Label<T, U>
+    where
+        T: Float,
+        U: Unit,
+    {
+        pub fn cy(&self) -> T {
+            self.cycxhw.cy()
+        }
+
+        pub fn cx(&self) -> T {
+            self.cycxhw.cx()
+        }
+
+        pub fn h(&self) -> T {
+            self.cycxhw.h()
+        }
+
+        pub fn w(&self) -> T {
+            self.cycxhw.w()
+        }
+
+        pub fn tlbr(&self) -> TLBR<T, U> {
+            (&self.cycxhw).into()
+        }
+
+        pub fn size(&self) -> Size<T, U> {
+            self.cycxhw.size()
+        }
+
+        /// Compute intersection area in TLBR format.
+        pub fn intersect_with(&self, other: &CyCxHW<T, U>) -> Option<Self> {
+            let intersection: CyCxHW<_, _> =
+                (&TLBR::from(&self.cycxhw).intersect_with(&other.into())?).into();
+
+            Some(Self {
+                cycxhw: intersection,
+                category_id: self.category_id,
+            })
+        }
+
+        pub fn scale_size(&self, scale: T) -> Result<Self> {
+            let Self {
+                ref cycxhw,
+                category_id,
+            } = *self;
+            Ok(Self {
+                cycxhw: cycxhw.scale_size(scale)?,
+                category_id,
+            })
+        }
+    }
+
+    impl<T, U> AsRef<CyCxHW<T, U>> for Label<T, U>
+    where
+        T: Float,
+        U: Unit,
+    {
+        fn as_ref(&self) -> &CyCxHW<T, U> {
+            &self.cycxhw
+        }
+    }
 }

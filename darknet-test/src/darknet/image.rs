@@ -1,4 +1,4 @@
-use super::{error::Error, BBox};
+use super::{error::Error, CyCxHW};
 use crate::{common::*, sys};
 
 pub trait ConvertSubpixel
@@ -106,9 +106,9 @@ impl Image {
     /// Crop a bounding box from the image.
     pub fn crop_bbox<B>(&self, bbox: B) -> Image
     where
-        B: Borrow<BBox>,
+        B: Borrow<CyCxHW>,
     {
-        let BBox { x, y, w, h } = *bbox.borrow();
+        let CyCxHW { x, y, w, h } = *bbox.borrow();
         let image_width = self.width() as f32;
         let image_height = self.height() as f32;
 

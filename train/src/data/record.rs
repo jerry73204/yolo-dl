@@ -6,7 +6,7 @@ pub struct FileRecord {
     pub path: PathBuf,
     pub size: PixelSize<usize>,
     /// Bounding box in pixel units.
-    pub bboxes: Vec<LabeledPixelBBox<R64>>,
+    pub bboxes: Vec<PixelLabel>,
 }
 
 /// The record with image pixels and boxes.
@@ -14,7 +14,7 @@ pub struct FileRecord {
 pub struct DataRecord {
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<LabeledRatioBBox>,
+    pub bboxes: Vec<RatioLabel>,
 }
 
 /// The record that is accepted by training worker.
@@ -24,7 +24,7 @@ pub struct TrainingRecord {
     pub step: usize,
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<LabeledRatioBBox>>,
+    pub bboxes: Vec<Vec<RatioLabel>>,
     #[tensor_like(clone)]
     pub timing: Timing,
 }

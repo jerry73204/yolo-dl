@@ -66,7 +66,7 @@ impl VocDataset {
 
                 let size = {
                     let voc_dataset::Size { width, height, .. } = annotation.size;
-                    PixelSize::new(height, width)
+                    PixelSize::new(height, width).unwrap()
                 };
 
                 let bboxes: Vec<_> = annotation
@@ -88,8 +88,8 @@ impl VocDataset {
                             xmax,
                             ymax,
                         } = obj.bndbox;
-                        let bbox = LabeledPixelBBox {
-                            bbox: PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax])?,
+                        let bbox = PixelLabel {
+                            cycxhw: PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax).unwrap(),
                             category_id: class_index,
                         };
                         Ok(bbox)

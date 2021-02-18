@@ -63,9 +63,9 @@ pub use tch::{
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
-    BBox, CyCxHWTensor, CyCxHWTensorUnchecked, GridBBox, GridSize, LabeledGridBBox,
-    LabeledPixelBBox, LabeledRatioBBox, PixelBBox, PixelSize, Ratio, RatioBBox, RatioSize,
-    TLBRTensor, TLBRTensorUnchecked, TensorExt, UnitlessBBox, NONE_INDEX,
+    CyCxHW, CyCxHWTensor, CyCxHWTensorUnchecked, GridCyCxHW, GridSize, PixelCyCxHW, PixelLabel,
+    PixelSize, Ratio, RatioCyCxHW, RatioLabel, RatioSize, TLBRTensor, TLBRTensorUnchecked,
+    TensorExt, UnitlessCyCxHW, NONE_INDEX, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;

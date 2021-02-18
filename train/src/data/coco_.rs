@@ -130,10 +130,9 @@ impl CocoDataset {
                         }
 
                         let [l, t, w, h] = ann.bbox;
-                        let bbox =
-                            PixelBBox::try_from_tlhw([t.into(), l.into(), h.into(), w.into()])?;
-                        Ok(Some(LabeledPixelBBox {
-                            bbox,
+                        let bbox = PixelCyCxHW::from_tlhw(t.into(), l.into(), h.into(), w.into())?;
+                        Ok(Some(PixelLabel {
+                            cycxhw: bbox,
                             category_id: class_index,
                         }))
                     })
@@ -142,7 +141,7 @@ impl CocoDataset {
 
                 Ok(Arc::new(FileRecord {
                     path: dataset.image_dir.join(&image.file_name),
-                    size: PixelSize::new(image.height, image.width),
+                    size: PixelSize::new(image.height, image.width).unwrap(),
                     bboxes,
                 }))
             })

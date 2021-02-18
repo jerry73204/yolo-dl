@@ -1570,7 +1570,9 @@ mod layer {
             let anchors: Vec<_> = anchors
                 .iter()
                 .cloned()
-                .map(|(anchor_h, anchor_w)| GridSize::new(anchor_h as f64, anchor_w as f64))
+                .map(|(anchor_h, anchor_w)| {
+                    GridSize::new(anchor_h as f64, anchor_w as f64).unwrap()
+                })
                 .collect();
 
             DenseDetectionInit {

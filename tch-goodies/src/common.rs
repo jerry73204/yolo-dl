@@ -1,11 +1,11 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::{abs_diff_eq, AbsDiffEq};
-pub use getset::Getters;
+pub use getset::{CopyGetters, Getters};
 pub use image::{DynamicImage, GenericImageView, ImageBuffer, Pixel};
 pub use itertools::{izip, Itertools};
 pub use maplit::hashset;
 pub use noisy_float::prelude::*;
-pub use num_traits::{FromPrimitive, Num, NumOps, One, Zero};
+pub use num_traits::{FromPrimitive, Num, NumCast, NumOps, One, ToPrimitive, Zero};
 pub use serde::{
     de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer,
 };
@@ -17,7 +17,8 @@ pub use std::{
     fmt::{self, Display, Formatter},
     iter,
     marker::PhantomData,
-    ops::{Add, Deref, Div, Mul, Range, RangeInclusive, Rem, Sub},
+    num::FpCategory,
+    ops::{Add, Deref, Div, Mul, Neg, Range, RangeInclusive, Rem, Sub},
 };
 pub use tch::{kind::Element, vision, Device, IndexOp, Kind, Tensor};
 pub use tch_tensor_like::TensorLike;

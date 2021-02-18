@@ -1,45 +1,60 @@
 use crate::{
     common::*,
-    ratio::Ratio,
     unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
 
 /// Generic size type.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike, CopyGetters)]
 pub struct Size<T, U>
 where
+    T: Zero + PartialOrd + Copy + ToPrimitive,
     U: Unit,
 {
-    pub h: T,
-    pub w: T,
+    #[get_copy = "pub"]
+    h: T,
+    #[get_copy = "pub"]
+    w: T,
     #[tensor_like(copy)]
     _phantom: PhantomData<U>,
 }
 
 impl<T, U> Size<T, U>
 where
+    T: Zero + PartialOrd + Copy + ToPrimitive,
     U: Unit,
 {
-    pub fn new(h: T, w: T) -> Self {
-        Self {
+    pub fn new(h: T, w: T) -> Result<Self> {
+        let zero = T::zero();
+        ensure!(
+            h >= zero && w >= zero,
+            "the height and width must be non-negative"
+        );
+
+        Ok(Self {
             h,
             w,
             _phantom: PhantomData,
-        }
+        })
     }
 
-    pub fn map<F, R>(&self, mut f: F) -> Size<R, U>
+    pub fn hw_params(&self) -> [T; 2] {
+        [self.h, self.w]
+    }
+
+    pub fn cast<S>(&self) -> Option<Size<S, U>>
     where
-        F: FnMut(&T) -> R,
+        S: NumCast + Zero + PartialOrd + Copy + ToPrimitive,
     {
-        Size {
-            h: f(&self.h),
-            w: f(&self.w),
+        let h = <S as NumCast>::from(self.h)?;
+        let w = <S as NumCast>::from(self.w)?;
+        Some(Size {
+            h,
+            w,
             _phantom: PhantomData,
-        }
+        })
     }
 }
 
 pub type PixelSize<T> = Size<T, PixelUnit>;
 pub type GridSize<T> = Size<T, GridUnit>;
-pub type RatioSize = Size<Ratio, RatioUnit>;
+pub type RatioSize<T> = Size<T, RatioUnit>;

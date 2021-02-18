@@ -54,10 +54,10 @@ impl CacheLoader {
         image_path: P,
         orig_size: &PixelSize<usize>,
         bboxes: &[B],
-    ) -> Result<(Tensor, Vec<LabeledRatioBBox>)>
+    ) -> Result<(Tensor, Vec<RatioLabel>)>
     where
         P: AsRef<async_std::path::Path>,
-        B: Borrow<LabeledPixelBBox<R64>>,
+        B: Borrow<PixelLabel>,
     {
         use async_std::{fs::File, io::BufWriter};
 
@@ -68,11 +68,7 @@ impl CacheLoader {
             ..
         } = *self;
         let image_path = image_path.as_ref();
-        let PixelSize {
-            h: orig_h,
-            w: orig_w,
-            ..
-        } = *orig_size;
+        let [orig_h, orig_w] = orig_size.hw_params();
 
         ensure!(
             image_channels == 3,
@@ -204,25 +200,25 @@ impl CacheLoader {
             bboxes
                 .iter()
                 .map(|orig_label| -> Result<_> {
-                    let LabeledPixelBBox {
-                        bbox: ref orig_bbox,
+                    let PixelLabel {
+                        cycxhw: ref orig_bbox,
                         category_id,
                     } = *orig_label.borrow();
 
                     let resized_bbox = {
-                        let [orig_cy, orig_cx, orig_h, orig_w] = orig_bbox.cycxhw();
-                        let resized_cy = orig_cy * resize_ratio + top_pad as f64;
-                        let resized_cx = orig_cx * resize_ratio + left_pad as f64;
-                        let resized_h = orig_h * resize_ratio;
-                        let resized_w = orig_w * resize_ratio;
-                        let resized_bbox = PixelBBox::<R64>::try_from_cycxhw([
+                        let resized_cy = orig_bbox.cy() * resize_ratio + top_pad as f64;
+                        let resized_cx = orig_bbox.cx() * resize_ratio + left_pad as f64;
+                        let resized_h = orig_bbox.h() * resize_ratio;
+                        let resized_w = orig_bbox.w() * resize_ratio;
+                        let resized_bbox = PixelCyCxHW::<R64>::from_cycxhw(
                             resized_cy, resized_cx, resized_h, resized_w,
-                        ])?;
+                        )?;
                         resized_bbox
                     };
 
-                    Ok(LabeledRatioBBox {
-                        bbox: resized_bbox.to_ratio_bbox(image_size, image_size)?,
+                    Ok(RatioLabel {
+                        cycxhw: resized_bbox
+                            .scale_to_unit(image_size.recip(), image_size.recip())?,
                         category_id,
                     })
                 })
