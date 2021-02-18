@@ -1,4 +1,5 @@
 use super::*;
+use crate::loss::{NmsOutput, NonMaxSuppressionInit};
 
 #[derive(Debug)]
 pub struct MergeDetect2D {}
@@ -145,6 +146,20 @@ impl MergeDetect2DOutput {
     pub fn batch_size(&self) -> i64 {
         let (batch_size, _entries, _instances) = self.cy.size3().unwrap();
         batch_size
+    }
+
+    pub fn to_prediction(
+        &self,
+        iou_threshold: R64,
+        confidence_threshold: R64,
+    ) -> Result<NmsOutput> {
+        let nms = NonMaxSuppressionInit {
+            iou_threshold,
+            confidence_threshold,
+        }
+        .build()?;
+        let nms_output = nms.forward(self);
+        Ok(nms_output)
     }
 
     pub fn num_instances(&self) -> i64 {
@@ -305,7 +320,6 @@ impl MergeDetect2DOutput {
             .enumerate()
             .find(|(_layer_index, meta)| flat_index < meta.flat_index_range.end)?;
 
-        // flat_index = begin_flat_index + col + row * (width + anchor_index * height)
         let remainder = flat_index - flat_index_range.start;
         let grid_col = remainder % feature_w;
         let grid_row = remainder / feature_w % feature_h;
