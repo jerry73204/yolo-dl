@@ -83,8 +83,8 @@ impl YoloBenchmark {
             //         let l = Tensor::of_slice(&l_vec);
             //         let b = Tensor::of_slice(&b_vec);
             //         let r = Tensor::of_slice(&r_vec);
-            //         let tlbr: TlbrTensor =
-            //             TlbrTensorUnchecked { t, l, b, r }.try_into().unwrap();
+            //         let tlbr: TLBRTensor =
+            //             TLBRTensorUnchecked { t, l, b, r }.try_into().unwrap();
             //         (index, tlbr)
             //     })
             //     .collect();

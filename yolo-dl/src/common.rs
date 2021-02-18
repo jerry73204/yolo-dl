@@ -63,9 +63,9 @@ pub use tch::{
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
-    BBox, CycxhwTensor, CycxhwTensorUnchecked, GridBBox, GridSize, LabeledGridBBox,
+    BBox, CyCxHWTensor, CyCxHWTensorUnchecked, GridBBox, GridSize, LabeledGridBBox,
     LabeledPixelBBox, LabeledRatioBBox, PixelBBox, PixelSize, Ratio, RatioBBox, RatioSize,
-    TensorExt, TlbrConfTensor, TlbrConfTensorUnchecked, TlbrTensor, TlbrTensorUnchecked,
+    TensorExt, TLBRConfTensor, TLBRConfTensorUnchecked, TLBRTensor, TLBRTensorUnchecked,
     NONE_INDEX,
 };
 pub use tch_tensor_like::TensorLike;

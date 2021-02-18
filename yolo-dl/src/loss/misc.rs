@@ -24,21 +24,21 @@ struct Grid {
 
 #[derive(Debug, TensorLike)]
 pub struct PredInstancesUnchecked {
-    pub cycxhw: CycxhwTensorUnchecked,
+    pub cycxhw: CyCxHWTensorUnchecked,
     pub objectness: Tensor,
     pub dense_class: Tensor,
 }
 
 #[derive(Debug, TensorLike)]
 pub struct TargetInstancesUnchecked {
-    pub cycxhw: CycxhwTensorUnchecked,
+    pub cycxhw: CyCxHWTensorUnchecked,
     pub sparse_class: Tensor,
 }
 
 #[derive(Debug, TensorLike, Getters)]
 pub struct PredInstances {
     #[get = "pub"]
-    cycxhw: CycxhwTensor,
+    cycxhw: CyCxHWTensor,
     #[get = "pub"]
     objectness: Tensor,
     #[get = "pub"]
@@ -48,7 +48,7 @@ pub struct PredInstances {
 #[derive(Debug, TensorLike, Getters)]
 pub struct TargetInstances {
     #[get = "pub"]
-    cycxhw: CycxhwTensor,
+    cycxhw: CyCxHWTensor,
     #[get = "pub"]
     sparse_class: Tensor,
 }
@@ -63,7 +63,7 @@ impl TryFrom<PredInstancesUnchecked> for PredInstances {
             dense_class,
         } = from;
 
-        let cycxhw: CycxhwTensor = cycxhw.try_into()?;
+        let cycxhw: CyCxHWTensor = cycxhw.try_into()?;
         let cycxhw_len = cycxhw.num_samples();
         let (obj_len, obj_entries) = objectness.size2()?;
         let (class_len, _classes) = dense_class.size2()?;
@@ -89,7 +89,7 @@ impl TryFrom<TargetInstancesUnchecked> for TargetInstances {
             sparse_class,
         } = from;
 
-        let cycxhw: CycxhwTensor = cycxhw.try_into()?;
+        let cycxhw: CyCxHWTensor = cycxhw.try_into()?;
         let cycxhw_len = cycxhw.num_samples();
         let (class_len, _classes) = sparse_class.size2()?;
         ensure!(cycxhw_len == class_len, "size mismatch");

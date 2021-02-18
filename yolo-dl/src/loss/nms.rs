@@ -51,7 +51,7 @@ pub struct BatchClassIndex {
 }
 
 #[derive(Debug)]
-pub struct NonMaxSuppressionOutput(pub HashMap<BatchClassIndex, TlbrConfTensor>);
+pub struct NonMaxSuppressionOutput(pub HashMap<BatchClassIndex, TLBRConfTensor>);
 
 #[derive(Debug)]
 pub struct NonMaxSuppression {
@@ -107,8 +107,8 @@ impl NonMaxSuppression {
                 let new_r = r.index_opt((&batches, NONE_INDEX, &instances));
                 let new_conf = conf.index(&[&batches, &classes, &instances]).view([-1, 1]);
 
-                let bbox: TlbrConfTensor = TlbrConfTensorUnchecked {
-                    tlbr: TlbrTensorUnchecked {
+                let bbox: TLBRConfTensor = TLBRConfTensorUnchecked {
+                    tlbr: TLBRTensorUnchecked {
                         t: new_t,
                         l: new_l,
                         b: new_b,
@@ -156,7 +156,7 @@ impl NonMaxSuppression {
 }
 
 #[derive(Debug)]
-struct BatchCycxhwTensorUnchecked {
+struct BatchCyCxHWTensorUnchecked {
     pub cy: Tensor,
     pub cx: Tensor,
     pub h: Tensor,
@@ -164,7 +164,7 @@ struct BatchCycxhwTensorUnchecked {
 }
 
 // TODO: The algorithm is very slow. It deserves a fix.
-fn nms(bboxes: &TlbrConfTensor, iou_threshold: f64) -> Result<Tensor> {
+fn nms(bboxes: &TLBRConfTensor, iou_threshold: f64) -> Result<Tensor> {
     struct BndBox {
         t: f32,
         l: f32,

@@ -2,6 +2,7 @@
 
 pub mod bbox;
 mod common;
+pub mod compound_tensor;
 pub mod detection;
 pub mod ratio;
 pub mod size;
@@ -9,6 +10,7 @@ pub mod tensor;
 pub mod unit;
 
 pub use bbox::*;
+pub use compound_tensor::*;
 pub use detection::*;
 pub use ratio::*;
 pub use size::*;

@@ -472,7 +472,7 @@ mod yolo_loss {
                         .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
 
                 PredInstancesUnchecked {
-                    cycxhw: CycxhwTensorUnchecked {
+                    cycxhw: CyCxHWTensorUnchecked {
                         cy,
                         cx,
                         h: height,
@@ -526,7 +526,7 @@ mod yolo_loss {
                     .to_device(device);
 
                 TargetInstancesUnchecked {
-                    cycxhw: CycxhwTensorUnchecked {
+                    cycxhw: CyCxHWTensorUnchecked {
                         cy,
                         cx,
                         h: height,
