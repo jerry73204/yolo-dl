@@ -73,7 +73,7 @@ mod logging_worker {
                     LoggingMessageKind::DebugImages(msg) => {
                         self.log_debug_images(&tag, msg).await?;
                     }
-                    LoggingMessageKind::DebugImagesWithBBoxes(msg) => {
+                    LoggingMessageKind::DebugImagesWithCyCxHWes(msg) => {
                         self.log_debug_images_with_bboxes(&tag, msg).await?;
                     }
                 }
@@ -140,24 +140,22 @@ mod logging_worker {
                                 target_bboxes
                                     .0
                                     .iter()
-                                    .map(|(pred_index, target_bbox_ratio)| {
+                                    .map(|(pred_index, target_bbox)| {
                                         let InstanceIndex { batch_index, .. } = *pred_index;
                                         let flat_index =
                                             output.instance_to_flat_index(pred_index).unwrap();
-                                        let target_bbox_pixel: LabeledPixelBBox<_> =
-                                            target_bbox_ratio
-                                                .to_r64_bbox(image_h as usize, image_w as usize);
-                                        let [target_t, target_l, target_b, target_r] =
-                                            target_bbox_pixel.tlbr();
+                                        let tlbr: TLBR<f64, _> = target_bbox
+                                            .bbox
+                                            .to_pixel_unit(image_h as f64, image_w as f64)
+                                            .unwrap()
+                                            .into();
+                                        // let [target_t, target_l, target_b, target_r] =
+                                        //     target_bbox_pixel.tlbr();
 
-                                        let target_t =
-                                            (target_t.raw() as i64).max(0).min(image_h - 1);
-                                        let target_b =
-                                            (target_b.raw() as i64).max(0).min(image_h - 1);
-                                        let target_l =
-                                            (target_l.raw() as i64).max(0).min(image_w - 1);
-                                        let target_r =
-                                            (target_r.raw() as i64).max(0).min(image_w - 1);
+                                        let target_t = (tlbr.t() as i64).max(0).min(image_h - 1);
+                                        let target_b = (tlbr.b() as i64).max(0).min(image_h - 1);
+                                        let target_l = (tlbr.l() as i64).max(0).min(image_w - 1);
+                                        let target_r = (tlbr.r() as i64).max(0).min(image_w - 1);
 
                                         let target_btlbr = [
                                             batch_index as i64,
@@ -398,12 +396,17 @@ mod logging_worker {
                             let mut canvas = image.copy().to_device(Device::Cpu);
 
                             for labeled_bbox in bboxes {
-                                let LabeledRatioBBox { bbox, .. } = labeled_bbox;
-                                let [cy, cx, h, w] = bbox.cycxhw();
-                                let cy = cy.to_f64();
-                                let cx = cx.to_f64();
-                                let h = h.to_f64();
-                                let w = w.to_f64();
+                                // let LabeledRatioCyCxHW { bbox, .. } = labeled_bbox;
+                                // let [cy, cx, h, w] = bbox.cycxhw();
+                                // let cy = cy.to_f64();
+                                // let cx = cx.to_f64();
+                                // let h = h.to_f64();
+                                // let w = w.to_f64();
+                                let cycxhw = labeled_bbox.bbox.cast::<f64>().unwrap();
+                                let cy = cycxhw.cy();
+                                let cx = cycxhw.cx();
+                                let h = cycxhw.h();
+                                let w = cycxhw.w();
 
                                 let top = cy - h / 2.0;
                                 let left = cx - w / 2.0;
@@ -501,7 +504,7 @@ mod logging_message {
             S: Into<Cow<'static, str>>,
             I: IntoIterator<Item = (T, IB)>,
             IB: IntoIterator<Item = B>,
-            B: Borrow<LabeledRatioBBox>,
+            B: Borrow<LabeledRatioCyCxHW>,
             T: Into<CowTensor<'a>>,
         {
             let (images, bboxes) = tuples
@@ -519,7 +522,7 @@ mod logging_message {
 
             Self {
                 tag: tag.into(),
-                kind: LoggingMessageKind::DebugImagesWithBBoxes(DebugLabeledImageLog {
+                kind: LoggingMessageKind::DebugImagesWithCyCxHWes(DebugLabeledImageLog {
                     images,
                     bboxes,
                 }),
@@ -531,7 +534,7 @@ mod logging_message {
     pub enum LoggingMessageKind {
         TrainingOutput(TrainingOutputLog),
         DebugImages(DebugImageLog),
-        DebugImagesWithBBoxes(DebugLabeledImageLog),
+        DebugImagesWithCyCxHWes(DebugLabeledImageLog),
     }
 
     impl Clone for LoggingMessageKind {
@@ -571,7 +574,7 @@ mod logging_message {
     pub struct DebugLabeledImageLog {
         pub(crate) images: Vec<Tensor>,
         #[tensor_like(clone)]
-        pub(crate) bboxes: Vec<Vec<LabeledRatioBBox>>,
+        pub(crate) bboxes: Vec<Vec<LabeledRatioCyCxHW>>,
     }
 
     impl Clone for DebugLabeledImageLog {

@@ -32,6 +32,249 @@ impl Num for Ratio {
     }
 }
 
+impl Neg for Ratio {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        panic!("negation is not supported");
+    }
+}
+
+impl ToPrimitive for Ratio {
+    fn to_i64(&self) -> Option<i64> {
+        self.0.to_i64()
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        self.0.to_u64()
+    }
+}
+
+impl NumCast for Ratio {
+    fn from<T: ToPrimitive>(from: T) -> Option<Self> {
+        let value = <f64 as NumCast>::from(from)?;
+        (0.0..=1.0).contains(&value).then(|| Self(r64(value)))
+    }
+}
+
+impl Float for Ratio {
+    fn is_nan(self) -> bool {
+        panic!("unsupported operation");
+    }
+
+    fn nan() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn infinity() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn neg_infinity() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn neg_zero() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn min_value() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn min_positive_value() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn max_value() -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn is_infinite(self) -> bool {
+        panic!("unsupported operation");
+    }
+
+    fn is_finite(self) -> bool {
+        panic!("unsupported operation");
+    }
+
+    fn is_normal(self) -> bool {
+        panic!("unsupported operation");
+    }
+
+    fn classify(self) -> FpCategory {
+        panic!("unsupported operation");
+    }
+
+    fn floor(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn ceil(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn round(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn trunc(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn fract(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn abs(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn signum(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn is_sign_positive(self) -> bool {
+        panic!("unsupported operation");
+    }
+
+    fn is_sign_negative(self) -> bool {
+        panic!("unsupported operation");
+    }
+
+    fn mul_add(self, _a: Self, _b: Self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn recip(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn powi(self, _n: i32) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn powf(self, _n: Self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn sqrt(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn exp(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn exp2(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn ln(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn log(self, _base: Self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn log2(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn log10(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn max(self, other: Self) -> Self {
+        Ratio(self.0.max(other.0))
+    }
+
+    fn min(self, other: Self) -> Self {
+        Ratio(self.0.min(other.0))
+    }
+
+    fn abs_sub(self, _other: Self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn cbrt(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn hypot(self, _other: Self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn sin(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn cos(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn tan(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn asin(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn acos(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn atan(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn atan2(self, _other: Self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn sin_cos(self) -> (Self, Self) {
+        panic!("unsupported operation");
+    }
+
+    fn exp_m1(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn ln_1p(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn sinh(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn cosh(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn tanh(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn asinh(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn acosh(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn atanh(self) -> Self {
+        panic!("unsupported operation");
+    }
+
+    fn integer_decode(self) -> (u64, i16, i8) {
+        panic!("unsupported operation");
+    }
+}
+
 impl Ratio {
     pub fn to_r64(&self) -> R64 {
         self.0
@@ -42,19 +285,19 @@ impl Ratio {
     }
 
     pub fn checked_add(&self, rhs: Ratio) -> Result<Self> {
-        Ok(Ratio::try_from(self.0 + rhs.0)?)
+        Ratio::try_from(self.0 + rhs.0)
     }
 
     pub fn checked_sub(&self, rhs: Ratio) -> Result<Self> {
-        Ok(Ratio::try_from(self.0 - rhs.0)?)
+        Ratio::try_from(self.0 - rhs.0)
     }
 
     pub fn checked_mul(&self, rhs: Ratio) -> Result<Self> {
-        Ok(Ratio::try_from(self.0 * rhs.0)?)
+        Ratio::try_from(self.0 * rhs.0)
     }
 
     pub fn checked_div(&self, rhs: Ratio) -> Result<Self> {
-        Ok(Ratio::try_from(self.0 / rhs.0)?)
+        Ratio::try_from(self.0 / rhs.0)
     }
 }
 

@@ -1,4 +1,4 @@
-use super::BBox;
+use super::CyCxHW;
 use crate::{common::*, sys};
 
 /// An instance of detection.
@@ -9,7 +9,7 @@ pub struct Detection<'a> {
 
 impl<'a> Detection<'a> {
     /// Get the bounding box of the object.
-    pub fn bbox(&self) -> &BBox {
+    pub fn bbox(&self) -> &CyCxHW {
         &self.detection.bbox
     }
 

@@ -138,7 +138,7 @@ impl NonMaxSuppression {
 //     let device = bboxes.device();
 
 //     let conf_vec = Vec::<f32>::from(conf);
-//     let bboxes_vec: Vec<UnitlessBBox<R64>> = bboxes.into();
+//     let bboxes_vec: Vec<UnitlessCyCxHW<R64>> = bboxes.into();
 
 //     let permutation = PermD::from_sort_by_cached_key(conf_vec.as_slice(), |&conf| -r32(conf));
 //     let mut suppressed = vec![false; n_bboxes];

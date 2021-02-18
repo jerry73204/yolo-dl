@@ -88,8 +88,8 @@ impl VocDataset {
                             xmax,
                             ymax,
                         } = obj.bndbox;
-                        let bbox = LabeledPixelBBox {
-                            bbox: PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax])?,
+                        let bbox = LabeledPixelCyCxHW {
+                            bbox: PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax)?,
                             category_id: class_index,
                         };
                         Ok(bbox)

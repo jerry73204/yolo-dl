@@ -5,13 +5,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct BBoxMatcherInit {
+pub struct CyCxHWMatcherInit {
     pub match_grid_method: MatchGrid,
     pub anchor_scale_thresh: f64,
 }
 
-impl BBoxMatcherInit {
-    pub fn build(self) -> Result<BBoxMatcher> {
+impl CyCxHWMatcherInit {
+    pub fn build(self) -> Result<CyCxHWMatcher> {
         let Self {
             match_grid_method,
             anchor_scale_thresh,
@@ -24,7 +24,7 @@ impl BBoxMatcherInit {
             anchor_scale_thresh >= 1.0,
             "anchor_scale_thresh must be greater than or equal to 1"
         );
-        Ok(BBoxMatcher {
+        Ok(CyCxHWMatcher {
             match_grid_method,
             anchor_scale_thresh,
         })
@@ -32,28 +32,28 @@ impl BBoxMatcherInit {
 }
 
 #[derive(Debug, Clone)]
-pub struct BBoxMatcher {
+pub struct CyCxHWMatcher {
     match_grid_method: MatchGrid,
     anchor_scale_thresh: f64,
 }
 
-impl BBoxMatcher {
+impl CyCxHWMatcher {
     /// Match predicted and target bboxes.
     pub fn match_bboxes(
         &self,
         prediction: &MergeDetect2DOutput,
-        target: &Vec<Vec<LabeledRatioBBox>>,
+        target: &Vec<Vec<LabeledRatioCyCxHW>>,
     ) -> PredTargetMatching {
         let snap_thresh = 0.5;
 
-        let target_bboxes: HashMap<InstanceIndex, Arc<LabeledRatioBBox>> = target
+        let target_bboxes: HashMap<InstanceIndex, Arc<LabeledRatioCyCxHW>> = target
             .iter()
             .enumerate()
             // filter out small bboxes
             .flat_map(|(batch_index, bboxes)| {
                 bboxes.iter().filter_map(move |bbox| {
-                    let [_cy, _cx, h, w] = bbox.cycxhw();
-                    if abs_diff_eq!(h, 0.0) || abs_diff_eq!(w, 0.0) {
+                    // let [_cy, _cx, h, w] = bbox.cycxhw();
+                    if abs_diff_eq!(bbox.bbox.h(), 0.0) || abs_diff_eq!(bbox.bbox.w(), 0.0) {
                         warn!("Ignore zero-sized bounding box {:?}.", bbox);
                         return None;
                     }
@@ -80,9 +80,13 @@ impl BBoxMatcher {
 
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes: Vec<_> = {
-                    let target_bbox_grid: LabeledGridBBox<_> =
-                        target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize);
-                    let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
+                    let target_bbox_grid: GridCyCxHW<R64> = target_bbox
+                        .bbox
+                        .to_grid_unit(r64(feature_h as f64), r64(feature_w as f64))
+                        .unwrap();
+                    // let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
+                    let target_cy = target_bbox_grid.cy();
+                    let target_cx = target_bbox_grid.cx();
                     debug_assert!(target_cy >= 0.0 && target_cx >= 0.0);
 
                     let target_row = target_cy.floor().raw() as i64;
@@ -138,7 +142,11 @@ impl BBoxMatcher {
             // pair each target bbox with each anchor
             .flat_map(|args| {
                 let (batch_index, layer_index, target_bbox, neighbor_grid_indexes, anchors) = args;
-                let [_target_cy, _target_cx, target_h, target_w] = target_bbox.cycxhw();
+                // let [_target_cy, _target_cx, target_h, target_w] = target_bbox.cycxhw();
+                // let target_cy = target_bbox_grid.cy();
+                // let target_cx = target_bbox_grid.cx();
+                let target_h = target_bbox.bbox.h();
+                let target_w = target_bbox.bbox.w();
 
                 // pair up anchors and neighbor grid indexes
                 anchors
@@ -182,10 +190,16 @@ impl BBoxMatcher {
                                 w: feature_w,
                                 ..
                             } = prediction.info[layer_index].feature_size;
-                            let target_bbox_grid: LabeledGridBBox<_> =
-                                target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize);
-                            let [target_cy, target_cx, _target_h, _target_w] =
-                                target_bbox_grid.cycxhw();
+                            let target_bbox_grid: GridCyCxHW<R64> = target_bbox
+                                .bbox
+                                .to_grid_unit(r64(feature_h as f64), r64(feature_w as f64))
+                                .unwrap();
+                            // let [target_cy, target_cx, _target_h, _target_w] =
+                            //     target_bbox_grid.cycxhw();
+                            let target_cy = target_bbox_grid.cy();
+                            let target_cx = target_bbox_grid.cx();
+                            let target_h = target_bbox_grid.h();
+                            let target_w = target_bbox_grid.w();
 
                             (target_cy - grid_row as f64).abs() <= 1.0 + snap_thresh
                                 && (target_cx - grid_col as f64).abs() <= 1.0 + snap_thresh
@@ -217,12 +231,14 @@ impl BBoxMatcher {
                             let pred_cx = (grid_col as f64 + 0.5) / feature_w as f64;
 
                             let dist_orig = {
-                                let [cy, cx, _h, _w] = orig_bbox.cycxhw();
-                                (pred_cy - cy.to_f64()).powi(2) + (pred_cx - cx.to_f64()).powi(2)
+                                // let [cy, cx, _h, _w] = orig_bbox.cycxhw();
+                                (pred_cy - orig_bbox.cy().to_f64()).powi(2)
+                                    + (pred_cx - orig_bbox.cx().to_f64()).powi(2)
                             };
                             let dist_new = {
-                                let [cy, cx, _h, _w] = target_bbox.cycxhw();
-                                (pred_cy - cy.to_f64()).powi(2) + (pred_cx - cx.to_f64()).powi(2)
+                                // let [cy, cx, _h, _w] = target_bbox.cycxhw();
+                                (pred_cy - target_bbox.cy().to_f64()).powi(2)
+                                    + (pred_cx - target_bbox.cx().to_f64()).powi(2)
                             };
 
                             if dist_new < dist_orig {
@@ -250,9 +266,12 @@ impl BBoxMatcher {
                 w: feature_w,
                 ..
             } = prediction.info[layer_index].feature_size;
-            let target_bbox_grid: LabeledGridBBox<_> =
-                target_bbox.to_r64_bbox(feature_h as usize, feature_w as usize);
-            let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
+            let target_bbox_grid: LabeledGridCyCxHW<R64> = target_bbox
+                .to_grid_unit(r64(feature_h as f64), r64(feature_w as f64))
+                .unwrap();
+            // let [target_cy, target_cx, _target_h, _target_w] = target_bbox_grid.cycxhw();
+            let target_cy = target_bbox_grid.cy();
+            let target_cx = target_bbox_grid.cx();
 
             (target_cy - grid_row as f64).abs() <= 1.0 + snap_thresh
                 && (target_cx - grid_col as f64).abs() <= 1.0 + snap_thresh
@@ -263,4 +282,4 @@ impl BBoxMatcher {
 }
 
 #[derive(Debug, Clone)]
-pub struct PredTargetMatching(pub HashMap<InstanceIndex, Arc<LabeledRatioBBox>>);
+pub struct PredTargetMatching(pub HashMap<InstanceIndex, Arc<LabeledRatioCyCxHW>>);

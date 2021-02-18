@@ -29,13 +29,13 @@ pub struct MosaicProcessor {
 
 impl MosaicProcessor {
     /// Apply mosaic mixup on a set of 4 images and boxes.
-    pub fn forward<PairIntoIter, BBoxIntoIter>(
+    pub fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
-    ) -> Result<(Tensor, Vec<LabeledRatioBBox>)>
+    ) -> Result<(Tensor, Vec<LabeledRatioCyCxHW>)>
     where
-        PairIntoIter: IntoIterator<Item = (Tensor, BBoxIntoIter)>,
-        BBoxIntoIter: IntoIterator<Item = LabeledRatioBBox>,
+        PairIntoIter: IntoIterator<Item = (Tensor, CyCxHWIntoIter)>,
+        CyCxHWIntoIter: IntoIterator<Item = LabeledRatioCyCxHW>,
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         tch::no_grad(|| {
@@ -151,13 +151,13 @@ pub struct ParallelMosaicProcessor {
 
 impl ParallelMosaicProcessor {
     /// Apply mosaic mixup on a set of 4 images and boxes.
-    pub async fn forward<PairIntoIter, BBoxIntoIter>(
+    pub async fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
-    ) -> Result<(Tensor, Vec<LabeledRatioBBox>)>
+    ) -> Result<(Tensor, Vec<LabeledRatioCyCxHW>)>
     where
-        PairIntoIter: IntoIterator<Item = (Tensor, BBoxIntoIter)>,
-        BBoxIntoIter: 'static + IntoIterator<Item = LabeledRatioBBox> + Send,
+        PairIntoIter: IntoIterator<Item = (Tensor, CyCxHWIntoIter)>,
+        CyCxHWIntoIter: 'static + IntoIterator<Item = LabeledRatioCyCxHW> + Send,
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         let pairs: Vec<_> = input.into_iter().collect();
@@ -234,9 +234,9 @@ impl ParallelMosaicProcessor {
 
 fn crop_image_bboxes(
     image: &Tensor,
-    bboxes: impl IntoIterator<Item = LabeledRatioBBox>,
+    bboxes: impl IntoIterator<Item = LabeledRatioCyCxHW>,
     tlbr: [f64; 4],
-) -> Result<(Tensor, Vec<LabeledRatioBBox>)> {
+) -> Result<(Tensor, Vec<LabeledRatioCyCxHW>)> {
     tch::no_grad(|| {
         let [margin_t, margin_b, margin_l, margin_r] = tlbr;
 
@@ -247,12 +247,16 @@ fn crop_image_bboxes(
         let cropped_bboxes = bboxes
             .into_iter()
             .filter_map(|bbox| {
-                bbox.crop([
-                    margin_t.try_into().unwrap(),
-                    margin_l.try_into().unwrap(),
-                    margin_b.try_into().unwrap(),
-                    margin_r.try_into().unwrap(),
-                ])
+                // cast to f64 to avoid Ratio bound checking
+                Some(
+                    bbox.cast::<f64>()
+                        .unwrap()
+                        .intersect_with(
+                            &CyCxHW::from_tlbr(margin_t, margin_l, margin_b, margin_r).unwrap(),
+                        )?
+                        .cast::<Ratio>()
+                        .unwrap(),
+                )
             })
             .collect_vec();
 

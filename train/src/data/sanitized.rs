@@ -42,28 +42,28 @@ where
                 let bboxes: Vec<_> = orig_bboxes
                     .iter()
                     .map(|bbox| -> Result<_> {
-                        let LabeledPixelBBox {
+                        let LabeledPixelCyCxHW {
                             ref bbox,
                             category_id,
                         } = *bbox;
-                        let [orig_t, orig_l, orig_b, orig_r] = bbox.tlbr();
+                        let tlbr: TLBR<_, _> = bbox.into();
 
                         // out of bound check with tolerance
                         ensure!(
-                            range_h.contains(&orig_t)
-                                && range_h.contains(&orig_b)
-                                && range_w.contains(&orig_l)
-                                && range_w.contains(&orig_r),
+                            range_h.contains(&tlbr.t())
+                                && range_h.contains(&tlbr.b())
+                                && range_w.contains(&tlbr.l())
+                                && range_w.contains(&tlbr.r()),
                             "bbox {:?} range out of bound with out_of_bound_tolerance {}",
                             bbox,
                             out_of_bound_tolerance
                         );
 
                         // crop out out of bound parts
-                        let sanitized_t = clamp(orig_t, R64::new(0.0), R64::new(h as f64));
-                        let sanitized_b = clamp(orig_b, R64::new(0.0), R64::new(h as f64));
-                        let sanitized_l = clamp(orig_l, R64::new(0.0), R64::new(w as f64));
-                        let sanitized_r = clamp(orig_r, R64::new(0.0), R64::new(w as f64));
+                        let sanitized_t = clamp(tlbr.t(), R64::new(0.0), R64::new(h as f64));
+                        let sanitized_b = clamp(tlbr.b(), R64::new(0.0), R64::new(h as f64));
+                        let sanitized_l = clamp(tlbr.l(), R64::new(0.0), R64::new(w as f64));
+                        let sanitized_r = clamp(tlbr.r(), R64::new(0.0), R64::new(w as f64));
 
                         debug_assert!(
                             (0.0..=(h as f64)).contains(&sanitized_t.raw())
@@ -83,13 +83,13 @@ where
                         }
 
                         // save sanitized bbox
-                        let sanitized_bbox = LabeledPixelBBox {
-                            bbox: PixelBBox::try_from_tlbr([
+                        let sanitized_bbox = LabeledPixelCyCxHW {
+                            bbox: PixelCyCxHW::from_tlbr(
                                 sanitized_t,
                                 sanitized_l,
                                 sanitized_b,
                                 sanitized_r,
-                            ])
+                            )
                             .unwrap(),
                             category_id,
                         };

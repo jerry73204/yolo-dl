@@ -172,7 +172,7 @@ impl IiiDataset {
                             xmax,
                             ymax,
                         } = obj.bndbox;
-                        let bbox = match PixelBBox::try_from_tlbr([ymin, xmin, ymax, xmax]) {
+                        let bbox = match PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax) {
                             Ok(bbox) => bbox,
                             Err(_err) => {
                                 warn!(
@@ -184,7 +184,7 @@ impl IiiDataset {
                             }
                         };
 
-                        let labeled_bbox = LabeledPixelBBox {
+                        let labeled_bbox = LabeledPixelCyCxHW {
                             bbox,
                             category_id: class_index,
                         };

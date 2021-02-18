@@ -1,5 +1,5 @@
 use crate::{
-    bbox::{BBox, LabeledBBox},
+    bbox::{CyCxHW, LabeledCyCxHW},
     common::*,
     ratio::Ratio,
     unit::Unit,
@@ -283,7 +283,7 @@ mod cycxhw_tensor {
         }
     }
 
-    impl<U> From<&CyCxHWTensor> for Vec<BBox<R64, U>>
+    impl<U> From<&CyCxHWTensor> for Vec<CyCxHW<R64, U>>
     where
         U: Unit,
     {
@@ -295,12 +295,12 @@ mod cycxhw_tensor {
                 Vec::<f32>::from(from.w()),
             )
             .map(|(cy, cx, h, w)| {
-                BBox::<R64, _>::try_from_cycxhw([
+                CyCxHW::<R64, _>::from_cycxhw(
                     r64(cy as f64),
                     r64(cx as f64),
                     r64(h as f64),
                     r64(w as f64),
-                ])
+                )
                 .unwrap()
             })
             .collect();
@@ -308,7 +308,7 @@ mod cycxhw_tensor {
         }
     }
 
-    impl<U> From<&CyCxHWTensor> for Vec<BBox<f64, U>>
+    impl<U> From<&CyCxHWTensor> for Vec<CyCxHW<f64, U>>
     where
         U: Unit,
     {
@@ -320,7 +320,7 @@ mod cycxhw_tensor {
                 Vec::<f32>::from(from.w()),
             )
             .map(|(cy, cx, h, w)| {
-                BBox::<f64, _>::try_from_cycxhw([cy as f64, cx as f64, h as f64, w as f64]).unwrap()
+                CyCxHW::<f64, _>::from_cycxhw(cy as f64, cx as f64, h as f64, w as f64).unwrap()
             })
             .collect();
             bboxes
@@ -544,87 +544,87 @@ mod tlbr_tensor {
         }
     }
 
-    impl<T, U> From<&[&BBox<T, U>]> for TLBRTensor
+    impl<T, U> From<&[&CyCxHW<T, U>]> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: &[&BBox<T, U>]) -> Self {
+        fn from(from: &[&CyCxHW<T, U>]) -> Self {
             bboxes_to_tlbr_tensor(from)
         }
     }
 
-    impl<T, U> From<&[BBox<T, U>]> for TLBRTensor
+    impl<T, U> From<&[CyCxHW<T, U>]> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: &[BBox<T, U>]) -> Self {
+        fn from(from: &[CyCxHW<T, U>]) -> Self {
             bboxes_to_tlbr_tensor(from)
         }
     }
 
-    impl<T, U> From<&Vec<BBox<T, U>>> for TLBRTensor
+    impl<T, U> From<&Vec<CyCxHW<T, U>>> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: &Vec<BBox<T, U>>) -> Self {
+        fn from(from: &Vec<CyCxHW<T, U>>) -> Self {
             bboxes_to_tlbr_tensor(from.as_slice())
         }
     }
 
-    impl<T, U> From<Vec<BBox<T, U>>> for TLBRTensor
+    impl<T, U> From<Vec<CyCxHW<T, U>>> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: Vec<BBox<T, U>>) -> Self {
+        fn from(from: Vec<CyCxHW<T, U>>) -> Self {
             bboxes_to_tlbr_tensor(from.as_slice())
         }
     }
 
-    impl<T, U> From<&[&LabeledBBox<T, U>]> for TLBRTensor
+    impl<T, U> From<&[&LabeledCyCxHW<T, U>]> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: &[&LabeledBBox<T, U>]) -> Self {
+        fn from(from: &[&LabeledCyCxHW<T, U>]) -> Self {
             bboxes_to_tlbr_tensor(from)
         }
     }
 
-    impl<T, U> From<&[LabeledBBox<T, U>]> for TLBRTensor
+    impl<T, U> From<&[LabeledCyCxHW<T, U>]> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: &[LabeledBBox<T, U>]) -> Self {
+        fn from(from: &[LabeledCyCxHW<T, U>]) -> Self {
             bboxes_to_tlbr_tensor(from)
         }
     }
 
-    impl<T, U> From<&Vec<LabeledBBox<T, U>>> for TLBRTensor
+    impl<T, U> From<&Vec<LabeledCyCxHW<T, U>>> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: &Vec<LabeledBBox<T, U>>) -> Self {
+        fn from(from: &Vec<LabeledCyCxHW<T, U>>) -> Self {
             bboxes_to_tlbr_tensor(from.as_slice())
         }
     }
 
-    impl<T, U> From<Vec<LabeledBBox<T, U>>> for TLBRTensor
+    impl<T, U> From<Vec<LabeledCyCxHW<T, U>>> for TLBRTensor
     where
-        T: Num + Copy + IntoTchElement,
+        T: Float + IntoTchElement,
         U: Unit,
     {
-        fn from(from: Vec<LabeledBBox<T, U>>) -> Self {
+        fn from(from: Vec<LabeledCyCxHW<T, U>>) -> Self {
             bboxes_to_tlbr_tensor(from.as_slice())
         }
     }
 
-    impl<U> From<&TLBRTensor> for Vec<BBox<R64, U>>
+    impl<U> From<&TLBRTensor> for Vec<CyCxHW<R64, U>>
     where
         U: Unit,
     {
@@ -633,7 +633,7 @@ mod tlbr_tensor {
         }
     }
 
-    impl<U> From<&TLBRTensor> for Vec<BBox<f64, U>>
+    impl<U> From<&TLBRTensor> for Vec<CyCxHW<f64, U>>
     where
         U: Unit,
     {
@@ -644,19 +644,19 @@ mod tlbr_tensor {
 
     fn bboxes_to_tlbr_tensor<B, T, U>(bboxes: &[B]) -> TLBRTensor
     where
-        B: AsRef<BBox<T, U>>,
-        T: Num + Copy + IntoTchElement,
+        B: AsRef<CyCxHW<T, U>>,
+        T: Float + IntoTchElement,
         U: Unit,
     {
         let (t_vec, l_vec, b_vec, r_vec) = bboxes
             .iter()
             .map(|bbox| {
-                let [t, l, b, r] = bbox.as_ref().tlbr();
+                let tlbr = bbox.as_ref().to_tlbr();
                 (
-                    t.into_tch_element(),
-                    l.into_tch_element(),
-                    b.into_tch_element(),
-                    r.into_tch_element(),
+                    tlbr.t().into_tch_element(),
+                    tlbr.l().into_tch_element(),
+                    tlbr.b().into_tch_element(),
+                    tlbr.r().into_tch_element(),
                 )
             })
             .unzip_n_vec();

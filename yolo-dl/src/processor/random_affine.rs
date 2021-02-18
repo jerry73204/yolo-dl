@@ -119,8 +119,8 @@ impl RandomAffine {
     pub fn forward(
         &self,
         orig_image: &Tensor,
-        orig_bboxes: &[LabeledRatioBBox],
-    ) -> Result<(Tensor, Vec<LabeledRatioBBox>)> {
+        orig_bboxes: &[LabeledRatioCyCxHW],
+    ) -> Result<(Tensor, Vec<LabeledRatioCyCxHW>)> {
         tch::no_grad(|| {
             let device = orig_image.device();
             let (channels, height, width) = orig_image.size3()?;
@@ -295,16 +295,19 @@ impl RandomAffine {
                 let (orig_corners_vec, category_id_vec) = orig_bboxes
                     .into_iter()
                     .map(|label| {
-                        let LabeledRatioBBox {
+                        let LabeledRatioCyCxHW {
                             ref bbox,
                             category_id,
                         } = *label;
-                        let [orig_t, orig_l, orig_b, orig_r] =
-                            bbox.map_elem(|val| val.to_f64()).tlbr();
-                        let orig_t = orig_t as f32;
-                        let orig_l = orig_l as f32;
-                        let orig_b = orig_b as f32;
-                        let orig_r = orig_r as f32;
+                        let tlbr: TLBR<_, _> = bbox.cast::<f32>().unwrap().into();
+                        // let orig_t = orig_t as f32;
+                        // let orig_l = orig_l as f32;
+                        // let orig_b = orig_b as f32;
+                        // let orig_r = orig_r as f32;
+                        let orig_t = tlbr.t();
+                        let orig_l = tlbr.l();
+                        let orig_b = tlbr.b();
+                        let orig_r = tlbr.r();
 
                         let orig_corners = Tensor::of_slice(
                             &[
@@ -369,10 +372,10 @@ impl RandomAffine {
                             return None;
                         }
 
-                        let bbox_t = bbox_t.max(R64::new(0.0));
-                        let bbox_l = bbox_l.max(R64::new(0.0));
-                        let bbox_b = bbox_b.min(R64::new(1.0));
-                        let bbox_r = bbox_r.min(R64::new(1.0));
+                        let bbox_t = bbox_t.max(r64(0.0));
+                        let bbox_l = bbox_l.max(r64(0.0));
+                        let bbox_b = bbox_b.min(r64(1.0));
+                        let bbox_r = bbox_r.min(r64(1.0));
 
                         // remove small bboxes
                         if abs_diff_eq!((bbox_b - bbox_t).raw(), 0.0)
@@ -381,18 +384,19 @@ impl RandomAffine {
                             return None;
                         }
 
-                        let new_bbox = LabeledRatioBBox {
-                            bbox: RatioBBox::try_from_tlbr([
-                                Ratio::try_from(bbox_t).unwrap(),
-                                Ratio::try_from(bbox_l).unwrap(),
-                                Ratio::try_from(bbox_b).unwrap(),
-                                Ratio::try_from(bbox_r).unwrap(),
-                            ])
-                            .unwrap(),
+                        let new_bbox: RatioCyCxHW =
+                            UnitlessCyCxHW::from_tlbr(bbox_t, bbox_l, bbox_b, bbox_r)
+                                .unwrap()
+                                .cast::<Ratio>()
+                                .unwrap()
+                                .to_unit();
+
+                        let new_label = LabeledRatioCyCxHW {
+                            bbox: new_bbox,
                             category_id,
                         };
 
-                        Some(new_bbox)
+                        Some(new_label)
                     })
                     .collect();
 

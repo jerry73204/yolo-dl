@@ -16,4 +16,4 @@ pub use network::*;
 pub use train::*;
 pub use utils::*;
 
-pub type BBox = crate::sys::box_;
+pub type CyCxHW = crate::sys::box_;
