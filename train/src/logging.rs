@@ -70,11 +70,11 @@ mod logging_worker {
                     LoggingMessageKind::TrainingOutput(msg) => {
                         self.log_training_output(&tag, msg).await?;
                     }
-                    LoggingMessageKind::Images(msg) => {
-                        self.log_images(&tag, msg).await?;
+                    LoggingMessageKind::DebugImages(msg) => {
+                        self.log_debug_images(&tag, msg).await?;
                     }
-                    LoggingMessageKind::ImagesWithBBoxes(msg) => {
-                        self.log_images_with_bboxes(&tag, msg).await?;
+                    LoggingMessageKind::DebugImagesWithBBoxes(msg) => {
+                        self.log_debug_images_with_bboxes(&tag, msg).await?;
                     }
                 }
 
@@ -87,6 +87,8 @@ mod logging_worker {
         }
 
         async fn log_training_output(&mut self, tag: &str, msg: TrainingOutputLog) -> Result<()> {
+            let mut timing = Timing::new("log_training_output");
+
             let Config {
                 logging:
                     LoggingConfig {
@@ -104,9 +106,9 @@ mod logging_worker {
                 target_bboxes,
             } = msg;
 
-            let mut timing = Timing::new("log training output");
             let step = step as i64;
             let (_b, _c, image_h, image_w) = input.size4()?;
+            timing.add_event("initialize");
 
             // compute statistics and plot image
             let (losses, debug_stat, bbox_image, objectness_image, mut timing) =
@@ -118,16 +120,17 @@ mod logging_worker {
                             let cx_mean = f32::from(output.cx.mean(Kind::Float));
                             let h_mean = f32::from(output.h.mean(Kind::Float));
                             let w_mean = f32::from(output.w.mean(Kind::Float));
+                            timing.add_event("compute_statistics");
                             Some((cy_mean, cx_mean, h_mean, w_mean))
                         } else {
                             None
                         };
 
-                        timing.add_event("compute_statistics");
-
                         // plot bboxes
                         let bbox_image = if enable_images {
-                            let mut canvas = input.copy();
+                            // plotting is faster on CPU
+                            let mut canvas = input.copy().to_device(Device::Cpu);
+
                             let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
                             let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
@@ -233,12 +236,12 @@ mod logging_worker {
                             None
                         };
 
-                        let objectness_image = if enable_images {
+                        let objectness_image = if enable_debug_stat && enable_images {
                             let batch_size = output.batch_size();
                             let objectness_maps: Vec<_> = output
                                 .feature_maps()
                                 .into_iter()
-                                .map(|feature_map| feature_map.objectness)
+                                .map(|feature_map| feature_map.obj)
                                 .zip_eq(output.info.iter())
                                 .map(|(objectness_map, meta)| {
                                     let num_anchors = meta.anchors.len() as i64;
@@ -253,9 +256,11 @@ mod logging_worker {
                             let (objectness_image, _argmax) =
                                 Tensor::cat(&objectness_maps, 1).max2(1, true);
                             debug_assert!(
-                                objectness_image.size4()? == (batch_size, 1, image_h, image_w)
+                                objectness_image.size4().unwrap()
+                                    == (batch_size, 1, image_h, image_w)
                             );
 
+                            timing.add_event("plot_objectness_image");
                             Some(objectness_image)
                         } else {
                             None
@@ -338,14 +343,19 @@ mod logging_worker {
             Ok(())
         }
 
-        async fn log_images(&mut self, tag: &str, msg: ImageLog) -> Result<()> {
+        async fn log_debug_images(&mut self, tag: &str, msg: DebugImageLog) -> Result<()> {
             let Config {
-                logging: LoggingConfig { enable_images, .. },
+                logging:
+                    LoggingConfig {
+                        enable_images,
+                        enable_debug_stat,
+                        ..
+                    },
                 ..
             } = *self.config;
-            let ImageLog { images } = msg;
+            let DebugImageLog { images } = msg;
 
-            if enable_images {
+            if enable_debug_stat && enable_images {
                 for (index, image) in images.into_iter().enumerate() {
                     self.event_writer
                         .write_image_async(format!("{}/{}", tag, index), self.debug_step, image)
@@ -357,48 +367,58 @@ mod logging_worker {
             Ok(())
         }
 
-        async fn log_images_with_bboxes(&mut self, tag: &str, msg: LabeledImageLog) -> Result<()> {
+        async fn log_debug_images_with_bboxes(
+            &mut self,
+            tag: &str,
+            msg: DebugLabeledImageLog,
+        ) -> Result<()> {
             let Config {
-                logging: LoggingConfig { enable_images, .. },
+                logging:
+                    LoggingConfig {
+                        enable_images,
+                        enable_debug_stat,
+                        ..
+                    },
                 ..
             } = *self.config;
-            let LabeledImageLog { images, bboxes } = msg;
+            let DebugLabeledImageLog { images, bboxes } = msg;
 
-            if enable_images {
+            if enable_debug_stat && enable_images {
                 let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
 
                 let image_vec: Vec<_> = izip!(images, bboxes)
                     .map(|(image, bboxes)| {
-                        let (_n_channels, height, width) = match image.size().as_slice() {
-                            &[_bsize, n_channels, _height, _width] => (n_channels, _height, _width),
-                            &[n_channels, _height, _width] => (n_channels, _height, _width),
-                            _ => bail!("invalid shape: expec three or four dims"),
-                        };
-                        let mut canvas = image.copy();
-                        for labeled_bbox in bboxes {
-                            let LabeledRatioBBox { bbox, .. } = labeled_bbox;
-                            let [cy, cx, h, w] = bbox.cycxhw();
-                            let cy = cy.to_f64();
-                            let cx = cx.to_f64();
-                            let h = h.to_f64();
-                            let w = w.to_f64();
+                        tch::no_grad(|| {
+                            let (_c, height, width) = match image.size().as_slice() {
+                                &[_b, c, h, w] => (c, h, w),
+                                &[c, h, w] => (c, h, w),
+                                _ => bail!("invalid shape: expec three or four dims"),
+                            };
+                            let mut canvas = image.copy().to_device(Device::Cpu);
 
-                            let top = cy - h / 2.0;
-                            let left = cx - w / 2.0;
-                            let bottom = top + h;
-                            let right = left + w;
+                            for labeled_bbox in bboxes {
+                                let LabeledRatioBBox { bbox, .. } = labeled_bbox;
+                                let [cy, cx, h, w] = bbox.cycxhw();
+                                let cy = cy.to_f64();
+                                let cx = cx.to_f64();
+                                let h = h.to_f64();
+                                let w = w.to_f64();
 
-                            let top = (top * height as f64) as i64;
-                            let left = (left * width as f64) as i64;
-                            let bottom = (bottom * height as f64) as i64;
-                            let right = (right * width as f64) as i64;
+                                let top = cy - h / 2.0;
+                                let left = cx - w / 2.0;
+                                let bottom = top + h;
+                                let right = left + w;
 
-                            tch::no_grad(|| {
+                                let top = (top * height as f64) as i64;
+                                let left = (left * width as f64) as i64;
+                                let bottom = (bottom * height as f64) as i64;
+                                let right = (right * width as f64) as i64;
+
                                 let _ = canvas.draw_rect_(top, left, bottom, right, 1, &color);
-                            });
-                        }
+                            }
 
-                        Ok(canvas)
+                            Ok(canvas)
+                        })
                     })
                     .try_collect()?;
                 let images = Tensor::stack(&image_vec, 0);
@@ -458,7 +478,7 @@ mod logging_message {
             }
         }
 
-        pub fn new_images<'a, S, I, T>(tag: S, images: I) -> Self
+        pub fn new_debug_images<'a, S, I, T>(tag: S, images: I) -> Self
         where
             S: Into<Cow<'static, str>>,
             I: IntoIterator<Item = T>,
@@ -466,7 +486,7 @@ mod logging_message {
         {
             Self {
                 tag: tag.into(),
-                kind: LoggingMessageKind::Images(ImageLog {
+                kind: LoggingMessageKind::DebugImages(DebugImageLog {
                     images: images
                         .into_iter()
                         .map(|tensor| tensor.into().into_owned())
@@ -475,7 +495,7 @@ mod logging_message {
             }
         }
 
-        pub fn new_images_with_bboxes<'a, S, I, IB, B, T>(tag: S, tuples: I) -> Self
+        pub fn new_debug_labeled_images<'a, S, I, IB, B, T>(tag: S, tuples: I) -> Self
         where
             S: Into<Cow<'static, str>>,
             I: IntoIterator<Item = (T, IB)>,
@@ -498,7 +518,10 @@ mod logging_message {
 
             Self {
                 tag: tag.into(),
-                kind: LoggingMessageKind::ImagesWithBBoxes(LabeledImageLog { images, bboxes }),
+                kind: LoggingMessageKind::DebugImagesWithBBoxes(DebugLabeledImageLog {
+                    images,
+                    bboxes,
+                }),
             }
         }
     }
@@ -506,8 +529,8 @@ mod logging_message {
     #[derive(Debug, TensorLike)]
     pub enum LoggingMessageKind {
         TrainingOutput(TrainingOutputLog),
-        Images(ImageLog),
-        ImagesWithBBoxes(LabeledImageLog),
+        DebugImages(DebugImageLog),
+        DebugImagesWithBBoxes(DebugLabeledImageLog),
     }
 
     impl Clone for LoggingMessageKind {
@@ -533,24 +556,24 @@ mod logging_message {
     }
 
     #[derive(Debug, TensorLike)]
-    pub struct ImageLog {
+    pub struct DebugImageLog {
         pub(crate) images: Vec<Tensor>,
     }
 
-    impl Clone for ImageLog {
+    impl Clone for DebugImageLog {
         fn clone(&self) -> Self {
             self.shallow_clone()
         }
     }
 
     #[derive(Debug, TensorLike)]
-    pub struct LabeledImageLog {
+    pub struct DebugLabeledImageLog {
         pub(crate) images: Vec<Tensor>,
         #[tensor_like(clone)]
         pub(crate) bboxes: Vec<Vec<LabeledRatioBBox>>,
     }
 
-    impl Clone for LabeledImageLog {
+    impl Clone for DebugLabeledImageLog {
         fn clone(&self) -> Self {
             self.shallow_clone()
         }

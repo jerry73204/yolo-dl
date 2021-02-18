@@ -217,7 +217,7 @@ impl TrainingStream {
 
                     // send to logger
                     {
-                        let msg = LoggingMessage::new_images_with_bboxes(
+                        let msg = LoggingMessage::new_debug_labeled_images(
                             "sample-loading",
                             data.as_ref()
                                 .iter()
@@ -300,7 +300,7 @@ impl TrainingStream {
 
                     // send to logger
                     logging_tx
-                        .send(LoggingMessage::new_images_with_bboxes(
+                        .send(LoggingMessage::new_debug_labeled_images(
                             "random-affine",
                             new_data
                                 .iter()
@@ -386,7 +386,7 @@ impl TrainingStream {
 
                     // send to logger
                     logging_tx
-                        .send(LoggingMessage::new_images_with_bboxes(
+                        .send(LoggingMessage::new_debug_labeled_images(
                             "mosaic-processor",
                             vec![(&mixed_image, &mixed_bboxes)],
                         ))

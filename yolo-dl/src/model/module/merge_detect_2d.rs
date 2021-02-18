@@ -106,6 +106,8 @@ impl MergeDetect2D {
                     && feature_map.cx == detection.cx
                     && feature_map.h == detection.h
                     && feature_map.w == detection.w
+                    && feature_map.obj == detection.obj
+                    && feature_map.class == detection.class
             })
         });
 
@@ -415,8 +417,8 @@ impl MergeDetect2DOutput {
                     cx: cx_map,
                     h: h_map,
                     w: w_map,
-                    objectness: obj_map,
-                    classification: class_map,
+                    obj: obj_map,
+                    class: class_map,
                 }
             })
             .collect_vec();
@@ -451,9 +453,9 @@ pub struct FeatureMap {
     /// The bounding box width in ratio unit. It has 1 entry.
     pub w: Tensor,
     /// The likelihood score an object in the position. It has 1 entry.
-    pub objectness: Tensor,
+    pub obj: Tensor,
     /// The scores the object is of that class. It number of entries is the number of classes.
-    pub classification: Tensor,
+    pub class: Tensor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]

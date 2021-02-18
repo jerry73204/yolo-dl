@@ -57,7 +57,6 @@ mod model {
 pub struct LoggingConfig {
     pub dir: PathBuf,
     pub enable_images: bool,
-    pub enable_training_output: bool,
     pub enable_debug_stat: bool,
 }
 
