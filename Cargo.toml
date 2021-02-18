@@ -13,6 +13,9 @@ members = [
 debug = true
 debug-assertions = true
 overflow-checks = true
+## enabling 'lto' improves the performance but results in
+## very long compilation time.
+# lto = true
 
 [patch.crates-io]
 serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
