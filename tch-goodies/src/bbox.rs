@@ -14,7 +14,7 @@ const EPSILON: f64 = 1e-16;
 mod tlbr {
     use super::*;
 
-    /// Bounding box in arbitrary units.
+    /// Bounding box in TLBR format.
     #[derive(Debug, Clone, PartialEq, Eq, Hash, CopyGetters)]
     pub struct TLBR<T, U>
     where
@@ -89,7 +89,7 @@ mod tlbr {
         pub fn intersect_area_with(&self, other: &Self) -> T {
             self.intersect_with(other)
                 .map(|size| size.area())
-                .unwrap_or_else(|| T::zero())
+                .unwrap_or_else(T::zero)
         }
 
         /// Compute intersection area in TLBR format.
@@ -194,7 +194,7 @@ mod tlbr {
 mod cycxhw {
     use super::*;
 
-    /// Bounding box in arbitrary units.
+    /// Bounding box in CyCxHW format.
     #[derive(Debug, Clone, PartialEq, Eq, Hash, CopyGetters)]
     pub struct CyCxHW<T, U>
     where
