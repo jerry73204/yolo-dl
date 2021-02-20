@@ -1,0 +1,18 @@
+[package]
+name = "tch-nms"
+version = "0.1.0"
+authors = ["jerry73204 <jerry73204@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+cc = "1.0.66"
+envy = "0.4.2"
+pkg-config = "0.3.19"
+serde = { version = "1.0.123", features = ["derive"] }
+
+[dependencies]
+libc = "0.2.86"
+tch = "0.3.1"
+torch-sys = "0.3.1"
