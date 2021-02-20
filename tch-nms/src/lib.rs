@@ -22,17 +22,17 @@ extern "C" {
         boxes: *mut c_void,
         idx: *mut c_void,
         nms_overlap_thresh: f64,
-        top_k: u64,
+        top_k: i64,
     );
 
     pub fn get_and_reset_last_err() -> *mut c_char;
 }
 
-pub fn nms_cuda_forward(
+pub fn nms_cuda_with_idx(
     boxes: &Tensor,
     idx: &Tensor,
     nms_overlap_thresh: f64,
-    top_k: u64,
+    top_k: i64,
 ) -> Result<(Tensor, Tensor, Tensor), TchError> {
     // workaround to get the internal pointers
     let boxes: *mut c_void = unsafe { mem::transmute(boxes.shallow_clone()) };

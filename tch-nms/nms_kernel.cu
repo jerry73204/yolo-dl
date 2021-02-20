@@ -160,7 +160,7 @@ extern "C" {
 void nms_cuda_forward_ffi(at::Tensor **keep, at::Tensor **num_to_keep,
                           at::Tensor **parent_object_index, at::Tensor *boxes,
                           at::Tensor *idx, float nms_overlap_thresh,
-                          unsigned long top_k) {
+                          int64_t top_k) {
   const auto boxes_num = boxes->size(0);
   const int col_blocks = DIVUP(boxes_num, threadsPerBlock);
 
