@@ -15,6 +15,7 @@ macro_rules! unsafe_torch_err {
 
 #[link(name = "nms_kernel", kind = "static")]
 extern "C" {
+    /// The raw FFI interface to the CUDA implementation.
     pub fn nms_cuda_forward_ffi(
         keep: *mut *mut c_void,
         num_to_keep: *mut *mut c_void,
@@ -25,9 +26,15 @@ extern "C" {
         top_k: i64,
     );
 
-    pub fn get_and_reset_last_err() -> *mut c_char;
+    pub(crate) fn get_and_reset_last_err() -> *mut c_char;
 }
 
+/// Run Non-Maximum Suppression algorithm on boxes with sorted indexes.
+///
+/// - **boxes** - Nx4 shaped float tensor in left-top-right-bottom format.
+/// - **idx** - N shaped float tensor of sorted indexes.
+/// - **nms_overlap_thresh** - The IoU threshold value if one box is considered overlapped with the other.
+/// - **top_k** - Maximum number of selected boxes.
 pub fn nms_cuda_with_idx(
     boxes: &Tensor,
     idx: &Tensor,
@@ -61,6 +68,12 @@ pub fn nms_cuda_with_idx(
     }
 }
 
+/// Run Non-Maximum Suppression algorithm on boxes with corresponding scores.
+///
+/// - **boxes** - Nx4 shaped float tensor in left-top-right-bottom format.
+/// - **scores** - N shaped float tensor of scores for each box.
+/// - **nms_overlap_thresh** - The IoU threshold value if one box is considered overlapped with the other.
+/// - **top_k** - Maximum number of selected boxes.
 pub fn nms_cuda_with_scores(
     boxes: &Tensor,
     scores: &Tensor,
