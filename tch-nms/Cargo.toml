@@ -14,5 +14,6 @@ serde = { version = "1.0.123", features = ["derive"] }
 
 [dependencies]
 libc = "0.2.86"
+static_assertions = "1.1.0"
 tch = "0.3.1"
 torch-sys = "0.3.1"

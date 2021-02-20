@@ -156,13 +156,12 @@ __global__ void nms_collect(const int64_t boxes_num, const int64_t col_blocks,
 #define CHECK_CONTIGUOUS(x)                                                    \
   AT_ASSERTM(x.is_contiguous(), #x " must be contiguous")
 
-void nms_cuda_forward(at::Tensor *keep, at::Tensor *num_to_keep,
-                      at::Tensor *parent_object_index, at::Tensor boxes,
-                      at::Tensor idx, float nms_overlap_thresh,
-                      unsigned long top_k) {
-
-  const auto boxes_num = boxes.size(0);
-
+extern "C" {
+void nms_cuda_forward_ffi(at::Tensor **keep, at::Tensor **num_to_keep,
+                          at::Tensor **parent_object_index, at::Tensor *boxes,
+                          at::Tensor *idx, float nms_overlap_thresh,
+                          unsigned long top_k) {
+  const auto boxes_num = boxes->size(0);
   const int col_blocks = DIVUP(boxes_num, threadsPerBlock);
 
   AT_ASSERTM(col_blocks < MAX_COL_BLOCKS,
@@ -177,23 +176,28 @@ void nms_cuda_forward(at::Tensor *keep, at::Tensor *num_to_keep,
               DIVUP(boxes_num, threadsPerBlock));
   dim3 threads(threadsPerBlock);
 
-  CHECK_CONTIGUOUS(boxes);
-  CHECK_CONTIGUOUS(idx);
-  CHECK_CONTIGUOUS(mask);
+  AT_ASSERTM(boxes->is_contiguous(), "boxes must be contiguous");
+  AT_ASSERTM(idx->is_contiguous(), "idx must be contiguous");
+  AT_ASSERTM(mask.is_contiguous(), "mask must be contiguous");
 
-  AT_DISPATCH_FLOATING_TYPES(boxes.type(), "nms_cuda_forward", ([&] {
+  AT_DISPATCH_FLOATING_TYPES(boxes->type(), "nms_cuda_forward", ([&] {
                                nms_kernel<<<blocks, threads>>>(
                                    boxes_num, (scalar_t)nms_overlap_thresh,
-                                   boxes.data<scalar_t>(), idx.data<int64_t>(),
-                                   mask.data<int64_t>());
+                                   boxes->data<scalar_t>(),
+                                   idx->data<int64_t>(), mask.data<int64_t>());
                              }));
 
-  *keep = at::empty({boxes_num}, longOptions);
-  *parent_object_index = at::empty({boxes_num}, longOptions);
-  *num_to_keep = at::empty({}, longOptions);
+  at::Tensor keep_ = at::empty({boxes_num}, longOptions);
+  at::Tensor num_to_keep_ = at::empty({}, longOptions);
+  at::Tensor parent_object_index_ = at::empty({boxes_num}, longOptions);
 
-  nms_collect<<<1, 1>>>(boxes_num, col_blocks, top_k, idx.data<int64_t>(),
-                        mask.data<int64_t>(), keep->data<int64_t>(),
-                        parent_object_index->data<int64_t>(),
-                        num_to_keep->data<int64_t>());
+  nms_collect<<<1, 1>>>(boxes_num, col_blocks, top_k, idx->data<int64_t>(),
+                        mask.data<int64_t>(), keep_.data<int64_t>(),
+                        parent_object_index_.data<int64_t>(),
+                        num_to_keep_.data<int64_t>());
+
+  *keep = new at::Tensor(keep_);
+  *num_to_keep = new at::Tensor(num_to_keep_);
+  *parent_object_index = new at::Tensor(parent_object_index_);
+}
 }
