@@ -5,7 +5,10 @@ use std::path::PathBuf;
 struct Env {
     pub libtorch: PathBuf,
     pub cargo_manifest_dir: PathBuf,
-    #[serde(deserialize_with = "deserialize_zero_one_bool")]
+    #[serde(
+        deserialize_with = "deserialize_zero_one_bool",
+        default = "default_libtorch_cxx11_abi"
+    )]
     pub libtorch_cxx11_abi: bool,
 }
 
@@ -26,8 +29,13 @@ fn main() {
         .warnings(false)
         .flag("-std=c++14")
         .flag("-cudart=shared")
-        .flag("-gencode")
-        .flag("arch=compute_61,code=sm_61")
+        .flag("-arch=sm_50")
+        .flag("-gencode=arch=compute_50,code=sm_50")
+        .flag("-gencode=arch=compute_52,code=sm_52")
+        .flag("-gencode=arch=compute_60,code=sm_60")
+        .flag("-gencode=arch=compute_61,code=sm_61")
+        .flag("-gencode=arch=compute_70,code=compute_70")
+        .flag("-gencode=arch=compute_70,code=compute_70")
         .flag("-Xlinker")
         .flag(&format!("-rpath,{}", libtorch.join("lib").display()))
         .flag(&format!("-D_GLIBCXX_USE_CXX11_ABI={}", libtorch_cxx11_abi))
@@ -68,10 +76,10 @@ fn deserialize_zero_one_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let output = match Option::<usize>::deserialize(deserializer)? {
-        Some(0) => false,
-        Some(1) | None => true,
-        Some(value) => {
+    let output = match usize::deserialize(deserializer)? {
+        0 => false,
+        1 => true,
+        value => {
             return Err(D::Error::custom(format!(
                 "expect 0 or 1, but get {}",
                 value
@@ -79,4 +87,8 @@ where
         }
     };
     Ok(output)
+}
+
+fn default_libtorch_cxx11_abi() -> bool {
+    true
 }
