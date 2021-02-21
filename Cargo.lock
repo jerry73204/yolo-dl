@@ -1487,6 +1487,7 @@ name = "model-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "darknet-config",
  "derivative",
  "dot",
  "getset",

@@ -12,14 +12,19 @@ pub enum ShapeOutput {
 }
 
 impl ShapeOutput {
-    pub fn tensor(self) -> Option<Shape> {
+    pub fn tensor_nd<'a, Out>(&'a self) -> Result<Out, &'static str>
+    where
+        Out: TryFrom<&'a Shape>,
+    {
         match self {
-            Self::Shape(shape) => Some(shape),
-            _ => None,
+            Self::Shape(shape) => shape
+                .try_into()
+                .map_err(|_| "shape mismatch or not fully determined"),
+            _ => Err("not a tensor"),
         }
     }
 
-    pub fn as_tensor(&self) -> Option<&Shape> {
+    pub fn tensor(&self) -> Option<&Shape> {
         match self {
             Self::Shape(shape) => Some(shape),
             _ => None,
@@ -49,6 +54,18 @@ impl From<Shape> for ShapeOutput {
 
 impl From<Vec<Dim>> for ShapeOutput {
     fn from(from: Vec<Dim>) -> Self {
+        Self::Shape(Shape::from(from))
+    }
+}
+
+impl From<Vec<usize>> for ShapeOutput {
+    fn from(from: Vec<usize>) -> Self {
+        Self::Shape(Shape::from(from))
+    }
+}
+
+impl<const SIZE: usize> From<[usize; SIZE]> for ShapeOutput {
+    fn from(from: [usize; SIZE]) -> Self {
         Self::Shape(Shape::from(from))
     }
 }

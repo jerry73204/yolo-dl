@@ -1,5 +1,7 @@
 use crate::common::*;
+use darknet_config::config as dark_cfg;
 
+pub use activation::*;
 pub use dim::*;
 pub use shape::*;
 pub use size::*;
@@ -257,6 +259,10 @@ mod shape {
     pub struct Shape(Vec<Dim>);
 
     impl Shape {
+        pub fn len(&self) -> usize {
+            self.0.len()
+        }
+
         pub fn size0(&self) -> Option<()> {
             match self.as_ref() {
                 &[] => Some(()),
@@ -326,6 +332,98 @@ mod shape {
         }
     }
 
+    macro_rules! impl_tuple {
+        ($(($ty:ident, $arg:ident)),*) => {
+            impl<$($ty),*> From<( $($ty,)* )> for Shape
+            where
+                $(Dim: From<$ty>),*
+            {
+                fn from(( $($arg,)* ): ( $($ty,)* )) -> Self {
+                    Shape(
+                        vec![ $(Dim::from($arg)),* ]
+                    )
+                }
+            }
+        };
+    }
+
+    impl_tuple!();
+    impl_tuple!((T0, t0));
+    impl_tuple!((T0, t0), (T1, t1));
+    impl_tuple!((T0, t0), (T1, t1), (T2, t2));
+    impl_tuple!((T0, t0), (T1, t1), (T2, t2), (T3, t3));
+    impl_tuple!((T0, t0), (T1, t1), (T2, t2), (T3, t3), (T4, t4));
+    impl_tuple!((T0, t0), (T1, t1), (T2, t2), (T3, t3), (T4, t4), (T5, t5));
+    impl_tuple!(
+        (T0, t0),
+        (T1, t1),
+        (T2, t2),
+        (T3, t3),
+        (T4, t4),
+        (T5, t5),
+        (T6, t6)
+    );
+    impl_tuple!(
+        (T0, t0),
+        (T1, t1),
+        (T2, t2),
+        (T3, t3),
+        (T4, t4),
+        (T5, t5),
+        (T6, t6),
+        (T7, t7)
+    );
+    impl_tuple!(
+        (T0, t0),
+        (T1, t1),
+        (T2, t2),
+        (T3, t3),
+        (T4, t4),
+        (T5, t5),
+        (T6, t6),
+        (T7, t7),
+        (T8, t8)
+    );
+    impl_tuple!(
+        (T0, t0),
+        (T1, t1),
+        (T2, t2),
+        (T3, t3),
+        (T4, t4),
+        (T5, t5),
+        (T6, t6),
+        (T7, t7),
+        (T8, t8),
+        (T9, t9)
+    );
+    impl_tuple!(
+        (T0, t0),
+        (T1, t1),
+        (T2, t2),
+        (T3, t3),
+        (T4, t4),
+        (T5, t5),
+        (T6, t6),
+        (T7, t7),
+        (T8, t8),
+        (T9, t9),
+        (T10, t10)
+    );
+
+    impl<const SIZE: usize> From<[usize; SIZE]> for Shape {
+        fn from(from: [usize; SIZE]) -> Self {
+            let slice: &[_] = from.as_ref();
+            Self(slice.iter().cloned().map(Dim::from).collect())
+        }
+    }
+
+    impl<const SIZE: usize> From<[Option<usize>; SIZE]> for Shape {
+        fn from(from: [Option<usize>; SIZE]) -> Self {
+            let slice: &[_] = from.as_ref();
+            Self(slice.iter().cloned().map(Dim::from).collect())
+        }
+    }
+
     impl From<Vec<Option<usize>>> for Shape {
         fn from(vec: Vec<Option<usize>>) -> Self {
             Self(vec.into_iter().map(Dim::from).collect())
@@ -344,6 +442,12 @@ mod shape {
         }
     }
 
+    impl From<&Shape> for Shape {
+        fn from(from: &Shape) -> Self {
+            from.clone()
+        }
+    }
+
     impl From<Vec<Dim>> for Shape {
         fn from(vec: Vec<Dim>) -> Self {
             Self(vec)
@@ -359,6 +463,70 @@ mod shape {
     impl From<&Shape> for Vec<Option<usize>> {
         fn from(shape: &Shape) -> Self {
             shape.0.iter().cloned().map(Into::into).collect()
+        }
+    }
+
+    impl From<&Shape> for Vec<Dim> {
+        fn from(shape: &Shape) -> Self {
+            shape.0.iter().cloned().collect()
+        }
+    }
+
+    impl<const SIZE: usize> TryFrom<&Shape> for [Option<usize>; SIZE] {
+        type Error = &'static str;
+
+        fn try_from(shape: &Shape) -> Result<Self, Self::Error> {
+            if shape.len() != SIZE {
+                return Err("shape mismatch");
+            }
+            let mut output = [None; SIZE];
+            shape.0.iter().enumerate().for_each(|(index, &dim)| {
+                output[index] = dim.into();
+            });
+            Ok(output)
+        }
+    }
+
+    impl<const SIZE: usize> TryFrom<&Shape> for [Dim; SIZE] {
+        type Error = &'static str;
+
+        fn try_from(shape: &Shape) -> Result<Self, Self::Error> {
+            Self::try_from(shape.0.clone()).map_err(|_| "shape mismatch")
+        }
+    }
+
+    impl<const SIZE: usize> TryFrom<&Shape> for [usize; SIZE] {
+        type Error = &'static str;
+
+        fn try_from(shape: &Shape) -> Result<Self, Self::Error> {
+            if shape.len() != SIZE {
+                return Err("shape mismatch");
+            }
+            shape
+                .0
+                .iter()
+                .enumerate()
+                .try_fold([0; SIZE], |mut output, (index, &dim)| -> Option<_> {
+                    let dim = dim.size()?;
+                    output[index] = dim;
+                    Some(output)
+                })
+                .ok_or_else(|| "shape cannot be fully determined")
+        }
+    }
+
+    impl TryFrom<&Shape> for Vec<usize> {
+        type Error = &'static str;
+
+        fn try_from(shape: &Shape) -> Result<Self, Self::Error> {
+            shape
+                .0
+                .iter()
+                .try_fold(vec![], |mut output, &dim| -> Option<_> {
+                    output.push(dim.size()?);
+                    Some(output)
+                })
+                .ok_or_else(|| "shape cannot be fully determined")
         }
     }
 
@@ -425,50 +593,85 @@ mod size {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Activation {
-    #[serde(rename = "mish")]
-    Mish,
-    #[serde(rename = "hard_mish")]
-    HardMish,
-    #[serde(rename = "swish")]
-    Swish,
-    #[serde(rename = "normalize_channels")]
-    NormalizeChannels,
-    #[serde(rename = "normalize_channels_softmax")]
-    NormalizeChannelsSoftmax,
-    #[serde(rename = "normalize_channels_softmax_maxval")]
-    NormalizeChannelsSoftmaxMaxval,
-    #[serde(rename = "logistic")]
-    Logistic,
-    #[serde(rename = "loggy")]
-    Loggy,
-    #[serde(rename = "relu")]
-    Relu,
-    #[serde(rename = "elu")]
-    Elu,
-    #[serde(rename = "selu")]
-    Selu,
-    #[serde(rename = "gelu")]
-    Gelu,
-    #[serde(rename = "relie")]
-    Relie,
-    #[serde(rename = "ramp")]
-    Ramp,
-    #[serde(rename = "linear")]
-    Linear,
-    #[serde(rename = "tanh")]
-    Tanh,
-    #[serde(rename = "plse")]
-    Plse,
-    #[serde(rename = "leaky")]
-    Leaky,
-    #[serde(rename = "stair")]
-    Stair,
-    #[serde(rename = "hardtan")]
-    Hardtan,
-    #[serde(rename = "lhtan")]
-    Lhtan,
-    #[serde(rename = "relu6")]
-    Relu6,
+mod activation {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum Activation {
+        #[serde(rename = "mish")]
+        Mish,
+        #[serde(rename = "hard_mish")]
+        HardMish,
+        #[serde(rename = "swish")]
+        Swish,
+        #[serde(rename = "normalize_channels")]
+        NormalizeChannels,
+        #[serde(rename = "normalize_channels_softmax")]
+        NormalizeChannelsSoftmax,
+        #[serde(rename = "normalize_channels_softmax_maxval")]
+        NormalizeChannelsSoftmaxMaxval,
+        #[serde(rename = "logistic")]
+        Logistic,
+        #[serde(rename = "loggy")]
+        Loggy,
+        #[serde(rename = "relu")]
+        Relu,
+        #[serde(rename = "elu")]
+        Elu,
+        #[serde(rename = "selu")]
+        Selu,
+        #[serde(rename = "gelu")]
+        Gelu,
+        #[serde(rename = "relie")]
+        Relie,
+        #[serde(rename = "ramp")]
+        Ramp,
+        #[serde(rename = "linear")]
+        Linear,
+        #[serde(rename = "tanh")]
+        Tanh,
+        #[serde(rename = "plse")]
+        Plse,
+        #[serde(rename = "leaky")]
+        Leaky,
+        #[serde(rename = "stair")]
+        Stair,
+        #[serde(rename = "hardtan")]
+        Hardtan,
+        #[serde(rename = "lhtan")]
+        Lhtan,
+        #[serde(rename = "relu6")]
+        Relu6,
+    }
+
+    impl From<dark_cfg::Activation> for Activation {
+        fn from(act: dark_cfg::Activation) -> Self {
+            match act {
+                dark_cfg::Activation::Mish => Self::Mish,
+                dark_cfg::Activation::HardMish => Self::HardMish,
+                dark_cfg::Activation::Swish => Self::Swish,
+                dark_cfg::Activation::NormalizeChannels => Self::NormalizeChannels,
+                dark_cfg::Activation::NormalizeChannelsSoftmax => Self::NormalizeChannelsSoftmax,
+                dark_cfg::Activation::NormalizeChannelsSoftmaxMaxval => {
+                    Self::NormalizeChannelsSoftmaxMaxval
+                }
+                dark_cfg::Activation::Logistic => Self::Logistic,
+                dark_cfg::Activation::Loggy => Self::Loggy,
+                dark_cfg::Activation::Relu => Self::Relu,
+                dark_cfg::Activation::Elu => Self::Elu,
+                dark_cfg::Activation::Selu => Self::Selu,
+                dark_cfg::Activation::Gelu => Self::Gelu,
+                dark_cfg::Activation::Relie => Self::Relie,
+                dark_cfg::Activation::Ramp => Self::Ramp,
+                dark_cfg::Activation::Linear => Self::Linear,
+                dark_cfg::Activation::Tanh => Self::Tanh,
+                dark_cfg::Activation::Plse => Self::Plse,
+                dark_cfg::Activation::Leaky => Self::Leaky,
+                dark_cfg::Activation::Stair => Self::Stair,
+                dark_cfg::Activation::Hardtan => Self::Hardtan,
+                dark_cfg::Activation::Lhtan => Self::Lhtan,
+                dark_cfg::Activation::Relu6 => Self::Relu6,
+            }
+        }
+    }
 }

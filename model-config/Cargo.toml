@@ -23,6 +23,7 @@ strum = { version = "0.20.0", features = ["derive"] }
 dot = { version = "0.1.4", optional = true }
 getset = "0.1.1"
 prettytable-rs = "0.8.0"
+darknet-config = { path = "../darknet-config" }
 
 [dev-dependencies]
 lazy_static = "1.4.0"

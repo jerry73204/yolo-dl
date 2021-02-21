@@ -99,7 +99,7 @@ mod yolo_model {
                             let src_key = input_keys.single().unwrap();
                             let [_b, in_c, _h, _w] = orig_nodes[&src_key]
                                 .output_shape
-                                .as_tensor()
+                                .tensor()
                                 .unwrap()
                                 .size4()
                                 .unwrap();
@@ -141,7 +141,7 @@ mod yolo_model {
                             let src_key = input_keys.single().unwrap();
                             let [_b, in_c, _h, _w] = orig_nodes[&src_key]
                                 .output_shape
-                                .as_tensor()
+                                .tensor()
                                 .unwrap()
                                 .size4()
                                 .unwrap();
@@ -176,7 +176,7 @@ mod yolo_model {
                             let src_key = input_keys.single().unwrap();
                             let [_b, in_c, _h, _w] = orig_nodes[&src_key]
                                 .output_shape
-                                .as_tensor()
+                                .tensor()
                                 .unwrap()
                                 .size4()
                                 .unwrap();

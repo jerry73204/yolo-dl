@@ -904,7 +904,7 @@ mod graphviz {
                     dot::escape_html(&format!("{:?}", self.net.input_size))
                 )),
                 NodeKey::Index(layer_index) => {
-                    let output_shape = self.layers[&key].output_shape();
+                    let output_shape = Vec::<u64>::from(&self.layers[&key].output_shape());
 
                     match &self.layers[&key] {
                         Node::Convolutional(node) => {
@@ -1050,7 +1050,7 @@ k={} sy={} sx={} p={}",
 {}",
                         from_index,
                         to_index,
-                        dot::escape_html(&format!("{:?}", self.layers[from_index].output_shape()))
+                        dot::escape_html(&format!("{}", self.layers[from_index].output_shape()))
                     ))
                 }
                 _ => unreachable!(),
