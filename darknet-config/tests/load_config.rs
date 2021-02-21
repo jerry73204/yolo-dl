@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use darknet_config::DarknetConfig;
+use darknet_config::Darknet;
 use std::path::Path;
 
 #[test]
@@ -13,8 +13,8 @@ fn load_darknet_config() -> Result<()> {
     )?
     .try_for_each(|path| -> Result<_> {
         let path = path?;
-        let _config = DarknetConfig::load(&path)
-            .with_context(|| format!("failed to parse {}", path.display()))?;
+        let _config =
+            Darknet::load(&path).with_context(|| format!("failed to parse {}", path.display()))?;
         Ok(())
     })?;
 

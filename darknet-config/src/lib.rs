@@ -8,7 +8,7 @@ pub mod graph;
 pub mod torch;
 pub mod utils;
 
-pub use config::DarknetConfig;
+pub use config::Darknet;
 pub use darknet::DarknetModel;
 pub use graph::{Graph, Node, NodeKey};
 #[cfg(feature = "tch")]

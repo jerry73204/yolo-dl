@@ -27,61 +27,61 @@ mod items {
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub(super) enum Item {
         #[serde(rename = "net")]
-        Net(NetConfig),
+        Net(Net),
         #[serde(rename = "connected")]
-        Connected(ConnectedConfig),
+        Connected(Connected),
         #[serde(rename = "convolutional")]
-        Convolutional(ConvolutionalConfig),
+        Convolutional(Convolutional),
         #[serde(rename = "route")]
-        Route(RouteConfig),
+        Route(Route),
         #[serde(rename = "shortcut")]
-        Shortcut(ShortcutConfig),
+        Shortcut(Shortcut),
         #[serde(rename = "maxpool")]
-        MaxPool(MaxPoolConfig),
+        MaxPool(MaxPool),
         #[serde(rename = "upsample")]
-        UpSample(UpSampleConfig),
+        UpSample(UpSample),
         #[serde(rename = "batchnorm")]
-        BatchNorm(BatchNormConfig),
+        BatchNorm(BatchNorm),
         #[serde(rename = "dropout")]
-        Dropout(DropoutConfig),
+        Dropout(Dropout),
         #[serde(rename = "softmax")]
-        Softmax(SoftmaxConfig),
+        Softmax(Softmax),
         #[serde(rename = "Gaussian_yolo")]
-        GaussianYolo(RawGaussianYoloConfig),
+        GaussianYolo(RawGaussianYolo),
         #[serde(rename = "yolo")]
-        Yolo(RawYoloConfig),
+        Yolo(RawYolo),
         #[serde(rename = "cost")]
-        Cost(CostConfig),
+        Cost(Cost),
         #[serde(rename = "crop")]
-        Crop(CropConfig),
+        Crop(Crop),
         #[serde(rename = "avgpool")]
-        AvgPool(AvgPoolConfig),
+        AvgPool(AvgPool),
         #[serde(rename = "local_avgpool")]
-        LocalAvgPool(UnimplementedLayerConfig),
+        LocalAvgPool(UnimplementedLayer),
         #[serde(rename = "crnn")]
-        Crnn(UnimplementedLayerConfig),
+        Crnn(UnimplementedLayer),
         #[serde(rename = "sam")]
-        Sam(UnimplementedLayerConfig),
+        Sam(UnimplementedLayer),
         #[serde(rename = "scale_channels")]
-        ScaleChannels(UnimplementedLayerConfig),
+        ScaleChannels(UnimplementedLayer),
         #[serde(rename = "gru")]
-        Gru(UnimplementedLayerConfig),
+        Gru(UnimplementedLayer),
         #[serde(rename = "lstm")]
-        Lstm(UnimplementedLayerConfig),
+        Lstm(UnimplementedLayer),
         #[serde(rename = "rnn")]
-        Rnn(UnimplementedLayerConfig),
+        Rnn(UnimplementedLayer),
         #[serde(rename = "detection")]
-        Detection(UnimplementedLayerConfig),
+        Detection(UnimplementedLayer),
         #[serde(rename = "region")]
-        Region(UnimplementedLayerConfig),
+        Region(UnimplementedLayer),
         #[serde(rename = "reorg")]
-        Reorg(UnimplementedLayerConfig),
+        Reorg(UnimplementedLayer),
         #[serde(rename = "contrastive")]
-        Contrastive(UnimplementedLayerConfig),
+        Contrastive(UnimplementedLayer),
     }
 
     impl Item {
-        pub fn try_into_net(self) -> Result<NetConfig> {
+        pub fn try_into_net(self) -> Result<Net> {
             let net = match self {
                 Self::Net(net) => net,
                 _ => bail!("not a net layer"),
@@ -89,22 +89,22 @@ mod items {
             Ok(net)
         }
 
-        pub fn try_into_layer_config(self) -> Result<LayerConfig> {
+        pub fn try_into_layer_config(self) -> Result<Layer> {
             let layer = match self {
-                Self::Connected(layer) => LayerConfig::Connected(layer),
-                Self::Convolutional(layer) => LayerConfig::Convolutional(layer),
-                Self::Route(layer) => LayerConfig::Route(layer),
-                Self::Shortcut(layer) => LayerConfig::Shortcut(layer),
-                Self::MaxPool(layer) => LayerConfig::MaxPool(layer),
-                Self::UpSample(layer) => LayerConfig::UpSample(layer),
-                Self::BatchNorm(layer) => LayerConfig::BatchNorm(layer),
-                Self::Dropout(layer) => LayerConfig::Dropout(layer),
-                Self::Softmax(layer) => LayerConfig::Softmax(layer),
-                Self::Cost(layer) => LayerConfig::Cost(layer),
-                Self::Crop(layer) => LayerConfig::Crop(layer),
-                Self::AvgPool(layer) => LayerConfig::AvgPool(layer),
-                Self::GaussianYolo(layer) => LayerConfig::GaussianYolo(layer.try_into()?),
-                Self::Yolo(layer) => LayerConfig::Yolo(layer.try_into()?),
+                Self::Connected(layer) => Layer::Connected(layer),
+                Self::Convolutional(layer) => Layer::Convolutional(layer),
+                Self::Route(layer) => Layer::Route(layer),
+                Self::Shortcut(layer) => Layer::Shortcut(layer),
+                Self::MaxPool(layer) => Layer::MaxPool(layer),
+                Self::UpSample(layer) => Layer::UpSample(layer),
+                Self::BatchNorm(layer) => Layer::BatchNorm(layer),
+                Self::Dropout(layer) => Layer::Dropout(layer),
+                Self::Softmax(layer) => Layer::Softmax(layer),
+                Self::Cost(layer) => Layer::Cost(layer),
+                Self::Crop(layer) => Layer::Crop(layer),
+                Self::AvgPool(layer) => Layer::AvgPool(layer),
+                Self::GaussianYolo(layer) => Layer::GaussianYolo(layer.try_into()?),
+                Self::Yolo(layer) => Layer::Yolo(layer.try_into()?),
                 Self::Net(_layer) => {
                     bail!("the 'net' layer must appear in the first section")
                 }
@@ -119,17 +119,17 @@ mod items {
                 | Self::Reorg(layer)
                 | Self::Rnn(layer)
                 | Self::Lstm(layer)
-                | Self::Gru(layer) => LayerConfig::Unimplemented(layer),
+                | Self::Gru(layer) => Layer::Unimplemented(layer),
             };
             Ok(layer)
         }
     }
 
-    impl TryFrom<DarknetConfig> for Items {
+    impl TryFrom<Darknet> for Items {
         type Error = Error;
 
-        fn try_from(config: DarknetConfig) -> Result<Self, Self::Error> {
-            let DarknetConfig {
+        fn try_from(config: Darknet) -> Result<Self, Self::Error> {
+            let Darknet {
                 net,
                 layers: orig_layers,
             } = config;
@@ -138,12 +138,12 @@ mod items {
             let global_anchors: Vec<_> = orig_layers
                 .iter()
                 .filter_map(|layer| match layer {
-                    LayerConfig::Yolo(yolo) => {
-                        let YoloConfig { anchors, .. } = yolo;
+                    Layer::Yolo(yolo) => {
+                        let Yolo { anchors, .. } = yolo;
                         Some(anchors)
                     }
-                    LayerConfig::GaussianYolo(yolo) => {
-                        let GaussianYoloConfig { anchors, .. } = yolo;
+                    Layer::GaussianYolo(yolo) => {
+                        let GaussianYolo { anchors, .. } = yolo;
                         Some(anchors)
                     }
                     _ => None,
@@ -157,21 +157,21 @@ mod items {
                 iter::once(Ok(Item::Net(net)))
                     .chain(orig_layers.into_iter().map(|layer| -> Result<_> {
                         let item = match layer {
-                            LayerConfig::Connected(layer) => Item::Connected(layer),
-                            LayerConfig::Convolutional(layer) => Item::Convolutional(layer),
-                            LayerConfig::Route(layer) => Item::Route(layer),
-                            LayerConfig::Shortcut(layer) => Item::Shortcut(layer),
-                            LayerConfig::MaxPool(layer) => Item::MaxPool(layer),
-                            LayerConfig::UpSample(layer) => Item::UpSample(layer),
-                            LayerConfig::BatchNorm(layer) => Item::BatchNorm(layer),
-                            LayerConfig::Dropout(layer) => Item::Dropout(layer),
-                            LayerConfig::Softmax(layer) => Item::Softmax(layer.try_into()?),
-                            LayerConfig::Cost(layer) => Item::Cost(layer),
-                            LayerConfig::Crop(layer) => Item::Crop(layer),
-                            LayerConfig::AvgPool(layer) => Item::AvgPool(layer),
-                            LayerConfig::Unimplemented(_layer) => bail!("unimplemented layer"),
-                            LayerConfig::Yolo(orig_layer) => {
-                                let YoloConfig {
+                            Layer::Connected(layer) => Item::Connected(layer),
+                            Layer::Convolutional(layer) => Item::Convolutional(layer),
+                            Layer::Route(layer) => Item::Route(layer),
+                            Layer::Shortcut(layer) => Item::Shortcut(layer),
+                            Layer::MaxPool(layer) => Item::MaxPool(layer),
+                            Layer::UpSample(layer) => Item::UpSample(layer),
+                            Layer::BatchNorm(layer) => Item::BatchNorm(layer),
+                            Layer::Dropout(layer) => Item::Dropout(layer),
+                            Layer::Softmax(layer) => Item::Softmax(layer.try_into()?),
+                            Layer::Cost(layer) => Item::Cost(layer),
+                            Layer::Crop(layer) => Item::Crop(layer),
+                            Layer::AvgPool(layer) => Item::AvgPool(layer),
+                            Layer::Unimplemented(_layer) => bail!("unimplemented layer"),
+                            Layer::Yolo(orig_layer) => {
+                                let Yolo {
                                     classes,
                                     max_boxes,
                                     max_delta,
@@ -234,7 +234,7 @@ mod items {
                                     Some(global_anchors.clone())
                                 };
 
-                                Item::Yolo(RawYoloConfig {
+                                Item::Yolo(RawYolo {
                                     classes,
                                     num,
                                     max_boxes,
@@ -271,8 +271,8 @@ mod items {
                                     common,
                                 })
                             }
-                            LayerConfig::GaussianYolo(orig_layer) => {
-                                let GaussianYoloConfig {
+                            Layer::GaussianYolo(orig_layer) => {
+                                let GaussianYolo {
                                     classes,
                                     max_boxes,
                                     max_delta,
@@ -329,7 +329,7 @@ mod items {
                                     Some(global_anchors.clone())
                                 };
 
-                                Item::GaussianYolo(RawGaussianYoloConfig {
+                                Item::GaussianYolo(RawGaussianYolo {
                                     classes,
                                     num,
                                     max_boxes,
@@ -381,12 +381,12 @@ mod darknet_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(try_from = "Items")]
-    pub struct DarknetConfig {
-        pub net: NetConfig,
-        pub layers: Vec<LayerConfig>,
+    pub struct Darknet {
+        pub net: Net,
+        pub layers: Vec<Layer>,
     }
 
-    impl DarknetConfig {
+    impl Darknet {
         pub fn load<P>(config_file: P) -> Result<Self>
         where
             P: AsRef<Path>,
@@ -399,7 +399,7 @@ mod darknet_config {
         }
     }
 
-    impl FromStr for DarknetConfig {
+    impl FromStr for Darknet {
         type Err = Error;
 
         fn from_str(text: &str) -> Result<Self, Self::Err> {
@@ -415,7 +415,7 @@ mod darknet_config {
         }
     }
 
-    impl TryFrom<Items> for DarknetConfig {
+    impl TryFrom<Items> for Darknet {
         type Error = anyhow::Error;
 
         fn try_from(Items(items): Items) -> Result<Self, Self::Error> {
@@ -451,42 +451,42 @@ mod darknet_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub enum LayerConfig {
-        Connected(ConnectedConfig),
-        Convolutional(ConvolutionalConfig),
-        Route(RouteConfig),
-        Shortcut(ShortcutConfig),
-        MaxPool(MaxPoolConfig),
-        UpSample(UpSampleConfig),
-        BatchNorm(BatchNormConfig),
-        Dropout(DropoutConfig),
-        Softmax(SoftmaxConfig),
-        Cost(CostConfig),
-        Crop(CropConfig),
-        AvgPool(AvgPoolConfig),
-        Yolo(YoloConfig),
-        GaussianYolo(GaussianYoloConfig),
-        Unimplemented(UnimplementedLayerConfig),
+    pub enum Layer {
+        Connected(Connected),
+        Convolutional(Convolutional),
+        Route(Route),
+        Shortcut(Shortcut),
+        MaxPool(MaxPool),
+        UpSample(UpSample),
+        BatchNorm(BatchNorm),
+        Dropout(Dropout),
+        Softmax(Softmax),
+        Cost(Cost),
+        Crop(Crop),
+        AvgPool(AvgPool),
+        Yolo(Yolo),
+        GaussianYolo(GaussianYolo),
+        Unimplemented(UnimplementedLayer),
     }
 
-    impl LayerConfig {
+    impl Layer {
         pub fn common(&self) -> &Common {
             match self {
-                LayerConfig::Connected(layer) => &layer.common,
-                LayerConfig::Convolutional(layer) => &layer.common,
-                LayerConfig::Route(layer) => &layer.common,
-                LayerConfig::Shortcut(layer) => &layer.common,
-                LayerConfig::MaxPool(layer) => &layer.common,
-                LayerConfig::UpSample(layer) => &layer.common,
-                LayerConfig::BatchNorm(layer) => &layer.common,
-                LayerConfig::Dropout(layer) => &layer.common,
-                LayerConfig::Softmax(layer) => &layer.common,
-                LayerConfig::Cost(layer) => &layer.common,
-                LayerConfig::Crop(layer) => &layer.common,
-                LayerConfig::AvgPool(layer) => &layer.common,
-                LayerConfig::Yolo(layer) => &layer.common,
-                LayerConfig::GaussianYolo(layer) => &layer.common,
-                LayerConfig::Unimplemented(_layer) => panic!("unimplemented layer"),
+                Layer::Connected(layer) => &layer.common,
+                Layer::Convolutional(layer) => &layer.common,
+                Layer::Route(layer) => &layer.common,
+                Layer::Shortcut(layer) => &layer.common,
+                Layer::MaxPool(layer) => &layer.common,
+                Layer::UpSample(layer) => &layer.common,
+                Layer::BatchNorm(layer) => &layer.common,
+                Layer::Dropout(layer) => &layer.common,
+                Layer::Softmax(layer) => &layer.common,
+                Layer::Cost(layer) => &layer.common,
+                Layer::Crop(layer) => &layer.common,
+                Layer::AvgPool(layer) => &layer.common,
+                Layer::Yolo(layer) => &layer.common,
+                Layer::GaussianYolo(layer) => &layer.common,
+                Layer::Unimplemented(_layer) => panic!("unimplemented layer"),
             }
         }
     }
@@ -496,8 +496,8 @@ mod net_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawNetConfig", into = "RawNetConfig")]
-    pub struct NetConfig {
+    #[serde(try_from = "RawNet", into = "RawNet")]
+    pub struct Net {
         pub max_batches: u64,
         pub batch: u64,
         pub learning_rate: R64,
@@ -547,17 +547,17 @@ mod net_config {
         pub burn_in: u64,
     }
 
-    impl NetConfig {
+    impl Net {
         pub fn iteration(&self, seen: u64) -> u64 {
             seen / (self.batch * self.subdivisions)
         }
     }
 
-    impl TryFrom<RawNetConfig> for NetConfig {
+    impl TryFrom<RawNet> for Net {
         type Error = Error;
 
-        fn try_from(from: RawNetConfig) -> Result<Self, Self::Error> {
-            let RawNetConfig {
+        fn try_from(from: RawNet) -> Result<Self, Self::Error> {
+            let RawNet {
                 max_batches,
                 batch,
                 learning_rate,
@@ -696,7 +696,7 @@ mod net_config {
                 },
             };
 
-            Ok(NetConfig {
+            Ok(Net {
                 max_batches,
                 batch,
                 learning_rate,
@@ -749,7 +749,7 @@ mod net_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub(super) struct RawNetConfig {
+    pub(super) struct RawNet {
         #[serde(default = "defaults::max_batches")]
         pub max_batches: u64,
         #[serde(default = "defaults::batch")]
@@ -865,9 +865,9 @@ mod net_config {
         pub gamma: R64,
     }
 
-    impl From<NetConfig> for RawNetConfig {
-        fn from(from: NetConfig) -> Self {
-            let NetConfig {
+    impl From<Net> for RawNet {
+        fn from(from: Net) -> Self {
+            let Net {
                 max_batches,
                 batch,
                 learning_rate,
@@ -1021,7 +1021,7 @@ mod net_config {
                 ),
             };
 
-            let net = RawNetConfig {
+            let net = RawNet {
                 max_batches,
                 batch,
                 learning_rate,
@@ -1092,7 +1092,7 @@ mod connected_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct ConnectedConfig {
+    pub struct Connected {
         #[serde(default = "defaults::connected_output")]
         pub output: u64,
         #[serde(default = "defaults::connected_activation")]
@@ -1108,8 +1108,8 @@ mod convolutional_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawConvolutionalConfig", into = "RawConvolutionalConfig")]
-    pub struct ConvolutionalConfig {
+    #[serde(try_from = "RawConvolutional", into = "RawConvolutional")]
+    pub struct Convolutional {
         pub filters: u64,
         pub groups: u64,
         pub size: u64,
@@ -1137,7 +1137,7 @@ mod convolutional_config {
         pub common: Common,
     }
 
-    impl ConvolutionalConfig {
+    impl Convolutional {
         pub fn output_shape(&self, [h, w, _c]: [u64; 3]) -> [u64; 3] {
             let Self {
                 filters,
@@ -1153,11 +1153,11 @@ mod convolutional_config {
         }
     }
 
-    impl TryFrom<RawConvolutionalConfig> for ConvolutionalConfig {
+    impl TryFrom<RawConvolutional> for Convolutional {
         type Error = anyhow::Error;
 
-        fn try_from(raw: RawConvolutionalConfig) -> Result<Self, Self::Error> {
-            let RawConvolutionalConfig {
+        fn try_from(raw: RawConvolutional) -> Result<Self, Self::Error> {
+            let RawConvolutional {
                 filters,
                 groups,
                 size,
@@ -1260,7 +1260,7 @@ mod convolutional_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub(super) struct RawConvolutionalConfig {
+    pub(super) struct RawConvolutional {
         pub filters: u64,
         #[serde(default = "defaults::groups")]
         pub groups: u64,
@@ -1318,9 +1318,9 @@ mod convolutional_config {
         pub common: Common,
     }
 
-    impl From<ConvolutionalConfig> for RawConvolutionalConfig {
-        fn from(conv: ConvolutionalConfig) -> Self {
-            let ConvolutionalConfig {
+    impl From<Convolutional> for RawConvolutional {
+        fn from(conv: Convolutional) -> Self {
+            let Convolutional {
                 filters,
                 groups,
                 size,
@@ -1395,19 +1395,19 @@ mod route_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    #[serde(try_from = "RawRouteConfig", into = "RawRouteConfig")]
-    pub struct RouteConfig {
+    #[serde(try_from = "RawRoute", into = "RawRoute")]
+    pub struct Route {
         #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
         pub layers: IndexSet<LayerIndex>,
         pub group: RouteGroup,
         pub common: Common,
     }
 
-    impl TryFrom<RawRouteConfig> for RouteConfig {
+    impl TryFrom<RawRoute> for Route {
         type Error = Error;
 
-        fn try_from(from: RawRouteConfig) -> Result<Self, Self::Error> {
-            let RawRouteConfig {
+        fn try_from(from: RawRoute) -> Result<Self, Self::Error> {
+            let RawRoute {
                 layers,
                 group_id,
                 groups,
@@ -1427,7 +1427,7 @@ mod route_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub(super) struct RawRouteConfig {
+    pub(super) struct RawRoute {
         #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
         #[serde(with = "serde_::vec_layers")]
         pub layers: IndexSet<LayerIndex>,
@@ -1439,9 +1439,9 @@ mod route_config {
         pub common: Common,
     }
 
-    impl From<RouteConfig> for RawRouteConfig {
-        fn from(from: RouteConfig) -> Self {
-            let RouteConfig {
+    impl From<Route> for RawRoute {
+        fn from(from: Route) -> Self {
+            let Route {
                 layers,
                 group,
                 common,
@@ -1462,7 +1462,7 @@ mod shortcut_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub struct ShortcutConfig {
+    pub struct Shortcut {
         #[derivative(Hash(hash_with = "hash_vec::<LayerIndex, _>"))]
         #[serde(with = "serde_::vec_layers")]
         pub from: IndexSet<LayerIndex>,
@@ -1480,8 +1480,8 @@ mod max_pool_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(from = "RawMaxPoolConfig", into = "RawMaxPoolConfig")]
-    pub struct MaxPoolConfig {
+    #[serde(from = "RawMaxPool", into = "RawMaxPool")]
+    pub struct MaxPool {
         pub stride_x: u64,
         pub stride_y: u64,
         pub size: u64,
@@ -1493,7 +1493,7 @@ mod max_pool_config {
         pub common: Common,
     }
 
-    impl MaxPoolConfig {
+    impl MaxPool {
         pub fn output_shape(&self, input_shape: [u64; 3]) -> [u64; 3] {
             let Self {
                 padding,
@@ -1512,9 +1512,9 @@ mod max_pool_config {
         }
     }
 
-    impl From<RawMaxPoolConfig> for MaxPoolConfig {
-        fn from(raw: RawMaxPoolConfig) -> Self {
-            let RawMaxPoolConfig {
+    impl From<RawMaxPool> for MaxPool {
+        fn from(raw: RawMaxPool) -> Self {
+            let RawMaxPool {
                 stride,
                 stride_x,
                 stride_y,
@@ -1545,7 +1545,7 @@ mod max_pool_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub(super) struct RawMaxPoolConfig {
+    pub(super) struct RawMaxPool {
         #[serde(default = "defaults::maxpool_stride")]
         pub stride: u64,
         pub stride_x: Option<u64>,
@@ -1562,9 +1562,9 @@ mod max_pool_config {
         pub common: Common,
     }
 
-    impl From<MaxPoolConfig> for RawMaxPoolConfig {
-        fn from(maxpool: MaxPoolConfig) -> Self {
-            let MaxPoolConfig {
+    impl From<MaxPool> for RawMaxPool {
+        fn from(maxpool: MaxPool) -> Self {
+            let MaxPool {
                 stride_x,
                 stride_y,
                 size,
@@ -1594,7 +1594,7 @@ mod up_sample_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct UpSampleConfig {
+    pub struct UpSample {
         #[serde(default = "defaults::upsample_stride")]
         pub stride: u64,
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
@@ -1603,7 +1603,7 @@ mod up_sample_config {
         pub common: Common,
     }
 
-    impl UpSampleConfig {
+    impl UpSample {
         pub fn output_shape(&self, input_shape: [u64; 3]) -> [u64; 3] {
             let Self {
                 stride, reverse, ..
@@ -1624,7 +1624,7 @@ mod batch_norm_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct BatchNormConfig {
+    pub struct BatchNorm {
         #[serde(flatten)]
         pub common: Common,
     }
@@ -1635,8 +1635,8 @@ mod yolo_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    #[serde(try_from = "RawYoloConfig")]
-    pub struct YoloConfig {
+    #[serde(try_from = "RawYolo")]
+    pub struct Yolo {
         pub classes: u64,
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
@@ -1671,11 +1671,11 @@ mod yolo_config {
         pub common: Common,
     }
 
-    impl TryFrom<RawYoloConfig> for YoloConfig {
+    impl TryFrom<RawYolo> for Yolo {
         type Error = Error;
 
-        fn try_from(from: RawYoloConfig) -> Result<Self, Self::Error> {
-            let RawYoloConfig {
+        fn try_from(from: RawYolo) -> Result<Self, Self::Error> {
+            let RawYolo {
                 classes,
                 num,
                 mask,
@@ -1739,7 +1739,7 @@ mod yolo_config {
                 }
             };
 
-            Ok(YoloConfig {
+            Ok(Yolo {
                 classes,
                 max_boxes,
                 max_delta,
@@ -1778,7 +1778,7 @@ mod yolo_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub(super) struct RawYoloConfig {
+    pub(super) struct RawYolo {
         #[serde(default = "defaults::classes")]
         pub classes: u64,
         #[serde(default = "defaults::num")]
@@ -1853,8 +1853,8 @@ mod gaussian_yolo_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    #[serde(try_from = "RawGaussianYoloConfig")]
-    pub struct GaussianYoloConfig {
+    #[serde(try_from = "RawGaussianYolo")]
+    pub struct GaussianYolo {
         pub classes: u64,
         pub max_boxes: u64,
         pub max_delta: Option<R64>,
@@ -1890,11 +1890,11 @@ mod gaussian_yolo_config {
         pub common: Common,
     }
 
-    impl TryFrom<RawGaussianYoloConfig> for GaussianYoloConfig {
+    impl TryFrom<RawGaussianYolo> for GaussianYolo {
         type Error = Error;
 
-        fn try_from(from: RawGaussianYoloConfig) -> Result<Self, Self::Error> {
-            let RawGaussianYoloConfig {
+        fn try_from(from: RawGaussianYolo) -> Result<Self, Self::Error> {
+            let RawGaussianYolo {
                 classes,
                 num,
                 mask,
@@ -1949,7 +1949,7 @@ mod gaussian_yolo_config {
                 }
             };
 
-            Ok(GaussianYoloConfig {
+            Ok(GaussianYolo {
                 classes,
                 max_boxes,
                 max_delta,
@@ -1982,7 +1982,7 @@ mod gaussian_yolo_config {
 
     #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
     #[derivative(Hash)]
-    pub(super) struct RawGaussianYoloConfig {
+    pub(super) struct RawGaussianYolo {
         #[serde(default = "defaults::classes")]
         pub classes: u64,
         #[serde(rename = "max", default = "defaults::max_boxes")]
@@ -2045,18 +2045,18 @@ mod dropout_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawDropoutConfig", into = "RawDropoutConfig")]
-    pub struct DropoutConfig {
+    #[serde(try_from = "RawDropout", into = "RawDropout")]
+    pub struct Dropout {
         pub probability: R64,
         pub dropblock: DropBlock,
         pub common: Common,
     }
 
-    impl TryFrom<RawDropoutConfig> for DropoutConfig {
+    impl TryFrom<RawDropout> for Dropout {
         type Error = Error;
 
-        fn try_from(from: RawDropoutConfig) -> Result<Self, Self::Error> {
-            let RawDropoutConfig {
+        fn try_from(from: RawDropout) -> Result<Self, Self::Error> {
+            let RawDropout {
                 probability,
                 dropblock,
                 dropblock_size_rel,
@@ -2082,7 +2082,7 @@ mod dropout_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub(super) struct RawDropoutConfig {
+    pub(super) struct RawDropout {
         #[serde(default = "defaults::probability")]
         pub probability: R64,
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
@@ -2093,9 +2093,9 @@ mod dropout_config {
         pub common: Common,
     }
 
-    impl From<DropoutConfig> for RawDropoutConfig {
-        fn from(from: DropoutConfig) -> Self {
-            let DropoutConfig {
+    impl From<Dropout> for RawDropout {
+        fn from(from: Dropout) -> Self {
+            let Dropout {
                 probability,
                 dropblock,
                 common,
@@ -2129,8 +2129,8 @@ mod softmax_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(try_from = "RawSoftmaxConfig")]
-    pub struct SoftmaxConfig {
+    #[serde(try_from = "RawSoftmax")]
+    pub struct Softmax {
         pub groups: u64,
         pub temperature: R64,
         pub tree: Option<(PathBuf, Tree)>,
@@ -2139,11 +2139,11 @@ mod softmax_config {
         pub common: Common,
     }
 
-    impl TryFrom<RawSoftmaxConfig> for SoftmaxConfig {
+    impl TryFrom<RawSoftmax> for Softmax {
         type Error = Error;
 
-        fn try_from(from: RawSoftmaxConfig) -> Result<Self, Self::Error> {
-            let RawSoftmaxConfig {
+        fn try_from(from: RawSoftmax) -> Result<Self, Self::Error> {
+            let RawSoftmax {
                 groups,
                 temperature,
                 tree_file,
@@ -2170,7 +2170,7 @@ mod softmax_config {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub(super) struct RawSoftmaxConfig {
+    pub(super) struct RawSoftmax {
         #[serde(default = "defaults::softmax_groups")]
         pub groups: u64,
         #[serde(default = "defaults::temperature")]
@@ -2184,11 +2184,11 @@ mod softmax_config {
         pub common: Common,
     }
 
-    impl TryFrom<SoftmaxConfig> for RawSoftmaxConfig {
+    impl TryFrom<Softmax> for RawSoftmax {
         type Error = Error;
 
-        fn try_from(from: SoftmaxConfig) -> Result<Self, Self::Error> {
-            let SoftmaxConfig {
+        fn try_from(from: Softmax) -> Result<Self, Self::Error> {
+            let Softmax {
                 groups,
                 temperature,
                 tree,
@@ -2222,7 +2222,7 @@ mod cost_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct CostConfig {
+    pub struct Cost {
         #[serde(default = "defaults::cost_type")]
         pub r#type: CostType,
         #[serde(default = "defaults::cost_scale")]
@@ -2248,7 +2248,7 @@ mod crop_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct CropConfig {
+    pub struct Crop {
         #[serde(default = "defaults::crop_stride")]
         pub stride: u64,
         #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
@@ -2262,7 +2262,7 @@ mod avg_pool_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct AvgPoolConfig {
+    pub struct AvgPool {
         #[serde(flatten)]
         pub common: Common,
     }
@@ -2272,7 +2272,7 @@ mod unimplemented_layer_config {
     use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub struct UnimplementedLayerConfig {
+    pub struct UnimplementedLayer {
         #[serde(flatten)]
         pub common: Common,
     }

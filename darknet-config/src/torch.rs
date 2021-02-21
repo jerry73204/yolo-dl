@@ -1,10 +1,6 @@
 use crate::{
     common::*,
-    config::{
-        Activation, ConnectedConfig, ConvolutionalConfig, DarknetConfig, GaussianYoloConfig,
-        MaxPoolConfig, RouteConfig, Shape, ShortcutConfig, WeightsNormalization, WeightsType,
-        YoloConfig,
-    },
+    config::{self, Activation, Shape, WeightsNormalization, WeightsType},
     darknet::{self, DarknetModel},
     graph::{
         BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, InputKeys,
@@ -114,7 +110,7 @@ mod tch_model {
 
         pub fn from_config<'p>(
             path: impl Borrow<nn::Path<'p>>,
-            config: &DarknetConfig,
+            config: &config::Darknet,
         ) -> Result<Self> {
             let graph = Graph::from_config(config)?;
             Self::from_graph(path, &graph)
@@ -560,9 +556,10 @@ mod layer {
             let ConnectedNode {
                 input_shape,
                 output_shape,
-                config: ConnectedConfig {
-                    batch_normalize, ..
-                },
+                config:
+                    config::Connected {
+                        batch_normalize, ..
+                    },
                 ..
             } = *from;
             let input_shape = input_shape as i64;
@@ -681,7 +678,7 @@ mod layer {
             let Self {
                 node:
                     ConnectedNode {
-                        config: ConnectedConfig { activation, .. },
+                        config: config::Connected { activation, .. },
                         ..
                     },
                 weights:
@@ -712,7 +709,7 @@ mod layer {
             let path = path.borrow();
             let ConvolutionalNode {
                 config:
-                    ConvolutionalConfig {
+                    config::Convolutional {
                         size,
                         stride_y,
                         stride_x,
@@ -825,7 +822,7 @@ mod layer {
                 ..
             } = *from;
 
-            let ConvolutionalConfig {
+            let config::Convolutional {
                 size,
                 stride_y,
                 stride_x,
@@ -944,7 +941,7 @@ mod layer {
             let Self {
                 node:
                     ConvolutionalNode {
-                        config: ConvolutionalConfig { activation, .. },
+                        config: config::Convolutional { activation, .. },
                         ..
                     },
                 weights: ConvolutionalWeights { ref shared, .. },
@@ -1053,7 +1050,7 @@ mod layer {
         pub fn from_node<'p>(path: impl Borrow<nn::Path<'p>>, node: &ShortcutNode) -> Result<Self> {
             let path = path.borrow();
             let ShortcutNode {
-                config: ShortcutConfig { weights_type, .. },
+                config: config::Shortcut { weights_type, .. },
                 ref from_indexes,
                 ref input_shape,
                 output_shape,
@@ -1169,7 +1166,7 @@ mod layer {
                 node:
                     ShortcutNode {
                         config:
-                            ShortcutConfig {
+                            config::Shortcut {
                                 weights_normalization,
                                 ..
                             },
@@ -1250,7 +1247,7 @@ mod layer {
     impl RouteLayer {
         pub fn from_node<'p>(_path: impl Borrow<nn::Path<'p>>, from: &RouteNode) -> Result<Self> {
             let RouteNode {
-                config: RouteConfig { group, .. },
+                config: config::Route { group, .. },
                 ref input_shape,
                 ..
             } = *from;
@@ -1283,7 +1280,7 @@ mod layer {
             let darknet::RouteLayer {
                 node:
                     RouteNode {
-                        config: RouteConfig { group, .. },
+                        config: config::Route { group, .. },
                         ref input_shape,
                         ..
                     },
@@ -1339,7 +1336,7 @@ mod layer {
             {
                 let MaxPoolNode {
                     config:
-                        MaxPoolConfig {
+                        config::MaxPool {
                             stride_x,
                             stride_y,
                             size,
@@ -1379,7 +1376,7 @@ mod layer {
                 node:
                     MaxPoolNode {
                         config:
-                            MaxPoolConfig {
+                            config::MaxPool {
                                 stride_x,
                                 stride_y,
                                 size,
@@ -1486,7 +1483,7 @@ mod layer {
     impl YoloLayer {
         pub fn from_node<'p>(_path: impl Borrow<nn::Path<'p>>, from: &YoloNode) -> Result<Self> {
             let YoloNode {
-                config: YoloConfig { classes, .. },
+                config: config::Yolo { classes, .. },
                 ..
             } = *from;
             let weights = YoloWeights {
@@ -1507,7 +1504,7 @@ mod layer {
             let darknet::YoloLayer {
                 node:
                     YoloNode {
-                        config: YoloConfig { classes, .. },
+                        config: config::Yolo { classes, .. },
                         ..
                     },
                 ..
@@ -1530,7 +1527,7 @@ mod layer {
             let Self {
                 node:
                     YoloNode {
-                        config: YoloConfig { ref anchors, .. },
+                        config: config::Yolo { ref anchors, .. },
                         ..
                     },
                 weights: YoloWeights { num_classes, .. },
@@ -1639,7 +1636,7 @@ mod layer {
             from: &GaussianYoloNode,
         ) -> Result<Self> {
             let GaussianYoloNode {
-                config: GaussianYoloConfig { classes, .. },
+                config: config::GaussianYolo { classes, .. },
                 ..
             } = *from;
             let weights = GaussianYoloWeights {
@@ -1660,7 +1657,7 @@ mod layer {
             let darknet::GaussianYoloLayer {
                 node:
                     GaussianYoloNode {
-                        config: GaussianYoloConfig { classes, .. },
+                        config: config::GaussianYolo { classes, .. },
                         ..
                     },
                 ..

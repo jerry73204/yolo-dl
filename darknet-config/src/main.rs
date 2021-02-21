@@ -1,5 +1,5 @@
 use anyhow::{format_err, Context, Result};
-use darknet_config::{DarknetConfig, DarknetModel, Graph, NodeKey};
+use darknet_config::{Darknet, DarknetModel, Graph, NodeKey};
 use prettytable::{cell, row, Table};
 use std::{
     fs::File,
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
 }
 
 fn info(config_file: impl AsRef<Path>) -> Result<()> {
-    let config = DarknetConfig::load(config_file)?;
+    let config = Darknet::load(config_file)?;
     let graph = Graph::from_config(&config)?;
 
     // print layer information
@@ -99,7 +99,7 @@ fn info(config_file: impl AsRef<Path>) -> Result<()> {
 
 fn test_weights_file(config_file: impl AsRef<Path>, weights_file: impl AsRef<Path>) -> Result<()> {
     let weights_file = weights_file.as_ref();
-    let config = DarknetConfig::load(config_file)?;
+    let config = Darknet::load(config_file)?;
     let graph = Graph::from_config(&config)?;
     println!("loading weights file {} ...", weights_file.display());
     let mut darknet_model = DarknetModel::new(&graph)?;
@@ -112,7 +112,7 @@ fn test_weights_file(config_file: impl AsRef<Path>, weights_file: impl AsRef<Pat
 
 #[cfg(feature = "dot")]
 fn make_dot_file(config_file: impl AsRef<Path>, output_file: impl AsRef<Path>) -> Result<()> {
-    let config = DarknetConfig::load(config_file)?;
+    let config = Darknet::load(config_file)?;
     let graph = Graph::from_config(&config)?;
     let mut writer = BufWriter::new(File::create(output_file)?);
     graph.render_dot(&mut writer)?;

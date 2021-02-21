@@ -1,9 +1,6 @@
 use crate::{
     common::*,
-    config::{
-        BatchNormConfig, Common, ConnectedConfig, ConvolutionalConfig, DarknetConfig,
-        ShortcutConfig, WeightsType,
-    },
+    config::{self, WeightsType},
     graph::{
         BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, InputNode,
         MaxPoolNode, Node, NodeKey, RouteNode, ShortcutNode, UpSampleNode, YoloNode,
@@ -69,12 +66,12 @@ mod model {
         where
             P: AsRef<Path>,
         {
-            let config = DarknetConfig::load(config_file)?;
+            let config = config::Darknet::load(config_file)?;
             let graph = Graph::from_config(&config)?;
             Self::new(&graph)
         }
 
-        pub fn from_config(config: &DarknetConfig) -> Result<Self> {
+        pub fn from_config(config: &config::Darknet) -> Result<Self> {
             let graph = Graph::from_config(config)?;
             Self::new(&graph)
         }
@@ -213,9 +210,10 @@ mod layer {
     impl ConnectedLayer {
         pub fn new(node: &ConnectedNode) -> Self {
             let ConnectedNode {
-                config: ConnectedConfig {
-                    batch_normalize, ..
-                },
+                config:
+                    config::Connected {
+                        batch_normalize, ..
+                    },
                 input_shape,
                 output_shape,
                 ..
@@ -252,9 +250,9 @@ mod layer {
                 node:
                     ConnectedNode {
                         config:
-                            ConnectedConfig {
+                            config::Connected {
                                 common:
-                                    Common {
+                                    config::Common {
                                         dont_load,
                                         dont_load_scales,
                                         ..
@@ -301,7 +299,7 @@ mod layer {
         pub fn new(node: &ConvolutionalNode, layer_index: usize) -> Result<Self> {
             let ConvolutionalNode {
                 config:
-                    ConvolutionalConfig {
+                    config::Convolutional {
                         share_index,
                         filters,
                         batch_normalize,
@@ -359,13 +357,13 @@ mod layer {
                 node:
                     ConvolutionalNode {
                         config:
-                            ConvolutionalConfig {
+                            config::Convolutional {
                                 groups,
                                 size,
                                 filters,
                                 flipped,
                                 common:
-                                    Common {
+                                    config::Common {
                                         dont_load,
                                         dont_load_scales,
                                         ..
@@ -440,8 +438,8 @@ mod layer {
                 node:
                     BatchNormNode {
                         config:
-                            BatchNormConfig {
-                                common: Common { dont_load, .. },
+                            config::BatchNorm {
+                                common: config::Common { dont_load, .. },
                                 ..
                             },
                         ..
@@ -473,7 +471,7 @@ mod layer {
         pub fn new(node: &ShortcutNode) -> Self {
             let ShortcutNode {
                 config:
-                    ShortcutConfig {
+                    config::Shortcut {
                         weights_type,
                         ref from,
                         ..
@@ -510,8 +508,8 @@ mod layer {
                 node:
                     ShortcutNode {
                         config:
-                            ShortcutConfig {
-                                common: Common { dont_load, .. },
+                            config::Shortcut {
+                                common: config::Common { dont_load, .. },
                                 ..
                             },
                         ..
