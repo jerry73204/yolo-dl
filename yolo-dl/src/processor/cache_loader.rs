@@ -109,6 +109,8 @@ impl CacheLoader {
         let cached_image = if is_valid {
             // load from cache
             let image = async_std::task::spawn_blocking(move || -> Result<_> {
+                // BUG: when the dataset is small, the file opening can race with
+                // cache file saving.
                 let image = Tensor::f_from_file(
                     cache_path.to_str().unwrap(),
                     false,

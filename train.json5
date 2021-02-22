@@ -13,6 +13,14 @@
             "classes_file": "cfg/coco.class",
         },
         // "kind": {
+        //     "type": "Csv",
+        //     "image_size": 256,
+        //     "input_channels": 3,
+        //     "image_dir": "/home/jerry73204/csv_dataset/images",
+        //     "label_file": "/home/jerry73204/csv_dataset/label.csv",
+        //     "classes_file": "/home/jerry73204/csv_dataset/classes.txt",
+        // },
+        // "kind": {
         //     "type": "Iii",
         //     "image_size": 256,
         //     "dataset_dir": "/home/aeon/dataset/iii-small",
