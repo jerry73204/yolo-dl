@@ -97,6 +97,14 @@ mod dataset {
             #[serde(default = "empty_hashset::<PathBuf>")]
             blacklist_files: HashSet<PathBuf>,
         },
+        /// CSV dataset options.
+        Csv {
+            image_dir: PathBuf,
+            label_file: PathBuf,
+            classes_file: PathBuf,
+            image_size: NonZeroUsize,
+            input_channels: NonZeroUsize,
+        },
     }
 }
 

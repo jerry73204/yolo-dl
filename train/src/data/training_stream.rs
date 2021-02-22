@@ -30,7 +30,12 @@ impl TrainingStream {
     ) -> Result<Self> {
         let dataset = {
             let Config {
-                dataset: DatasetConfig { ref kind, .. },
+                dataset:
+                    DatasetConfig {
+                        ref kind,
+                        ref class_whitelist,
+                        ..
+                    },
                 preprocessor:
                     PreprocessorConfig {
                         ref cache_dir,
@@ -42,15 +47,21 @@ impl TrainingStream {
                 ..
             } = *config;
 
-            match kind {
+            match *kind {
                 DatasetKind::Coco {
-                    dataset_dir,
-                    dataset_name,
+                    ref dataset_dir,
+                    ref classes_file,
+                    ref dataset_name,
                     image_size,
                     ..
                 } => {
-                    let dataset =
-                        CocoDataset::load(config.clone(), dataset_dir, dataset_name).await?;
+                    let dataset = CocoDataset::load(
+                        dataset_dir,
+                        classes_file,
+                        class_whitelist.clone(),
+                        dataset_name,
+                    )
+                    .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
@@ -59,11 +70,14 @@ impl TrainingStream {
                     dataset
                 }
                 DatasetKind::Voc {
-                    dataset_dir,
+                    ref dataset_dir,
+                    ref classes_file,
                     image_size,
                     ..
                 } => {
-                    let dataset = VocDataset::load(config.clone(), dataset_dir).await?;
+                    let dataset =
+                        VocDataset::load(dataset_dir, classes_file, class_whitelist.clone())
+                            .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
@@ -72,14 +86,42 @@ impl TrainingStream {
                     dataset
                 }
                 DatasetKind::Iii {
-                    dataset_dir,
-                    blacklist_files,
+                    ref dataset_dir,
+                    ref classes_file,
+                    ref blacklist_files,
                     image_size,
                     ..
                 } => {
+                    let dataset = IiiDataset::load(
+                        dataset_dir,
+                        classes_file,
+                        class_whitelist.clone(),
+                        blacklist_files.clone(),
+                    )
+                    .await?;
                     let dataset =
-                        IiiDataset::load(config.clone(), dataset_dir, blacklist_files.clone())
-                            .await?;
+                        SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
+                    let dataset =
+                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
+                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    dataset
+                }
+                DatasetKind::Csv {
+                    ref image_dir,
+                    ref label_file,
+                    ref classes_file,
+                    image_size,
+                    input_channels,
+                    ..
+                } => {
+                    let dataset = CsvDataset::load(
+                        image_dir,
+                        label_file,
+                        classes_file,
+                        input_channels.get(),
+                        class_whitelist.clone(),
+                    )
+                    .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
@@ -607,25 +649,4 @@ impl From<MixData> for Vec<(Tensor, Vec<RatioLabel>)> {
             MixData::Mosaic(array) => array.into(),
         }
     }
-}
-
-pub async fn load_classes_file<P>(path: P) -> Result<IndexSet<String>>
-where
-    P: AsRef<Path>,
-{
-    let path = path.as_ref();
-    let content = tokio::fs::read_to_string(path).await?;
-    let lines: Vec<_> = content.lines().collect();
-    let classes: IndexSet<_> = lines.iter().cloned().map(ToOwned::to_owned).collect();
-    ensure!(
-        lines.len() == classes.len(),
-        "duplicated class names found in '{}'",
-        path.display()
-    );
-    ensure!(
-        classes.len() > 0,
-        "no classes found in '{}'",
-        path.display()
-    );
-    Ok(classes)
 }

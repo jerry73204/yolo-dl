@@ -1,13 +1,9 @@
 use super::*;
-use crate::{
-    common::*,
-    config::{Config, DatasetConfig, DatasetKind},
-};
+use crate::common::*;
 
 /// The Microsoft COCO dataset.
 #[derive(Debug, Clone)]
 pub struct CocoDataset {
-    pub config: Arc<Config>,
     pub dataset: coco::DataSet,
     pub category_id_to_classes: HashMap<usize, String>,
     pub classes: IndexSet<String>,
@@ -39,21 +35,17 @@ impl FileDataset for CocoDataset {
 }
 
 impl CocoDataset {
-    pub async fn load(config: Arc<Config>, dir: &Path, name: &str) -> Result<CocoDataset> {
-        let classes_file = match &*config {
-            Config {
-                dataset:
-                    DatasetConfig {
-                        kind: DatasetKind::Coco { classes_file, .. },
-                        ..
-                    },
-                ..
-            } => classes_file,
-            _ => unreachable!(),
-        };
+    pub async fn load(
+        dataset_dir: impl AsRef<Path>,
+        classes_file: impl AsRef<Path>,
+        class_whitelist: Option<HashSet<String>>,
+        name: &str,
+    ) -> Result<CocoDataset> {
+        let dataset_dir = dataset_dir.as_ref();
+        let classes_file = classes_file.as_ref();
 
         let classes = load_classes_file(classes_file).await?;
-        let dataset = coco::DataSet::load_async(dir, name).await?;
+        let dataset = coco::DataSet::load_async(dataset_dir, name).await?;
         let category_id_to_classes: HashMap<_, _> = dataset
             .instances
             .categories
@@ -123,7 +115,7 @@ impl CocoDataset {
                             Some(index) => index,
                             None => return Ok(None),
                         };
-                        if let Some(whitelist) = &config.dataset.class_whitelist {
+                        if let Some(whitelist) = &class_whitelist {
                             if let None = whitelist.get(category_name) {
                                 return Ok(None);
                             }
@@ -148,7 +140,6 @@ impl CocoDataset {
             .try_collect()?;
 
         Ok(CocoDataset {
-            config,
             dataset,
             category_id_to_classes,
             classes,

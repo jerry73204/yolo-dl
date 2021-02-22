@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    common::*,
-    config::{Config, DatasetConfig, DatasetKind},
-};
+use crate::common::*;
 use voc_dataset as voc;
 
 const III_DEPTH: usize = 3;
@@ -10,7 +7,6 @@ const III_DEPTH: usize = 3;
 /// The Formosa dataset from Institute for Information Industry.
 #[derive(Debug, Clone)]
 pub struct IiiDataset {
-    pub config: Arc<Config>,
     pub samples: Vec<IiiSample>,
     pub classes: IndexSet<String>,
     pub records: Vec<Arc<FileRecord>>,
@@ -33,26 +29,14 @@ impl FileDataset for IiiDataset {
 }
 
 impl IiiDataset {
-    pub async fn load<P>(
-        config: Arc<Config>,
-        dataset_dir: P,
+    pub async fn load(
+        dataset_dir: impl AsRef<Path>,
+        classes_file: impl AsRef<Path>,
+        class_whitelist: Option<HashSet<String>>,
         blacklist_files: HashSet<PathBuf>,
-    ) -> Result<IiiDataset>
-    where
-        P: AsRef<Path>,
-    {
-        let classes_file = match &*config {
-            Config {
-                dataset:
-                    DatasetConfig {
-                        kind: DatasetKind::Iii { classes_file, .. },
-                        ..
-                    },
-                ..
-            } => classes_file,
-            _ => unreachable!(),
-        };
+    ) -> Result<IiiDataset> {
         let dataset_dir = dataset_dir.as_ref();
+        let classes_file = classes_file.as_ref();
 
         // load classes file
         let classes = load_classes_file(&classes_file).await?;
@@ -139,69 +123,82 @@ impl IiiDataset {
         };
 
         // build records
-        let records: Vec<_> = samples
-            .iter()
-            .map(|sample| -> Result<_> {
-                let IiiSample {
-                    image_file,
-                    annotation_file,
-                    annotation,
-                } = sample;
+        let classes = Arc::new(classes);
+        let samples = Arc::new(samples);
 
-                let size = {
-                    let voc::Size { width, height, .. } = annotation.size;
-                    PixelSize::new(height, width).unwrap()
-                };
+        let records: Vec<_> = {
+            let classes = classes.clone();
+            let samples = samples.clone();
 
-                let bboxes: Vec<_> = annotation
-                    .object
+            tokio::task::spawn_blocking(move || {
+                samples
                     .iter()
-                    .filter_map(|obj| {
-                        // filter by class list and whitelist
-                        let class_name = &obj.name;
-                        let class_index = classes.get_index_of(class_name)?;
-                        if let Some(whitelist) = &config.dataset.class_whitelist {
-                            whitelist.get(class_name)?;
-                        }
-                        Some((obj, class_index))
-                    })
-                    .filter_map(|(obj, class_index)| {
-                        let voc::BndBox {
-                            xmin,
-                            ymin,
-                            xmax,
-                            ymax,
-                        } = obj.bndbox;
-                        let bbox = match PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax) {
-                            Ok(bbox) => bbox,
-                            Err(_err) => {
-                                warn!(
-                                    "failed to parse file '{}': invalid bbox {:?}",
-                                    annotation_file.display(),
-                                    [ymin, xmin, ymax, xmax]
-                                );
-                                return None;
-                            }
+                    .map(|sample| -> Result<_> {
+                        let IiiSample {
+                            image_file,
+                            annotation_file,
+                            annotation,
+                        } = sample;
+
+                        let size = {
+                            let voc::Size { width, height, .. } = annotation.size;
+                            PixelSize::new(height, width).unwrap()
                         };
 
-                        let labeled_bbox = PixelLabel {
-                            cycxhw: bbox,
-                            category_id: class_index,
-                        };
-                        Some(labeled_bbox)
-                    })
-                    .collect();
+                        let bboxes: Vec<_> = annotation
+                            .object
+                            .iter()
+                            .filter_map(|obj| {
+                                // filter by class list and whitelist
+                                let class_name = &obj.name;
+                                let class_index = classes.get_index_of(class_name)?;
+                                if let Some(whitelist) = &class_whitelist {
+                                    whitelist.get(class_name)?;
+                                }
+                                Some((obj, class_index))
+                            })
+                            .filter_map(|(obj, class_index)| {
+                                let voc::BndBox {
+                                    xmin,
+                                    ymin,
+                                    xmax,
+                                    ymax,
+                                } = obj.bndbox;
+                                let bbox = match PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax) {
+                                    Ok(bbox) => bbox,
+                                    Err(_err) => {
+                                        warn!(
+                                            "failed to parse file '{}': invalid bbox {:?}",
+                                            annotation_file.display(),
+                                            [ymin, xmin, ymax, xmax]
+                                        );
+                                        return None;
+                                    }
+                                };
 
-                Ok(Arc::new(FileRecord {
-                    path: image_file.clone(),
-                    size,
-                    bboxes,
-                }))
+                                let labeled_bbox = PixelLabel {
+                                    cycxhw: bbox,
+                                    category_id: class_index,
+                                };
+                                Some(labeled_bbox)
+                            })
+                            .collect();
+
+                        Ok(Arc::new(FileRecord {
+                            path: image_file.clone(),
+                            size,
+                            bboxes,
+                        }))
+                    })
+                    .try_collect()
             })
-            .try_collect()?;
+            .await??
+        };
+
+        let classes = Arc::try_unwrap(classes).unwrap();
+        let samples = Arc::try_unwrap(samples).unwrap();
 
         Ok(IiiDataset {
-            config,
             samples,
             classes,
             records,
