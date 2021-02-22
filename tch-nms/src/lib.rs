@@ -111,7 +111,13 @@ mod tests {
     #[test]
     fn nms_ffi_test() {
         const N_BOXES: i64 = 1000;
-        let device = Device::Cuda(0);
+        let device = match Device::cuda_if_available() {
+            Device::Cpu => {
+                eprintln!("CUDA is not available. Skipping test.");
+                return;
+            }
+            Device::Cuda(index) => Device::Cuda(index),
+        };
 
         let cy = Tensor::rand(&[N_BOXES, 1], (Kind::Float, device));
         let cx = Tensor::rand(&[N_BOXES, 1], (Kind::Float, device));
