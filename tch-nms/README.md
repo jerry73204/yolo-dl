@@ -14,6 +14,14 @@ The build script requires the environment variable `LIBTORCH` to be set to the d
 cargo build
 ```
 
+## Troubleshooting
+
+If you have trouble with g++ version error, consider setting the following environment variable:
+
+```sh
+export CXX=g++-8
+```
+
 ## License
 
 See the [LICENSE.txt](LICENSE.txt) for MIT license. The license of original CUDA implementation can be foudn at [licenses/LICENSE-pytorch_nms.txt](licenses/LICENSE-pytorch_nms.txt);
