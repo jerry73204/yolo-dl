@@ -137,6 +137,24 @@ pub fn single_gpu_training_worker(
             optimizer.backward_step(&losses.total_loss);
             timing.add_event("backward");
 
+            // DEBUG
+            // tch::no_grad(|| {
+            //     use std::str::FromStr;
+            //     const PREFIX: &str = "running_var";
+
+            //     let mut running_vars: Vec<_> = vs
+            //         .variables()
+            //         .into_iter()
+            //         .filter(|(name, _var)| name.starts_with(PREFIX))
+            //         .map(|(name, var)| (name, f64::from(var.mean(Kind::Float))))
+            //         .collect();
+            //     running_vars.sort_by_cached_key(|(name, _var)| match &name[PREFIX.len()..] {
+            //         "" => 0,
+            //         tail => usize::from_str(&tail[2..]).unwrap(),
+            //     });
+            //     dbg!(&running_vars);
+            // });
+
             // print message
             rate_counter.add(1.0);
             if let Some(batch_rate) = rate_counter.rate() {

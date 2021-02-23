@@ -35,6 +35,8 @@ mod yolo_model {
                     ref input_keys,
                 } = *layer;
 
+                // println!("# {}\t{}", key, module.as_ref());
+
                 let module_input: ModuleInput = match input_keys {
                     InputKeys::None => ModuleInput::None,
                     InputKeys::PlaceHolder => input.take().unwrap().into(),

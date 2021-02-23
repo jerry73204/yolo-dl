@@ -61,7 +61,11 @@ impl ConvBn2DInit {
             },
         );
         let bn = if batch_norm {
-            Some(nn::batch_norm2d(path, out_c as i64, Default::default()))
+            Some(DarkBatchNorm::new_2d(
+                path,
+                out_c as i64,
+                Default::default(),
+            ))
         } else {
             None
         };
@@ -77,7 +81,7 @@ impl ConvBn2DInit {
 #[derive(Debug)]
 pub struct ConvBn2D {
     conv: nn::Conv2D,
-    bn: Option<nn::BatchNorm>,
+    bn: Option<DarkBatchNorm>,
     activation: Activation,
 }
 
@@ -92,7 +96,16 @@ impl ConvBn2D {
         let xs = xs.apply(conv).activation(activation);
 
         let xs = match bn {
-            Some(bn) => xs.apply_t(bn, train),
+            Some(bn) => {
+                // show warning if scaling variance is too small
+                // tch::no_grad(|| {
+                //     let running_var_mean = f64::from(bn.running_var.mean(Kind::Float));
+                //     let ws_mean = f64::from(bn.ws.mean(Kind::Float));
+                //     println!("running_var={}\tws={}", running_var_mean, ws_mean);
+                // });
+
+                bn.forward_t(&xs, train).unwrap()
+            }
             None => xs,
         };
 
