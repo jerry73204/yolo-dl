@@ -7,8 +7,8 @@ mod focal_loss;
 mod loss;
 mod misc;
 mod nms;
-mod pred_target_matching;
 mod pred_gt_matching;
+mod pred_target_matching;
 
 pub use average_precision::*;
 pub use bce_with_logit_loss::*;
@@ -17,5 +17,5 @@ pub use focal_loss::*;
 pub use loss::*;
 pub use misc::*;
 pub use nms::*;
-pub use pred_target_matching::*;
 pub use pred_gt_matching::*;
+pub use pred_target_matching::*;
