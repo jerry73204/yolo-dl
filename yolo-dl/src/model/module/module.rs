@@ -6,7 +6,7 @@ use super::*;
 mod module {
     use super::*;
 
-    #[derive(Derivative)]
+    #[derive(AsRefStr, Derivative)]
     #[derivative(Debug)]
     pub enum Module {
         Input(Input),

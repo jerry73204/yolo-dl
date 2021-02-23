@@ -57,6 +57,7 @@ pub use std::{
     },
     time::{Duration, Instant},
 };
+pub use strum::AsRefStr;
 pub use tch::{
     kind::{FLOAT_CPU, INT64_CPU},
     nn::{self, OptimizerConfig},
