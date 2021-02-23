@@ -33,8 +33,8 @@ Install either by system package manager or by `pip3 install --user torch torchv
 The environment variables enable verbose messaging from program. You can copy them to your `.bashrc` or `.zshrc`.
 
 ```sh
-export RUST_BACKTRACE=1  // show backtrace when panic
-export RUST_LOG=info     // verbose logging
+export RUST_BACKTRACE=1  # show backtrace when panic
+export RUST_LOG=info     # verbose logging
 ```
 
 We suggest working on your favorite editor with [rust-analyzer](https://rust-analyzer.github.io/manual.html). It helps hunting common errors with ease.
@@ -56,6 +56,10 @@ The `--release` option in only needed in production. It gains about 5x performan
 The command trains a model. The `--config train.json5` is needed only when you wish to specify your custom configuration file.
 
 ```sh
+# Set RUST_LOG so that we can see the terminal output
+export RUST_LOG=info
+
+# Start training
 cargo run --release --bin train -- [--config train.json5]
 ```
 
