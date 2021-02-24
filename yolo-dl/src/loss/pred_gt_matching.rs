@@ -1,3 +1,4 @@
+use super::*;
 use crate::common::*;
 
 fn cal_iou_tlbr(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
@@ -72,6 +73,24 @@ impl Hash for MDetection {
     }
 }
 
+impl PredBox for MDetection {
+    fn get_tlbr(&self) -> (R64, R64, R64, R64) {
+        (self.x1, self.y1, self.x2, self.y2)
+    }
+    fn confidence(&self) -> R64 {
+        self.conf
+    }
+    fn get_cls_conf(&self) -> R64 {
+        self.cls_conf
+    }
+    fn get_cls_id(&self) -> i32 {
+        self.cls_id
+    }
+    fn get_id(&self) -> i32 {
+        self.id
+    }
+}
+
 impl MDetection {
     fn new_f64(
         id: i32,
@@ -120,12 +139,12 @@ impl MDetection {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DetBoxStruct {
     detection: MDetection,
     ground_truth: Option<MDetection>,
 }
-/*
+
 impl average_precision::DetectionForAp<MDetection, MDetection> for DetBoxStruct {
     fn detection(&self) -> &MDetection {
         &self.detection
@@ -156,7 +175,7 @@ impl average_precision::DetectionForAp<MDetection, MDetection> for DetBoxStruct 
         }
     }
 }
-*/
+
 impl DetBoxStruct {
     fn new(
         d_id: i32,
@@ -257,4 +276,208 @@ where
         })
         .collect();
     ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn cal_iou_xxyys(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
+        let xa = std::cmp::max(bbox_a.0, bbox_b.0);
+        let ya = std::cmp::max(bbox_a.1, bbox_b.1);
+        let xb = std::cmp::min(bbox_a.2, bbox_b.2);
+        let yb = std::cmp::min(bbox_a.3, bbox_b.3);
+        let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
+            * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+        let box_a_area = (bbox_a.2 - bbox_a.0 + r64(1.0)) * (bbox_a.3 - bbox_a.1 + r64(1.0));
+        let box_b_area = (bbox_b.2 - bbox_b.0 + r64(1.0)) * (bbox_b.3 - bbox_b.1 + r64(1.0));
+        let iou = inter_area / (box_a_area + box_b_area - inter_area);
+        iou
+    }
+
+    fn match_d_g(dets: &[MDetection], gts: &[MDetection]) -> Vec<DetBoxStruct> {
+        let mut bbox_d: (R64, R64, R64, R64);
+        let mut bbox_g: (R64, R64, R64, R64);
+        let mut max_iou: R64;
+        let mut tmp_iou: R64;
+        let mut sel_g: usize;
+        let mut td: DetBoxStruct;
+        let mut t_vec: Vec<DetBoxStruct> = Vec::new();
+        for d_id in 0..dets.len() {
+            max_iou = r64(0.0);
+            sel_g = 0;
+            bbox_d = dets[d_id].get_tlbr();
+            for g_id in 0..gts.len() {
+                bbox_g = gts[g_id].get_tlbr();
+                tmp_iou = cal_iou_xxyys(bbox_d, bbox_g);
+                if gts[g_id].cls_id == dets[d_id].cls_id && max_iou < tmp_iou {
+                    max_iou = tmp_iou;
+                    sel_g = g_id;
+                }
+            }
+            if max_iou == r64(0.0) {
+                td = DetBoxStruct::new_no_gt(
+                    d_id as i32,
+                    dets[d_id].x1,
+                    dets[d_id].y1,
+                    dets[d_id].x2,
+                    dets[d_id].y2,
+                    dets[d_id].conf,
+                    dets[d_id].cls_conf,
+                    dets[d_id].cls_id,
+                );
+            } else {
+                td = DetBoxStruct::new(
+                    d_id as i32,
+                    dets[d_id].x1,
+                    dets[d_id].y1,
+                    dets[d_id].x2,
+                    dets[d_id].y2,
+                    dets[d_id].conf,
+                    dets[d_id].cls_conf,
+                    dets[d_id].cls_id,
+                    sel_g as i32,
+                    gts[sel_g].cls_id,
+                    gts[sel_g].x1,
+                    gts[sel_g].y1,
+                    gts[sel_g].x2,
+                    gts[sel_g].y2,
+                );
+            }
+            t_vec.push(td);
+        }
+        t_vec
+    }
+
+    fn vecd_to_mdetection(in_vec: Vec<Vec<f64>>) -> Vec<MDetection> {
+        let mut v_det: Vec<MDetection> = Vec::new();
+        let mut mdt: MDetection;
+        for i in 0..in_vec.len() {
+            mdt = MDetection::new_f64(
+                i as i32,
+                in_vec[i][0],
+                in_vec[i][1],
+                in_vec[i][2],
+                in_vec[i][3],
+                in_vec[i][4],
+                in_vec[i][5],
+                in_vec[i][6] as i32,
+            );
+            v_det.push(mdt);
+        }
+
+        v_det
+    }
+    fn vecg_to_mdetection(in_vec: Vec<Vec<f64>>) -> Vec<MDetection> {
+        let mut v_det: Vec<MDetection> = Vec::new();
+        let mut mdt: MDetection;
+        for i in 0..in_vec.len() {
+            mdt = MDetection::new_f64(
+                i as i32,
+                in_vec[i][1],
+                in_vec[i][2],
+                in_vec[i][3],
+                in_vec[i][4],
+                1.0,
+                1.0,
+                in_vec[i][0] as i32,
+            );
+            v_det.push(mdt);
+        }
+
+        v_det
+    }
+
+    fn split_detection_class(vec_det: &Vec<DetBoxStruct>) -> Vec<Vec<DetBoxStruct>> {
+        let mut vec_ret: Vec<Vec<DetBoxStruct>> = Vec::new();
+        let mut cls_id_to_vec_id: Vec<i32> = Vec::new();
+        let mut cls_id: i32;
+        let mut vec_tmp: Vec<DetBoxStruct>;
+        for i in 0..vec_det.len() {
+            cls_id = vec_det[i].detection.cls_id;
+            if cls_id_to_vec_id.iter().any(|&k| k == cls_id) {
+                //The class is seen
+
+                let index = cls_id_to_vec_id.iter().position(|&r| r == cls_id).unwrap();
+                vec_ret[index].push(vec_det[i]);
+            } else {
+                cls_id_to_vec_id.push(cls_id);
+                vec_tmp = Vec::new();
+                vec_tmp.push(vec_det[i]);
+                vec_ret.push(vec_tmp);
+            }
+        }
+
+        //dbg!(&vec_ret);
+        vec_ret
+    }
+    //(cls_id, num of gt)
+    fn get_gt_cnt_per_class(m_gt_vec: &Vec<MDetection>) -> Vec<(i32, usize)> {
+        let mut vec_ret: Vec<(i32, usize)> = Vec::new();
+        let mut class_seen: Vec<i32> = Vec::new();
+        for i in 0..m_gt_vec.len() {
+            let cls_id = m_gt_vec[i].cls_id;
+            if class_seen.iter().any(|&k| k == cls_id) {
+                //The class is seen
+                let index = class_seen.iter().position(|&r| r == cls_id).unwrap();
+                vec_ret[index].1 += 1;
+            } else {
+                class_seen.push(cls_id);
+                vec_ret.push((cls_id, 1));
+            }
+        }
+        //dbg!(&vec_ret);
+        vec_ret
+    }
+
+    #[test]
+    fn t_match_det_gt() -> Result<()> {
+        let text = "0.00000 227.16200 219.68274 312.70200 410.39253
+0.00000 284.18624 189.21947 335.15290 404.17874
+0.00000 0.60445 237.66579 24.34890 415.77453
+0.00000 174.27155 155.53200 246.64890 359.78800
+34.00000 8.58000 330.53821 31.98000 411.12074";
+
+        let text_d = "175.30000 170.77000 245.34000 324.72000 0.99968 0.99998 0.00000
+284.07000 191.51000 336.73000 351.94000 0.98834 0.99999 0.00000
+229.29000 222.98000 314.37000 358.82000 0.98327 0.99990 0.00000
+0.35714 234.53000 29.80900 361.46000 0.89682 0.99831 0.00000";
+        let d_vec: Result<Vec<Vec<f64>>> = text_d
+            .lines()
+            .map(|line| {
+                let values: Result<Vec<_>> = line
+                    .split(" ")
+                    .map(|token| -> Result<_> {
+                        let value: f64 = token.parse()?;
+                        Ok(value)
+                    })
+                    .collect();
+                values
+            })
+            .collect();
+        let d_vec = d_vec?;
+        let m_d_vec = vecd_to_mdetection(d_vec);
+
+        let gt_vec: Result<Vec<Vec<f64>>> = text
+            .lines()
+            .map(|line| {
+                let values: Result<Vec<_>> = line
+                    .split(" ")
+                    .map(|token| -> Result<_> {
+                        let value: f64 = token.parse()?;
+                        Ok(value)
+                    })
+                    .collect();
+                values
+            })
+            .collect();
+        let gt_vec = gt_vec?;
+        let m_gt_vec = vecg_to_mdetection(gt_vec);
+        let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
+        let t_vec: Vec<DetBoxStruct>;
+        let nt_vec: Vec<DetBoxStruct>;
+        t_vec = match_d_g(&m_d_vec, &m_gt_vec);
+        nt_vec = match_det_gt(&m_d_vec, &m_gt_vec);
+        assert_eq!(t_vec, nt_vec);
+        Ok(())
+    }
 }
