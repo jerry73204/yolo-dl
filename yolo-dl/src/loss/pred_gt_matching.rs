@@ -1,6 +1,7 @@
 use super::*;
 use crate::common::*;
 
+/// Internal helper function to calculate IOU for two bbox with tlbr representation
 fn cal_iou_tlbr(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
     let xa = std::cmp::max(bbox_a.0, bbox_b.0);
     let ya = std::cmp::max(bbox_a.1, bbox_b.1);
@@ -14,6 +15,7 @@ fn cal_iou_tlbr(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R
     iou
 }
 
+/// Trait for predicted bounding boxes
 pub trait PredBox {
     fn get_tlbr(&self) -> (R64, R64, R64, R64);
     fn confidence(&self) -> R64;
@@ -224,8 +226,7 @@ impl DetBoxStruct {
     }
 }
 
-//impl DetectionForAp<D, G>
-
+/// This function matches the detection results with ground truths and returns a vector of structs with trait DetectionForAp<D, G>
 pub fn match_det_gt<I, T>(dets: I, gts: I) -> Vec<DetBoxStruct>
 where
     I: IntoIterator<Item = T>,
