@@ -5,13 +5,8 @@ pub struct DarkBatchNormConfig {
     pub cudnn_enabled: bool,
     pub eps: f64,
     pub momentum: f64,
-    pub affine_init: Option<AffineInit>,
-}
-
-#[derive(Debug, Clone)]
-pub struct AffineInit {
-    pub ws_init: nn::Init,
-    pub bs_init: nn::Init,
+    pub ws_init: Option<nn::Init>,
+    pub bs_init: Option<nn::Init>,
 }
 
 #[derive(Debug)]
@@ -32,16 +27,8 @@ impl Default for DarkBatchNormConfig {
             cudnn_enabled: true,
             eps: 1e-4,
             momentum: 0.03,
-            affine_init: Some(Default::default()),
-        }
-    }
-}
-
-impl Default for AffineInit {
-    fn default() -> Self {
-        Self {
-            ws_init: nn::Init::Const(1.0),
-            bs_init: nn::Init::Const(0.0),
+            ws_init: Some(nn::Init::Const(1.0)),
+            bs_init: Some(nn::Init::Const(0.0)),
         }
     }
 }
@@ -58,15 +45,12 @@ impl DarkBatchNorm {
             cudnn_enabled,
             eps,
             momentum,
-            affine_init,
+            ws_init,
+            bs_init,
         } = config;
 
-        let ws = affine_init
-            .as_ref()
-            .map(|init| path.var("weight", &[out_dim], init.ws_init));
-        let bs = affine_init
-            .as_ref()
-            .map(|init| path.var("bias", &[out_dim], init.bs_init));
+        let ws = ws_init.map(|init| path.var("weight", &[out_dim], init));
+        let bs = bs_init.map(|init| path.var("bias", &[out_dim], init));
 
         Self {
             running_mean: path.zeros_no_train("running_mean", &[out_dim]),
@@ -108,7 +92,7 @@ impl DarkBatchNorm {
             input.dim()
         );
 
-        Ok(Tensor::batch_norm(
+        let output = Tensor::batch_norm(
             input,
             ws.as_ref(),
             bs.as_ref(),
@@ -118,6 +102,16 @@ impl DarkBatchNorm {
             momentum,
             eps,
             cudnn_enabled,
-        ))
+        );
+
+        assert!(
+            ws.as_ref()
+                .map(|ws| !bool::from(ws.le(1e-6).any()))
+                .unwrap_or(false),
+            "scaling factor {} is too small",
+            f64::from(ws.as_ref().unwrap().min())
+        );
+
+        Ok(output)
     }
 }
