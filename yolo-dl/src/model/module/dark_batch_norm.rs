@@ -1,5 +1,6 @@
 use crate::common::*;
 
+#[cfg(debug_assertions)]
 static SMALL_SCALING_WARN: Once = Once::new();
 
 #[derive(Debug, Clone)]
