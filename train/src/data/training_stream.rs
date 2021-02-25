@@ -544,7 +544,7 @@ impl TrainingStream {
         let stream =
             stream.try_par_then_unordered(par_config.clone(), move |(index, args)| async move {
                 let (step, epoch, bboxes, image, mut timing) = args;
-                timing.add_event("map to training record");
+                timing.add_event("in channel");
 
                 let record = TrainingRecord {
                     epoch,
