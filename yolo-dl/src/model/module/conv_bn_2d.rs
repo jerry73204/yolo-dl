@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ConvBn2DInit {
     pub in_c: usize,
     pub out_c: usize,
@@ -10,7 +10,7 @@ pub struct ConvBn2DInit {
     pub d: usize,
     pub g: usize,
     pub activation: Activation,
-    pub batch_norm: bool,
+    pub batch_norm: Option<DarkBatchNormConfig>,
 }
 
 impl ConvBn2DInit {
@@ -24,7 +24,7 @@ impl ConvBn2DInit {
             d: 1,
             g: 1,
             activation: Activation::Mish,
-            batch_norm: true,
+            batch_norm: Some(Default::default()),
         }
     }
 
@@ -60,15 +60,7 @@ impl ConvBn2DInit {
                 ..Default::default()
             },
         );
-        let bn = if batch_norm {
-            Some(DarkBatchNorm::new_2d(
-                path,
-                out_c as i64,
-                Default::default(),
-            ))
-        } else {
-            None
-        };
+        let bn = batch_norm.map(|config| DarkBatchNorm::new_2d(path, out_c as i64, config));
 
         ConvBn2D {
             conv,
@@ -96,16 +88,7 @@ impl ConvBn2D {
         let xs = xs.apply(conv).activation(activation);
 
         let xs = match bn {
-            Some(bn) => {
-                // show warning if scaling variance is too small
-                // tch::no_grad(|| {
-                //     let running_var_mean = f64::from(bn.running_var.mean(Kind::Float));
-                //     let ws_mean = f64::from(bn.ws.mean(Kind::Float));
-                //     println!("running_var={}\tws={}", running_var_mean, ws_mean);
-                // });
-
-                bn.forward_t(&xs, train).unwrap()
-            }
+            Some(bn) => bn.forward_t(&xs, train).unwrap(),
             None => xs,
         };
 

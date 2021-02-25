@@ -1,6 +1,6 @@
 use super::module::{
-    Concat2D, ConvBn2DInit, DarkCsp2DInit, Detect2DInit, Input, MergeDetect2D, Module, ModuleInput,
-    ModuleOutput, SppCsp2DInit, Sum2D, UpSample2D,
+    Concat2D, ConvBn2DInit, DarkBatchNormConfig, DarkCsp2DInit, Detect2DInit, Input, MergeDetect2D,
+    Module, ModuleInput, ModuleOutput, SppCsp2DInit, Sum2D, UpSample2D,
 };
 use crate::common::*;
 
@@ -95,6 +95,7 @@ mod yolo_model {
                             g,
                             act,
                             bn,
+                            bn_affine,
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
@@ -116,7 +117,14 @@ mod yolo_model {
                                     d,
                                     g,
                                     activation: act,
-                                    batch_norm: bn,
+                                    batch_norm: bn.then(|| {
+                                        let mut config = DarkBatchNormConfig::default();
+                                        if !bn_affine {
+                                            config.ws_init = None;
+                                            config.bs_init = None;
+                                        }
+                                        config
+                                    }),
                                 }
                                 .build(path),
                             )

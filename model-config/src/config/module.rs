@@ -565,6 +565,7 @@ mod conv_bn_2d_block {
         pub g: usize,
         pub act: Activation,
         pub bn: bool,
+        pub bn_affine: bool,
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -584,6 +585,8 @@ mod conv_bn_2d_block {
         pub act: Activation,
         #[serde(default = "default_batch_norm")]
         pub bn: bool,
+        #[serde(default = "default_batch_norm_affine")]
+        pub bn_affine: bool,
     }
 
     impl From<RawConvBn2D> for ConvBn2D {
@@ -599,6 +602,7 @@ mod conv_bn_2d_block {
                 g,
                 act,
                 bn,
+                bn_affine,
             } = raw;
 
             let p = p.unwrap_or_else(|| k / 2);
@@ -614,6 +618,7 @@ mod conv_bn_2d_block {
                 g,
                 act,
                 bn,
+                bn_affine,
             }
         }
     }
@@ -631,6 +636,7 @@ mod conv_bn_2d_block {
                 g,
                 act,
                 bn,
+                bn_affine,
             } = orig;
 
             Self {
@@ -644,15 +650,21 @@ mod conv_bn_2d_block {
                 g,
                 act,
                 bn,
+                bn_affine,
             }
         }
     }
 
     impl ConvBn2D {
-        pub fn new(name: Option<ModuleName>, from: Option<ModulePath>, c: usize, k: usize) -> Self {
+        pub fn new(
+            name: impl Into<Option<ModuleName>>,
+            from: impl Into<Option<ModulePath>>,
+            c: usize,
+            k: usize,
+        ) -> Self {
             Self {
-                name,
-                from,
+                name: name.into(),
+                from: from.into(),
                 c,
                 k,
                 s: default_stride(),
@@ -661,6 +673,7 @@ mod conv_bn_2d_block {
                 g: default_group(),
                 act: default_activation(),
                 bn: default_batch_norm(),
+                bn_affine: default_batch_norm_affine(),
             }
         }
     }
@@ -715,6 +728,10 @@ mod conv_bn_2d_block {
 
     fn default_batch_norm() -> bool {
         true
+    }
+
+    fn default_batch_norm_affine() -> bool {
+        false
     }
 }
 

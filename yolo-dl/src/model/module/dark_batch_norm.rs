@@ -1,10 +1,12 @@
 use crate::common::*;
 
+static SMALL_SCALING_WARN: Once = Once::new();
+
 #[derive(Debug, Clone)]
 pub struct DarkBatchNormConfig {
     pub cudnn_enabled: bool,
-    pub eps: f64,
-    pub momentum: f64,
+    pub eps: R64,
+    pub momentum: R64,
     pub ws_init: Option<nn::Init>,
     pub bs_init: Option<nn::Init>,
 }
@@ -25,8 +27,8 @@ impl Default for DarkBatchNormConfig {
     fn default() -> Self {
         Self {
             cudnn_enabled: true,
-            eps: 1e-4,
-            momentum: 0.03,
+            eps: r64(1e-4),
+            momentum: r64(0.03),
             ws_init: Some(nn::Init::Const(1.0)),
             bs_init: Some(nn::Init::Const(0.0)),
         }
@@ -59,8 +61,8 @@ impl DarkBatchNorm {
             bs,
             nd,
             cudnn_enabled,
-            eps,
-            momentum,
+            eps: eps.raw(),
+            momentum: momentum.raw(),
         }
     }
 
