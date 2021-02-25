@@ -296,64 +296,75 @@ async fn initialize_worker_contexts(
     // initialize workers
     info!("initializing model");
 
-    let mut worker_contexts =
-        future::try_join_all(workers.iter().cloned().map(|(device, minibatch_size)| {
-            let TrainingConfig {
-                loss:
-                    LossConfig {
-                        match_grid_method,
-                        box_metric,
-                        iou_loss_weight,
-                        objectness_loss_weight,
-                        classification_loss_weight,
-                    },
-                momentum,
-                weight_decay,
-                ..
-            } = config.training;
-            let model_config = config.model.clone();
+    let mut worker_contexts: Vec<_> = {
+        let config = config.clone();
 
-            tokio::task::spawn_blocking(move || {
-                let vs = nn::VarStore::new(device);
-                let root = vs.root();
+        stream::iter(workers.to_owned())
+            .wrapping_enumerate()
+            .par_map_unordered(None, move |(index, (device, minibatch_size))| {
+                let config = config.clone();
 
-                let model = Model::new(&root, &model_config)?;
-                let yolo_loss = YoloLossInit {
-                    reduction: Reduction::Mean,
-                    match_grid_method: Some(match_grid_method),
-                    box_metric: Some(box_metric),
-                    iou_loss_weight: iou_loss_weight.map(R64::raw),
-                    objectness_loss_weight: objectness_loss_weight.map(R64::raw),
-                    classification_loss_weight: classification_loss_weight.map(R64::raw),
-                    ..Default::default()
-                }
-                .build()?;
+                move || {
+                    let TrainingConfig {
+                        loss:
+                            LossConfig {
+                                match_grid_method,
+                                box_metric,
+                                iou_loss_weight,
+                                objectness_loss_weight,
+                                classification_loss_weight,
+                            },
+                        momentum,
+                        weight_decay,
+                        ..
+                    } = config.training;
+                    let model_config = config.model.clone();
 
-                let training_step = root.zeros_no_train("training_step", &[]);
+                    let vs = nn::VarStore::new(device);
+                    let root = vs.root();
 
-                let optimizer = {
-                    let mut opt = nn::Adam {
-                        wd: weight_decay.raw(),
+                    let model = Model::new(&root, &model_config)?;
+                    let yolo_loss = YoloLossInit {
+                        reduction: Reduction::Mean,
+                        match_grid_method: Some(match_grid_method),
+                        box_metric: Some(box_metric),
+                        iou_loss_weight: iou_loss_weight.map(R64::raw),
+                        objectness_loss_weight: objectness_loss_weight.map(R64::raw),
+                        classification_loss_weight: classification_loss_weight.map(R64::raw),
                         ..Default::default()
                     }
-                    .build(&vs, DUMMY_LR)?;
-                    opt.set_momentum(momentum.raw());
-                    opt
-                };
+                    .build()?;
 
-                Fallible::Ok(WorkerContext {
-                    device,
-                    minibatch_size,
-                    vs,
-                    model,
-                    yolo_loss,
-                    optimizer,
-                    training_step,
-                })
+                    let training_step = root.zeros_no_train("training_step", &[]);
+
+                    let optimizer = {
+                        let mut opt = nn::Adam {
+                            wd: weight_decay.raw(),
+                            ..Default::default()
+                        }
+                        .build(&vs, DUMMY_LR)?;
+                        opt.set_momentum(momentum.raw());
+                        opt
+                    };
+
+                    Fallible::Ok((
+                        index,
+                        WorkerContext {
+                            device,
+                            minibatch_size,
+                            vs,
+                            model,
+                            yolo_loss,
+                            optimizer,
+                            training_step,
+                        },
+                    ))
+                }
             })
-            .map(|result| Fallible::Ok(result??))
-        }))
-        .await?;
+            .try_reorder_enumerated()
+            .try_collect()
+            .await?
+    };
 
     init_timing.add_event("init worker contexts");
 
@@ -407,15 +418,21 @@ async fn sync_weights(worker_contexts: Vec<WorkerContext>) -> Result<Vec<WorkerC
     let mut iter = worker_contexts.into_iter();
     let first_context = iter.next().unwrap();
     let first_vs = Arc::new(first_context.vs);
-    let other_contexts = future::try_join_all(iter.map(|mut context| {
+    let other_contexts: Vec<_> = {
         let first_vs = first_vs.clone();
-        tokio::task::spawn_blocking(move || -> Result<_> {
-            context.vs.copy(&*first_vs)?;
-            Ok(context)
-        })
-        .map(|result| Fallible::Ok(result??))
-    }))
-    .await?;
+        stream::iter(iter)
+            .wrapping_enumerate()
+            .par_map(None, move |(index, mut context)| {
+                let first_vs = first_vs.clone();
+                move || {
+                    context.vs.copy(&*first_vs)?;
+                    Fallible::Ok((index, context))
+                }
+            })
+            .try_reorder_enumerated()
+            .try_collect()
+            .await?
+    };
 
     let first_context = WorkerContext {
         vs: Arc::try_unwrap(first_vs).unwrap(),
@@ -472,9 +489,10 @@ async fn forward_step(
 
     // run tasks
     let (worker_contexts, outputs_per_worker) =
-        future::try_join_all(worker_contexts.into_iter().zip_eq(jobs).enumerate().map(
-            |(worker_index, (mut context, jobs))| {
-                tokio::task::spawn_blocking(move || -> Result<_> {
+        stream::iter(worker_contexts.into_iter().zip_eq(jobs))
+            .wrapping_enumerate()
+            .par_map_unordered(None, |(worker_index, (mut context, jobs))| {
+                move || {
                     let outputs: Vec<_> = jobs
                         .into_iter()
                         .map(|job| -> Result<_> {
@@ -533,14 +551,14 @@ async fn forward_step(
                         })
                         .try_collect()?;
 
-                    Ok((context, outputs))
-                })
-                .map(|result| Fallible::Ok(result??))
-            },
-        ))
-        .await?
-        .into_iter()
-        .unzip_n_vec();
+                    Fallible::Ok((worker_index, (context, outputs)))
+                }
+            })
+            .try_reorder_enumerated()
+            .try_collect::<Vec<_>>()
+            .await?
+            .into_iter()
+            .unzip_n_vec();
 
     let mut outputs = outputs_per_worker.into_iter().flatten().collect_vec();
     outputs.sort_by_cached_key(|output| output.job_index);
