@@ -106,13 +106,21 @@ impl DarkBatchNorm {
             cudnn_enabled,
         );
 
-        assert!(
-            ws.as_ref()
-                .map(|ws| !bool::from(ws.le(1e-6).any()))
-                .unwrap_or(false),
-            "scaling factor {} is too small",
-            f64::from(ws.as_ref().unwrap().min())
-        );
+        #[cfg(debug_assertions)]
+        {
+            let has_small_ws = ws
+                .as_ref()
+                .map(|ws| bool::from(ws.abs().le(1e-15).any()))
+                .unwrap_or(false);
+            if has_small_ws {
+                SMALL_SCALING_WARN.call_once(|| {
+                    warn!(
+                        "scaling factor {} is too small",
+                        f64::from(ws.as_ref().unwrap().abs().min())
+                    );
+                });
+            }
+        }
 
         Ok(output)
     }
