@@ -111,6 +111,10 @@ mod dataset {
 /// Data preprocessing options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessorConfig {
+    /// If set, process image records without ordering.
+    pub unordered_records: bool,
+    /// If set, produce training batches without ordering.
+    pub unordered_batches: bool,
     /// The maximum number of waiting data records per preprocessing stage.
     pub worker_buf_size: Option<usize>,
     /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.

@@ -454,8 +454,14 @@ impl TrainingStream {
                 Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
             });
 
-        // reorder items
-        let stream = stream.try_reorder_enumerated();
+        // optionally reorder records
+        let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
+            if self.config.preprocessor.unordered_records {
+                Box::pin(stream.and_then(|(_index, args)| async move { Fallible::Ok(args) }))
+            } else {
+                Box::pin(stream.try_reorder_enumerated())
+            }
+        };
 
         // group into chunks
         let stream = {
@@ -551,8 +557,14 @@ impl TrainingStream {
                 Ok((index, record))
             });
 
-        // reorder back
-        let stream = stream.try_reorder_enumerated();
+        // optionally reorder back
+        let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
+            if self.config.preprocessor.unordered_batches {
+                Box::pin(stream.and_then(|(_index, args)| async move { Fallible::Ok(args) }))
+            } else {
+                Box::pin(stream.try_reorder_enumerated())
+            }
+        };
 
         Ok(Box::pin(stream))
     }

@@ -90,6 +90,8 @@
     },
     "preprocessor": {
         // "worker_buf_size": 36,
+        "unordered_records": true,
+        "unordered_batches": true,
         "cache_dir": "/home/aeon/yolo-dl-cache",
         "device": "cuda(0)",
         "mixup_prob": 0.0,
