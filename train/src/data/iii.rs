@@ -1,6 +1,6 @@
 use super::*;
 use crate::common::*;
-use voc_dataset as voc;
+use iii_formosa_dataset as iii;
 
 const III_DEPTH: usize = 3;
 
@@ -78,7 +78,7 @@ impl IiiDataset {
                                 )
                             })?;
 
-                        let annotation: voc::Annotation = {
+                        let annotation: iii::Annotation = {
                             tokio::task::spawn_blocking(move || {
                                 serde_xml_rs::from_str(&xml_content)
                             })
@@ -141,7 +141,7 @@ impl IiiDataset {
                         } = sample;
 
                         let size = {
-                            let voc::Size { width, height, .. } = annotation.size;
+                            let iii::Size { width, height, .. } = annotation.size;
                             PixelSize::new(height, width).unwrap()
                         };
 
@@ -158,7 +158,7 @@ impl IiiDataset {
                                 Some((obj, class_index))
                             })
                             .filter_map(|(obj, class_index)| {
-                                let voc::BndBox {
+                                let iii::BndBox {
                                     xmin,
                                     ymin,
                                     xmax,
@@ -210,5 +210,5 @@ impl IiiDataset {
 pub struct IiiSample {
     pub image_file: PathBuf,
     pub annotation_file: PathBuf,
-    pub annotation: voc::Annotation,
+    pub annotation: iii::Annotation,
 }

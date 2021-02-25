@@ -50,6 +50,7 @@ darknet-config = { version = "0.1", path = "../darknet-config" }
 csv = "1.1.5"
 imagesize = "0.8.8"
 owning_ref = "0.4.1"
+iii-formosa-dataset = "0.1.0"
 
 [features]
 profiling = ["yolo-dl/profiling"]

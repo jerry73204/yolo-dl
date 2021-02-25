@@ -114,7 +114,8 @@ pub fn single_gpu_training_worker(
         }
 
         loop {
-            let record = runtime.block_on(data_rx.recv())?;
+            let mut record = runtime.block_on(data_rx.recv())?;
+            record.timing.add_event("in channel");
 
             let TrainingRecord {
                 epoch,
@@ -123,7 +124,7 @@ pub fn single_gpu_training_worker(
                 bboxes,
                 mut timing,
             } = record.to_device(device);
-            timing.add_event("next record");
+            timing.add_event("move to master device");
 
             // forward pass
             let output = model.forward_t(&image, true)?;

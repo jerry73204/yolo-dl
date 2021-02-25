@@ -36,7 +36,7 @@ where
 
                 ensure!(
                     size.h() > 0 && size.w() > 0,
-                    "image height and w must be positive"
+                    "image height and width must be positive"
                 );
 
                 let range_h = (-out_of_bound_tolerance)..(out_of_bound_tolerance + size.h() as f64);
