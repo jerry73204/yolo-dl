@@ -89,16 +89,25 @@ pub async fn multi_gpu_training_worker(
         }
 
         loop {
-            let record = data_rx.recv().await?;
-            let TrainingRecord {
-                epoch,
-                image,
-                bboxes,
-                mut timing,
-                ..
-            } = tokio::task::spawn_blocking(move || record.to_device(master_device)).await?;
+            let mut record = data_rx.recv().await?;
+            record.timing.add_event("in channel");
 
-            timing.add_event("wait for data");
+            let (epoch, image, bboxes, mut timing) = tokio::task::spawn_blocking(move || {
+                let TrainingRecord {
+                    epoch,
+                    image,
+                    bboxes,
+                    timing,
+                    ..
+                } = record;
+
+                // changing device is expensive
+                let image = image.to_device(master_device);
+
+                (epoch, image, bboxes, timing)
+            })
+            .await?;
+            timing.add_event("move to master device");
 
             // sync weights among workers
             worker_contexts = sync_weights(worker_contexts).await?;

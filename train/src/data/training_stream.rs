@@ -219,7 +219,7 @@ impl TrainingStream {
                 let par_config = par_config.clone();
 
                 async move {
-                    timing.add_event("data loading start");
+                    timing.add_event("init");
 
                     // sample mix method
                     let mix_kind = [
@@ -272,7 +272,7 @@ impl TrainingStream {
                         let _ = logging_tx.send(msg);
                     }
 
-                    timing.add_event("data loading end");
+                    timing.add_event("data loading");
                     Fallible::Ok((index, (step, epoch, data, timing)))
                 }
             })
@@ -319,7 +319,7 @@ impl TrainingStream {
 
                 async move {
                     let (step, epoch, data, mut timing) = args;
-                    timing.add_event("random affine start");
+                    timing.add_event("in channel");
 
                     let mix_kind = data.kind();
                     let pairs: Vec<_> = stream::iter(data.into_iter())
@@ -354,7 +354,7 @@ impl TrainingStream {
                         ))
                         .unwrap();
 
-                    timing.add_event("random affine end");
+                    timing.add_event("random affine");
                     Fallible::Ok((index, (step, epoch, new_data, timing)))
                 }
             })
@@ -396,7 +396,7 @@ impl TrainingStream {
 
                 async move {
                     let (step, epoch, data, mut timing) = args;
-                    timing.add_event("mosaic processor start");
+                    timing.add_event("in channel");
 
                     let (mixed_image, mixed_bboxes) = match data {
                         MixData::None(pairs) => {
@@ -438,7 +438,7 @@ impl TrainingStream {
                         ))
                         .unwrap();
 
-                    timing.add_event("mosaic processor end");
+                    timing.add_event("mosaic processor");
                     Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
                 }
             })
@@ -448,16 +448,16 @@ impl TrainingStream {
         let stream =
             stream.try_par_then_unordered(par_config.clone(), move |(index, args)| async move {
                 let (step, epoch, bboxes, image, mut timing) = args;
-                timing.add_event("batch dimensions start");
+                timing.add_event("in channel");
                 let new_image = image.unsqueeze(0);
-                timing.add_event("batch dimensions end");
+                timing.add_event("batch dimensions");
                 Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
             });
 
         // optionally reorder records
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
             if self.config.preprocessor.unordered_records {
-                Box::pin(stream.and_then(|(_index, args)| async move { Fallible::Ok(args) }))
+                Box::pin(stream.map_ok(|(_index, args)| args))
             } else {
                 Box::pin(stream.try_reorder_enumerated())
             }
@@ -522,7 +522,7 @@ impl TrainingStream {
             async move {
                 chunk.iter_mut().for_each(|args| {
                     let (_step, _epoch, _bboxes, _image, timing) = args;
-                    timing.add_event("batching start");
+                    timing.add_event("in channel");
                 });
 
                 let State {
@@ -534,7 +534,7 @@ impl TrainingStream {
                 } = chunk.into_iter().sum();
 
                 let image_batch = Tensor::cat(&image_vec, 0);
-                let timing = Timing::merge("batching end", timing_vec).unwrap();
+                let timing = Timing::merge("batching", timing_vec).unwrap();
 
                 Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch, timing)))
             }
@@ -546,13 +546,14 @@ impl TrainingStream {
                 let (step, epoch, bboxes, image, mut timing) = args;
                 timing.add_event("in channel");
 
-                let record = TrainingRecord {
+                let mut record = TrainingRecord {
                     epoch,
                     step,
                     image: image.set_requires_grad(false),
                     bboxes,
                     timing,
                 };
+                record.timing.add_event("map to output type");
 
                 Ok((index, record))
             });
@@ -560,7 +561,7 @@ impl TrainingStream {
         // optionally reorder back
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
             if self.config.preprocessor.unordered_batches {
-                Box::pin(stream.and_then(|(_index, args)| async move { Fallible::Ok(args) }))
+                Box::pin(stream.map_ok(|(_index, args)| args))
             } else {
                 Box::pin(stream.try_reorder_enumerated())
             }

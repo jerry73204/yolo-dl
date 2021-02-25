@@ -8,8 +8,8 @@ mod iii;
 mod record;
 mod sanitized;
 mod training_stream;
-mod voc;
 mod utils;
+mod voc;
 
 pub use self::csv::*;
 pub use cached::*;
@@ -19,5 +19,5 @@ pub use iii::*;
 pub use record::*;
 pub use sanitized::*;
 pub use training_stream::*;
-pub use voc::*;
 pub use utils::*;
+pub use voc::*;
