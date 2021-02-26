@@ -51,3 +51,6 @@ strum = { version = "0.20.0", features = ["derive"] }
 
 [features]
 profiling = ["ptree"]
+
+[dev-dependencies]
+counter = "0.5.2"

@@ -168,6 +168,19 @@ mod tlbr {
                 .max(db_r.powi(2) + dr_r.powi(2))
                 .sqrt()
         }
+
+        pub fn cast<V>(&self) -> Option<TLBR<V, U>>
+        where
+            V: Float,
+        {
+            Some(TLBR {
+                t: V::from(self.t)?,
+                l: V::from(self.l)?,
+                b: V::from(self.b)?,
+                r: V::from(self.r)?,
+                _phantom: PhantomData,
+            })
+        }
     }
 
     impl<T, U> From<CyCxHW<T, U>> for TLBR<T, U>
