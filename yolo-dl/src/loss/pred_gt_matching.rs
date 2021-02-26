@@ -1,47 +1,33 @@
 use super::*;
 use crate::common::*;
 
-/// Internal helper function to calculate IOU for two bbox with tlbr representation
-fn cal_iou_tlbr(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
-    let xa = std::cmp::max(bbox_a.0, bbox_b.0);
-    let ya = std::cmp::max(bbox_a.1, bbox_b.1);
-    let xb = std::cmp::min(bbox_a.2, bbox_b.2);
-    let yb = std::cmp::min(bbox_a.3, bbox_b.3);
-    let inter_area =
-        std::cmp::max(r64(0.0), xb - xa + r64(1.0)) * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
-    let box_a_area = (bbox_a.2 - bbox_a.0 + r64(1.0)) * (bbox_a.3 - bbox_a.1 + r64(1.0));
-    let box_b_area = (bbox_b.2 - bbox_b.0 + r64(1.0)) * (bbox_b.3 - bbox_b.1 + r64(1.0));
-    let iou = inter_area / (box_a_area + box_b_area - inter_area);
-    iou
-}
-
 /// Trait for predicted bounding boxes
 pub trait PredBox {
-    fn get_tlbr(&self) -> (R64, R64, R64, R64);
+    fn tlbr(&self) -> UnitlessTLBR<R64>;
     fn confidence(&self) -> R64;
-    fn get_cls_conf(&self) -> R64;
-    fn get_cls_id(&self) -> i32;
-    fn get_id(&self) -> i32;
+    fn cls_conf(&self) -> R64;
+    fn cls_id(&self) -> i32;
+    fn id(&self) -> i32;
 }
 
 impl<T> PredBox for &T
 where
     T: PredBox,
 {
-    fn get_tlbr(&self) -> (R64, R64, R64, R64) {
-        (*self).get_tlbr()
+    fn tlbr(&self) -> UnitlessTLBR<R64> {
+        (*self).tlbr()
     }
     fn confidence(&self) -> R64 {
         (*self).confidence()
     }
-    fn get_cls_conf(&self) -> R64 {
-        (*self).get_cls_conf()
+    fn cls_conf(&self) -> R64 {
+        (*self).cls_conf()
     }
-    fn get_cls_id(&self) -> i32 {
-        (*self).get_cls_id()
+    fn cls_id(&self) -> i32 {
+        (*self).cls_id()
     }
-    fn get_id(&self) -> i32 {
-        (*self).get_id()
+    fn id(&self) -> i32 {
+        (*self).id()
     }
 }
 
@@ -76,19 +62,19 @@ impl Hash for MDetection {
 }
 
 impl PredBox for MDetection {
-    fn get_tlbr(&self) -> (R64, R64, R64, R64) {
-        (self.x1, self.y1, self.x2, self.y2)
+    fn tlbr(&self) -> UnitlessTLBR<R64> {
+        UnitlessTLBR::from_tlbr(self.x1, self.y1, self.x2, self.y2).unwrap()
     }
     fn confidence(&self) -> R64 {
         self.conf
     }
-    fn get_cls_conf(&self) -> R64 {
+    fn cls_conf(&self) -> R64 {
         self.cls_conf
     }
-    fn get_cls_id(&self) -> i32 {
+    fn cls_id(&self) -> i32 {
         self.cls_id
     }
-    fn get_id(&self) -> i32 {
+    fn id(&self) -> i32 {
         self.id
     }
 }
@@ -136,9 +122,9 @@ impl MDetection {
             cls_id,
         }
     }
-    fn get_tlbr(&self) -> (R64, R64, R64, R64) {
-        (self.x1, self.y1, self.x2, self.y2)
-    }
+    // fn tlbr(&self) -> (R64, R64, R64, R64) {
+    //     (self.x1, self.y1, self.x2, self.y2)
+    // }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,12 +148,12 @@ impl average_precision::DetectionForAp<MDetection, MDetection> for DetBoxStruct 
         match &self.ground_truth {
             None => r64(0.0),
             Some(gt) => {
-                let xa = std::cmp::max(self.detection.x1, gt.x1);
-                let ya = std::cmp::max(self.detection.y1, gt.y1);
-                let xb = std::cmp::min(self.detection.x2, gt.x2);
-                let yb = std::cmp::min(self.detection.y2, gt.y2);
-                let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
-                    * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+                let xa = cmp::max(self.detection.x1, gt.x1);
+                let ya = cmp::max(self.detection.y1, gt.y1);
+                let xb = cmp::min(self.detection.x2, gt.x2);
+                let yb = cmp::min(self.detection.y2, gt.y2);
+                let inter_area =
+                    cmp::max(r64(0.0), xb - xa + r64(1.0)) * cmp::max(r64(0.0), yb - ya + r64(1.0));
                 let box_a_area = (self.detection.x2 - self.detection.x1 + r64(1.0))
                     * (self.detection.y2 - self.detection.y1 + r64(1.0));
                 let box_b_area = (gt.x2 - gt.x1 + r64(1.0)) * (gt.y2 - gt.y1 + r64(1.0));
@@ -227,9 +213,11 @@ impl DetBoxStruct {
 }
 
 /// This function matches the detection results with ground truths and returns a vector of structs with trait DetectionForAp<D, G>
-pub fn match_det_gt<I, T>(dets: I, gts: I) -> Vec<DetBoxStruct>
+pub fn match_det_gt<T>(
+    dets: impl IntoIterator<Item = T>,
+    gts: impl IntoIterator<Item = T>,
+) -> Vec<DetBoxStruct>
 where
-    I: IntoIterator<Item = T>,
     T: PredBox,
 {
     let dets: Vec<_> = dets.into_iter().collect();
@@ -238,39 +226,45 @@ where
     let ret: Vec<_> = dets
         .iter()
         .map(|det| {
-            let d_id = det.get_id();
-            let d_box = det.get_tlbr();
+            let d_id = det.id();
+            let d_box = det.tlbr();
             let d_conf = det.confidence();
-            let d_cls_conf = det.get_cls_conf();
-            let d_cls_id = det.get_cls_id();
+            let d_cls_conf = det.cls_conf();
+            let d_cls_id = det.cls_id();
+
             let gt_iou_boxes: Vec<_> = gts
                 .iter()
                 .map(|gt| {
-                    let g_id = gt.get_id();
-                    let g_cls_id = gt.get_cls_id();
-                    let g_box = gt.get_tlbr();
-                    let iou = cal_iou_tlbr(d_box, g_box);
+                    let g_id = gt.id();
+                    let g_cls_id = gt.cls_id();
+                    let g_box = gt.tlbr();
+                    let iou = det.tlbr().iou_with(&gt.tlbr());
                     (iou, g_id, g_cls_id, g_box)
                 })
                 .collect();
-            let gt_iou_max = gt_iou_boxes.iter().max();
+            let gt_iou_max = gt_iou_boxes
+                .iter()
+                .max_by_key(|args| {
+                    let (iou, _, _, _) = *args;
+                    iou
+                })
+                .unwrap();
+            let (iou, g_id, g_cls_id, ref g_box) = *gt_iou_max;
 
-            let (iou, g_id, g_cls_id, g_box) = gt_iou_max.unwrap();
+            let paired: DetBoxStruct;
 
-            let mut paired: DetBoxStruct;
-
-            if *iou == r64(0.0) {
+            if abs_diff_eq!(iou.raw(), 0.0) {
                 //no matching gt
-                let (d_x1, d_y1, d_x2, d_y2) = d_box;
+                let [d_x1, d_y1, d_x2, d_y2] = d_box.tlbr_params();
                 paired = DetBoxStruct::new_no_gt(
                     d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
                 );
             } else {
-                let (d_x1, d_y1, d_x2, d_y2) = d_box;
-                let (g_x1, g_y1, g_x2, g_y2) = g_box;
+                let [d_x1, d_y1, d_x2, d_y2] = d_box.tlbr_params();
+                let [g_x1, g_y1, g_x2, g_y2] = g_box.tlbr_params();
                 paired = DetBoxStruct::new(
-                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id, *g_id, *g_cls_id,
-                    *g_x1, *g_y1, *g_x2, *g_y2,
+                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id, g_id, g_cls_id,
+                    g_x1, g_y1, g_x2, g_y2,
                 );
             }
             paired
@@ -283,12 +277,12 @@ where
 mod tests {
     use super::*;
     fn cal_iou_xxyys(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
-        let xa = std::cmp::max(bbox_a.0, bbox_b.0);
-        let ya = std::cmp::max(bbox_a.1, bbox_b.1);
-        let xb = std::cmp::min(bbox_a.2, bbox_b.2);
-        let yb = std::cmp::min(bbox_a.3, bbox_b.3);
-        let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
-            * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+        let xa = cmp::max(bbox_a.0, bbox_b.0);
+        let ya = cmp::max(bbox_a.1, bbox_b.1);
+        let xb = cmp::min(bbox_a.2, bbox_b.2);
+        let yb = cmp::min(bbox_a.3, bbox_b.3);
+        let inter_area =
+            cmp::max(r64(0.0), xb - xa + r64(1.0)) * cmp::max(r64(0.0), yb - ya + r64(1.0));
         let box_a_area = (bbox_a.2 - bbox_a.0 + r64(1.0)) * (bbox_a.3 - bbox_a.1 + r64(1.0));
         let box_b_area = (bbox_b.2 - bbox_b.0 + r64(1.0)) * (bbox_b.3 - bbox_b.1 + r64(1.0));
         let iou = inter_area / (box_a_area + box_b_area - inter_area);
@@ -296,26 +290,22 @@ mod tests {
     }
 
     fn match_d_g(dets: &[MDetection], gts: &[MDetection]) -> Vec<DetBoxStruct> {
-        let mut bbox_d: (R64, R64, R64, R64);
-        let mut bbox_g: (R64, R64, R64, R64);
-        let mut max_iou: R64;
-        let mut tmp_iou: R64;
+        let mut max_iou = r64(0.0);
         let mut sel_g: usize;
         let mut td: DetBoxStruct;
         let mut t_vec: Vec<DetBoxStruct> = Vec::new();
         for d_id in 0..dets.len() {
-            max_iou = r64(0.0);
             sel_g = 0;
-            bbox_d = dets[d_id].get_tlbr();
+            let bbox_d = dets[d_id].tlbr();
             for g_id in 0..gts.len() {
-                bbox_g = gts[g_id].get_tlbr();
-                tmp_iou = cal_iou_xxyys(bbox_d, bbox_g);
+                let bbox_g = gts[g_id].tlbr();
+                let tmp_iou = bbox_d.iou_with(&bbox_g);
                 if gts[g_id].cls_id == dets[d_id].cls_id && max_iou < tmp_iou {
                     max_iou = tmp_iou;
                     sel_g = g_id;
                 }
             }
-            if max_iou == r64(0.0) {
+            if abs_diff_eq!(max_iou.raw(), 0.0) {
                 td = DetBoxStruct::new_no_gt(
                     d_id as i32,
                     dets[d_id].x1,

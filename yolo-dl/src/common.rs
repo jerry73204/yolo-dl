@@ -35,7 +35,7 @@ pub use serde::{
 pub use slice_of_array::{SliceFlatExt, SliceNestExt};
 pub use std::{
     borrow::{Borrow, Cow},
-    cmp::Ordering,
+    cmp::{self, Ordering},
     collections::{hash_map, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     env::{self, VarError},
@@ -66,7 +66,7 @@ pub use tch::{
 pub use tch_goodies::{
     CyCxHW, CyCxHWTensor, CyCxHWTensorUnchecked, GridCyCxHW, GridSize, PixelCyCxHW, PixelLabel,
     PixelSize, Ratio, RatioCyCxHW, RatioLabel, RatioSize, TLBRTensor, TLBRTensorUnchecked,
-    TensorExt, UnitlessCyCxHW, NONE_INDEX, TLBR,
+    TensorExt, UnitlessCyCxHW, UnitlessTLBR, NONE_INDEX, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;

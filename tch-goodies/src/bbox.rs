@@ -42,6 +42,18 @@ mod tlbr {
         T: Float,
         U: Unit,
     {
+        pub fn from_tlbr(t: T, l: T, b: T, r: T) -> Result<Self> {
+            ensure!(b >= t && r >= l, "b >= t and r >= l must hold");
+
+            Ok(Self {
+                t,
+                l,
+                b,
+                r,
+                _phantom: PhantomData,
+            })
+        }
+
         pub fn tlbr_params(&self) -> [T; 4] {
             [self.t, self.l, self.b, self.r]
         }
