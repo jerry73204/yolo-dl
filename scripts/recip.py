@@ -7,8 +7,8 @@ def main():
     if not recip:
         return
     
-    max_val = max(recip)
-    print(', '.join(map(lambda val: str(val / max_val), recip)))
+    min_val = min(recip)
+    print(', '.join(map(lambda val: str(val / min_val), recip)))
 
 if __name__ == '__main__':
     main()
