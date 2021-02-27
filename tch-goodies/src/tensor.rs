@@ -800,21 +800,27 @@ mod tensor_ext {
         // }
 
         fn f_rgb_to_hsv(&self) -> Result<Tensor> {
-            let eps = 1e-4;
+            let eps = 1e-10;
             let rgb = self;
-            let (channels, _height, _width) = rgb.size3()?;
+
+            let (channel_index, channels) = match rgb.size().as_slice() {
+                &[c, _h, _w] => (0, c),
+                &[_b, c, _h, _w] => (1, c),
+                dims => bail!("expect 3 or 4 dimensions, but get {:?}", dims),
+            };
+
             ensure!(
                 channels == 3,
                 "channel size must be 3, but get {}",
                 channels
             );
 
-            let red = rgb.select(0, 0);
-            let green = rgb.select(0, 1);
-            let blue = rgb.select(0, 2);
+            let red = rgb.select(channel_index, 0);
+            let green = rgb.select(channel_index, 1);
+            let blue = rgb.select(channel_index, 2);
 
-            let (max, argmax) = rgb.max2(0, false);
-            let (min, _argmin) = rgb.min2(0, false);
+            let (max, argmax) = rgb.max2(channel_index, false);
+            let (min, _argmin) = rgb.min2(channel_index, false);
             let diff = &max - &min;
 
             let value = max;
@@ -830,12 +836,10 @@ mod tensor_ext {
                     &diff.le(eps),
                     &case2.where1(&argmax.eq(0), &case3.where1(&argmax.eq(1), &case4)),
                 );
-                let hue = hue.where1(&hue.ge(0.0), &(&hue + 6.0));
-                let hue = hue / 6.0;
-                hue
+                (hue + 6.0).fmod(6.0) / 6.0
             };
 
-            let hsv = Tensor::stack(&[hue, saturation, value], 0);
+            let hsv = Tensor::stack(&[hue, saturation, value], channel_index);
 
             debug_assert!(
                 !bool::from(hsv.isnan().any()),
@@ -847,31 +851,30 @@ mod tensor_ext {
 
         fn f_hsv_to_rgb(&self) -> Result<Tensor> {
             let hsv = self;
-            let (channels, _height, _width) = hsv.size3()?;
+            let (channel_index, channels) = match hsv.size().as_slice() {
+                &[c, _h, _w] => (0, c),
+                &[_b, c, _h, _w] => (1, c),
+                dims => bail!("expect 3 or 4 dimensions, but get {:?}", dims),
+            };
             ensure!(
                 channels == 3,
                 "channel size must be 3, but get {}",
                 channels
             );
 
-            let hue = hsv.select(0, 0);
-            let saturation = hsv.select(0, 1);
-            let value = hsv.select(0, 2);
+            let hue = hsv.select(channel_index, 0);
+            let saturation = hsv.select(channel_index, 1);
+            let value = hsv.select(channel_index, 2);
 
             let func = |n: i64| {
-                let k = (&hue + n as f64).fmod(2);
-                &value
-                    - &value
-                        * &saturation
-                        * value
-                            .zeros_like()
-                            .max1(&k.min1(&(-&k + 4.0)).clamp_min(1.0))
+                let k = (&hue * 6.0 + n as f64).fmod(6.0);
+                &value * (1.0 - &saturation * k.min1(&(-&k + 4.0)).clamp(0.0, 1.0))
             };
 
             let red = func(5);
             let green = func(3);
             let blue = func(1);
-            let rgb = Tensor::stack(&[red, green, blue], 0);
+            let rgb = Tensor::stack(&[red, green, blue], channel_index);
 
             Ok(rgb)
         }
@@ -1096,18 +1099,18 @@ mod tests {
 
     #[test]
     fn hue_rgb_conv() {
-        for _ in 0..1000 {
-            {
-                let input = Tensor::rand(&[3, 512, 512], (Kind::Float, Device::Cpu));
-                let output = input.rgb_to_hsv().hsv_to_rgb();
-                assert!(bool::from((input - output).abs().le(1e-10).all()))
-            }
+        const EPSILON: f64 = 1e-5;
 
-            {
-                let input = Tensor::rand(&[3, 512, 512], (Kind::Float, Device::Cpu));
-                let output = input.hsv_to_rgb().rgb_to_hsv();
-                assert!(bool::from((input - output).abs().le(1e-10).all()))
-            }
+        for _ in 0..100 {
+            let input = Tensor::rand(&[3, 512, 512], (Kind::Float, Device::Cpu));
+            let output = input.rgb_to_hsv().hsv_to_rgb();
+            assert!(
+                <f32 as From<_>>::from(output.min()) >= 0.0
+                    && <f32 as From<_>>::from(output.max()) <= 1.0
+            );
+
+            let diff = (input - output).abs();
+            assert!(bool::from(diff.le(EPSILON).all()));
         }
     }
 }
