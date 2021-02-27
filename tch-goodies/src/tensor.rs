@@ -1089,3 +1089,25 @@ mod into_index_list {
         (T7, arg7)
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hue_rgb_conv() {
+        for _ in 0..1000 {
+            {
+                let input = Tensor::rand(&[3, 512, 512], (Kind::Float, Device::Cpu));
+                let output = input.rgb_to_hsv().hsv_to_rgb();
+                assert!(bool::from((input - output).abs().le(1e-10).all()))
+            }
+
+            {
+                let input = Tensor::rand(&[3, 512, 512], (Kind::Float, Device::Cpu));
+                let output = input.hsv_to_rgb().rgb_to_hsv();
+                assert!(bool::from((input - output).abs().le(1e-10).all()))
+            }
+        }
+    }
+}
