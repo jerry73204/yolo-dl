@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::{path::PathBuf, sync::Arc};
 use structopt::StructOpt;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{filter::LevelFilter, prelude::*, EnvFilter};
 use train::config::Config;
 
 #[derive(Debug, Clone, StructOpt)]
@@ -17,7 +17,7 @@ pub async fn main() -> Result<()> {
     // setup tracing
     {
         let fmt_layer = tracing_subscriber::fmt::layer().with_target(true).compact();
-        let filter_layer = EnvFilter::from_default_env();
+        let filter_layer = EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into());
 
         tracing_subscriber::registry()
             .with(filter_layer)
