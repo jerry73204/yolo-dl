@@ -3,36 +3,36 @@
 use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RandomDistortInit {
+pub struct ColorJitterInit {
     pub hue_shift: Option<R64>,
-    pub saturation_scale: Option<R64>,
-    pub value_scale: Option<R64>,
+    pub saturation_shift: Option<R64>,
+    pub value_shift: Option<R64>,
 }
 
-impl RandomDistortInit {
-    pub fn build(self) -> RandomDistort {
+impl ColorJitterInit {
+    pub fn build(self) -> ColorJitter {
         let Self {
             hue_shift,
-            saturation_scale,
-            value_scale,
+            saturation_shift,
+            value_shift,
         } = self;
 
-        RandomDistort {
+        ColorJitter {
             max_hue_shift: hue_shift.map(R64::raw),
-            max_saturation_scale: saturation_scale.map(R64::raw),
-            max_value_scale: value_scale.map(R64::raw),
+            max_saturation_shift: saturation_shift.map(R64::raw),
+            max_value_shift: value_shift.map(R64::raw),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct RandomDistort {
+pub struct ColorJitter {
     max_hue_shift: Option<f64>,
-    max_saturation_scale: Option<f64>,
-    max_value_scale: Option<f64>,
+    max_saturation_shift: Option<f64>,
+    max_value_shift: Option<f64>,
 }
 
-impl RandomDistort {
+impl ColorJitter {
     pub fn forward(&self, rgb: &Tensor) -> Result<Tensor> {
         tch::no_grad(|| -> Result<_> {
             let (channels, _height, _width) = rgb.size3()?;
@@ -51,17 +51,17 @@ impl RandomDistort {
 
             if let Some(max_shift) = self.max_hue_shift {
                 let shift = rng.gen_range((-max_shift)..max_shift);
-                let _ = hue.g_add_1(shift);
+                let _ = hue.g_add_1(shift + 1.0).fmod_(1.0);
             }
 
-            if let Some(max_scale) = self.max_saturation_scale {
-                let scale = rng.gen_range((1.0 / max_scale)..max_scale);
-                let _ = saturation.g_mul_1(scale);
+            if let Some(max_shift) = self.max_saturation_shift {
+                let shift = rng.gen_range((-max_shift)..max_shift);
+                let _ = saturation.g_add_1(shift).clamp_(0.0, 1.0);
             }
 
-            if let Some(max_scale) = self.max_value_scale {
-                let scale = rng.gen_range((1.0 / max_scale)..max_scale);
-                let _ = value.g_mul_1(scale);
+            if let Some(max_shift) = self.max_value_shift {
+                let shift = rng.gen_range((-max_shift)..max_shift);
+                let _ = value.g_add_1(shift).clamp_(0.0, 1.0);
             }
 
             let new_rgb = hsv.hsv_to_rgb();
