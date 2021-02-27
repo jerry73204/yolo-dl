@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{Config, LoadCheckpoint, LossConfig, TrainingConfig},
     data::TrainingRecord,
-    logging::LoggingMessage,
+    logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
     utils::{self, LrScheduler, RateCounter},
 };
@@ -177,9 +177,6 @@ pub fn single_gpu_training_worker(
                 );
             }
 
-            // update lr
-            optimizer.set_lr(lr_scheduler.next());
-
             // save checkpoint
             if let Some(0) = save_checkpoint_steps.map(|steps| training_step % steps) {
                 utils::save_checkpoint(
@@ -194,13 +191,19 @@ pub fn single_gpu_training_worker(
             logging_tx
                 .send(LoggingMessage::new_training_output(
                     "training-output",
-                    training_step,
-                    &image,
-                    &output,
-                    &losses,
-                    loss_auxiliary.target_bboxes,
+                    TrainingOutputLog {
+                        step: training_step,
+                        lr: r64(lr_scheduler.lr()),
+                        input: image,
+                        output,
+                        losses,
+                        target_bboxes: loss_auxiliary.target_bboxes,
+                    },
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
+
+            // update lr
+            optimizer.set_lr(lr_scheduler.next());
 
             // update training step
             training_step += 1;

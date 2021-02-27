@@ -100,6 +100,7 @@ mod logging_worker {
             } = *self.config;
             let TrainingOutputLog {
                 step,
+                lr,
                 input,
                 output,
                 losses,
@@ -267,6 +268,15 @@ mod logging_worker {
                     })
                 })
                 .map(|result| Fallible::Ok(result??))
+                .await?;
+
+            // log parameters
+            self.event_writer
+                .write_scalar_async(
+                    format!("{}/params/learning_rate", tag),
+                    step,
+                    lr.raw() as f32,
+                )
                 .await?;
 
             // log losses
@@ -448,26 +458,13 @@ mod logging_message {
     }
 
     impl LoggingMessage {
-        pub fn new_training_output<S>(
-            tag: S,
-            step: usize,
-            input: &Tensor,
-            output: &MergeDetect2DOutput,
-            losses: &YoloLossOutput,
-            target_bboxes: PredTargetMatching,
-        ) -> Self
+        pub fn new_training_output<S>(tag: S, msg: TrainingOutputLog) -> Self
         where
             S: Into<Cow<'static, str>>,
         {
             Self {
                 tag: tag.into(),
-                kind: LoggingMessageKind::TrainingOutput(TrainingOutputLog {
-                    step,
-                    input: input.shallow_clone(),
-                    output: output.shallow_clone(),
-                    losses: losses.shallow_clone(),
-                    target_bboxes,
-                }),
+                kind: LoggingMessageKind::TrainingOutput(msg),
             }
         }
 
@@ -534,12 +531,14 @@ mod logging_message {
 
     #[derive(Debug, TensorLike)]
     pub struct TrainingOutputLog {
-        pub(crate) step: usize,
-        pub(crate) input: Tensor,
-        pub(crate) output: MergeDetect2DOutput,
-        pub(crate) losses: YoloLossOutput,
+        pub step: usize,
         #[tensor_like(clone)]
-        pub(crate) target_bboxes: PredTargetMatching,
+        pub lr: R64,
+        pub input: Tensor,
+        pub output: MergeDetect2DOutput,
+        pub losses: YoloLossOutput,
+        #[tensor_like(clone)]
+        pub target_bboxes: PredTargetMatching,
     }
 
     impl Clone for TrainingOutputLog {
@@ -550,7 +549,7 @@ mod logging_message {
 
     #[derive(Debug, TensorLike)]
     pub struct DebugImageLog {
-        pub(crate) images: Vec<Tensor>,
+        pub images: Vec<Tensor>,
     }
 
     impl Clone for DebugImageLog {
@@ -561,9 +560,9 @@ mod logging_message {
 
     #[derive(Debug, TensorLike)]
     pub struct DebugLabeledImageLog {
-        pub(crate) images: Vec<Tensor>,
+        pub images: Vec<Tensor>,
         #[tensor_like(clone)]
-        pub(crate) bboxes: Vec<Vec<RatioLabel>>,
+        pub bboxes: Vec<Vec<RatioLabel>>,
     }
 
     impl Clone for DebugLabeledImageLog {

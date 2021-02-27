@@ -2,7 +2,7 @@ use crate::{
     common::*,
     config::{Config, LoadCheckpoint, LossConfig, TrainingConfig},
     data::TrainingRecord,
-    logging::LoggingMessage,
+    logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
     utils::{self, LrScheduler, RateCounter},
 };
@@ -211,6 +211,7 @@ pub async fn multi_gpu_training_worker(
                     config.clone(),
                     logging_tx.clone(),
                     training_step,
+                    lr_scheduler.lr(),
                     image,
                     model_output,
                     target_bboxes,
@@ -624,19 +625,23 @@ async fn log_outputs(
     _config: Arc<Config>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     training_step: usize,
-    image: Tensor,
-    model_output: MergeDetect2DOutput,
+    lr: f64,
+    input: Tensor,
+    output: MergeDetect2DOutput,
     target_bboxes: PredTargetMatching,
     losses: YoloLossOutput,
 ) -> Result<()> {
     logging_tx
         .send(LoggingMessage::new_training_output(
             "training-output",
-            training_step,
-            &image,
-            &model_output,
-            &losses,
-            target_bboxes,
+            TrainingOutputLog {
+                step: training_step,
+                lr: r64(lr),
+                input,
+                output,
+                losses,
+                target_bboxes,
+            },
         ))
         .map_err(|_err| format_err!("cannot send message to logger"))?;
 
