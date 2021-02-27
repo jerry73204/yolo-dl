@@ -340,8 +340,9 @@ async fn initialize_worker_contexts(
 
                     let optimizer = {
                         let mut opt = nn::Adam {
+                            beta1: momentum.raw(),
+                            beta2: 0.999,
                             wd: weight_decay.raw(),
-                            ..Default::default()
                         }
                         .build(&vs, DUMMY_LR)?;
                         opt.set_momentum(momentum.raw());
