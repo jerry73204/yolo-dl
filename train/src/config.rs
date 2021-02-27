@@ -119,6 +119,10 @@ pub struct PreprocessorConfig {
     pub worker_buf_size: Option<usize>,
     /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
     pub cache_dir: PathBuf,
+    pub color_jitter_prob: Ratio,
+    pub hue_shift: Option<R64>,
+    pub saturation_shift: Option<R64>,
+    pub value_shift: Option<R64>,
     /// The probability to apply Mix-Up.
     pub mixup_prob: Ratio,
     /// The probability to apply Cut-Mix.
@@ -129,10 +133,6 @@ pub struct PreprocessorConfig {
     ///
     /// It is specified in ratio unit.
     pub mosaic_margin: Ratio,
-    // pub hsv_distort_prob: Ratio,
-    // pub max_hue_shift: R64,
-    // pub max_saturation_scale: R64,
-    // pub max_value_scale: R64,
     /// The probability to apply random affine transformation.
     pub affine_prob: Ratio,
     /// The probability to apply random rotation.

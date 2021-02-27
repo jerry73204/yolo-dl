@@ -278,6 +278,78 @@ impl TrainingStream {
             })
         };
 
+        // color jitter
+        let stream = {
+            let Config {
+                preprocessor:
+                    PreprocessorConfig {
+                        color_jitter_prob,
+                        hue_shift,
+                        saturation_shift,
+                        value_shift,
+                        ..
+                    },
+                ..
+            } = *self.config;
+            let color_jitter = Arc::new(
+                ColorJitterInit {
+                    hue_shift,
+                    saturation_shift,
+                    value_shift,
+                }
+                .build(),
+            );
+            let logging_tx = self.logging_tx.clone();
+            let par_config = par_config.clone();
+
+            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
+                let color_jitter = color_jitter.clone();
+                let logging_tx = logging_tx.clone();
+                let par_config = par_config.clone();
+
+                async move {
+                    let (step, epoch, input, mut timing) = args;
+                    timing.add_event("in channel");
+
+                    let mix_kind = input.kind();
+                    let pairs: Vec<_> = stream::iter(input.into_iter())
+                        .par_map(par_config.clone(), move |(image, bboxes)| {
+                            // TODO: fix cumbersome writing
+                            let color_jitter = color_jitter.clone();
+                            let mut rng = StdRng::from_entropy();
+
+                            move || -> Result<_> {
+                                let (new_image, new_bboxes) =
+                                    if rng.gen_bool(color_jitter_prob.to_f64()) {
+                                        let new_image = color_jitter.forward(&image)?;
+                                        (new_image, bboxes)
+                                    } else {
+                                        (image, bboxes)
+                                    };
+                                Ok((new_image, new_bboxes))
+                            }
+                        })
+                        .try_collect()
+                        .await?;
+                    let output = MixData::new(mix_kind, pairs).unwrap();
+
+                    // send to logger
+                    logging_tx
+                        .send(LoggingMessage::new_debug_labeled_images(
+                            "color-jitter",
+                            output
+                                .iter()
+                                .map(|(image, bboxes)| (image, bboxes))
+                                .collect_vec(),
+                        ))
+                        .unwrap();
+
+                    timing.add_event("color jitter");
+                    Fallible::Ok((index, (step, epoch, output, timing)))
+                }
+            })
+        };
+
         // random affine
         let stream = {
             let Config {

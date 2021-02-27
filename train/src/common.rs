@@ -70,7 +70,7 @@ pub use yolo_dl::{
         YoloLossInit, YoloLossOutput,
     },
     model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput, YoloModel},
-    processor::{CacheLoader, ParallelMosaicProcessorInit, RandomAffineInit},
+    processor::{CacheLoader, ColorJitterInit, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
 };
 
