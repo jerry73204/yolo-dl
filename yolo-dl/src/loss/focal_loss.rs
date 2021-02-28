@@ -132,7 +132,7 @@ mod tests {
         };
 
         let input = root.randn("input", &[n_batch, n_class], 0.0, 100.0);
-        let target = Tensor::randn(&[n_batch, n_class], (Kind::Float, device))
+        let target = Tensor::rand(&[n_batch, n_class], (Kind::Float, device))
             .ge(0.5)
             .to_kind(Kind::Float)
             .set_requires_grad(false);

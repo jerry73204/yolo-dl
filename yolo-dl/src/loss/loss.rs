@@ -360,7 +360,6 @@ mod yolo_loss {
                 let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
 
                 let target_objectness = {
-                    let mut target = pred_objectness.zeros_like();
                     let target_scores = {
                         let mut target_scores = Tensor::full(
                             &[num_targets as i64, 1],
@@ -377,6 +376,7 @@ mod yolo_loss {
                         target_scores
                     };
 
+                    let mut target = pred_objectness.zeros_like();
                     let _ = target.index_put_opt_(
                         (&batch_indexes, NONE_INDEX, &flat_indexes),
                         &target_scores,
