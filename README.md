@@ -85,6 +85,39 @@ env YOLODL_PROFILING_WHITELIST='pipeline' \
     cargo run --release --bin train --features profiling
 ```
 
+### Tuning Training Performance
+
+The default Rust toolchain has debug and release profiles. You can add `--release` option to cargo commands to switch from debug to release mode. For example,
+
+```sh
+cargo run [--release]
+cargo test [--release]
+```
+
+The default release profile settings can be found in `Cargo.toml`. It enables verbose debug messages and debug assertions.
+
+```toml
+[profile.release]
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+```
+
+To get the best runtime performance, you can disable debugging features. Use it with caution that it disables several numeral checks such as NaN detection.
+
+```toml
+[profile.release]
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = true
+```
+
+More profile options can be found in Cargo reference.
+
+https://doc.rust-lang.org/cargo/reference/profiles.html
+
 ### Show Statistics in TensorBoard
 
 Set the logging diretory in `train.json` configuration file.
@@ -102,6 +135,8 @@ After your training program is started, you can open a TensorBoard server to rea
 ```sh
 tensorboard --bind_all --logdir logs-coco/
 ```
+
+## Model Configuration
 
 ### Inspect a NEWSLABv1 Model Configuration File
 
@@ -145,6 +180,8 @@ dot -Tsvg image.dot > image.svg
 ```
 
 ## Documentation
+
+### API Documentation
 
 Most documenation are inline in the code for now.
 
