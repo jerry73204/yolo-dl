@@ -6,6 +6,7 @@ pub struct SppCsp2DInit {
     pub out_c: usize,
     pub k: Vec<usize>,
     pub c_mul: R64,
+    pub batch_norm: Option<DarkBatchNormConfig>,
 }
 
 impl SppCsp2DInit {
@@ -19,18 +20,51 @@ impl SppCsp2DInit {
             out_c,
             k,
             c_mul,
+            batch_norm,
         } = self;
 
         let mid_c = (in_c as f64 * c_mul.raw()).floor() as usize;
-        let first_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
-        let last_conv = ConvBn2DInit::new(mid_c * 2, out_c, 1).build(path);
-        let skip_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+        let first_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(in_c, mid_c, 1)
+        }
+        .build(path);
+        let last_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c * 2, out_c, 1)
+        }
+        .build(path);
+        let skip_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 1)
+        }
+        .build(path);
 
-        let spp_conv_1 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
-        let spp_conv_2 = ConvBn2DInit::new(mid_c, mid_c, 3).build(path);
-        let spp_conv_3 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
-        let spp_conv_4 = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
-        let spp_conv_5 = ConvBn2DInit::new(mid_c, mid_c, 3).build(path);
+        let spp_conv_1 = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 1)
+        }
+        .build(path);
+        let spp_conv_2 = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 3)
+        }
+        .build(path);
+        let spp_conv_3 = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 1)
+        }
+        .build(path);
+        let spp_conv_4 = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 1)
+        }
+        .build(path);
+        let spp_conv_5 = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 3)
+        }
+        .build(path);
 
         SppCsp2D {
             first_conv,

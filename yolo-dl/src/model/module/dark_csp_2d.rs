@@ -7,6 +7,7 @@ pub struct DarkCsp2DInit {
     pub repeat: usize,
     pub shortcut: bool,
     pub c_mul: R64,
+    pub batch_norm: Option<DarkBatchNormConfig>,
 }
 
 impl DarkCsp2DInit {
@@ -21,19 +22,44 @@ impl DarkCsp2DInit {
             repeat,
             shortcut,
             c_mul,
+            batch_norm,
         } = self;
 
         let mid_c = (in_c as f64 * c_mul.raw()).floor() as usize;
 
-        let skip_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
-        let merge_conv = ConvBn2DInit::new(mid_c * 2, out_c, 1).build(path);
-        let before_repeat_conv = ConvBn2DInit::new(in_c, mid_c, 1).build(path);
-        let after_repeat_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
+        let skip_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(in_c, mid_c, 1)
+        }
+        .build(path);
+        let merge_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c * 2, out_c, 1)
+        }
+        .build(path);
+        let before_repeat_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(in_c, mid_c, 1)
+        }
+        .build(path);
+        let after_repeat_conv = ConvBn2DInit {
+            batch_norm: batch_norm.clone(),
+            ..ConvBn2DInit::new(mid_c, mid_c, 1)
+        }
+        .build(path);
 
         let repeat_convs: Vec<_> = (0..repeat)
             .map(|_| {
-                let first_conv = ConvBn2DInit::new(mid_c, mid_c, 1).build(path);
-                let second_conv = ConvBn2DInit::new(mid_c, mid_c, 3).build(path);
+                let first_conv = ConvBn2DInit {
+                    batch_norm: batch_norm.clone(),
+                    ..ConvBn2DInit::new(mid_c, mid_c, 1)
+                }
+                .build(path);
+                let second_conv = ConvBn2DInit {
+                    batch_norm: batch_norm.clone(),
+                    ..ConvBn2DInit::new(mid_c, mid_c, 3)
+                }
+                .build(path);
                 (first_conv, second_conv)
             })
             .collect();

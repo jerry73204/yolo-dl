@@ -137,6 +137,8 @@ mod yolo_model {
                             repeat,
                             shortcut,
                             c_mul,
+                            bn,
+                            bn_affine,
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
@@ -155,12 +157,25 @@ mod yolo_model {
                                     repeat,
                                     shortcut,
                                     c_mul,
+                                    batch_norm: bn.then(|| {
+                                        let mut config = DarkBatchNormConfig::default();
+                                        if !bn_affine {
+                                            config.ws_init = None;
+                                            config.bs_init = None;
+                                        }
+                                        config
+                                    }),
                                 }
                                 .build(path),
                             )
                         }
                         config::Module::SppCsp2D(config::SppCsp2D {
-                            c, ref k, c_mul, ..
+                            c,
+                            ref k,
+                            c_mul,
+                            bn,
+                            bn_affine,
+                            ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
                             let [_b, in_c, _h, _w] = orig_nodes[&src_key]
@@ -177,6 +192,14 @@ mod yolo_model {
                                     out_c: c,
                                     k: k.to_owned(),
                                     c_mul,
+                                    batch_norm: bn.then(|| {
+                                        let mut config = DarkBatchNormConfig::default();
+                                        if !bn_affine {
+                                            config.ws_init = None;
+                                            config.bs_init = None;
+                                        }
+                                        config
+                                    }),
                                 }
                                 .build(path),
                             )

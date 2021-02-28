@@ -748,6 +748,10 @@ mod dark_csp_2d {
         pub shortcut: bool,
         #[serde(default = "default_c_mul")]
         pub c_mul: R64,
+        #[serde(default = "default_batch_norm")]
+        pub bn: bool,
+        #[serde(default = "default_batch_norm_affine")]
+        pub bn_affine: bool,
     }
 
     impl DarkCsp2D {
@@ -764,6 +768,8 @@ mod dark_csp_2d {
                 repeat,
                 shortcut: default_shortcut(),
                 c_mul: default_c_mul(),
+                bn: default_batch_norm(),
+                bn_affine: default_batch_norm_affine(),
             }
         }
     }
@@ -794,6 +800,14 @@ mod dark_csp_2d {
     fn default_c_mul() -> R64 {
         r64(1.0)
     }
+
+    fn default_batch_norm() -> bool {
+        true
+    }
+
+    fn default_batch_norm_affine() -> bool {
+        false
+    }
 }
 
 mod spp_csp_2d {
@@ -807,6 +821,10 @@ mod spp_csp_2d {
         pub k: Vec<usize>,
         #[serde(default = "default_c_mul")]
         pub c_mul: R64,
+        #[serde(default = "default_batch_norm")]
+        pub bn: bool,
+        #[serde(default = "default_batch_norm_affine")]
+        pub bn_affine: bool,
     }
 
     impl SppCsp2D {
@@ -817,6 +835,8 @@ mod spp_csp_2d {
                 c,
                 k: vec![1, 5, 9, 13],
                 c_mul: default_c_mul(),
+                bn: default_batch_norm(),
+                bn_affine: default_batch_norm_affine(),
             }
         }
     }
@@ -842,6 +862,14 @@ mod spp_csp_2d {
 
     fn default_c_mul() -> R64 {
         r64(0.5)
+    }
+
+    fn default_batch_norm() -> bool {
+        true
+    }
+
+    fn default_batch_norm_affine() -> bool {
+        false
     }
 }
 
