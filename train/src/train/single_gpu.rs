@@ -31,6 +31,8 @@ pub fn single_gpu_training_worker(
                         box_metric,
                         match_grid_method,
                         iou_loss_weight,
+                        objectness_loss_kind,
+                        classification_loss_kind,
                         objectness_loss_weight,
                         classification_loss_weight,
                     },
@@ -53,6 +55,8 @@ pub fn single_gpu_training_worker(
         match_grid_method: Some(match_grid_method),
         box_metric: Some(box_metric),
         iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
+        objectness_loss_kind: Some(objectness_loss_kind),
+        classification_loss_kind: Some(classification_loss_kind),
         objectness_loss_weight: objectness_loss_weight.map(|val| val.raw()),
         classification_loss_weight: classification_loss_weight.map(|val| val.raw()),
         ..Default::default()

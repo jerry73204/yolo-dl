@@ -1,8 +1,10 @@
 //! Defines loss for training.
 
 use super::{
-    bce_with_logit_loss::BceWithLogitsLossInit,
+    bce_with_logit_loss::{BceWithLogitsLoss, BceWithLogitsLossInit},
+    cross_entropy::CrossEntropyLoss,
     focal_loss::{FocalLoss, FocalLossInit},
+    l2_loss::L2Loss,
     misc::{
         BoxMetric, MatchGrid, PredInstances, PredInstancesUnchecked, TargetInstances,
         TargetInstancesUnchecked,
@@ -28,6 +30,8 @@ mod yolo_loss {
         pub smooth_objectness_coef: Option<f64>,
         pub anchor_scale_thresh: Option<f64>,
         pub iou_loss_weight: Option<f64>,
+        pub objectness_loss_kind: Option<ObjectnessLossKind>,
+        pub classification_loss_kind: Option<ClassificationLossKind>,
         pub objectness_loss_weight: Option<f64>,
         pub classification_loss_weight: Option<f64>,
     }
@@ -44,6 +48,8 @@ mod yolo_loss {
                 smooth_objectness_coef,
                 anchor_scale_thresh,
                 iou_loss_weight,
+                objectness_loss_kind,
+                classification_loss_kind,
                 objectness_loss_weight,
                 classification_loss_weight,
             } = self;
@@ -83,34 +89,63 @@ mod yolo_loss {
                 "classification_loss_weight must be non-negative"
             );
 
-            let bce_class = {
-                let bce_loss = BceWithLogitsLossInit {
-                    pos_weight: pos_weight.shallow_clone(),
-                    ..BceWithLogitsLossInit::default(Reduction::None)
+            let class_loss = match classification_loss_kind.unwrap_or(ClassificationLossKind::Bce) {
+                ClassificationLossKind::Bce => ClassificationLoss::Bce(
+                    BceWithLogitsLossInit {
+                        pos_weight: pos_weight.shallow_clone(),
+                        ..BceWithLogitsLossInit::default(reduction)
+                    }
+                    .build(),
+                ),
+                ClassificationLossKind::Focal => {
+                    let bce_loss = BceWithLogitsLossInit {
+                        pos_weight: pos_weight.shallow_clone(),
+                        ..BceWithLogitsLossInit::default(Reduction::None)
+                    }
+                    .build();
+
+                    ClassificationLoss::Focal(
+                        FocalLossInit {
+                            gamma: focal_loss_gamma,
+                            ..FocalLossInit::default(reduction, move |input, target| {
+                                bce_loss.forward(input, target)
+                            })
+                        }
+                        .build(),
+                    )
                 }
-                .build();
-                FocalLossInit {
-                    gamma: focal_loss_gamma,
-                    ..FocalLossInit::default(reduction, move |input, target| {
-                        bce_loss.forward(input, target)
-                    })
+                ClassificationLossKind::L2 => ClassificationLoss::L2(L2Loss::new(reduction)),
+                ClassificationLossKind::CrossEntropy => {
+                    ClassificationLoss::CrossEntropy(CrossEntropyLoss::new(reduction))
                 }
-                .build()
             };
 
-            let bce_objectness = {
-                let bce_loss = BceWithLogitsLossInit {
-                    pos_weight,
-                    ..BceWithLogitsLossInit::default(Reduction::None)
+            let obj_loss = match objectness_loss_kind.unwrap_or(ObjectnessLossKind::Bce) {
+                ObjectnessLossKind::Bce => ObjectnessLoss::Bce(
+                    BceWithLogitsLossInit {
+                        pos_weight: pos_weight.shallow_clone(),
+                        ..BceWithLogitsLossInit::default(reduction)
+                    }
+                    .build(),
+                ),
+                ObjectnessLossKind::Focal => {
+                    let bce_loss = BceWithLogitsLossInit {
+                        pos_weight: pos_weight.shallow_clone(),
+                        ..BceWithLogitsLossInit::default(Reduction::None)
+                    }
+                    .build();
+
+                    ObjectnessLoss::Focal(
+                        FocalLossInit {
+                            gamma: focal_loss_gamma,
+                            ..FocalLossInit::default(reduction, move |input, target| {
+                                bce_loss.forward(input, target)
+                            })
+                        }
+                        .build(),
+                    )
                 }
-                .build();
-                FocalLossInit {
-                    gamma: focal_loss_gamma,
-                    ..FocalLossInit::default(reduction, move |input, target| {
-                        bce_loss.forward(input, target)
-                    })
-                }
-                .build()
+                ObjectnessLossKind::L2 => ObjectnessLoss::L2(L2Loss::new(reduction)),
             };
 
             let bbox_matcher = CyCxHWMatcherInit {
@@ -121,8 +156,8 @@ mod yolo_loss {
 
             Ok(YoloLoss {
                 reduction,
-                bce_class,
-                bce_objectness,
+                class_loss,
+                obj_loss,
                 box_metric,
                 smooth_classification_coef,
                 smooth_objectness_coef,
@@ -146,6 +181,8 @@ mod yolo_loss {
                 smooth_objectness_coef: None,
                 anchor_scale_thresh: None,
                 iou_loss_weight: None,
+                objectness_loss_kind: None,
+                classification_loss_kind: None,
                 objectness_loss_weight: None,
                 classification_loss_weight: None,
             }
@@ -155,8 +192,8 @@ mod yolo_loss {
     #[derive(Debug)]
     pub struct YoloLoss {
         reduction: Reduction,
-        bce_class: FocalLoss,
-        bce_objectness: FocalLoss,
+        class_loss: ClassificationLoss,
+        obj_loss: ObjectnessLoss,
         box_metric: BoxMetric,
         smooth_classification_coef: f64,
         smooth_objectness_coef: f64,
@@ -319,7 +356,7 @@ mod yolo_loss {
                 target_dense
             });
 
-            self.bce_class.forward(&pred_class, &target_class_dense)
+            self.class_loss.forward(&pred_class, &target_class_dense)
         }
 
         fn objectness_loss(
@@ -423,7 +460,7 @@ mod yolo_loss {
                 target_objectness
             });
 
-            self.bce_objectness.forward(
+            self.obj_loss.forward(
                 &pred_objectness.view([batch_size, -1]),
                 &target_objectness.view([batch_size, -1]),
             )
@@ -543,6 +580,57 @@ mod yolo_loss {
     pub struct YoloLossAuxiliary {
         pub target_bboxes: PredTargetMatching,
         pub iou_score: Option<Tensor>,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub enum ObjectnessLossKind {
+        Bce,
+        Focal,
+        L2,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub enum ClassificationLossKind {
+        Bce,
+        Focal,
+        CrossEntropy,
+        L2,
+    }
+
+    #[derive(Debug)]
+    enum ObjectnessLoss {
+        Bce(BceWithLogitsLoss),
+        Focal(FocalLoss),
+        L2(L2Loss),
+    }
+
+    impl ObjectnessLoss {
+        pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
+            match self {
+                Self::Bce(loss) => loss.forward(input, target),
+                Self::Focal(loss) => loss.forward(input, target),
+                Self::L2(loss) => loss.forward(input, target),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    enum ClassificationLoss {
+        Bce(BceWithLogitsLoss),
+        Focal(FocalLoss),
+        CrossEntropy(CrossEntropyLoss),
+        L2(L2Loss),
+    }
+
+    impl ClassificationLoss {
+        pub fn forward(&self, input: &Tensor, target: &Tensor) -> Tensor {
+            match self {
+                Self::Bce(loss) => loss.forward(input, target),
+                Self::Focal(loss) => loss.forward(input, target),
+                Self::CrossEntropy(loss) => loss.forward(input, target),
+                Self::L2(loss) => loss.forward(input, target),
+            }
+        }
     }
 }
 
