@@ -116,7 +116,7 @@ mod yolo_loss {
                 }
                 ClassificationLossKind::L2 => ClassificationLoss::L2(L2Loss::new(reduction)),
                 ClassificationLossKind::CrossEntropy => {
-                    ClassificationLoss::CrossEntropy(CrossEntropyLoss::new(reduction))
+                    ClassificationLoss::CrossEntropy(CrossEntropyLoss::new(false, reduction))
                 }
             };
 
