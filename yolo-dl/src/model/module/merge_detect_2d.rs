@@ -2,11 +2,13 @@ use super::*;
 use crate::loss::{NmsOutput, NonMaxSuppressionInit};
 
 #[derive(Debug)]
-pub struct MergeDetect2D {}
+pub struct MergeDetect2D {
+    _private: [u8; 0],
+}
 
 impl MergeDetect2D {
     pub fn new() -> Self {
-        Self {}
+        Self { _private: [] }
     }
 
     pub fn forward(&mut self, detections: &[&Detect2DOutput]) -> Result<MergeDetect2DOutput> {

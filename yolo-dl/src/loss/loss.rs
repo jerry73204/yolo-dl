@@ -14,9 +14,10 @@ use super::{
 use crate::{common::*, model::MergeDetect2DOutput, profiling::Timing};
 
 pub use yolo_loss::*;
+pub use yolo_loss_init::*;
 pub use yolo_loss_output::*;
 
-mod yolo_loss {
+mod yolo_loss_init {
     use super::*;
 
     #[derive(Debug)]
@@ -189,18 +190,37 @@ mod yolo_loss {
         }
     }
 
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub enum ObjectnessLossKind {
+        Bce,
+        Focal,
+        L2,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub enum ClassificationLossKind {
+        Bce,
+        Focal,
+        CrossEntropy,
+        L2,
+    }
+}
+
+mod yolo_loss {
+    use super::*;
+
     #[derive(Debug)]
     pub struct YoloLoss {
-        reduction: Reduction,
-        class_loss: ClassificationLoss,
-        obj_loss: ObjectnessLoss,
-        box_metric: BoxMetric,
-        smooth_classification_coef: f64,
-        smooth_objectness_coef: f64,
-        iou_loss_weight: f64,
-        objectness_loss_weight: f64,
-        classification_loss_weight: f64,
-        bbox_matcher: CyCxHWMatcher,
+        pub(super) reduction: Reduction,
+        pub(super) class_loss: ClassificationLoss,
+        pub(super) obj_loss: ObjectnessLoss,
+        pub(super) box_metric: BoxMetric,
+        pub(super) smooth_classification_coef: f64,
+        pub(super) smooth_objectness_coef: f64,
+        pub(super) iou_loss_weight: f64,
+        pub(super) objectness_loss_weight: f64,
+        pub(super) classification_loss_weight: f64,
+        pub(super) bbox_matcher: CyCxHWMatcher,
     }
 
     impl YoloLoss {
@@ -213,7 +233,6 @@ mod yolo_loss {
 
             // match target bboxes and grids, and group them by detector cells
             // indexed by grid positions
-            // let target_bboxes = self.match_target_bboxes(&prediction, target);
             let matchings = self.bbox_matcher.match_bboxes(&prediction, target);
             timing.add_event("match_target_bboxes");
 
@@ -582,23 +601,8 @@ mod yolo_loss {
         pub iou_score: Option<Tensor>,
     }
 
-    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-    pub enum ObjectnessLossKind {
-        Bce,
-        Focal,
-        L2,
-    }
-
-    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-    pub enum ClassificationLossKind {
-        Bce,
-        Focal,
-        CrossEntropy,
-        L2,
-    }
-
     #[derive(Debug)]
-    enum ObjectnessLoss {
+    pub(super) enum ObjectnessLoss {
         Bce(BceWithLogitsLoss),
         Focal(FocalLoss),
         L2(L2Loss),
@@ -615,7 +619,7 @@ mod yolo_loss {
     }
 
     #[derive(Debug)]
-    enum ClassificationLoss {
+    pub(super) enum ClassificationLoss {
         Bce(BceWithLogitsLoss),
         Focal(FocalLoss),
         CrossEntropy(CrossEntropyLoss),
