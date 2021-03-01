@@ -52,3 +52,52 @@ impl CrossEntropyLoss {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cross_entropy_loss() -> Result<()> {
+        let mut rng = rand::thread_rng();
+        let device = Device::Cpu;
+
+        let n_batch = 32;
+        let n_class = rng.gen_range(1..10);
+
+        let vs = nn::VarStore::new(device);
+        let root = vs.root();
+        let loss_fn = CrossEntropyLoss::new(true, Reduction::Mean);
+
+        let input = root.randn("input", &[n_batch, n_class], 0.0, 100.0);
+        let target =
+            Tensor::randint(n_class, &[n_batch], (Kind::Int64, device)).set_requires_grad(false);
+
+        let mut optimizer = nn::Adam::default().build(&vs, 1.0)?;
+
+        for _ in 0..1000 {
+            let loss = loss_fn.forward(&input, &target);
+            optimizer.backward_step(&loss);
+        }
+
+        optimizer.set_lr(0.1);
+
+        for _ in 0..10000 {
+            let loss = loss_fn.forward(&input, &target);
+            optimizer.backward_step(&loss);
+        }
+
+        optimizer.set_lr(0.01);
+
+        for _ in 0..10000 {
+            let loss = loss_fn.forward(&input, &target);
+            optimizer.backward_step(&loss);
+        }
+
+        let accuracy = i64::from(input.max2(1, false).1.eq1(&target).count_nonzero(&[0])) as f64
+            / n_batch as f64;
+        ensure!(accuracy >= 0.99, "the loss does not coverage");
+
+        Ok(())
+    }
+}

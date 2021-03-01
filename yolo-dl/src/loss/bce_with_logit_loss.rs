@@ -101,6 +101,13 @@ mod tests {
             optimizer.backward_step(&loss);
         }
 
+        optimizer.set_lr(0.01);
+
+        for _ in 0..10000 {
+            let loss = loss_fn.forward(&input, &target);
+            optimizer.backward_step(&loss);
+        }
+
         ensure!(
             bool::from((input.sigmoid() - &target).abs().le(1e-3).all()),
             "the loss does not coverage"
