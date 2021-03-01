@@ -32,7 +32,6 @@ uuid = { version = "0.8.2", features = ["v4"] }
 regex = "1.4.3"
 indexmap = "1.6.1"
 num_cpus = "1.13.0"
-# xz2 = { version = "0.1", features = ["tokio-io", "futures"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 lazy_static = "1.4.0"
 envy = "0.4.2"
@@ -46,8 +45,7 @@ cv-convert = { version = "0.3.0", default-features = false, features = ["tch", "
 rusty-perm = "0.2.0"
 ptree = { version = "0.3.1", optional = true }
 strum = { version = "0.20.0", features = ["derive"] }
-# by_address = "1.0.4"
-# cv-convert = { version = "0.3", default-features = false, feature = ["ndarray", "tch"] }
+tch-nms = { version = "0.1.0", path = "../tch-nms" }
 
 [features]
 profiling = ["ptree"]

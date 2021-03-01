@@ -36,24 +36,11 @@ impl NonMaxSuppressionInit {
 }
 
 #[derive(Debug, TensorLike)]
-struct BatchPrediction {
-    t: Tensor,
-    l: Tensor,
-    b: Tensor,
-    r: Tensor,
-    conf: Tensor,
-}
-
-#[derive(Debug, TensorLike, Getters)]
 pub struct NmsOutput {
-    #[get = "pub"]
-    batch_indexes: Vec<i64>,
-    #[get = "pub"]
-    class_indexes: Vec<i64>,
-    #[get = "pub"]
-    bbox: TLBRTensor,
-    #[get = "pub"]
-    confidence: Tensor,
+    pub batches: Tensor,
+    pub classes: Tensor,
+    pub instances: Tensor,
+    pub bbox: TLBRTensor,
 }
 
 #[derive(Debug)]
@@ -69,20 +56,21 @@ impl NonMaxSuppression {
                 iou_threshold,
                 confidence_threshold,
             } = *self;
-            // let device = prediction.device();
+            let num_classes = prediction.num_classes;
 
-            let batch_pred = {
-                let MergeDetect2DOutput {
-                    cy,
-                    cx,
-                    h,
-                    w,
-                    class,
-                    obj,
-                    ..
-                } = prediction;
+            let MergeDetect2DOutput {
+                cy,
+                cx,
+                h,
+                w,
+                class,
+                obj,
+                ..
+            } = prediction;
 
-                // compute confidence score (= objectness * class_score)
+            // select bboxes which confidence is above threshold
+            let (batches, classes, instances, bbox, conf) = {
+                // compute confidence score
                 let conf = obj.sigmoid() * class.sigmoid();
 
                 // compute tlbr bbox
@@ -90,13 +78,6 @@ impl NonMaxSuppression {
                 let b = cy + h / 2.0;
                 let l = cx - w / 2.0;
                 let r = cx + w / 2.0;
-
-                BatchPrediction { t, b, l, r, conf }
-            };
-
-            // select bboxes which confidence is above threshold
-            let (batch_indexes, class_indexes, bbox, confidence) = {
-                let BatchPrediction { t, l, b, r, conf } = batch_pred;
 
                 let mask = conf.ge(confidence_threshold.raw());
                 let indexes = mask.nonzero();
@@ -119,49 +100,36 @@ impl NonMaxSuppression {
                 .try_into()
                 .unwrap();
 
-                (batches, classes, bbox, new_conf)
+                (batches, classes, instances, bbox, new_conf)
             };
 
+            let keep = {
+                let ltrb = Tensor::cat(&[bbox.l(), bbox.t(), bbox.r(), bbox.b()], 1);
+                let group = &batches * num_classes as i64 + &classes;
+                let (keep, num_to_keep, _parent_object_index) = tch_nms::nms_cuda_with_scores(
+                    &ltrb,
+                    &conf,
+                    &group,
+                    iou_threshold.raw(),
+                    batches.numel() as i64,
+                )
+                .unwrap();
+
+                let num_to_keep: i64 = num_to_keep.into();
+                keep.i(0..num_to_keep)
+            };
+
+            let keep_batches = batches.index(&[&keep]);
+            let keep_classes = classes.index(&[&keep]);
+            let keep_instances = instances.index(&[&keep]);
+            let keep_bbox = bbox.index_select(&keep);
+
             NmsOutput {
-                batch_indexes: Vec::<i64>::from(&batch_indexes),
-                class_indexes: Vec::<i64>::from(&class_indexes),
-                bbox,
-                confidence,
+                batches: keep_batches,
+                classes: keep_classes,
+                instances: keep_instances,
+                bbox: keep_bbox,
             }
         })
     }
 }
-
-// TODO: The algorithm is very slow. It deserves a fix.
-// fn nms(bboxes: &TLBRTensor, conf: Tensor, iou_threshold: f64) -> Result<Tensor> {
-//     let n_bboxes = bboxes.num_samples() as usize;
-//     let device = bboxes.device();
-
-//     let conf_vec = Vec::<f32>::from(conf);
-//     let bboxes_vec: Vec<UnitlessCyCxHW<R64>> = bboxes.into();
-
-//     let permutation = PermD::from_sort_by_cached_key(conf_vec.as_slice(), |&conf| -r32(conf));
-//     let mut suppressed = vec![false; n_bboxes];
-//     let mut keep: Vec<i64> = vec![];
-
-//     for &li in permutation.indices().iter() {
-//         if suppressed[li] {
-//             continue;
-//         }
-//         keep.push(li as i64);
-//         let lhs_bbox = &bboxes_vec[li];
-
-//         for ri in (li + 1)..n_bboxes {
-//             let rhs_bbox = &bboxes_vec[ri];
-
-//             let iou = lhs_bbox.iou_with(&rhs_bbox);
-//             if iou as f64 > iou_threshold {
-//                 suppressed[ri] = true;
-//             }
-//         }
-//     }
-
-//     Ok(Tensor::of_slice(&keep)
-//         .set_requires_grad(false)
-//         .to_device(device))
-// }
