@@ -87,6 +87,7 @@
         "dir": "logs-coco",
         "enable_images": false,
         "enable_debug_stat": false,
+        "enable_inference": true,
     },
     "preprocessor": {
         // "worker_buf_size": 36,

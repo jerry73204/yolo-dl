@@ -62,6 +62,11 @@ pub fn single_gpu_training_worker(
         ..Default::default()
     }
     .build()?;
+    let yolo_inference = YoloInferenceInit {
+        nms_iou_threshold: Some(r64(0.9)),
+        nms_confidence_threshold: Some(r64(0.9)),
+    }
+    .build()?;
     let mut training_step_tensor = root.zeros_no_train("training_step", &[]);
     let mut optimizer = {
         let TrainingConfig {
@@ -143,23 +148,11 @@ pub fn single_gpu_training_worker(
             optimizer.backward_step(&losses.total_loss);
             timing.add_event("backward");
 
-            // DEBUG
-            // tch::no_grad(|| {
-            //     use std::str::FromStr;
-            //     const PREFIX: &str = "running_var";
-
-            //     let mut running_vars: Vec<_> = vs
-            //         .variables()
-            //         .into_iter()
-            //         .filter(|(name, _var)| name.starts_with(PREFIX))
-            //         .map(|(name, var)| (name, f64::from(var.mean(Kind::Float))))
-            //         .collect();
-            //     running_vars.sort_by_cached_key(|(name, _var)| match &name[PREFIX.len()..] {
-            //         "" => 0,
-            //         tail => usize::from_str(&tail[2..]).unwrap(),
-            //     });
-            //     dbg!(&running_vars);
-            // });
+            // run inference
+            let inference = config.logging.enable_inference.then(|| {
+                let inference = yolo_inference.forward(&output);
+                inference
+            });
 
             // print message
             rate_counter.add(1.0);
@@ -203,6 +196,7 @@ pub fn single_gpu_training_worker(
                         output,
                         losses,
                         target_bboxes: loss_auxiliary.target_bboxes,
+                        inference,
                     },
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;

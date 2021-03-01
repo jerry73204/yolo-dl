@@ -58,6 +58,7 @@ pub struct LoggingConfig {
     pub dir: PathBuf,
     pub enable_images: bool,
     pub enable_debug_stat: bool,
+    pub enable_inference: bool,
 }
 
 mod dataset {

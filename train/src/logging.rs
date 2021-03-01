@@ -105,6 +105,7 @@ mod logging_worker {
                 output,
                 losses,
                 target_bboxes,
+                inference,
             } = msg;
 
             let step = step as i64;
@@ -112,23 +113,154 @@ mod logging_worker {
             timing.add_event("initialize");
 
             // compute statistics and plot image
-            let (losses, debug_stat, bbox_image, objectness_image, mut timing) =
-                tokio::task::spawn_blocking(move || -> Result<_> {
-                    tch::no_grad(|| -> Result<_> {
-                        // log statistics
-                        let debug_stat = if enable_debug_stat {
-                            let cy_mean = f32::from(output.cy.mean(Kind::Float));
-                            let cx_mean = f32::from(output.cx.mean(Kind::Float));
-                            let h_mean = f32::from(output.h.mean(Kind::Float));
-                            let w_mean = f32::from(output.w.mean(Kind::Float));
-                            timing.add_event("compute_statistics");
-                            Some((cy_mean, cx_mean, h_mean, w_mean))
-                        } else {
-                            None
-                        };
+            let (
+                losses,
+                debug_stat,
+                training_bbox_image,
+                inference_bbox_image,
+                objectness_image,
+                mut timing,
+            ) = tokio::task::spawn_blocking(move || -> Result<_> {
+                tch::no_grad(|| -> Result<_> {
+                    // log statistics
+                    let debug_stat = if enable_debug_stat {
+                        let cy_mean = f32::from(output.cy.mean(Kind::Float));
+                        let cx_mean = f32::from(output.cx.mean(Kind::Float));
+                        let h_mean = f32::from(output.h.mean(Kind::Float));
+                        let w_mean = f32::from(output.w.mean(Kind::Float));
+                        timing.add_event("compute_statistics");
+                        Some((cy_mean, cx_mean, h_mean, w_mean))
+                    } else {
+                        None
+                    };
 
-                        // plot bboxes
-                        let bbox_image = if enable_images {
+                    // plot bboxes for training
+                    let training_bbox_image = if enable_images {
+                        // plotting is faster on CPU
+                        let mut canvas = input.copy().to_device(Device::Cpu);
+
+                        let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
+                        let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
+
+                        // gather data from each bbox
+                        // btlbr = batch + tlbr
+                        let (batch_indexes_vec, flat_indexes_vec, target_btlbrs) = target_bboxes
+                            .0
+                            .iter()
+                            .map(|(pred_index, target_bbox)| {
+                                let InstanceIndex { batch_index, .. } = *pred_index;
+                                let flat_index = output.instance_to_flat_index(pred_index).unwrap();
+                                let tlbr: PixelTLBR<f64> = target_bbox
+                                    .cycxhw
+                                    .scale_to_unit(image_h as f64, image_w as f64)
+                                    .unwrap()
+                                    .into();
+
+                                let target_t = (tlbr.t() as i64).max(0).min(image_h - 1);
+                                let target_b = (tlbr.b() as i64).max(0).min(image_h - 1);
+                                let target_l = (tlbr.l() as i64).max(0).min(image_w - 1);
+                                let target_r = (tlbr.r() as i64).max(0).min(image_w - 1);
+
+                                let target_btlbr =
+                                    [batch_index as i64, target_t, target_l, target_b, target_r];
+
+                                (batch_index as i64, flat_index, target_btlbr)
+                            })
+                            .unzip_n_vec();
+
+                        // draw predicted bboxes
+                        {
+                            let batch_indexes = Tensor::of_slice(&batch_indexes_vec);
+                            let flat_indexes = Tensor::of_slice(&flat_indexes_vec);
+
+                            let pred_cy =
+                                output
+                                    .cy
+                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+                            let pred_cx =
+                                output
+                                    .cx
+                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+                            let pred_h =
+                                output
+                                    .h
+                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+                            let pred_w =
+                                output
+                                    .w
+                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
+
+                            let pred_t: Vec<f64> = (&pred_cy - &pred_h / 2.0).into();
+                            let pred_b: Vec<f64> = (&pred_cy + &pred_h / 2.0).into();
+                            let pred_l: Vec<f64> = (&pred_cx - &pred_w / 2.0).into();
+                            let pred_r: Vec<f64> = (&pred_cx + &pred_w / 2.0).into();
+
+                            let pred_btlbrs =
+                                izip!(batch_indexes_vec, pred_t, pred_l, pred_b, pred_r)
+                                    .map(|args| {
+                                        let (batch_index, t, l, b, r) = args;
+                                        let t =
+                                            ((t * image_h as f64) as i64).max(0).min(image_h - 1);
+                                        let b =
+                                            ((b * image_h as f64) as i64).max(0).min(image_h - 1);
+                                        let l =
+                                            ((l * image_w as f64) as i64).max(0).min(image_w - 1);
+                                        let r =
+                                            ((r * image_w as f64) as i64).max(0).min(image_w - 1);
+                                        [batch_index as i64, t, l, b, r]
+                                    })
+                                    .collect_vec();
+
+                            // TODO: select color according to classification
+                            // let pred_classification =
+                            //     output.classification().index_select(0, &flat_indexes);
+                            // let pred_objectness =
+                            //     output.objectness().index_select(0, &flat_indexes);
+                            let _ = canvas.batch_draw_rect_(&pred_btlbrs, 1, &pred_color);
+                        }
+
+                        // draw target bboxes
+                        let _ = canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
+
+                        timing.add_event("draw bboxes");
+                        Some(canvas)
+                    } else {
+                        None
+                    };
+
+                    // plot objectness image
+                    let objectness_image = if enable_debug_stat && enable_images {
+                        let batch_size = output.batch_size();
+                        let objectness_maps: Vec<_> = output
+                            .feature_maps()
+                            .into_iter()
+                            .map(|feature_map| feature_map.obj)
+                            .zip_eq(output.info.iter())
+                            .map(|(objectness_map, meta)| {
+                                let num_anchors = meta.anchors.len() as i64;
+                                objectness_map
+                                    .copy()
+                                    .resize_(&[batch_size, 1, num_anchors, image_h, image_w])
+                                    .view([batch_size, num_anchors, image_h, image_w])
+                            })
+                            .collect();
+
+                        // concatenate at "anchor" dimension, and find the max over that dimension
+                        let (objectness_image, _argmax) =
+                            Tensor::cat(&objectness_maps, 1).max2(1, true);
+                        debug_assert!(
+                            objectness_image.size4().unwrap() == (batch_size, 1, image_h, image_w)
+                        );
+
+                        timing.add_event("plot_objectness_image");
+                        Some(objectness_image)
+                    } else {
+                        None
+                    };
+
+                    // plot bboxes from inference output
+                    let inference_bbox_image = match (inference, enable_images) {
+                        (Some(inference), true) => {
                             // plotting is faster on CPU
                             let mut canvas = input.copy().to_device(Device::Cpu);
 
@@ -137,68 +269,47 @@ mod logging_worker {
 
                             // gather data from each bbox
                             // btlbr = batch + tlbr
-                            let (batch_indexes_vec, flat_indexes_vec, target_btlbrs) =
-                                target_bboxes
-                                    .0
-                                    .iter()
-                                    .map(|(pred_index, target_bbox)| {
-                                        let InstanceIndex { batch_index, .. } = *pred_index;
-                                        let flat_index =
-                                            output.instance_to_flat_index(pred_index).unwrap();
-                                        let tlbr: PixelTLBR<f64> = target_bbox
-                                            .cycxhw
-                                            .scale_to_unit(image_h as f64, image_w as f64)
-                                            .unwrap()
-                                            .into();
+                            let target_btlbrs: Vec<_> = target_bboxes
+                                .0
+                                .iter()
+                                .map(|(pred_index, target_bbox)| {
+                                    let InstanceIndex { batch_index, .. } = *pred_index;
+                                    let flat_index =
+                                        output.instance_to_flat_index(pred_index).unwrap();
+                                    let tlbr: PixelTLBR<f64> = target_bbox
+                                        .cycxhw
+                                        .scale_to_unit(image_h as f64, image_w as f64)
+                                        .unwrap()
+                                        .into();
 
-                                        let target_t = (tlbr.t() as i64).max(0).min(image_h - 1);
-                                        let target_b = (tlbr.b() as i64).max(0).min(image_h - 1);
-                                        let target_l = (tlbr.l() as i64).max(0).min(image_w - 1);
-                                        let target_r = (tlbr.r() as i64).max(0).min(image_w - 1);
+                                    let target_t = (tlbr.t() as i64).max(0).min(image_h - 1);
+                                    let target_b = (tlbr.b() as i64).max(0).min(image_h - 1);
+                                    let target_l = (tlbr.l() as i64).max(0).min(image_w - 1);
+                                    let target_r = (tlbr.r() as i64).max(0).min(image_w - 1);
 
-                                        let target_btlbr = [
-                                            batch_index as i64,
-                                            target_t,
-                                            target_l,
-                                            target_b,
-                                            target_r,
-                                        ];
+                                    let target_btlbr = [
+                                        batch_index as i64,
+                                        target_t,
+                                        target_l,
+                                        target_b,
+                                        target_r,
+                                    ];
 
-                                        (batch_index as i64, flat_index, target_btlbr)
-                                    })
-                                    .unzip_n_vec();
+                                    target_btlbr
+                                })
+                                .collect();
 
                             // draw predicted bboxes
                             {
-                                let batch_indexes = Tensor::of_slice(&batch_indexes_vec);
-                                let flat_indexes = Tensor::of_slice(&flat_indexes_vec);
-
-                                let pred_cy = output.cy.index_opt((
-                                    &batch_indexes,
-                                    NONE_INDEX,
-                                    &flat_indexes,
-                                ));
-                                let pred_cx = output.cx.index_opt((
-                                    &batch_indexes,
-                                    NONE_INDEX,
-                                    &flat_indexes,
-                                ));
-                                let pred_h =
-                                    output
-                                        .h
-                                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                                let pred_w =
-                                    output
-                                        .w
-                                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-
-                                let pred_t: Vec<f64> = (&pred_cy - &pred_h / 2.0).into();
-                                let pred_b: Vec<f64> = (&pred_cy + &pred_h / 2.0).into();
-                                let pred_l: Vec<f64> = (&pred_cx - &pred_w / 2.0).into();
-                                let pred_r: Vec<f64> = (&pred_cx + &pred_w / 2.0).into();
+                                let YoloInferenceOutput { bbox, batches, .. } = inference;
+                                let batch_indexes = Vec::<i64>::from(&batches);
+                                let pred_t: Vec<f64> = bbox.t().into();
+                                let pred_l: Vec<f64> = bbox.l().into();
+                                let pred_b: Vec<f64> = bbox.b().into();
+                                let pred_r: Vec<f64> = bbox.r().into();
 
                                 let pred_btlbrs =
-                                    izip!(batch_indexes_vec, pred_t, pred_l, pred_b, pred_r)
+                                    izip!(batch_indexes, pred_t, pred_l, pred_b, pred_r)
                                         .map(|args| {
                                             let (batch_index, t, l, b, r) = args;
                                             let t = ((t * image_h as f64) as i64)
@@ -228,47 +339,24 @@ mod logging_worker {
                             // draw target bboxes
                             let _ = canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
 
-                            timing.add_event("draw bboxes");
+                            timing.add_event("draw inference bboxes");
                             Some(canvas)
-                        } else {
-                            None
-                        };
+                        }
+                        _ => None,
+                    };
 
-                        let objectness_image = if enable_debug_stat && enable_images {
-                            let batch_size = output.batch_size();
-                            let objectness_maps: Vec<_> = output
-                                .feature_maps()
-                                .into_iter()
-                                .map(|feature_map| feature_map.obj)
-                                .zip_eq(output.info.iter())
-                                .map(|(objectness_map, meta)| {
-                                    let num_anchors = meta.anchors.len() as i64;
-                                    objectness_map
-                                        .copy()
-                                        .resize_(&[batch_size, 1, num_anchors, image_h, image_w])
-                                        .view([batch_size, num_anchors, image_h, image_w])
-                                })
-                                .collect();
-
-                            // concatenate at "anchor" dimension, and find the max over that dimension
-                            let (objectness_image, _argmax) =
-                                Tensor::cat(&objectness_maps, 1).max2(1, true);
-                            debug_assert!(
-                                objectness_image.size4().unwrap()
-                                    == (batch_size, 1, image_h, image_w)
-                            );
-
-                            timing.add_event("plot_objectness_image");
-                            Some(objectness_image)
-                        } else {
-                            None
-                        };
-
-                        Ok((losses, debug_stat, bbox_image, objectness_image, timing))
-                    })
+                    Ok((
+                        losses,
+                        debug_stat,
+                        training_bbox_image,
+                        inference_bbox_image,
+                        objectness_image,
+                        timing,
+                    ))
                 })
-                .map(|result| Fallible::Ok(result??))
-                .await?;
+            })
+            .map(|result| Fallible::Ok(result??))
+            .await?;
 
             // log parameters
             self.event_writer
@@ -326,9 +414,17 @@ mod logging_worker {
             }
 
             // write images
-            if let Some(bbox_image) = bbox_image {
+            if let Some(image) = training_bbox_image {
                 self.event_writer
-                    .write_image_list_async(format!("{}/image/bboxes", tag), step, bbox_image)
+                    .write_image_list_async(format!("{}/image/training_bboxes", tag), step, image)
+                    .await?;
+
+                timing.add_event("write events");
+            }
+
+            if let Some(image) = inference_bbox_image {
+                self.event_writer
+                    .write_image_list_async(format!("{}/image/inference_bboxes", tag), step, image)
                     .await?;
 
                 timing.add_event("write events");
@@ -539,6 +635,7 @@ mod logging_message {
         pub losses: YoloLossOutput,
         #[tensor_like(clone)]
         pub target_bboxes: PredTargetMatching,
+        pub inference: Option<YoloInferenceOutput>,
     }
 
     impl Clone for TrainingOutputLog {

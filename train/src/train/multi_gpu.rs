@@ -53,6 +53,12 @@ pub async fn multi_gpu_training_worker(
         workers
     );
 
+    let yolo_inference = YoloInferenceInit {
+        nms_iou_threshold: Some(r64(0.9)),
+        nms_confidence_threshold: Some(r64(0.9)),
+    }
+    .build()?;
+
     // initialize workers
     let (mut worker_contexts, init_training_step) =
         initialize_worker_contexts(config.clone(), workers).await?;
@@ -198,26 +204,30 @@ pub async fn multi_gpu_training_worker(
 
             timing.add_event("merge outputs");
 
-            // compute benchmark
-            // {
-            //     let benchmark = YoloBenchmarkInit::default().build()?;
-            //     benchmark.forward(&model_output);
-            // }
+            // run inference
+            let inference = config.logging.enable_inference.then(|| {
+                let inference = yolo_inference.forward(&model_output);
+                inference
+            });
+            timing.add_event("inference");
 
             // send output to logger
             {
                 let losses = losses.shallow_clone();
-                log_outputs(
-                    config.clone(),
-                    logging_tx.clone(),
-                    training_step,
-                    lr_scheduler.lr(),
-                    image,
-                    model_output,
-                    target_bboxes,
-                    losses,
-                )
-                .await?;
+                logging_tx
+                    .send(LoggingMessage::new_training_output(
+                        "training-output",
+                        TrainingOutputLog {
+                            step: training_step,
+                            lr: r64(lr_scheduler.lr()),
+                            input: image,
+                            output: model_output,
+                            losses,
+                            target_bboxes,
+                            inference,
+                        },
+                    ))
+                    .map_err(|_err| format_err!("cannot send message to logger"))?;
             }
 
             // save checkpoint
@@ -625,31 +635,4 @@ fn backward_step(
 
         Ok(())
     })
-}
-
-async fn log_outputs(
-    _config: Arc<Config>,
-    logging_tx: broadcast::Sender<LoggingMessage>,
-    training_step: usize,
-    lr: f64,
-    input: Tensor,
-    output: MergeDetect2DOutput,
-    target_bboxes: PredTargetMatching,
-    losses: YoloLossOutput,
-) -> Result<()> {
-    logging_tx
-        .send(LoggingMessage::new_training_output(
-            "training-output",
-            TrainingOutputLog {
-                step: training_step,
-                lr: r64(lr),
-                input,
-                output,
-                losses,
-                target_bboxes,
-            },
-        ))
-        .map_err(|_err| format_err!("cannot send message to logger"))?;
-
-    Ok(())
 }
