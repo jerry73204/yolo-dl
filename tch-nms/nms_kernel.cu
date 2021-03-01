@@ -61,9 +61,10 @@ __device__ inline scalar_t devIoU(scalar_t const *const a,
 }
 
 template <typename scalar_t>
-__global__ void
-nms_kernel(const int64_t n_boxes, const scalar_t nms_overlap_thresh,
-           const scalar_t *dev_boxes, const int64_t *idx, int64_t *dev_mask) {
+__global__ void nms_kernel(const int64_t n_boxes,
+                           const scalar_t nms_overlap_thresh,
+                           const scalar_t *dev_boxes, const int64_t *idx,
+                           const int64_t *group, int64_t *dev_mask) {
   const int64_t row_start = blockIdx.y;
   const int64_t col_start = blockIdx.x;
 
@@ -73,6 +74,7 @@ nms_kernel(const int64_t n_boxes, const scalar_t nms_overlap_thresh,
       min(n_boxes - col_start * threadsPerBlock, threadsPerBlock);
 
   __shared__ scalar_t block_boxes[threadsPerBlock * 4];
+  __shared__ int block_group[threadsPerBlock];
   if (threadIdx.x < col_size) {
     block_boxes[threadIdx.x * 4 + 0] =
         dev_boxes[idx[(threadsPerBlock * col_start + threadIdx.x)] * 4 + 0];
@@ -82,12 +84,15 @@ nms_kernel(const int64_t n_boxes, const scalar_t nms_overlap_thresh,
         dev_boxes[idx[(threadsPerBlock * col_start + threadIdx.x)] * 4 + 2];
     block_boxes[threadIdx.x * 4 + 3] =
         dev_boxes[idx[(threadsPerBlock * col_start + threadIdx.x)] * 4 + 3];
+    block_group[threadIdx.x] =
+        group[idx[(threadsPerBlock * col_start + threadIdx.x)]];
   }
   __syncthreads();
 
   if (threadIdx.x < row_size) {
     const int cur_box_idx = threadsPerBlock * row_start + threadIdx.x;
     const scalar_t *cur_box = dev_boxes + idx[cur_box_idx] * 4;
+    const int curr_group = group[idx[cur_box_idx]];
     int i = 0;
     unsigned long long t = 0;
     int start = 0;
@@ -95,7 +100,8 @@ nms_kernel(const int64_t n_boxes, const scalar_t nms_overlap_thresh,
       start = threadIdx.x + 1;
     }
     for (i = start; i < col_size; i++) {
-      if (devIoU(cur_box, block_boxes + i * 4) > nms_overlap_thresh) {
+      if (curr_group == block_group[i] &&
+          devIoU(cur_box, block_boxes + i * 4) > nms_overlap_thresh) {
         t |= 1ULL << i;
       }
     }
@@ -159,8 +165,8 @@ __global__ void nms_collect(const int64_t boxes_num, const int64_t col_blocks,
 extern "C" {
 void nms_cuda_forward_ffi(at::Tensor **keep, at::Tensor **num_to_keep,
                           at::Tensor **parent_object_index, at::Tensor *boxes,
-                          at::Tensor *idx, float nms_overlap_thresh,
-                          int64_t top_k) {
+                          at::Tensor *idx, at::Tensor *group,
+                          float nms_overlap_thresh, int64_t top_k) {
   const auto boxes_num = boxes->size(0);
   const int col_blocks = DIVUP(boxes_num, threadsPerBlock);
 
@@ -178,14 +184,15 @@ void nms_cuda_forward_ffi(at::Tensor **keep, at::Tensor **num_to_keep,
 
   AT_ASSERTM(boxes->is_contiguous(), "boxes must be contiguous");
   AT_ASSERTM(idx->is_contiguous(), "idx must be contiguous");
+  AT_ASSERTM(group->is_contiguous(), "group must be contiguous");
   AT_ASSERTM(mask.is_contiguous(), "mask must be contiguous");
 
-  AT_DISPATCH_FLOATING_TYPES(boxes->type(), "nms_cuda_forward", ([&] {
-                               nms_kernel<<<blocks, threads>>>(
-                                   boxes_num, (scalar_t)nms_overlap_thresh,
-                                   boxes->data<scalar_t>(),
-                                   idx->data<int64_t>(), mask.data<int64_t>());
-                             }));
+  AT_DISPATCH_FLOATING_TYPES(
+      boxes->type(), "nms_cuda_forward", ([&] {
+        nms_kernel<<<blocks, threads>>>(
+            boxes_num, (scalar_t)nms_overlap_thresh, boxes->data<scalar_t>(),
+            idx->data<int64_t>(), group->data<int64_t>(), mask.data<int64_t>());
+      }));
 
   at::Tensor keep_ = at::empty({boxes_num}, longOptions);
   at::Tensor num_to_keep_ = at::empty({}, longOptions);

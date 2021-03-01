@@ -22,6 +22,7 @@ extern "C" {
         parent_object_index: *mut *mut c_void,
         boxes: *mut c_void,
         idx: *mut c_void,
+        group: *mut c_void,
         nms_overlap_thresh: f64,
         top_k: i64,
     );
@@ -38,12 +39,14 @@ extern "C" {
 pub fn nms_cuda_with_idx(
     boxes: &Tensor,
     idx: &Tensor,
+    group: &Tensor,
     nms_overlap_thresh: f64,
     top_k: i64,
 ) -> Result<(Tensor, Tensor, Tensor), TchError> {
     // workaround to get the internal pointers
     let boxes: *mut c_void = unsafe { mem::transmute(boxes.shallow_clone()) };
     let idx: *mut c_void = unsafe { mem::transmute(idx.shallow_clone()) };
+    let group: *mut c_void = unsafe { mem::transmute(group.shallow_clone()) };
 
     // create uninitialized output tensors
     let mut keep: *mut c_void = ptr::null_mut();
@@ -56,6 +59,7 @@ pub fn nms_cuda_with_idx(
         &mut parent_object_index as *mut _,
         boxes,
         idx,
+        group,
         nms_overlap_thresh,
         top_k
     ));
@@ -77,11 +81,12 @@ pub fn nms_cuda_with_idx(
 pub fn nms_cuda_with_scores(
     boxes: &Tensor,
     scores: &Tensor,
+    group: &Tensor,
     nms_overlap_thresh: f64,
     top_k: i64,
 ) -> Result<(Tensor, Tensor, Tensor), TchError> {
     let (_sorted, idx) = scores.sort(0, true);
-    nms_cuda_with_idx(boxes, &idx, nms_overlap_thresh, top_k)
+    nms_cuda_with_idx(boxes, &idx, group, nms_overlap_thresh, top_k)
 }
 
 pub(crate) fn read_and_clean_error() -> Result<(), TchError> {
@@ -131,9 +136,10 @@ mod tests {
 
         let boxes = Tensor::cat(&[l, t, r, b], 1);
         let scores = Tensor::rand(&[N_BOXES], (Kind::Float, device));
+        let group = Tensor::zeros(&[N_BOXES], (Kind::Int64, device));
 
         let (keep, num_to_keep, parent_object_index) =
-            nms_cuda_with_scores(&boxes, &scores, 0.50, N_BOXES).unwrap();
+            nms_cuda_with_scores(&boxes, &scores, &group, 0.50, N_BOXES).unwrap();
 
         assert!(keep.size1().unwrap() == N_BOXES);
         assert!(parent_object_index.size1().unwrap() == N_BOXES);
@@ -149,6 +155,6 @@ mod tests {
         assert!(keep[(num_to_keep as usize)..(N_BOXES as usize)]
             .iter()
             .all(|&val| val == 0));
-        assert!(parent_object_index.iter().all(|&val| val < N_BOXES));
+        assert!(parent_object_index.iter().all(|&val| val <= N_BOXES));
     }
 }
