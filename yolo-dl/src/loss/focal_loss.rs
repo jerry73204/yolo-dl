@@ -123,7 +123,7 @@ mod tests {
         let vs = nn::VarStore::new(device);
         let root = vs.root();
         let loss_fn = {
-            let bce = BceWithLogitsLossInit::default(Reduction::None).build();
+            let bce = BceWithLogitsLossInit::default(Reduction::None).build(&root / "loss");
             let focal = FocalLossInit::default(Reduction::Mean, move |input, target| {
                 bce.forward(input, target)
             })

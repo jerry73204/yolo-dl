@@ -16,12 +16,28 @@ impl BceWithLogitsLossInit {
         }
     }
 
-    pub fn build(self) -> BceWithLogitsLoss {
+    pub fn build<'a>(self, path: impl Borrow<nn::Path<'a>>) -> BceWithLogitsLoss {
         let Self {
             weight,
             pos_weight,
             reduction,
         } = self;
+
+        let path = path.borrow();
+        let weight = weight.map(|from| {
+            tch::no_grad(|| {
+                let mut weight = path.zeros_no_train("weight", &from.size());
+                weight.copy_(&from);
+                weight
+            })
+        });
+        let pos_weight = pos_weight.map(|from| {
+            tch::no_grad(|| {
+                let mut weight = path.zeros_no_train("pos_weight", &from.size());
+                weight.copy_(&from);
+                weight
+            })
+        });
 
         BceWithLogitsLoss {
             weight,
@@ -51,9 +67,11 @@ impl BceWithLogitsLoss {
             "target values must be in range of [0.0, 1.0]"
         );
 
+        let device = input.device();
+
         // return zero tensor if (1) input is empty and (2) using mean reduction
         if input.is_empty() && self.reduction == Reduction::Mean {
-            return Tensor::zeros(&[], (Kind::Float, input.device())).set_requires_grad(false);
+            return Tensor::zeros(&[], (Kind::Float, device)).set_requires_grad(false);
         }
 
         input.binary_cross_entropy_with_logits(
@@ -79,7 +97,7 @@ mod tests {
 
         let vs = nn::VarStore::new(device);
         let root = vs.root();
-        let loss_fn = BceWithLogitsLossInit::default(Reduction::Mean).build();
+        let loss_fn = BceWithLogitsLossInit::default(Reduction::Mean).build(&root / "loss");
 
         let input = root.randn("input", &[n_batch, n_class], 0.0, 100.0);
         let target = Tensor::rand(&[n_batch, n_class], (Kind::Float, device))

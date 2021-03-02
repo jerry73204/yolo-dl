@@ -31,8 +31,9 @@ pub fn single_gpu_training_worker(
                         box_metric,
                         match_grid_method,
                         iou_loss_weight,
-                        objectness_loss_kind,
-                        classification_loss_kind,
+                        objectness_positive_weight,
+                        objectness_loss_fn,
+                        classification_loss_fn,
                         objectness_loss_weight,
                         classification_loss_weight,
                     },
@@ -55,13 +56,14 @@ pub fn single_gpu_training_worker(
         match_grid_method: Some(match_grid_method),
         box_metric: Some(box_metric),
         iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
-        objectness_loss_kind: Some(objectness_loss_kind),
-        classification_loss_kind: Some(classification_loss_kind),
+        objectness_loss_kind: Some(objectness_loss_fn),
+        classification_loss_kind: Some(classification_loss_fn),
+        objectness_pos_weight: objectness_positive_weight,
         objectness_loss_weight: objectness_loss_weight.map(|val| val.raw()),
         classification_loss_weight: classification_loss_weight.map(|val| val.raw()),
         ..Default::default()
     }
-    .build()?;
+    .build(&root / "loss")?;
     let yolo_inference = YoloInferenceInit {
         nms_iou_threshold: Some(r64(0.9)),
         nms_confidence_threshold: Some(r64(0.9)),

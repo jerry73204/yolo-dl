@@ -22,7 +22,7 @@ mod yolo_loss_init {
 
     #[derive(Debug)]
     pub struct YoloLossInit {
-        pub pos_weight: Option<Tensor>,
+        pub objectness_pos_weight: Option<R64>,
         pub reduction: Reduction,
         pub focal_loss_gamma: Option<f64>,
         pub match_grid_method: Option<MatchGrid>,
@@ -38,9 +38,9 @@ mod yolo_loss_init {
     }
 
     impl YoloLossInit {
-        pub fn build(self) -> Result<YoloLoss> {
+        pub fn build<'a>(self, path: impl Borrow<nn::Path<'a>>) -> Result<YoloLoss> {
             let Self {
-                pos_weight,
+                objectness_pos_weight,
                 reduction,
                 focal_loss_gamma,
                 match_grid_method,
@@ -54,6 +54,7 @@ mod yolo_loss_init {
                 objectness_loss_weight,
                 classification_loss_weight,
             } = self;
+            let path = path.borrow();
 
             let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
             let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
@@ -93,17 +94,17 @@ mod yolo_loss_init {
             let class_loss = match classification_loss_kind.unwrap_or(ClassificationLossKind::Bce) {
                 ClassificationLossKind::Bce => ClassificationLoss::Bce(
                     BceWithLogitsLossInit {
-                        pos_weight: pos_weight.shallow_clone(),
+                        pos_weight: objectness_pos_weight
+                            .map(|weight| Tensor::of_slice(&[weight.raw()])),
                         ..BceWithLogitsLossInit::default(reduction)
                     }
-                    .build(),
+                    .build(path),
                 ),
                 ClassificationLossKind::Focal => {
                     let bce_loss = BceWithLogitsLossInit {
-                        pos_weight: pos_weight.shallow_clone(),
                         ..BceWithLogitsLossInit::default(Reduction::None)
                     }
-                    .build();
+                    .build(path);
 
                     ClassificationLoss::Focal(
                         FocalLossInit {
@@ -124,17 +125,17 @@ mod yolo_loss_init {
             let obj_loss = match objectness_loss_kind.unwrap_or(ObjectnessLossKind::Bce) {
                 ObjectnessLossKind::Bce => ObjectnessLoss::Bce(
                     BceWithLogitsLossInit {
-                        pos_weight: pos_weight.shallow_clone(),
+                        pos_weight: objectness_pos_weight
+                            .map(|weight| Tensor::of_slice(&[weight.raw()])),
                         ..BceWithLogitsLossInit::default(reduction)
                     }
-                    .build(),
+                    .build(path),
                 ),
                 ObjectnessLossKind::Focal => {
                     let bce_loss = BceWithLogitsLossInit {
-                        pos_weight: pos_weight.shallow_clone(),
                         ..BceWithLogitsLossInit::default(Reduction::None)
                     }
-                    .build();
+                    .build(path);
 
                     ObjectnessLoss::Focal(
                         FocalLossInit {
@@ -173,7 +174,7 @@ mod yolo_loss_init {
     impl Default for YoloLossInit {
         fn default() -> Self {
             Self {
-                pos_weight: None,
+                objectness_pos_weight: None,
                 reduction: Reduction::Mean,
                 focal_loss_gamma: None,
                 match_grid_method: None,

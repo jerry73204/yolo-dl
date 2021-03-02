@@ -154,8 +154,9 @@
         "loss": {
             "match_grid_method": "Rect4", // Rect2, Rect4
             "box_metric": "Hausdorff",    // IoU, GIoU, DIoU, CIoU, Hausdorff
-            "objectness_loss_kind": "Bce",
-            "classification_loss_kind": "Bce",
+            "objectness_loss_fn": "Bce",
+            "classification_loss_fn": "Bce",
+            "objectness_positive_weight": 55.0,
 
             // for DIoU
             // "iou_loss_weight": 0.31,

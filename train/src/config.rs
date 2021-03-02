@@ -242,17 +242,21 @@ mod training {
     /// The loss function configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct LossConfig {
-        pub objectness_loss_kind: ObjectnessLossKind,
-        pub classification_loss_kind: ClassificationLossKind,
+        /// The choice of objectness loss function.
+        pub objectness_loss_fn: ObjectnessLossKind,
+        /// The choice of classification loss function.
+        pub classification_loss_fn: ClassificationLossKind,
+        /// The weight factor of positive objectness class.
+        pub objectness_positive_weight: Option<R64>,
         /// The method to match ground truth to predicted bounding boxes.
         pub match_grid_method: MatchGrid,
         /// The choice of bounding box metric.
         pub box_metric: BoxMetric,
-        /// The weighting factor of IoU loss.
+        /// The weight factor of IoU loss.
         pub iou_loss_weight: Option<R64>,
-        /// The weighting factor of objectness loss.
+        /// The weight factor of objectness loss.
         pub objectness_loss_weight: Option<R64>,
-        /// The weighting factor of classification loss.
+        /// The weight factor of classification loss.
         pub classification_loss_weight: Option<R64>,
     }
 }
