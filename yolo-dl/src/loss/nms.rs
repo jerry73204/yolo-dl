@@ -106,17 +106,8 @@ impl NonMaxSuppression {
             let keep = {
                 let ltrb = Tensor::cat(&[bbox.l(), bbox.t(), bbox.r(), bbox.b()], 1);
                 let group = &batches * num_classes as i64 + &classes;
-                let (keep, num_to_keep, _parent_object_index) = tch_nms::nms_cuda_with_scores(
-                    &ltrb,
-                    &conf,
-                    &group,
-                    iou_threshold.raw(),
-                    batches.numel() as i64,
-                )
-                .unwrap();
-
-                let num_to_keep: i64 = num_to_keep.into();
-                keep.i(0..num_to_keep)
+                tch_nms::nms_by_scores(&ltrb, &conf.view([-1]), &group, iou_threshold.raw())
+                    .unwrap()
             };
 
             let keep_batches = batches.index(&[&keep]);
