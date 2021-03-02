@@ -274,8 +274,6 @@ mod logging_worker {
                                 .iter()
                                 .map(|(pred_index, target_bbox)| {
                                     let InstanceIndex { batch_index, .. } = *pred_index;
-                                    let flat_index =
-                                        output.instance_to_flat_index(pred_index).unwrap();
                                     let tlbr: PixelTLBR<f64> = target_bbox
                                         .cycxhw
                                         .scale_to_unit(image_h as f64, image_w as f64)
