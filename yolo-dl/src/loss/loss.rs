@@ -94,8 +94,6 @@ mod yolo_loss_init {
             let class_loss = match classification_loss_kind.unwrap_or(ClassificationLossKind::Bce) {
                 ClassificationLossKind::Bce => ClassificationLoss::Bce(
                     BceWithLogitsLossInit {
-                        pos_weight: objectness_pos_weight
-                            .map(|weight| Tensor::of_slice(&[weight.raw()])),
                         ..BceWithLogitsLossInit::default(reduction)
                     }
                     .build(path),
@@ -133,6 +131,8 @@ mod yolo_loss_init {
                 ),
                 ObjectnessLossKind::Focal => {
                     let bce_loss = BceWithLogitsLossInit {
+                        pos_weight: objectness_pos_weight
+                            .map(|weight| Tensor::of_slice(&[weight.raw()])),
                         ..BceWithLogitsLossInit::default(Reduction::None)
                     }
                     .build(path);
