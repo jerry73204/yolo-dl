@@ -14,7 +14,7 @@ It is still under development and is not feature complete.
 - **yolo-dl**: The building blocks of YOLO detection model and preprocessors.
 - **train**: The multi-GPU training program.
 
-## Prerequisites
+## Environment Setup
 
 ### Dependencies
 
@@ -26,20 +26,37 @@ We suggest the [rustup](https://rustup.rs/) installer to install Rust toolchain.
 - PyTorch 1.7.0
 Install either by system package manager or by `pip3 install --user torch torchvision`.
 
-- CUDA 11.x
+- CUDA 10.x or 11.x
+
+### Environment Variables
+
+The section presents manidatory and optional environment variables. You may put the setup in your `.bashrc` or `.zshrc`.
+
+We suggest the setup for Rust toolchain. It instructs the program to show backtrace when error occurs and shows more verbosed messages.
+
+```sh
+# (optional) show backtrace when error occurs
+export RUST_BACKTRACE=1
+
+# (optional) show logging message to INFO level
+export RUST_LOG=info
+```
+
+The directory of libtorch library and its ABI must be respectively specified. This is an example setup if you installs PyTorch by Python 3 `pip` on Ubuntu 18.04/20.04.
+
+```sh
+# (required) libtorch library directory
+export LIBTORCH=$HOME/.local/lib/python3.8/site-packages/torch
+
+# (required) The C++ ABI which libtorch is compiled with
+export LIBTORCH_CXX11_ABI=0
+```
 
 ### Development Environment
 
-The environment variables enable verbose messaging from program. You can copy them to your `.bashrc` or `.zshrc`.
-
-```sh
-export RUST_BACKTRACE=1  # show backtrace when panic
-export RUST_LOG=info     # verbose logging
-```
-
 We suggest working on your favorite editor with [rust-analyzer](https://rust-analyzer.github.io/manual.html). It helps hunting common errors with ease.
 
-### Build the Project
+## Build the Project
 
 The command builds the entire project.
 
@@ -53,12 +70,9 @@ The `--release` option in only needed in production. It gains about 5x performan
 
 ### Run Training
 
-The command trains a model. The `--config train.json5` is needed only when you wish to specify your custom configuration file.
+The command trains a model. It loads `train.json5` configuration file in current directory. You can specify custom configuration file with `--config /path/to/config.json5`.
 
 ```sh
-# Set RUST_LOG so that we can see the terminal output
-export RUST_LOG=info
-
 # Start training
 cargo run --release --bin train -- [--config train.json5]
 ```
