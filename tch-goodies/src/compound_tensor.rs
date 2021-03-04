@@ -1,8 +1,10 @@
-use crate::{bbox::CyCxHW, common::*, ratio::Ratio, unit::Unit};
+use crate::{bbox::CyCxHW, common::*, detection::Label, ratio::Ratio, unit::Unit};
 
 pub use area_tensor::*;
 pub use cycxhw_tensor::*;
+pub use detection_tensor::*;
 use into_tch_element::*;
+pub use label_tensor::*;
 pub use size_tensor::*;
 pub use tlbr_tensor::*;
 
@@ -231,6 +233,26 @@ mod cycxhw_tensor {
         pub fn hausdorff_distance_to(&self, other: &Self) -> Tensor {
             TLBRTensor::from(self).hausdorff_distance_to(&TLBRTensor::from(other))
         }
+
+        pub fn cat<T>(iter: impl IntoIterator<Item = T>) -> Self
+        where
+            T: Borrow<Self>,
+        {
+            let (cy_vec, cx_vec, h_vec, w_vec) = iter
+                .into_iter()
+                .map(|cycxhw| {
+                    let Self { cy, cx, h, w } = cycxhw.borrow().shallow_clone();
+                    (cy, cx, h, w)
+                })
+                .unzip_n_vec();
+
+            Self {
+                cy: Tensor::cat(&cy_vec, 0),
+                cx: Tensor::cat(&cx_vec, 0),
+                h: Tensor::cat(&h_vec, 0),
+                w: Tensor::cat(&w_vec, 0),
+            }
+        }
     }
 
     impl TryFrom<CyCxHWTensorUnchecked> for CyCxHWTensor {
@@ -319,6 +341,66 @@ mod cycxhw_tensor {
             })
             .collect();
             bboxes
+        }
+    }
+
+    impl<T, U> FromIterator<CyCxHW<T, U>> for CyCxHWTensor
+    where
+        T: Float,
+        U: Unit,
+    {
+        fn from_iter<I: IntoIterator<Item = CyCxHW<T, U>>>(iter: I) -> Self {
+            let (cy, cx, h, w) = iter
+                .into_iter()
+                .map(|cycxhw| {
+                    let [cy, cx, h, w] = cycxhw.cycxhw_params();
+                    (
+                        <f32 as NumCast>::from(cy).unwrap(),
+                        <f32 as NumCast>::from(cx).unwrap(),
+                        <f32 as NumCast>::from(h).unwrap(),
+                        <f32 as NumCast>::from(w).unwrap(),
+                    )
+                })
+                .unzip_n_vec();
+
+            CyCxHWTensorUnchecked {
+                cy: Tensor::of_slice(&cy),
+                cx: Tensor::of_slice(&cx),
+                h: Tensor::of_slice(&h),
+                w: Tensor::of_slice(&w),
+            }
+            .try_into()
+            .unwrap()
+        }
+    }
+
+    impl<'a, T, U> FromIterator<&'a CyCxHW<T, U>> for CyCxHWTensor
+    where
+        T: Float,
+        U: Unit,
+    {
+        fn from_iter<I: IntoIterator<Item = &'a CyCxHW<T, U>>>(iter: I) -> Self {
+            let (cy, cx, h, w) = iter
+                .into_iter()
+                .map(|cycxhw| {
+                    let [cy, cx, h, w] = cycxhw.cycxhw_params();
+                    (
+                        <f32 as NumCast>::from(cy).unwrap(),
+                        <f32 as NumCast>::from(cx).unwrap(),
+                        <f32 as NumCast>::from(h).unwrap(),
+                        <f32 as NumCast>::from(w).unwrap(),
+                    )
+                })
+                .unzip_n_vec();
+
+            CyCxHWTensorUnchecked {
+                cy: Tensor::of_slice(&cy),
+                cx: Tensor::of_slice(&cx),
+                h: Tensor::of_slice(&h),
+                w: Tensor::of_slice(&w),
+            }
+            .try_into()
+            .unwrap()
         }
     }
 }
@@ -626,6 +708,216 @@ mod tlbr_tensor {
             l: l_tensor,
             b: b_tensor,
             r: r_tensor,
+        }
+    }
+}
+
+mod detection_tensor {
+    use super::*;
+
+    #[derive(Debug, TensorLike, Getters)]
+    pub struct DetectionTensor {
+        #[get = "pub"]
+        pub(crate) cycxhw: CyCxHWTensor,
+        #[get = "pub"]
+        pub(crate) obj: Tensor,
+        #[get = "pub"]
+        pub(crate) class: Tensor,
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct DetectionTensorUnchecked {
+        pub cycxhw: CyCxHWTensorUnchecked,
+        pub obj: Tensor,
+        pub class: Tensor,
+    }
+
+    impl DetectionTensor {
+        pub fn cat<T>(iter: impl IntoIterator<Item = T>) -> Self
+        where
+            T: Borrow<Self>,
+        {
+            let (cycxhw_vec, obj_vec, class_vec) = iter
+                .into_iter()
+                .map(|detection| {
+                    let Self { cycxhw, obj, class } = detection.borrow().shallow_clone();
+                    (cycxhw, obj, class)
+                })
+                .unzip_n_vec();
+
+            Self {
+                cycxhw: CyCxHWTensor::cat(cycxhw_vec),
+                obj: Tensor::cat(&obj_vec, 0),
+                class: Tensor::cat(&class_vec, 0),
+            }
+        }
+    }
+
+    impl TryFrom<DetectionTensorUnchecked> for DetectionTensor {
+        type Error = Error;
+
+        fn try_from(from: DetectionTensorUnchecked) -> Result<Self, Self::Error> {
+            let DetectionTensorUnchecked { cycxhw, obj, class } = from;
+            let cycxhw: CyCxHWTensor = cycxhw.try_into()?;
+
+            match (obj.size2()?, class.size2()?) {
+                ((obj_len, 1), (class_len, _num_class)) => {
+                    ensure!(
+                        cycxhw.num_samples() == obj_len && obj_len == class_len,
+                        "size mismatch"
+                    );
+                }
+                _ => bail!("size mismatch"),
+            }
+
+            Ok(Self { cycxhw, obj, class })
+        }
+    }
+
+    impl From<DetectionTensor> for DetectionTensorUnchecked {
+        fn from(from: DetectionTensor) -> Self {
+            let DetectionTensor { cycxhw, obj, class } = from;
+            Self {
+                cycxhw: cycxhw.into(),
+                obj,
+                class,
+            }
+        }
+    }
+}
+
+mod label_tensor {
+    use super::*;
+
+    #[derive(Debug, TensorLike, Getters)]
+    pub struct LabelTensor {
+        #[get = "pub"]
+        pub(crate) cycxhw: CyCxHWTensor,
+        #[get = "pub"]
+        pub(crate) class: Tensor,
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct LabelTensorUnchecked {
+        pub cycxhw: CyCxHWTensorUnchecked,
+        pub class: Tensor,
+    }
+
+    impl LabelTensor {
+        pub fn cat<T>(iter: impl IntoIterator<Item = T>) -> Self
+        where
+            T: Borrow<Self>,
+        {
+            let (cycxhw_vec, class_vec) = iter
+                .into_iter()
+                .map(|label| {
+                    let Self { cycxhw, class } = label.borrow().shallow_clone();
+                    (cycxhw, class)
+                })
+                .unzip_n_vec();
+
+            Self {
+                cycxhw: CyCxHWTensor::cat(cycxhw_vec),
+                class: Tensor::cat(&class_vec, 0),
+            }
+        }
+    }
+
+    impl TryFrom<LabelTensorUnchecked> for LabelTensor {
+        type Error = Error;
+
+        fn try_from(from: LabelTensorUnchecked) -> Result<Self, Self::Error> {
+            let LabelTensorUnchecked { cycxhw, class } = from;
+            let cycxhw: CyCxHWTensor = cycxhw.try_into()?;
+
+            match class.size2()? {
+                (class_len, 1) => {
+                    ensure!(cycxhw.num_samples() == class_len, "size mismatch");
+                }
+                _ => bail!("size mismatch"),
+            }
+
+            Ok(Self { cycxhw, class })
+        }
+    }
+
+    impl From<LabelTensor> for LabelTensorUnchecked {
+        fn from(from: LabelTensor) -> Self {
+            let LabelTensor { cycxhw, class } = from;
+            Self {
+                cycxhw: cycxhw.into(),
+                class,
+            }
+        }
+    }
+
+    impl<T, U> FromIterator<Label<T, U>> for LabelTensor
+    where
+        T: Float,
+        U: Unit,
+    {
+        fn from_iter<I: IntoIterator<Item = Label<T, U>>>(iter: I) -> Self {
+            let (cy, cx, h, w, class) = iter
+                .into_iter()
+                .map(|label| {
+                    let [cy, cx, h, w] = label.cycxhw.cycxhw_params();
+                    let class = label.class;
+                    (
+                        <f32 as NumCast>::from(cy).unwrap(),
+                        <f32 as NumCast>::from(cx).unwrap(),
+                        <f32 as NumCast>::from(h).unwrap(),
+                        <f32 as NumCast>::from(w).unwrap(),
+                        class as i64,
+                    )
+                })
+                .unzip_n_vec();
+
+            LabelTensorUnchecked {
+                cycxhw: CyCxHWTensorUnchecked {
+                    cy: Tensor::of_slice(&cy),
+                    cx: Tensor::of_slice(&cx),
+                    h: Tensor::of_slice(&h),
+                    w: Tensor::of_slice(&w),
+                },
+                class: Tensor::of_slice(&class),
+            }
+            .try_into()
+            .unwrap()
+        }
+    }
+
+    impl<'a, T, U> FromIterator<&'a Label<T, U>> for LabelTensor
+    where
+        T: Float,
+        U: Unit,
+    {
+        fn from_iter<I: IntoIterator<Item = &'a Label<T, U>>>(iter: I) -> Self {
+            let (cy_vec, cx_vec, h_vec, w_vec, class_vec) = iter
+                .into_iter()
+                .map(|label| {
+                    let [cy, cx, h, w] = label.cycxhw.cycxhw_params();
+                    let class = label.class;
+                    (
+                        <f32 as NumCast>::from(cy).unwrap(),
+                        <f32 as NumCast>::from(cx).unwrap(),
+                        <f32 as NumCast>::from(h).unwrap(),
+                        <f32 as NumCast>::from(w).unwrap(),
+                        class as i64,
+                    )
+                })
+                .unzip_n_vec();
+
+            LabelTensorUnchecked {
+                cycxhw: CyCxHWTensorUnchecked {
+                    cy: Tensor::of_slice(&cy_vec).view([-1, 1]),
+                    cx: Tensor::of_slice(&cx_vec).view([-1, 1]),
+                    h: Tensor::of_slice(&h_vec).view([-1, 1]),
+                    w: Tensor::of_slice(&w_vec).view([-1, 1]),
+                },
+                class: Tensor::of_slice(&class_vec).view([-1, 1]),
+            }
+            .try_into()
+            .unwrap()
         }
     }
 }

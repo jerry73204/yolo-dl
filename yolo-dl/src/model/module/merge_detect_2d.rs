@@ -1,5 +1,7 @@
 use super::*;
-use crate::loss::{NmsOutput, NonMaxSuppressionInit};
+
+pub use flat_index_tensor::*;
+pub use instance_index_tensor::*;
 
 #[derive(Debug)]
 pub struct MergeDetect2D {
@@ -124,7 +126,7 @@ pub struct MergeDetect2DOutput {
     pub cx: Tensor,
     /// Tensor of bbox heights with shape `[batch, 1, instance]`.
     pub h: Tensor,
-    /// Tensor of bbox widths with shape `[batch, 1, instance`.
+    /// Tensor of bbox widths with shape `[batch, 1, instance]`.
     pub w: Tensor,
     /// Tensor of bbox objectness score with shape `[batch, 1, instance]`.
     pub obj: Tensor,
@@ -146,26 +148,12 @@ impl MergeDetect2DOutput {
         batch_size
     }
 
-    pub fn to_prediction(
-        &self,
-        iou_threshold: R64,
-        confidence_threshold: R64,
-    ) -> Result<NmsOutput> {
-        let nms = NonMaxSuppressionInit {
-            iou_threshold,
-            confidence_threshold,
-        }
-        .build()?;
-        let nms_output = nms.forward(self);
-        Ok(nms_output)
-    }
-
     pub fn num_instances(&self) -> i64 {
         let (_batch_size, _entries, instances) = self.cy.size3().unwrap();
         instances
     }
 
-    pub fn cat<T>(outputs: impl IntoIterator<Item = T>, device: Device) -> Result<Self>
+    pub fn cat<T>(outputs: impl IntoIterator<Item = T>) -> Result<Self>
     where
         T: Borrow<Self>,
     {
@@ -196,26 +184,26 @@ impl MergeDetect2DOutput {
                 let batch_size = output.batch_size();
                 let Self {
                     num_classes,
-                    ref info,
-                    ref cy,
-                    ref cx,
-                    ref h,
-                    ref w,
-                    ref obj,
-                    ref class,
+                    info,
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj,
+                    class,
                     ..
-                } = *output;
+                } = output.shallow_clone();
 
                 (
                     batch_size,
                     num_classes,
                     info.to_owned(),
-                    cy.to_device(device),
-                    cx.to_device(device),
-                    h.to_device(device),
-                    w.to_device(device),
-                    obj.to_device(device),
-                    class.to_device(device),
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj,
+                    class,
                 )
             })
             .unzip_n();
@@ -290,11 +278,42 @@ impl MergeDetect2DOutput {
         })
     }
 
-    pub fn flat_to_instance_index(
-        &self,
-        batch_index: usize,
-        flat_index: i64,
-    ) -> Option<InstanceIndex> {
+    pub fn index_by_flats(&self, flat_indexes: &FlatIndexTensor) -> DetectionTensor {
+        let Self {
+            cy,
+            cx,
+            h,
+            w,
+            class,
+            obj,
+            ..
+        } = self;
+        let FlatIndexTensor { batches, flats } = flat_indexes;
+
+        DetectionTensorUnchecked {
+            cycxhw: CyCxHWTensorUnchecked {
+                cy: cy.index_opt((batches, NONE_INDEX, flats)),
+                cx: cx.index_opt((batches, NONE_INDEX, flats)),
+                h: h.index_opt((batches, NONE_INDEX, flats)),
+                w: w.index_opt((batches, NONE_INDEX, flats)),
+            },
+            obj: obj.index_opt((batches, NONE_INDEX, flats)),
+            class: class.index_opt((batches, NONE_INDEX, flats)),
+        }
+        .try_into()
+        .unwrap()
+    }
+
+    pub fn index_by_instances(&self, instance_indexes: &InstanceIndexTensor) -> DetectionTensor {
+        let flat_indexes = self.instances_to_flats(instance_indexes).unwrap();
+        self.index_by_flats(&flat_indexes)
+    }
+
+    pub fn flat_to_instance_index(&self, flat_index: &FlatIndex) -> Option<InstanceIndex> {
+        let FlatIndex {
+            batch_index,
+            flat_index,
+        } = *flat_index;
         let batch_size = self.batch_size();
         if batch_index as i64 >= batch_size || flat_index < 0 {
             return None;
@@ -324,34 +343,113 @@ impl MergeDetect2DOutput {
         }
 
         Some(InstanceIndex {
-            batch_index,
-            layer_index,
+            batch_index: batch_index as i64,
+            layer_index: layer_index as i64,
             anchor_index,
             grid_row,
             grid_col,
         })
     }
 
-    pub fn instance_to_flat_index(&self, instance_index: &InstanceIndex) -> Option<i64> {
+    pub fn instance_to_flat_index(&self, instance_index: &InstanceIndex) -> Option<FlatIndex> {
         let InstanceIndex {
+            batch_index,
             layer_index,
             anchor_index,
             grid_row,
             grid_col,
-            ..
         } = *instance_index;
 
         let DetectionInfo {
             ref flat_index_range,
             ref feature_size,
             ..
-        } = self.info.get(layer_index)?;
+        } = self.info.get(layer_index as usize)?;
 
         let flat_index = flat_index_range.start
             + grid_col
             + feature_size.w() * (grid_row + feature_size.h() * anchor_index);
 
-        Some(flat_index)
+        Some(FlatIndex {
+            batch_index,
+            flat_index,
+        })
+    }
+
+    pub fn flats_to_instances(
+        &self,
+        flat_indexes: &FlatIndexTensor,
+    ) -> Option<InstanceIndexTensor> {
+        let FlatIndexTensor { batches, flats } = flat_indexes;
+
+        let tuples: Option<Vec<_>> = izip!(Vec::<i64>::from(batches), Vec::<i64>::from(flats))
+            .map(|(batch_index, flat_index)| {
+                let InstanceIndex {
+                    batch_index,
+                    layer_index,
+                    anchor_index,
+                    grid_row,
+                    grid_col,
+                } = self.flat_to_instance_index(&FlatIndex {
+                    batch_index,
+                    flat_index,
+                })?;
+
+                Some((batch_index, layer_index, anchor_index, grid_row, grid_col))
+            })
+            .collect();
+        let (batches, layers, anchors, grid_rows, grid_cols) = tuples?.into_iter().unzip_n_vec();
+
+        Some(InstanceIndexTensor {
+            batches: Tensor::of_slice(&batches),
+            layers: Tensor::of_slice(&layers),
+            anchors: Tensor::of_slice(&anchors),
+            grid_rows: Tensor::of_slice(&grid_rows),
+            grid_cols: Tensor::of_slice(&grid_cols),
+        })
+    }
+
+    pub fn instances_to_flats(
+        &self,
+        instance_indexes: &InstanceIndexTensor,
+    ) -> Option<FlatIndexTensor> {
+        let InstanceIndexTensor {
+            batches,
+            layers,
+            anchors,
+            grid_rows,
+            grid_cols,
+        } = instance_indexes;
+
+        let tuples: Option<Vec<_>> = izip!(
+            Vec::<i64>::from(batches),
+            Vec::<i64>::from(layers),
+            Vec::<i64>::from(anchors),
+            Vec::<i64>::from(grid_rows),
+            Vec::<i64>::from(grid_cols),
+        )
+        .map(
+            |(batch_index, layer_index, anchor_index, grid_row, grid_col)| {
+                let FlatIndex {
+                    batch_index,
+                    flat_index,
+                } = self.instance_to_flat_index(&InstanceIndex {
+                    batch_index,
+                    layer_index,
+                    anchor_index,
+                    grid_row,
+                    grid_col,
+                })?;
+                Some((batch_index, flat_index))
+            },
+        )
+        .collect();
+        let (batches, flats) = tuples?.into_iter().unzip_n_vec();
+
+        Some(FlatIndexTensor {
+            batches: Tensor::of_slice(&batches),
+            flats: Tensor::of_slice(&flats),
+        })
     }
 
     pub fn feature_maps(&self) -> Vec<FeatureMap> {
@@ -465,10 +563,174 @@ pub struct FeatureMap {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+pub struct FlatIndex {
+    pub batch_index: i64,
+    pub flat_index: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
 pub struct InstanceIndex {
-    pub batch_index: usize,
-    pub layer_index: usize,
+    pub batch_index: i64,
+    pub layer_index: i64,
     pub anchor_index: i64,
     pub grid_row: i64,
     pub grid_col: i64,
+}
+
+mod flat_index_tensor {
+    use super::*;
+
+    #[derive(Debug, TensorLike)]
+    pub struct FlatIndexTensor {
+        pub batches: Tensor,
+        pub flats: Tensor,
+    }
+
+    impl FlatIndexTensor {
+        pub fn num_samples(&self) -> i64 {
+            self.batches.size1().unwrap()
+        }
+
+        pub fn cat_mini_batches<T>(indexes: impl IntoIterator<Item = (T, i64)>) -> Self
+        where
+            T: Borrow<Self>,
+        {
+            let (batches_vec, flats_vec) = indexes
+                .into_iter()
+                .scan(0i64, |batch_base, (flat_indexes, mini_batch_size)| {
+                    let Self { batches, flats } = flat_indexes.borrow().shallow_clone();
+
+                    let new_batches = batches + *batch_base;
+                    *batch_base += mini_batch_size;
+
+                    Some((new_batches, flats))
+                })
+                .unzip_n_vec();
+
+            Self {
+                batches: Tensor::cat(&batches_vec, 0),
+                flats: Tensor::cat(&flats_vec, 0),
+            }
+        }
+    }
+
+    impl<'a> From<&'a FlatIndexTensor> for Vec<FlatIndex> {
+        fn from(from: &'a FlatIndexTensor) -> Self {
+            let FlatIndexTensor { batches, flats } = from;
+
+            izip!(Vec::<i64>::from(batches), Vec::<i64>::from(flats))
+                .map(|(batch_index, flat_index)| FlatIndex {
+                    batch_index,
+                    flat_index,
+                })
+                .collect()
+        }
+    }
+
+    impl From<FlatIndexTensor> for Vec<FlatIndex> {
+        fn from(from: FlatIndexTensor) -> Self {
+            (&from).into()
+        }
+    }
+
+    impl FromIterator<FlatIndex> for FlatIndexTensor {
+        fn from_iter<T: IntoIterator<Item = FlatIndex>>(iter: T) -> Self {
+            let (batches, flats) = iter
+                .into_iter()
+                .map(|index| {
+                    let FlatIndex {
+                        batch_index,
+                        flat_index,
+                    } = index;
+                    (batch_index, flat_index)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                flats: Tensor::of_slice(&flats),
+            }
+        }
+    }
+
+    impl<'a> FromIterator<&'a FlatIndex> for FlatIndexTensor {
+        fn from_iter<T: IntoIterator<Item = &'a FlatIndex>>(iter: T) -> Self {
+            let (batches, flats) = iter
+                .into_iter()
+                .map(|index| {
+                    let FlatIndex {
+                        batch_index,
+                        flat_index,
+                    } = *index;
+                    (batch_index, flat_index)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                flats: Tensor::of_slice(&flats),
+            }
+        }
+    }
+}
+
+mod instance_index_tensor {
+    use super::*;
+
+    #[derive(Debug, TensorLike)]
+    pub struct InstanceIndexTensor {
+        pub batches: Tensor,
+        pub layers: Tensor,
+        pub anchors: Tensor,
+        pub grid_rows: Tensor,
+        pub grid_cols: Tensor,
+    }
+
+    impl FromIterator<InstanceIndex> for InstanceIndexTensor {
+        fn from_iter<T: IntoIterator<Item = InstanceIndex>>(iter: T) -> Self {
+            let (batches, layers, anchors, grid_rows, grid_cols) = iter
+                .into_iter()
+                .map(|index| {
+                    let InstanceIndex {
+                        batch_index,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    } = index;
+                    (batch_index, layer_index, anchor_index, grid_row, grid_col)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                layers: Tensor::of_slice(&layers),
+                anchors: Tensor::of_slice(&anchors),
+                grid_rows: Tensor::of_slice(&grid_rows),
+                grid_cols: Tensor::of_slice(&grid_cols),
+            }
+        }
+    }
+
+    impl<'a> FromIterator<&'a InstanceIndex> for InstanceIndexTensor {
+        fn from_iter<T: IntoIterator<Item = &'a InstanceIndex>>(iter: T) -> Self {
+            let (batches, layers, anchors, grid_rows, grid_cols) = iter
+                .into_iter()
+                .map(|index| {
+                    let InstanceIndex {
+                        batch_index,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    } = *index;
+                    (batch_index, layer_index, anchor_index, grid_row, grid_col)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                layers: Tensor::of_slice(&layers),
+                anchors: Tensor::of_slice(&anchors),
+                grid_rows: Tensor::of_slice(&grid_rows),
+                grid_cols: Tensor::of_slice(&grid_cols),
+            }
+        }
+    }
 }

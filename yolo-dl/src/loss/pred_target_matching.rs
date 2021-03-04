@@ -1,13 +1,24 @@
 use super::misc::MatchGrid;
 use crate::{
     common::*,
-    model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput},
+    model::{
+        DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergeDetect2DOutput,
+    },
 };
 
 #[derive(Debug, Clone)]
 pub struct CyCxHWMatcherInit {
     pub match_grid_method: MatchGrid,
     pub anchor_scale_thresh: f64,
+}
+
+impl Default for CyCxHWMatcherInit {
+    fn default() -> Self {
+        Self {
+            match_grid_method: MatchGrid::Rect4,
+            anchor_scale_thresh: 4.0,
+        }
+    }
 }
 
 impl CyCxHWMatcherInit {
@@ -42,8 +53,8 @@ impl CyCxHWMatcher {
     pub fn match_bboxes(
         &self,
         prediction: &MergeDetect2DOutput,
-        target: &Vec<Vec<RatioLabel>>,
-    ) -> PredTargetMatching {
+        target: &[Vec<RatioLabel>],
+    ) -> MatchingOutput {
         let snap_thresh = 0.5;
 
         let target_bboxes: HashMap<InstanceIndex, Arc<RatioLabel>> = target
@@ -161,8 +172,8 @@ impl CyCxHWMatcher {
                     .cartesian_product(neighbor_grid_indexes.into_iter())
                     .map(move |(anchor_index, (grid_row, grid_col))| {
                         let instance_index = InstanceIndex {
-                            batch_index,
-                            layer_index,
+                            batch_index: batch_index as i64,
+                            layer_index: layer_index as i64,
                             anchor_index,
                             grid_row,
                             grid_col,
@@ -201,7 +212,7 @@ impl CyCxHWMatcher {
                     match matchings.entry(instance_index) {
                         hash_map::Entry::Occupied(mut entry) => {
                             let orig_bbox = entry.get_mut();
-                            let feature_size = &prediction.info[layer_index].feature_size;
+                            let feature_size = &prediction.info[layer_index as usize].feature_size;
                             let pred_cy = (grid_row as f64 + 0.5) / feature_size.h() as f64;
                             let pred_cx = (grid_col as f64 + 0.5) / feature_size.w() as f64;
 
@@ -234,7 +245,7 @@ impl CyCxHWMatcher {
                 grid_col,
                 ..
             } = *instance_index;
-            let feature_size = &prediction.info[layer_index].feature_size;
+            let feature_size = &prediction.info[layer_index as usize].feature_size;
             let target_bbox_grid: GridCyCxHW<f64> = target_bbox
                 .cycxhw
                 .scale_to_unit(feature_size.h() as f64, feature_size.w() as f64)
@@ -246,9 +257,55 @@ impl CyCxHWMatcher {
                 && (target_cx - grid_col as f64).abs() <= 1.0 + snap_thresh
         }));
 
-        PredTargetMatching(target_bboxes)
+        let device = prediction.device();
+        let pred_indexes = prediction
+            .instances_to_flats(&InstanceIndexTensor::from_iter(target_bboxes.keys()))
+            .unwrap()
+            .to_device(device);
+        let pred = prediction.index_by_flats(&pred_indexes);
+        let target =
+            LabelTensor::from_iter(target_bboxes.values().map(|label| &**label)).to_device(device);
+
+        MatchingOutput {
+            pred_indexes,
+            pred,
+            target,
+        }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PredTargetMatching(pub HashMap<InstanceIndex, Arc<RatioLabel>>);
+#[derive(Debug, TensorLike)]
+pub struct MatchingOutput {
+    pub pred_indexes: FlatIndexTensor,
+    pub pred: DetectionTensor,
+    pub target: LabelTensor,
+}
+
+impl MatchingOutput {
+    pub fn num_samples(&self) -> i64 {
+        self.pred_indexes.num_samples()
+    }
+
+    pub fn cat_mini_batches<T>(iter: impl IntoIterator<Item = (T, i64)>) -> Self
+    where
+        T: Borrow<Self>,
+    {
+        let (pred_indexes_vec, pred_vec, target_vec) = iter
+            .into_iter()
+            .map(|(matchings, mini_batch_size)| {
+                let Self {
+                    pred_indexes,
+                    pred,
+                    target,
+                } = matchings.borrow().shallow_clone();
+                ((pred_indexes, mini_batch_size), pred, target)
+            })
+            .unzip_n_vec();
+
+        Self {
+            pred_indexes: FlatIndexTensor::cat_mini_batches(pred_indexes_vec),
+            pred: DetectionTensor::cat(pred_vec),
+            target: LabelTensor::cat(target_vec),
+        }
+    }
+}

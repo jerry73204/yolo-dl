@@ -41,6 +41,13 @@ pub struct NmsOutput {
     pub classes: Tensor,
     pub instances: Tensor,
     pub bbox: TLBRTensor,
+    pub confidence: Tensor,
+}
+
+impl NmsOutput {
+    pub fn num_samples(&self) -> i64 {
+        self.batches.size()[0]
+    }
 }
 
 #[derive(Debug)]
@@ -114,12 +121,14 @@ impl NonMaxSuppression {
             let keep_classes = classes.index(&[&keep]);
             let keep_instances = instances.index(&[&keep]);
             let keep_bbox = bbox.index_select(&keep);
+            let keep_conf = conf.index(&[&keep]);
 
             NmsOutput {
                 batches: keep_batches,
                 classes: keep_classes,
                 instances: keep_instances,
                 bbox: keep_bbox,
+                confidence: keep_conf,
             }
         })
     }

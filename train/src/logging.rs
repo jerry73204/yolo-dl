@@ -104,7 +104,7 @@ mod logging_worker {
                 input,
                 output,
                 losses,
-                target_bboxes,
+                matchings,
                 inference,
             } = msg;
 
@@ -142,85 +142,34 @@ mod logging_worker {
                         let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
                         let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
-                        // gather data from each bbox
-                        // btlbr = batch + tlbr
-                        let (batch_indexes_vec, flat_indexes_vec, target_btlbrs) = target_bboxes
-                            .0
-                            .iter()
-                            .map(|(pred_index, target_bbox)| {
-                                let InstanceIndex { batch_index, .. } = *pred_index;
-                                let flat_index = output.instance_to_flat_index(pred_index).unwrap();
-                                let tlbr: PixelTLBR<f64> = target_bbox
-                                    .cycxhw
-                                    .scale_to_unit(image_h as f64, image_w as f64)
-                                    .unwrap()
-                                    .into();
-
-                                let target_t = (tlbr.t() as i64).max(0).min(image_h - 1);
-                                let target_b = (tlbr.b() as i64).max(0).min(image_h - 1);
-                                let target_l = (tlbr.l() as i64).max(0).min(image_w - 1);
-                                let target_r = (tlbr.r() as i64).max(0).min(image_w - 1);
-
-                                let target_btlbr =
-                                    [batch_index as i64, target_t, target_l, target_b, target_r];
-
-                                (batch_index as i64, flat_index, target_btlbr)
-                            })
-                            .unzip_n_vec();
-
                         // draw predicted bboxes
                         {
-                            let batch_indexes = Tensor::of_slice(&batch_indexes_vec);
-                            let flat_indexes = Tensor::of_slice(&flat_indexes_vec);
-
-                            let pred_cy =
-                                output
-                                    .cy
-                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                            let pred_cx =
-                                output
-                                    .cx
-                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                            let pred_h =
-                                output
-                                    .h
-                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                            let pred_w =
-                                output
-                                    .w
-                                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-
-                            let pred_t: Vec<f64> = (&pred_cy - &pred_h / 2.0).into();
-                            let pred_b: Vec<f64> = (&pred_cy + &pred_h / 2.0).into();
-                            let pred_l: Vec<f64> = (&pred_cx - &pred_w / 2.0).into();
-                            let pred_r: Vec<f64> = (&pred_cx + &pred_w / 2.0).into();
-
-                            let pred_btlbrs =
-                                izip!(batch_indexes_vec, pred_t, pred_l, pred_b, pred_r)
-                                    .map(|args| {
-                                        let (batch_index, t, l, b, r) = args;
-                                        let t =
-                                            ((t * image_h as f64) as i64).max(0).min(image_h - 1);
-                                        let b =
-                                            ((b * image_h as f64) as i64).max(0).min(image_h - 1);
-                                        let l =
-                                            ((l * image_w as f64) as i64).max(0).min(image_w - 1);
-                                        let r =
-                                            ((r * image_w as f64) as i64).max(0).min(image_w - 1);
-                                        [batch_index as i64, t, l, b, r]
-                                    })
-                                    .collect_vec();
-
-                            // TODO: select color according to classification
-                            // let pred_classification =
-                            //     output.classification().index_select(0, &flat_indexes);
-                            // let pred_objectness =
-                            //     output.objectness().index_select(0, &flat_indexes);
-                            let _ = canvas.batch_draw_rect_(&pred_btlbrs, 1, &pred_color);
+                            let pred = output.index_by_flats(&matchings.pred_indexes);
+                            let tlbr = TLBRTensor::from(pred.cycxhw());
+                            let _ = canvas.batch_draw_ratio_rect_(
+                                &matchings.pred_indexes.batches,
+                                &tlbr.t().view([-1]),
+                                &tlbr.l().view([-1]),
+                                &tlbr.b().view([-1]),
+                                &tlbr.r().view([-1]),
+                                1,
+                                &pred_color,
+                            );
                         }
 
                         // draw target bboxes
-                        let _ = canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
+                        {
+                            let tlbr = TLBRTensor::from(matchings.target.cycxhw());
+                            let _ = canvas.batch_draw_ratio_rect_(
+                                &matchings.pred_indexes.batches,
+                                &tlbr.t().view([-1]),
+                                &tlbr.l().view([-1]),
+                                &tlbr.b().view([-1]),
+                                &tlbr.r().view([-1]),
+                                2,
+                                &target_color,
+                            );
+                        }
 
                         timing.add_event("draw bboxes");
                         Some(canvas)
@@ -267,75 +216,35 @@ mod logging_worker {
                             let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
                             let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
-                            // gather data from each bbox
-                            // btlbr = batch + tlbr
-                            let target_btlbrs: Vec<_> = target_bboxes
-                                .0
-                                .iter()
-                                .map(|(pred_index, target_bbox)| {
-                                    let InstanceIndex { batch_index, .. } = *pred_index;
-                                    let tlbr: PixelTLBR<f64> = target_bbox
-                                        .cycxhw
-                                        .scale_to_unit(image_h as f64, image_w as f64)
-                                        .unwrap()
-                                        .into();
-
-                                    let target_t = (tlbr.t() as i64).max(0).min(image_h - 1);
-                                    let target_b = (tlbr.b() as i64).max(0).min(image_h - 1);
-                                    let target_l = (tlbr.l() as i64).max(0).min(image_w - 1);
-                                    let target_r = (tlbr.r() as i64).max(0).min(image_w - 1);
-
-                                    let target_btlbr = [
-                                        batch_index as i64,
-                                        target_t,
-                                        target_l,
-                                        target_b,
-                                        target_r,
-                                    ];
-
-                                    target_btlbr
-                                })
-                                .collect();
-
                             // draw predicted bboxes
                             {
                                 let YoloInferenceOutput { bbox, batches, .. } = inference;
-                                let batch_indexes = Vec::<i64>::from(&batches);
-                                let pred_t: Vec<f64> = bbox.t().into();
-                                let pred_l: Vec<f64> = bbox.l().into();
-                                let pred_b: Vec<f64> = bbox.b().into();
-                                let pred_r: Vec<f64> = bbox.r().into();
-
-                                let pred_btlbrs =
-                                    izip!(batch_indexes, pred_t, pred_l, pred_b, pred_r)
-                                        .map(|args| {
-                                            let (batch_index, t, l, b, r) = args;
-                                            let t = ((t * image_h as f64) as i64)
-                                                .max(0)
-                                                .min(image_h - 1);
-                                            let b = ((b * image_h as f64) as i64)
-                                                .max(0)
-                                                .min(image_h - 1);
-                                            let l = ((l * image_w as f64) as i64)
-                                                .max(0)
-                                                .min(image_w - 1);
-                                            let r = ((r * image_w as f64) as i64)
-                                                .max(0)
-                                                .min(image_w - 1);
-                                            [batch_index as i64, t, l, b, r]
-                                        })
-                                        .collect_vec();
 
                                 // TODO: select color according to classification
-                                // let pred_classification =
-                                //     output.classification().index_select(0, &flat_indexes);
-                                // let pred_objectness =
-                                //     output.objectness().index_select(0, &flat_indexes);
-                                let _ = canvas.batch_draw_rect_(&pred_btlbrs, 1, &pred_color);
+                                let _ = canvas.batch_draw_ratio_rect_(
+                                    &batches,
+                                    &bbox.t().view([-1]),
+                                    &bbox.l().view([-1]),
+                                    &bbox.b().view([-1]),
+                                    &bbox.r().view([-1]),
+                                    1,
+                                    &pred_color,
+                                );
                             }
 
                             // draw target bboxes
-                            let _ = canvas.batch_draw_rect_(&target_btlbrs, 2, &target_color);
+                            {
+                                let tlbr = TLBRTensor::from(matchings.target.cycxhw());
+                                let _ = canvas.batch_draw_ratio_rect_(
+                                    &matchings.pred_indexes.batches,
+                                    &tlbr.t().view([-1]),
+                                    &tlbr.l().view([-1]),
+                                    &tlbr.b().view([-1]),
+                                    &tlbr.r().view([-1]),
+                                    1,
+                                    &target_color,
+                                );
+                            }
 
                             timing.add_event("draw inference bboxes");
                             Some(canvas)
@@ -631,8 +540,7 @@ mod logging_message {
         pub input: Tensor,
         pub output: MergeDetect2DOutput,
         pub losses: YoloLossOutput,
-        #[tensor_like(clone)]
-        pub target_bboxes: PredTargetMatching,
+        pub matchings: MatchingOutput,
         pub inference: Option<YoloInferenceOutput>,
     }
 

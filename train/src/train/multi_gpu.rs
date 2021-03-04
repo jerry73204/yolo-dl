@@ -167,40 +167,21 @@ pub async fn multi_gpu_training_worker(
             timing.add_event("compute loss");
 
             // merge output
-            let (model_output, target_bboxes) = {
-                let (model_output_vec, target_bboxes_vec) = worker_outputs
+
+            let model_output = MergeDetect2DOutput::cat(
+                worker_outputs
                     .iter()
-                    .scan(0, |batch_index_base_mut, worker_output| {
-                        let WorkerOutput {
-                            minibatch_size,
-                            output: ref model_output,
-                            ref loss_auxiliary,
-                            ..
-                        } = *worker_output;
-
-                        // re-index target_bboxes
-                        let batch_index_base = *batch_index_base_mut;
-                        let new_target_bboxes = loss_auxiliary.target_bboxes.0.iter().map(
-                            move |(instance_index, bbox)| {
-                                let new_instance_index = InstanceIndex {
-                                    batch_index: instance_index.batch_index + batch_index_base,
-                                    ..*instance_index
-                                };
-                                (new_instance_index, bbox.to_owned())
-                            },
-                        );
-
-                        *batch_index_base_mut += minibatch_size;
-                        Some((model_output, new_target_bboxes))
-                    })
-                    .unzip_n_vec();
-
-                let model_output = MergeDetect2DOutput::cat(model_output_vec, master_device)?;
-                let target_bboxes =
-                    PredTargetMatching(target_bboxes_vec.into_iter().flatten().collect());
-
-                (model_output, target_bboxes)
-            };
+                    .map(|output| output.output.to_device(master_device)),
+            )?;
+            let matchings =
+                MatchingOutput::cat_mini_batches(worker_outputs.iter().map(|worker_output| {
+                    let WorkerOutput {
+                        minibatch_size,
+                        loss_auxiliary: YoloLossAuxiliary { ref matchings, .. },
+                        ..
+                    } = *worker_output;
+                    (matchings, minibatch_size as i64)
+                }));
 
             timing.add_event("merge outputs");
 
@@ -223,7 +204,7 @@ pub async fn multi_gpu_training_worker(
                             input: image,
                             output: model_output,
                             losses,
-                            target_bboxes,
+                            matchings,
                             inference,
                         },
                     ))

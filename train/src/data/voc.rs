@@ -81,7 +81,7 @@ impl VocDataset {
                                 } = obj.bndbox;
                                 let bbox = PixelLabel {
                                     cycxhw: PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax).unwrap(),
-                                    category_id: class_index,
+                                    class: class_index,
                                 };
                                 Ok(bbox)
                             })

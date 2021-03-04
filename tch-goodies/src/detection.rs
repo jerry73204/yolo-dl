@@ -378,7 +378,7 @@ mod label {
         U: Unit,
     {
         pub cycxhw: CyCxHW<T, U>,
-        pub category_id: usize,
+        pub class: usize,
     }
 
     pub type RatioLabel = Label<R64, RatioUnit>;
@@ -421,18 +421,15 @@ mod label {
 
             Some(Self {
                 cycxhw: intersection,
-                category_id: self.category_id,
+                class: self.class,
             })
         }
 
         pub fn scale_size(&self, scale: T) -> Result<Self> {
-            let Self {
-                ref cycxhw,
-                category_id,
-            } = *self;
+            let Self { ref cycxhw, class } = *self;
             Ok(Self {
                 cycxhw: cycxhw.scale_size(scale)?,
-                category_id,
+                class,
             })
         }
     }

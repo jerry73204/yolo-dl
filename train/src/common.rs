@@ -56,7 +56,7 @@ pub use tch::{
 };
 pub use tch_goodies::{
     CyCxHW, GridCyCxHW, GridLabel, GridSize, PixelCyCxHW, PixelLabel, PixelSize, PixelTLBR, Ratio,
-    RatioCyCxHW, RatioLabel, TensorExt, NONE_INDEX, TLBR,
+    RatioCyCxHW, RatioLabel, TLBRTensor, TensorExt, NONE_INDEX, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::{EventWriter, EventWriterInit};
@@ -66,10 +66,10 @@ pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{
-        PredTargetMatching, YoloInference, YoloInferenceInit, YoloInferenceOutput, YoloLoss,
+        MatchingOutput, YoloInference, YoloInferenceInit, YoloInferenceOutput, YoloLoss,
         YoloLossAuxiliary, YoloLossInit, YoloLossOutput,
     },
-    model::{DetectionInfo, InstanceIndex, MergeDetect2DOutput, YoloModel},
+    model::{DetectionInfo, FlatIndex, InstanceIndex, MergeDetect2DOutput, YoloModel},
     processor::{CacheLoader, ColorJitterInit, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
 };

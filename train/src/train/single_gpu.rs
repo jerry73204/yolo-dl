@@ -197,7 +197,7 @@ pub fn single_gpu_training_worker(
                         input: image,
                         output,
                         losses,
-                        target_bboxes: loss_auxiliary.target_bboxes,
+                        matchings: loss_auxiliary.matchings,
                         inference,
                     },
                 ))

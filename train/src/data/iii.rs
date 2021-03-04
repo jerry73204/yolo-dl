@@ -178,7 +178,7 @@ impl IiiDataset {
 
                                 let labeled_bbox = PixelLabel {
                                     cycxhw: bbox,
-                                    category_id: class_index,
+                                    class: class_index,
                                 };
                                 Some(labeled_bbox)
                             })

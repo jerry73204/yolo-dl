@@ -5,13 +5,14 @@ use super::{
     cross_entropy::CrossEntropyLoss,
     focal_loss::{FocalLoss, FocalLossInit},
     l2_loss::L2Loss,
-    misc::{
-        BoxMetric, MatchGrid, PredInstances, PredInstancesUnchecked, TargetInstances,
-        TargetInstancesUnchecked,
-    },
-    pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, PredTargetMatching},
+    misc::{BoxMetric, MatchGrid},
+    pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
-use crate::{common::*, model::MergeDetect2DOutput, profiling::Timing};
+use crate::{
+    common::*,
+    model::{FlatIndex, FlatIndexTensor, MergeDetect2DOutput},
+    profiling::Timing,
+};
 
 pub use yolo_loss::*;
 pub use yolo_loss_init::*;
@@ -56,12 +57,10 @@ mod yolo_loss_init {
             } = self;
             let path = path.borrow();
 
-            let match_grid_method = match_grid_method.unwrap_or(MatchGrid::Rect4);
             let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
             let box_metric = box_metric.unwrap_or(BoxMetric::DIoU);
             let smooth_classification_coef = smooth_classification_coef.unwrap_or(0.01);
             let smooth_objectness_coef = smooth_objectness_coef.unwrap_or(0.0);
-            let anchor_scale_thresh = anchor_scale_thresh.unwrap_or(4.0);
             let iou_loss_weight = iou_loss_weight.unwrap_or(0.05);
             let objectness_loss_weight = objectness_loss_weight.unwrap_or(1.0);
             let classification_loss_weight = classification_loss_weight.unwrap_or(0.58);
@@ -150,11 +149,16 @@ mod yolo_loss_init {
                 ObjectnessLossKind::L2 => ObjectnessLoss::L2(L2Loss::new(reduction)),
             };
 
-            let bbox_matcher = CyCxHWMatcherInit {
-                match_grid_method,
-                anchor_scale_thresh,
-            }
-            .build()?;
+            let bbox_matcher = {
+                let mut init = CyCxHWMatcherInit::default();
+                if let Some(match_grid_method) = match_grid_method {
+                    init.match_grid_method = match_grid_method;
+                }
+                if let Some(anchor_scale_thresh) = anchor_scale_thresh {
+                    init.anchor_scale_thresh = anchor_scale_thresh;
+                }
+                init.build()?
+            };
 
             Ok(YoloLoss {
                 reduction,
@@ -228,7 +232,7 @@ mod yolo_loss {
         pub fn forward(
             &self,
             prediction: &MergeDetect2DOutput,
-            target: &Vec<Vec<RatioLabel>>,
+            target: &[Vec<RatioLabel>],
         ) -> (YoloLossOutput, YoloLossAuxiliary) {
             let mut timing = Timing::new("loss function");
 
@@ -237,18 +241,13 @@ mod yolo_loss {
             let matchings = self.bbox_matcher.match_bboxes(&prediction, target);
             timing.add_event("match_target_bboxes");
 
-            // collect selected instances
-            let (pred_instances, target_instances) =
-                Self::collect_instances(prediction, &matchings);
-            timing.add_event("collect_instances");
-
             // IoU loss
-            let (iou_loss, iou_score) = self.iou_loss(&pred_instances, &target_instances);
+            let (iou_loss, iou_score) = self.iou_loss(&matchings);
             timing.add_event("iou_loss");
             debug_assert!(!bool::from(iou_loss.isnan().any()), "NaN detected");
 
             // classification loss
-            let classification_loss = self.classification_loss(&pred_instances, &target_instances);
+            let classification_loss = self.classification_loss(&matchings);
             timing.add_event("classification_loss");
             debug_assert!(
                 !bool::from(classification_loss.isnan().any()),
@@ -276,19 +275,15 @@ mod yolo_loss {
                     objectness_loss,
                 },
                 YoloLossAuxiliary {
-                    target_bboxes: matchings,
+                    matchings,
                     iou_score,
                 },
             )
         }
 
-        fn iou_loss(
-            &self,
-            pred: &PredInstances,
-            target: &TargetInstances,
-        ) -> (Tensor, Option<Tensor>) {
-            let pred_cycxhw = pred.cycxhw();
-            let target_cycxhw = target.cycxhw();
+        fn iou_loss(&self, matchings: &MatchingOutput) -> (Tensor, Option<Tensor>) {
+            let pred_cycxhw = matchings.pred.cycxhw();
+            let target_cycxhw = matchings.target.cycxhw();
 
             let (loss, iou_scores) = match self.box_metric {
                 BoxMetric::Hausdorff => {
@@ -331,17 +326,17 @@ mod yolo_loss {
             (loss, iou_scores)
         }
 
-        fn classification_loss(&self, pred: &PredInstances, target: &TargetInstances) -> Tensor {
+        fn classification_loss(&self, matchings: &MatchingOutput) -> Tensor {
             // smooth bce values
             let pos = 1.0 - 0.5 * self.smooth_classification_coef;
             let neg = 1.0 - pos;
-            let pred_class = &pred.dense_class();
+            let pred_class = matchings.pred.class();
             let (num_instances, num_classes) = pred_class.size2().unwrap();
             let device = pred_class.device();
 
             // convert sparse index to dense one-hot-like
             let target_class_dense = tch::no_grad(|| {
-                let target_class_sparse = &target.sparse_class();
+                let target_class_sparse = matchings.target.class();
                 let pos_values =
                     Tensor::full(&target_class_sparse.size(), pos, (Kind::Float, device));
                 let target_dense =
@@ -351,7 +346,7 @@ mod yolo_loss {
 
                 debug_assert!({
                     let sparse_class_array: ArrayD<i64> =
-                        target.sparse_class().try_into_cv().unwrap();
+                        matchings.target.class().try_into_cv().unwrap();
                     let target_array: ArrayD<f32> = (&target_dense).try_into_cv().unwrap();
                     let expected_array = Array2::<f32>::from_shape_fn(
                         [num_instances as usize, num_classes as usize],
@@ -382,12 +377,12 @@ mod yolo_loss {
         fn objectness_loss(
             &self,
             prediction: &MergeDetect2DOutput,
-            matchings: &PredTargetMatching,
+            matchings: &MatchingOutput,
             scores: Option<impl Borrow<Tensor>>,
         ) -> Tensor {
             let device = prediction.device();
             let batch_size = prediction.batch_size();
-            let num_targets = matchings.0.len();
+            let num_targets = matchings.num_samples();
             debug_assert!(scores
                 .as_ref()
                 .map(|scores| scores.borrow().size2().unwrap() == (num_targets as i64, 1))
@@ -395,27 +390,6 @@ mod yolo_loss {
 
             let pred_objectness = &prediction.obj;
             let target_objectness = tch::no_grad(|| {
-                let (batch_indexes_vec, flat_indexes_vec) = matchings
-                    .0
-                    .keys()
-                    .map(|instance_index| {
-                        let batch_index = instance_index.batch_index as i64;
-                        let flat_index = prediction.instance_to_flat_index(instance_index).unwrap();
-
-                        debug_assert!(
-                            &prediction
-                                .flat_to_instance_index(batch_index as usize, flat_index)
-                                .unwrap()
-                                == instance_index
-                        );
-
-                        (batch_index, flat_index)
-                    })
-                    .unzip_n_vec();
-
-                let batch_indexes = Tensor::of_slice(&batch_indexes_vec).to_device(device);
-                let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
-
                 let target_objectness = {
                     let target_scores = {
                         let mut target_scores = Tensor::full(
@@ -432,13 +406,11 @@ mod yolo_loss {
                         let target_scores = target_scores.set_requires_grad(false);
                         target_scores
                     };
+                    let FlatIndexTensor { batches, flats } = &matchings.pred_indexes;
 
                     let mut target = pred_objectness.zeros_like();
-                    let _ = target.index_put_opt_(
-                        (&batch_indexes, NONE_INDEX, &flat_indexes),
-                        &target_scores,
-                        false,
-                    );
+                    let _ =
+                        target.index_put_opt_((batches, NONE_INDEX, flats), &target_scores, false);
                     target
                 };
 
@@ -450,14 +422,17 @@ mod yolo_loss {
                         scores.map(|scores| scores.borrow().try_into_cv().unwrap());
                     let mut expect_array =
                         Array3::<f32>::zeros([batch_size as usize, 1, num_instances as usize]);
-                    matchings
-                        .0
-                        .keys()
+
+                    let flat_indexes: Vec<FlatIndex> = (&matchings.pred_indexes).into();
+                    flat_indexes
+                        .into_iter()
                         .enumerate()
-                        .for_each(|(index, instance_index)| {
-                            let batch_index = instance_index.batch_index as i64;
-                            let flat_index =
-                                prediction.instance_to_flat_index(instance_index).unwrap();
+                        .for_each(|(index, flat)| {
+                            let FlatIndex {
+                                batch_index,
+                                flat_index,
+                            } = flat;
+
                             let target_score = {
                                 let mut target_score = (1.0 - self.smooth_objectness_coef) as f32;
                                 if let Some(scores_array) = &scores_array {
@@ -485,120 +460,11 @@ mod yolo_loss {
                 &target_objectness.view([batch_size, -1]),
             )
         }
-
-        /// Build HashSet of predictions indexed by per-grid position
-        fn collect_instances(
-            prediction: &MergeDetect2DOutput,
-            matchings: &PredTargetMatching,
-        ) -> (PredInstances, TargetInstances) {
-            let mut timing = Timing::new("collect_instances");
-
-            let device = prediction.device();
-            let pred_instances: PredInstances = {
-                let (batch_indexes_vec, flat_indexes_vec) = matchings
-                    .0
-                    .keys()
-                    .map(|instance_index| {
-                        let batch_index = instance_index.batch_index as i64;
-                        let flat_index = prediction.instance_to_flat_index(instance_index).unwrap();
-                        (batch_index, flat_index)
-                    })
-                    .unzip_n_vec();
-                let batch_indexes = Tensor::of_slice(&batch_indexes_vec).to_device(device);
-                let flat_indexes = Tensor::of_slice(&flat_indexes_vec).to_device(device);
-
-                let cy = prediction
-                    .cy
-                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                let cx = prediction
-                    .cx
-                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                let height = prediction
-                    .h
-                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                let width = prediction
-                    .w
-                    .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                let objectness =
-                    prediction
-                        .obj
-                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-                let classification =
-                    prediction
-                        .class
-                        .index_opt((&batch_indexes, NONE_INDEX, &flat_indexes));
-
-                PredInstancesUnchecked {
-                    cycxhw: CyCxHWTensorUnchecked {
-                        cy,
-                        cx,
-                        h: height,
-                        w: width,
-                    },
-                    objectness,
-                    dense_class: classification,
-                }
-                .try_into()
-                .unwrap()
-            };
-
-            timing.add_event("build prediction instances");
-
-            let target_instances: TargetInstances = tch::no_grad(|| {
-                let (cy_vec, cx_vec, h_vec, w_vec, category_id_vec) = matchings
-                    .0
-                    .values()
-                    .map(|bbox| {
-                        let [cy, cx, h, w] = bbox.cycxhw.cast::<f32>().unwrap().cycxhw_params();
-                        let category_id = bbox.category_id;
-                        (cy, cx, h, w, category_id as i64)
-                    })
-                    .unzip_n_vec();
-
-                let cy = Tensor::of_slice(&cy_vec)
-                    .view([-1, 1])
-                    .set_requires_grad(false)
-                    .to_device(device);
-                let cx = Tensor::of_slice(&cx_vec)
-                    .view([-1, 1])
-                    .set_requires_grad(false)
-                    .to_device(device);
-                let height = Tensor::of_slice(&h_vec)
-                    .view([-1, 1])
-                    .set_requires_grad(false)
-                    .to_device(device);
-                let width = Tensor::of_slice(&w_vec)
-                    .view([-1, 1])
-                    .set_requires_grad(false)
-                    .to_device(device);
-                let category_id = Tensor::of_slice(&category_id_vec)
-                    .view([-1, 1])
-                    .set_requires_grad(false)
-                    .to_device(device);
-
-                TargetInstancesUnchecked {
-                    cycxhw: CyCxHWTensorUnchecked {
-                        cy,
-                        cx,
-                        h: height,
-                        w: width,
-                    },
-                    sparse_class: category_id,
-                }
-                .try_into()
-                .unwrap()
-            });
-
-            timing.add_event("build target instances");
-            timing.report();
-
-            (pred_instances, target_instances)
-        }
     }
 
     #[derive(Debug)]
     pub struct YoloLossAuxiliary {
-        pub target_bboxes: PredTargetMatching,
+        pub matchings: MatchingOutput,
         pub iou_score: Option<Tensor>,
     }
 

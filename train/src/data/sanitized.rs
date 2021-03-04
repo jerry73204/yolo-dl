@@ -45,10 +45,7 @@ where
                 let bboxes: Vec<_> = orig_bboxes
                     .iter()
                     .map(|bbox| -> Result<_> {
-                        let PixelLabel {
-                            ref cycxhw,
-                            category_id,
-                        } = *bbox;
+                        let PixelLabel { ref cycxhw, class } = *bbox;
                         let tlbr: PixelTLBR<_> = cycxhw.into();
 
                         // out of bound check with tolerance
@@ -94,7 +91,7 @@ where
                                 sanitized_r,
                             )
                             .unwrap(),
-                            category_id,
+                            class,
                         };
 
                         Ok(Some(sanitized_bbox))

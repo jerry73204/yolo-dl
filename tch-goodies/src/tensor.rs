@@ -122,16 +122,36 @@ mod tensor_ext {
         }
 
         /// Draw filled rectangles on a tensor of a batch of images.
-        fn f_batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Result<Tensor>;
+        fn f_batch_fill_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            color: &Tensor,
+        ) -> Result<Tensor>;
 
         /// Draw filled rectangles on a tensor of a batch of images.
-        fn batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Tensor {
-            self.f_batch_fill_rect_(btlbrs, color).unwrap()
+        fn batch_fill_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            color: &Tensor,
+        ) -> Tensor {
+            self.f_batch_fill_rect_(batches, t, l, b, r, color).unwrap()
         }
 
         fn f_batch_draw_rect_(
             &mut self,
-            btlbrs: &[[i64; 5]],
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
             stroke: usize,
             color: &Tensor,
         ) -> Result<Tensor>;
@@ -139,11 +159,67 @@ mod tensor_ext {
         /// Draw non-filled rectangles on a tensor of a batch of images.
         fn batch_draw_rect_(
             &mut self,
-            btlbrs: &[[i64; 5]],
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
             stroke: usize,
             color: &Tensor,
         ) -> Tensor {
-            self.f_batch_draw_rect_(btlbrs, stroke, color).unwrap()
+            self.f_batch_draw_rect_(batches, t, l, b, r, stroke, color)
+                .unwrap()
+        }
+
+        /// Draw filled rectangles in ratio units on a tensor of a batch of images.
+        fn f_batch_fill_ratio_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            color: &Tensor,
+        ) -> Result<Tensor>;
+
+        /// Draw filled rectangles in ratio units on a tensor of a batch of images.
+        fn batch_fill_ratio_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            color: &Tensor,
+        ) -> Tensor {
+            self.f_batch_fill_ratio_rect_(batches, t, l, b, r, color)
+                .unwrap()
+        }
+
+        fn f_batch_draw_ratio_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            stroke: usize,
+            color: &Tensor,
+        ) -> Result<Tensor>;
+
+        /// Draw non-filled rectangles in ratio units on a tensor of a batch of images.
+        fn batch_draw_ratio_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            stroke: usize,
+            color: &Tensor,
+        ) -> Tensor {
+            self.f_batch_draw_ratio_rect_(batches, t, l, b, r, stroke, color)
+                .unwrap()
         }
 
         /// Crop the tensor by specifying margins.
@@ -369,175 +445,254 @@ mod tensor_ext {
             stroke: usize,
             color: &Tensor,
         ) -> Result<Tensor> {
-            let (n_channels, height, width) = match self.size().as_slice() {
-                &[_b, c, h, w] => (c, h, w),
-                &[c, h, w] => (c, h, w),
-                _ => bail!("invalid shape: expect three or four dimensions"),
-            };
-            ensure!(
-                n_channels == color.size1()?,
-                "the number of channels does not match"
-            );
-
-            let (outer_t, outer_l, outer_b, outer_r) = {
-                let half_stroke = (stroke / 2) as i64;
-                (
-                    t - half_stroke,
-                    l - half_stroke,
-                    b + half_stroke,
-                    r + half_stroke,
-                )
-            };
-            let (inner_t, inner_l, inner_b, inner_r) = {
-                let stroke = stroke as i64;
-                (
-                    outer_t + stroke,
-                    outer_l + stroke,
-                    outer_b - stroke,
-                    outer_r - stroke,
-                )
-            };
-
-            let outer_t = outer_t.max(0).min(height - 1);
-            let outer_b = outer_b.max(0).min(height - 1);
-            let outer_l = outer_l.max(0).min(width - 1);
-            let outer_r = outer_r.max(0).min(width - 1);
-
-            let inner_t = inner_t.max(0).min(height - 1);
-            let inner_b = inner_b.max(0).min(height - 1);
-            let inner_l = inner_l.max(0).min(width - 1);
-            let inner_r = inner_r.max(0).min(width - 1);
-
             tch::no_grad(|| -> Result<_> {
-                // draw t edge
-                let _ = self.f_fill_rect_(outer_t, outer_l, inner_t, outer_r, color)?;
+                ensure!(t <= b && l <= r, "invalid tlbr parameters");
 
-                // draw l edge
-                let _ = self.f_fill_rect_(outer_t, outer_l, outer_b, inner_l, color)?;
+                let (n_channels, height, width) = match self.size().as_slice() {
+                    &[_b, c, h, w] => (c, h, w),
+                    &[c, h, w] => (c, h, w),
+                    _ => bail!("invalid shape: expect three or four dimensions"),
+                };
+                ensure!(
+                    n_channels == color.size1()?,
+                    "the number of channels does not match"
+                );
 
-                // draw b edge
-                let _ = self.f_fill_rect_(inner_b, outer_l, outer_b, outer_r, color)?;
+                let half_stroke = stroke as f64 / 2.0;
 
-                // draw r edge
-                let _ = self.f_fill_rect_(outer_t, inner_r, outer_b, outer_r, color)?;
+                let outer_t = ((t as f64 - half_stroke) as i64).clamp(0, height - 1);
+                let outer_l = ((l as f64 - half_stroke) as i64).clamp(0, width - 1);
+                let outer_b = ((b as f64 + half_stroke) as i64).clamp(0, height - 1);
+                let outer_r = ((r as f64 + half_stroke) as i64).clamp(0, width - 1);
 
-                Ok(())
-            })?;
+                let inner_t = ((t as f64 + half_stroke) as i64).clamp(0, height - 1);
+                let inner_l = ((l as f64 + half_stroke) as i64).clamp(0, width - 1);
+                let inner_b = ((b as f64 - half_stroke) as i64).clamp(0, height - 1);
+                let inner_r = ((r as f64 - half_stroke) as i64).clamp(0, width - 1);
 
-            Ok(self.shallow_clone())
+                let output = self
+                    .f_fill_rect_(outer_t, outer_l, inner_t, outer_r, color)?
+                    .f_fill_rect_(outer_t, outer_l, outer_b, inner_l, color)?
+                    .f_fill_rect_(inner_b, outer_l, outer_b, outer_r, color)?
+                    .f_fill_rect_(outer_t, inner_r, outer_b, outer_r, color)?;
+
+                Ok(output)
+            })
         }
 
-        fn f_batch_fill_rect_(&mut self, btlbrs: &[[i64; 5]], color: &Tensor) -> Result<Tensor> {
-            let (batch_size, n_channels, height, width) = self.size4()?;
-            ensure!(
-                n_channels == color.size1()?,
-                "number of channels does not match"
-            );
-
+        fn f_batch_fill_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            color: &Tensor,
+        ) -> Result<Tensor> {
             tch::no_grad(|| -> Result<_> {
-                for [batch_index, t, l, b, r] in btlbrs.iter().cloned() {
-                    ensure!(
-                0 <= batch_index
-                    && batch_index < batch_size
-                    && 0 <= t
-                    && t <= b
-                    && b < height
-                    && 0 <= l
-                    && l <= r
-                    && r < width,
-                "invalid bounding box coordinates: btlbr = {:?}, batch_size = {}, height = {}, width = {}",
-                [batch_index, t, l, b, r], batch_size, height, width
-            );
+                let (batch_size, n_channels, height, width) = self.size4()?;
+                ensure!(
+                    batches.kind() == Kind::Int64
+                        && t.kind() == Kind::Int64
+                        && l.kind() == Kind::Int64
+                        && b.kind() == Kind::Int64
+                        && r.kind() == Kind::Int64,
+                    "invalid tensor kind"
+                );
+                ensure!(
+                    n_channels == color.size1()?,
+                    "number of channels does not match"
+                );
+                ensure!(
+                    bool::from(batches.le(batch_size).all()),
+                    "invalid batch index"
+                );
+                ensure!(
+                    bool::from(t.le1(b).all())
+                        && bool::from(l.le1(r).all())
+                        && bool::from(t.ge(0).all())
+                        && bool::from(t.lt(height).all())
+                        && bool::from(l.ge(0).all())
+                        && bool::from(l.lt(width).all())
+                        && bool::from(b.ge(0).all())
+                        && bool::from(b.lt(height).all())
+                        && bool::from(r.ge(0).all())
+                        && bool::from(r.lt(width).all()),
+                    "invalid tlbr parameters"
+                );
+                let num_samples = batches.size1()?;
+                ensure!(
+                    num_samples == t.size1()?
+                        && num_samples == l.size1()?
+                        && num_samples == b.size1()?
+                        && num_samples == r.size1()?,
+                    "size mismatch"
+                );
 
+                izip!(
+                    Vec::<i64>::from(batches),
+                    Vec::<i64>::from(t),
+                    Vec::<i64>::from(l),
+                    Vec::<i64>::from(b),
+                    Vec::<i64>::from(r),
+                )
+                .try_for_each(|(batch_index, t, l, b, r)| -> Result<_> {
                     let _ = self.i((batch_index, .., t..b, l..r)).f_copy_(
                         &color
                             .f_view([n_channels, 1, 1])?
                             .f_expand(&[n_channels, b - t, r - l], false)?,
                     )?;
-                }
-                Ok(())
-            })?;
+                    Ok(())
+                })?;
 
-            Ok(self.shallow_clone())
+                Ok(self.shallow_clone())
+            })
         }
 
         fn f_batch_draw_rect_(
             &mut self,
-            btlbrs: &[[i64; 5]],
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
             stroke: usize,
             color: &Tensor,
         ) -> Result<Tensor> {
-            let (batch_size, n_channels, height, width) = self.size4()?;
-            ensure!(
-                n_channels == color.size1()?,
-                "number of channels does not match"
-            );
-            for [batch_index, top, left, bottom, right] in btlbrs.iter().cloned() {
-                ensure!(
-                    0 <= batch_index
-                        && batch_index < batch_size
-                        && 0 <= top
-                        && top <= bottom
-                        && bottom < height
-                        && 0 <= left
-                        && left <= right
-                        && right < width,
-                    "invalid bounding box coordinates {:?}",
-                    [batch_index, top, left, bottom, right]
-                );
-            }
-
-            let (bboxes_t, bboxes_l, bboxes_b, bboxes_r) = btlbrs
-                .iter()
-                .cloned()
-                .map(|[batch_index, top, left, bottom, right]| {
-                    let [outer_t, outer_l, outer_b, outer_r] = {
-                        let half_stroke = stroke as f64 / 2.0;
-                        [
-                            (top as f64 - half_stroke) as i64,
-                            (left as f64 - half_stroke) as i64,
-                            (bottom as f64 + half_stroke) as i64,
-                            (right as f64 + half_stroke) as i64,
-                        ]
-                    };
-                    let [inner_t, inner_l, inner_b, inner_r] = {
-                        let stroke = stroke as i64;
-                        [
-                            (outer_t as f64 + stroke as f64) as i64,
-                            (outer_l as f64 + stroke as f64) as i64,
-                            (outer_b as f64 - stroke as f64) as i64,
-                            (outer_r as f64 - stroke as f64) as i64,
-                        ]
-                    };
-
-                    let outer_t = outer_t.max(0).min(height - 1);
-                    let outer_b = outer_b.max(0).min(height - 1);
-                    let outer_l = outer_l.max(0).min(width - 1);
-                    let outer_r = outer_r.max(0).min(width - 1);
-
-                    let inner_t = inner_t.max(0).min(height - 1);
-                    let inner_b = inner_b.max(0).min(height - 1);
-                    let inner_l = inner_l.max(0).min(width - 1);
-                    let inner_r = inner_r.max(0).min(width - 1);
-
-                    let bbox_t = [batch_index, outer_t, outer_l, inner_t, outer_r];
-                    let bbox_l = [batch_index, outer_t, outer_l, outer_b, inner_l];
-                    let bbox_b = [batch_index, inner_b, outer_l, outer_b, outer_r];
-                    let bbox_r = [batch_index, outer_t, inner_r, outer_b, outer_r];
-
-                    (bbox_t, bbox_l, bbox_b, bbox_r)
-                })
-                .unzip_n_vec();
-
             tch::no_grad(|| -> Result<_> {
-                let _ = self.f_batch_fill_rect_(&bboxes_t, color)?;
-                let _ = self.f_batch_fill_rect_(&bboxes_l, color)?;
-                let _ = self.f_batch_fill_rect_(&bboxes_b, color)?;
-                let _ = self.f_batch_fill_rect_(&bboxes_r, color)?;
-                Ok(())
-            })?;
+                let (batch_size, n_channels, height, width) = self.size4()?;
+                ensure!(
+                    batches.kind() == Kind::Int64
+                        && t.kind() == Kind::Int64
+                        && l.kind() == Kind::Int64
+                        && b.kind() == Kind::Int64
+                        && r.kind() == Kind::Int64,
+                    "invalid tensor kind"
+                );
+                ensure!(
+                    n_channels == color.size1()?,
+                    "number of channels does not match"
+                );
+                ensure!(
+                    bool::from(batches.le(batch_size).all()),
+                    "invalid batch index"
+                );
+                ensure!(
+                    bool::from(t.le1(b).all()) && bool::from(l.le1(r).all()),
+                    "invalid tlbr parameters"
+                );
+                let num_samples = batches.size1()?;
+                ensure!(
+                    num_samples == t.size1()?
+                        && num_samples == l.size1()?
+                        && num_samples == b.size1()?
+                        && num_samples == r.size1()?,
+                    "size mismatch"
+                );
 
-            Ok(self.shallow_clone())
+                let half_stroke = stroke as f64 / 2.0;
+
+                let orig_t = t.to_kind(Kind::Float);
+                let orig_l = l.to_kind(Kind::Float);
+                let orig_b = b.to_kind(Kind::Float);
+                let orig_r = r.to_kind(Kind::Float);
+
+                let outer_t = (&orig_t - half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, height - 1);
+                let outer_l = (&orig_l - half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, width - 1);
+                let outer_b = (&orig_b + half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, height - 1);
+                let outer_r = (&orig_r + half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, width - 1);
+
+                let inner_t = (&orig_t + half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, height - 1);
+                let inner_l = (&orig_l + half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, width - 1);
+                let inner_b = (&orig_b - half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, height - 1);
+                let inner_r = (&orig_r - half_stroke)
+                    .to_kind(Kind::Int64)
+                    .clamp(0, width - 1);
+
+                let output = self
+                    .f_batch_fill_rect_(batches, &outer_t, &outer_l, &inner_t, &outer_r, color)?
+                    .f_batch_fill_rect_(batches, &outer_t, &outer_l, &outer_b, &inner_l, color)?
+                    .f_batch_fill_rect_(batches, &inner_b, &outer_l, &outer_b, &outer_r, color)?
+                    .f_batch_fill_rect_(batches, &outer_t, &inner_r, &outer_b, &outer_r, color)?;
+
+                Ok(output)
+            })
+        }
+
+        fn f_batch_fill_ratio_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            color: &Tensor,
+        ) -> Result<Tensor> {
+            let (_batch_size, _n_channels, height, width) = self.size4()?;
+            let kind = self.kind();
+            ensure!(
+                batches.kind() == Kind::Int64
+                    && t.kind() == kind
+                    && l.kind() == kind
+                    && b.kind() == kind
+                    && r.kind() == kind,
+                "invalid tensor kind"
+            );
+
+            self.f_batch_fill_rect_(
+                batches,
+                &(t * height as f64).to_kind(Kind::Int64),
+                &(l * width as f64).to_kind(Kind::Int64),
+                &(b * height as f64).to_kind(Kind::Int64),
+                &(r * width as f64).to_kind(Kind::Int64),
+                color,
+            )
+        }
+
+        fn f_batch_draw_ratio_rect_(
+            &mut self,
+            batches: &Tensor,
+            t: &Tensor,
+            l: &Tensor,
+            b: &Tensor,
+            r: &Tensor,
+            stroke: usize,
+            color: &Tensor,
+        ) -> Result<Tensor> {
+            let (_batch_size, _n_channels, height, width) = self.size4()?;
+            let kind = self.kind();
+            ensure!(
+                batches.kind() == Kind::Int64
+                    && t.kind() == kind
+                    && l.kind() == kind
+                    && b.kind() == kind
+                    && r.kind() == kind,
+                "invalid tensor kind"
+            );
+
+            self.f_batch_draw_rect_(
+                batches,
+                &(t * height as f64).to_kind(Kind::Int64),
+                &(l * width as f64).to_kind(Kind::Int64),
+                &(b * height as f64).to_kind(Kind::Int64),
+                &(r * width as f64).to_kind(Kind::Int64),
+                stroke,
+                color,
+            )
         }
 
         fn f_crop_by_ratio(&self, top: f64, left: f64, bottom: f64, right: f64) -> Result<Tensor> {

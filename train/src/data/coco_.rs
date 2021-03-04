@@ -125,7 +125,7 @@ impl CocoDataset {
                         let bbox = PixelCyCxHW::from_tlhw(t.into(), l.into(), h.into(), w.into())?;
                         Ok(Some(PixelLabel {
                             cycxhw: bbox,
-                            category_id: class_index,
+                            class: class_index,
                         }))
                     })
                     .filter_map(|result| result.transpose())

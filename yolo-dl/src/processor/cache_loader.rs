@@ -204,7 +204,7 @@ impl CacheLoader {
                 .map(|orig_label| -> Result<_> {
                     let PixelLabel {
                         cycxhw: ref orig_bbox,
-                        category_id,
+                        class,
                     } = *orig_label.borrow();
 
                     let resized_bbox = {
@@ -221,7 +221,7 @@ impl CacheLoader {
                     Ok(RatioLabel {
                         cycxhw: resized_bbox
                             .scale_to_unit(image_size.recip(), image_size.recip())?,
-                        category_id,
+                        class,
                     })
                 })
                 .try_collect()?

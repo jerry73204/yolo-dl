@@ -248,7 +248,7 @@ impl TrainingStream {
                                         .into_iter()
                                         .map(|bbox| RatioLabel {
                                             cycxhw: bbox.cycxhw.scale_size(bbox_scaling).unwrap(),
-                                            category_id: bbox.category_id,
+                                            class: bbox.class,
                                         })
                                         .collect();
                                     Fallible::Ok((image, bboxes))

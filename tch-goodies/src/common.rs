@@ -15,7 +15,7 @@ pub use std::{
     collections::HashSet,
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
-    iter,
+    iter::{self, FromIterator},
     marker::PhantomData,
     num::FpCategory,
     ops::{Add, Deref, Div, Mul, Neg, Range, RangeInclusive, Rem, Sub},
@@ -26,5 +26,7 @@ pub use tch_tensor_like::TensorLike;
 pub type Fallible<T> = Result<T, Error>;
 
 unzip_n::unzip_n!(pub 2);
+unzip_n::unzip_n!(pub 3);
 unzip_n::unzip_n!(pub 4);
+unzip_n::unzip_n!(pub 5);
 unzip_n::unzip_n!(pub 10);

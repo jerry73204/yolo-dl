@@ -292,13 +292,10 @@ impl RandomAffine {
 
             // transform bboxes
             let new_bboxes = if !orig_bboxes.is_empty() {
-                let (orig_corners_vec, category_id_vec) = orig_bboxes
+                let (orig_corners_vec, class_vec) = orig_bboxes
                     .into_iter()
                     .map(|label| {
-                        let RatioLabel {
-                            ref cycxhw,
-                            category_id,
-                        } = *label;
+                        let RatioLabel { ref cycxhw, class } = *label;
                         let tlbr: TLBR<_, _> = cycxhw.cast::<f32>().unwrap().into();
                         // let orig_t = orig_t as f32;
                         // let orig_l = orig_l as f32;
@@ -320,7 +317,7 @@ impl RandomAffine {
                         )
                         .view([4, 3]);
 
-                        (orig_corners, category_id)
+                        (orig_corners, class)
                     })
                     .unzip_n_vec();
 
@@ -357,8 +354,8 @@ impl RandomAffine {
                     .iter()
                     .chunks(4)
                     .into_iter()
-                    .zip_eq(category_id_vec)
-                    .filter_map(|(points, category_id)| {
+                    .zip_eq(class_vec)
+                    .filter_map(|(points, class)| {
                         let points: Vec<_> = points
                             .map(|&[x, y, _]| [R64::new(y as f64), R64::new(x as f64)])
                             .collect();
@@ -392,7 +389,7 @@ impl RandomAffine {
 
                         let new_label = RatioLabel {
                             cycxhw: new_bbox,
-                            category_id,
+                            class,
                         };
 
                         Some(new_label)

@@ -97,7 +97,7 @@ impl CsvDataset {
                                 let CsvSample { cy, cx, h, w, .. } = *record;
                                 let label = PixelLabel {
                                     cycxhw: PixelCyCxHW::from_cycxhw(cy, cx, h, w)?,
-                                    category_id: class_index,
+                                    class: class_index,
                                 };
                                 Ok(label)
                             })
