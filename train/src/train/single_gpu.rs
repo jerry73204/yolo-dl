@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LossConfig, TrainingConfig},
+    config::{Config, LoadCheckpoint, LossConfig, OptimizerConfig, TrainingConfig},
     data::TrainingRecord,
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
@@ -25,7 +25,10 @@ pub fn single_gpu_training_worker(
         training:
             TrainingConfig {
                 override_initial_step,
-                ref lr_schedule,
+                optimizer:
+                    OptimizerConfig {
+                        ref lr_schedule, ..
+                    },
                 loss:
                     LossConfig {
                         box_metric,
@@ -65,15 +68,19 @@ pub fn single_gpu_training_worker(
     }
     .build(&root / "loss")?;
     let yolo_inference = YoloInferenceInit {
-        nms_iou_threshold: Some(r64(0.9)),
-        nms_confidence_threshold: Some(r64(0.9)),
+        iou_threshold: r64(0.9),
+        confidence_threshold: r64(0.9),
     }
     .build()?;
     let mut training_step_tensor = root.zeros_no_train("training_step", &[]);
     let mut optimizer = {
         let TrainingConfig {
-            momentum,
-            weight_decay,
+            optimizer:
+                OptimizerConfig {
+                    momentum,
+                    weight_decay,
+                    ..
+                },
             ..
         } = config.as_ref().training;
         let mut opt = nn::Adam {

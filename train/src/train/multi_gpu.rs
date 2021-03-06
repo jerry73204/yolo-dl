@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LossConfig, TrainingConfig},
+    config::{Config, LoadCheckpoint, LossConfig, OptimizerConfig, TrainingConfig},
     data::TrainingRecord,
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
@@ -71,7 +71,10 @@ pub async fn multi_gpu_training_worker(
             training:
                 TrainingConfig {
                     save_checkpoint_steps,
-                    ref lr_schedule,
+                    optimizer:
+                        OptimizerConfig {
+                            ref lr_schedule, ..
+                        },
                     ..
                 },
             ..
@@ -309,8 +312,12 @@ async fn initialize_worker_contexts(
                                 objectness_loss_weight,
                                 classification_loss_weight,
                             },
-                        momentum,
-                        weight_decay,
+                        optimizer:
+                            OptimizerConfig {
+                                momentum,
+                                weight_decay,
+                                ..
+                            },
                         ..
                     } = config.training;
                     let model_config = config.model.clone();

@@ -127,37 +127,27 @@
         },
     },
     "training": {
-        // "batch_size": 4,
-        "batch_size": 30,
+        // "override_initial_step": 0,
+        "batch_size": 16,
         "device_config": {
             "type": "SingleDevice",
             "device": "cuda(0)"
 
             // "type": "MultiDevice",
-            // "minibatch_size": 4,
-            // "devices": ["cuda(1)", "cuda(2)", "cuda(3)"],
+            // "devices": ["cuda(0)", "cuda(1)", "cuda(2)", "cuda(3)"],
         },
-        // "override_initial_step": 0,
-        "momentum": 0.937,
-        "weight_decay": 0.0005,
-        "lr_schedule": {
-            "type": "StepWise",
-
-            // "steps": [
-            //     [0, 0.01],
-            // ],
-
-            // "steps": [
-            //     [0, 0.001],
-            // ],
-
-            "steps": [
-                [0, 0.01],
-                [1200, 0.001],
-                [100000, 0.0001],
-                [120000, 0.00001],
-                // [450000, 0.00001],
-            ],
+        "optimizer": {
+            "momentum": 0.937,
+            "weight_decay": 0.0005,
+            "lr_schedule": {
+                "type": "StepWise",
+                "steps": [
+                    [0, 0.01],
+                    [1200, 0.001],
+                    [12000, 0.0001],
+                    [39000, 0.00001],
+                ],
+            },
         },
         "loss": {
             "match_grid_method": "Rect4", // Rect2, Rect4

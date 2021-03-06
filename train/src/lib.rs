@@ -96,11 +96,17 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                     .map(|result| Fallible::Ok(result??))
                     .await?;
                 }
-                DeviceConfig::MultiDevice {
-                    minibatch_size,
-                    ref devices,
-                } => {
-                    let minibatch_size = minibatch_size.get();
+                DeviceConfig::MultiDevice { ref devices } => {
+                    let batch_size = config.training.batch_size.get();
+                    let minibatch_size = {
+                        let num_devices = devices.len();
+                        let div = batch_size / num_devices;
+                        let rem = batch_size % num_devices;
+                        (rem == 0).then(|| div).ok_or_else(|| {
+                            format_err!("batch_size must be multiple of number of devices")
+                        })?
+                    };
+                    info!("use minibatch size {} per device", minibatch_size);
                     let workers: Vec<_> = devices
                         .iter()
                         .cloned()

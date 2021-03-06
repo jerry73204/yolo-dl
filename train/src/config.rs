@@ -205,20 +205,15 @@ mod training {
         pub batch_size: NonZeroUsize,
         /// If enabled, it overrides the initial training step.
         pub override_initial_step: Option<usize>,
-        /// Learning rate scheduling strategy.
-        pub lr_schedule: LearningRateSchedule,
-        /// The momentum parameter for optimizer.
-        pub momentum: R64,
-        /// The weight decay parameter for optimizer.
-        pub weight_decay: R64,
-        /// The loss function options.
-        pub loss: LossConfig,
         /// If set, it saves a checkpoint file per this steps.
         pub save_checkpoint_steps: Option<NonZeroUsize>,
         /// Checkpoint file loading method.
         pub load_checkpoint: LoadCheckpoint,
         /// Training device options.
         pub device_config: DeviceConfig,
+        pub optimizer: OptimizerConfig,
+        /// The loss function options.
+        pub loss: LossConfig,
     }
 
     /// Training device options.
@@ -232,7 +227,6 @@ mod training {
         },
         /// Use multiple device with uniform mini-batch size on each device.
         MultiDevice {
-            minibatch_size: NonZeroUsize,
             #[serde(with = "serde_vec_device")]
             devices: Vec<Device>,
         },
@@ -288,6 +282,16 @@ mod training {
         pub objectness_loss_weight: Option<R64>,
         /// The weight factor of classification loss.
         pub classification_loss_weight: Option<R64>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct OptimizerConfig {
+        /// Learning rate scheduling strategy.
+        pub lr_schedule: LearningRateSchedule,
+        /// The momentum parameter for optimizer.
+        pub momentum: R64,
+        /// The weight decay parameter for optimizer.
+        pub weight_decay: R64,
     }
 }
 

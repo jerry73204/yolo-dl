@@ -51,7 +51,7 @@ pub use std::{
 pub use structopt::StructOpt;
 pub use tch::{
     kind::FLOAT_CPU,
-    nn::{self, OptimizerConfig},
+    nn::{self, OptimizerConfig as _},
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
