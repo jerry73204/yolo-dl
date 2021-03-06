@@ -5,6 +5,7 @@ use yolo_dl::loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLoss
 
 pub use dataset::*;
 pub use model::*;
+pub use preprocessor::*;
 pub use training::*;
 
 /// The main training configuration.
@@ -109,60 +110,89 @@ mod dataset {
     }
 }
 
-/// Data preprocessing options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PreprocessorConfig {
-    /// If set, process image records without ordering.
-    pub unordered_records: bool,
-    /// If set, produce training batches without ordering.
-    pub unordered_batches: bool,
-    /// The maximum number of waiting data records per preprocessing stage.
-    pub worker_buf_size: Option<usize>,
-    /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
-    pub cache_dir: PathBuf,
-    pub color_jitter_prob: Ratio,
-    pub hue_shift: Option<R64>,
-    pub saturation_shift: Option<R64>,
-    pub value_shift: Option<R64>,
-    /// The probability to apply Mix-Up.
-    pub mixup_prob: Ratio,
-    /// The probability to apply Cut-Mix.
-    pub cutmix_prob: Ratio,
-    /// The probability to apply Mosaic mixing.
-    pub mosaic_prob: Ratio,
-    /// The minimum offset from image boundary of pivot point in Mosaic mixing.
-    ///
-    /// It is specified in ratio unit.
-    pub mosaic_margin: Ratio,
-    /// The probability to apply random affine transformation.
-    pub affine_prob: Ratio,
-    /// The probability to apply random rotation.
-    pub rotate_prob: Option<Ratio>,
-    /// The maximum degrees of random rotation.
-    pub rotate_degrees: Option<R64>,
-    /// The probability to apply random translation.
-    pub translation_prob: Option<Ratio>,
-    /// The maximum distance of random translation in ratio unit.
-    pub translation: Option<R64>,
-    /// The probability to apply random scaling.
-    pub scale_prob: Option<Ratio>,
-    /// The pair of minimum and maximum scaling ratio.
-    pub scale: Option<(R64, R64)>,
-    // pub shear_prob: Option<Ratio>,
-    // pub shear: Option<R64>,
-    /// The probability to apply horizontal flip.
-    pub horizontal_flip_prob: Option<Ratio>,
-    /// The probability to apply vertical flip.
-    pub vertical_flip_prob: Option<Ratio>,
-    /// The scaling factor of bounding box size.
-    pub bbox_scaling: R64,
-    /// The factor that tolerates out-of-image boundary bounding boxes.
-    pub out_of_bound_tolerance: R64,
-    /// The minimum bounding box size in ratio unit.
-    pub min_bbox_size: Ratio,
-    /// The device where the preprocessor works on.
-    #[serde(with = "tch_serde::serde_device")]
-    pub device: Device,
+mod preprocessor {
+    use super::*;
+
+    /// Data preprocessing options.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct PreprocessorConfig {
+        pub pipeline: PipelineConfig,
+        pub mixup: MixUpConfig,
+        pub random_affine: RandomAffineConfig,
+        pub color_jitter: ColorJitterConfig,
+        pub cleanse: CleanseConfig,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct PipelineConfig {
+        /// If set, process image records without ordering.
+        pub unordered_records: bool,
+        /// If set, produce training batches without ordering.
+        pub unordered_batches: bool,
+        /// The maximum number of waiting data records per preprocessing stage.
+        pub worker_buf_size: Option<usize>,
+        /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
+        pub cache_dir: PathBuf,
+        /// The device where the preprocessor works on.
+        #[serde(with = "tch_serde::serde_device")]
+        pub device: Device,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct MixUpConfig {
+        /// The probability to apply Mix-Up.
+        pub mixup_prob: Ratio,
+        /// The probability to apply Cut-Mix.
+        pub cutmix_prob: Ratio,
+        /// The probability to apply Mosaic mixing.
+        pub mosaic_prob: Ratio,
+        /// The minimum offset from image boundary of pivot point in Mosaic mixing.
+        ///
+        /// It is specified in ratio unit.
+        pub mosaic_margin: Ratio,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct RandomAffineConfig {
+        /// The probability to apply random affine transformation.
+        pub affine_prob: Ratio,
+        /// The probability to apply random rotation.
+        pub rotate_prob: Option<Ratio>,
+        /// The maximum degrees of random rotation.
+        pub rotate_degrees: Option<R64>,
+        /// The probability to apply random translation.
+        pub translation_prob: Option<Ratio>,
+        /// The maximum distance of random translation in ratio unit.
+        pub translation: Option<R64>,
+        /// The probability to apply random scaling.
+        pub scale_prob: Option<Ratio>,
+        /// The pair of minimum and maximum scaling ratio.
+        pub scale: Option<(R64, R64)>,
+        // pub shear_prob: Option<Ratio>,
+        // pub shear: Option<R64>,
+        /// The probability to apply horizontal flip.
+        pub horizontal_flip_prob: Option<Ratio>,
+        /// The probability to apply vertical flip.
+        pub vertical_flip_prob: Option<Ratio>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ColorJitterConfig {
+        pub color_jitter_prob: Ratio,
+        pub hue_shift: Option<R64>,
+        pub saturation_shift: Option<R64>,
+        pub value_shift: Option<R64>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct CleanseConfig {
+        /// The scaling factor of bounding box size.
+        pub bbox_scaling: R64,
+        /// The factor that tolerates out-of-image boundary bounding boxes.
+        pub out_of_bound_tolerance: R64,
+        /// The minimum bounding box size in ratio unit.
+        pub min_bbox_size: Ratio,
+    }
 }
 
 mod training {

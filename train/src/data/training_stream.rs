@@ -1,7 +1,10 @@
 use super::*;
 use crate::{
     common::*,
-    config::{Config, DatasetConfig, DatasetKind, PreprocessorConfig, TrainingConfig},
+    config::{
+        CleanseConfig, ColorJitterConfig, Config, DatasetConfig, DatasetKind, MixUpConfig,
+        PipelineConfig, PreprocessorConfig, RandomAffineConfig, TrainingConfig,
+    },
     logging::LoggingMessage,
 };
 
@@ -38,10 +41,18 @@ impl TrainingStream {
                     },
                 preprocessor:
                     PreprocessorConfig {
-                        ref cache_dir,
-                        out_of_bound_tolerance,
-                        min_bbox_size,
-                        device,
+                        pipeline:
+                            PipelineConfig {
+                                ref cache_dir,
+                                device,
+                                ..
+                            },
+                        cleanse:
+                            CleanseConfig {
+                                out_of_bound_tolerance,
+                                min_bbox_size,
+                                ..
+                            },
                         ..
                     },
                 ..
@@ -144,7 +155,7 @@ impl TrainingStream {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         // parallel stream config
         let par_config: ParStreamConfig = {
-            match self.config.preprocessor.worker_buf_size {
+            match self.config.preprocessor.pipeline.worker_buf_size {
                 Some(buf_size) => (1.0, buf_size).into(),
                 None => (1.0, 2.0).into(),
             }
@@ -195,10 +206,14 @@ impl TrainingStream {
             let Config {
                 preprocessor:
                     PreprocessorConfig {
-                        bbox_scaling,
-                        mixup_prob,
-                        cutmix_prob,
-                        mosaic_prob,
+                        mixup:
+                            MixUpConfig {
+                                mixup_prob,
+                                cutmix_prob,
+                                mosaic_prob,
+                                ..
+                            },
+                        cleanse: CleanseConfig { bbox_scaling, .. },
                         ..
                     },
                 ..
@@ -283,10 +298,13 @@ impl TrainingStream {
             let Config {
                 preprocessor:
                     PreprocessorConfig {
-                        color_jitter_prob,
-                        hue_shift,
-                        saturation_shift,
-                        value_shift,
+                        color_jitter:
+                            ColorJitterConfig {
+                                color_jitter_prob,
+                                hue_shift,
+                                saturation_shift,
+                                value_shift,
+                            },
                         ..
                     },
                 ..
@@ -355,15 +373,18 @@ impl TrainingStream {
             let Config {
                 preprocessor:
                     PreprocessorConfig {
-                        affine_prob,
-                        rotate_prob,
-                        rotate_degrees,
-                        translation_prob,
-                        translation,
-                        scale_prob,
-                        scale,
-                        horizontal_flip_prob,
-                        vertical_flip_prob,
+                        random_affine:
+                            RandomAffineConfig {
+                                affine_prob,
+                                rotate_prob,
+                                rotate_degrees,
+                                translation_prob,
+                                translation,
+                                scale_prob,
+                                scale,
+                                horizontal_flip_prob,
+                                vertical_flip_prob,
+                            },
                         ..
                     },
                 ..
@@ -437,11 +458,15 @@ impl TrainingStream {
             let Config {
                 preprocessor:
                     PreprocessorConfig {
-                        mixup_prob,
-                        cutmix_prob,
-                        mosaic_prob,
-                        mosaic_margin,
-                        min_bbox_size,
+                        mixup:
+                            MixUpConfig {
+                                mixup_prob,
+                                cutmix_prob,
+                                mosaic_prob,
+                                mosaic_margin,
+                                ..
+                            },
+                        cleanse: CleanseConfig { min_bbox_size, .. },
                         ..
                     },
                 ..
@@ -528,7 +553,7 @@ impl TrainingStream {
 
         // optionally reorder records
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
-            if self.config.preprocessor.unordered_records {
+            if self.config.preprocessor.pipeline.unordered_records {
                 Box::pin(stream.map_ok(|(_index, args)| args))
             } else {
                 Box::pin(stream.try_reorder_enumerated())
@@ -632,7 +657,7 @@ impl TrainingStream {
 
         // optionally reorder back
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
-            if self.config.preprocessor.unordered_batches {
+            if self.config.preprocessor.pipeline.unordered_batches {
                 Box::pin(stream.map_ok(|(_index, args)| args))
             } else {
                 Box::pin(stream.try_reorder_enumerated())
