@@ -3,10 +3,13 @@ use crate::common::*;
 
 #[derive(Debug, TensorLike, Getters)]
 pub struct DetectionTensor {
+    /// The box parameters in CyCxHW format.
     #[get = "pub"]
     pub(crate) cycxhw: CyCxHWTensor,
+    /// The objectness scores in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) obj: Tensor,
+    /// The classification scores in shape `[batch, class]`.
     #[get = "pub"]
     pub(crate) class: Tensor,
 }

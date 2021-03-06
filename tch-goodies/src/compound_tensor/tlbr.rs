@@ -4,12 +4,16 @@ use crate::{bbox::CyCxHW, common::*, unit::Unit, utils::IntoTchElement};
 /// Checked tensor of batched box parameters in TLBR format.
 #[derive(Debug, TensorLike, Getters)]
 pub struct TLBRTensor {
+    /// The top parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) t: Tensor,
+    /// The left parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) l: Tensor,
+    /// The bottom parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) b: Tensor,
+    /// The right parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) r: Tensor,
 }
@@ -17,9 +21,13 @@ pub struct TLBRTensor {
 /// Unchecked tensor of batched box parameters in TLBR format.
 #[derive(Debug, TensorLike)]
 pub struct TLBRTensorUnchecked {
+    /// The top parameter in shape `[batch, 1]`.
     pub t: Tensor,
+    /// The left parameter in shape `[batch, 1]`.
     pub l: Tensor,
+    /// The bottom parameter in shape `[batch, 1]`.
     pub b: Tensor,
+    /// The right parameter in shape `[batch, 1]`.
     pub r: Tensor,
 }
 

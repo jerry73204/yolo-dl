@@ -120,17 +120,17 @@ impl MergeDetect2D {
 pub struct MergeDetect2DOutput {
     /// Number of predicted classes.
     pub num_classes: usize,
-    /// Tensor of bbox center y coordinates with shape `[batch, 1, instance]`.
+    /// Tensor of bbox center y coordinates with shape `[batch, 1, flat]`.
     pub cy: Tensor,
-    /// Tensor of bbox center x coordinates with shape `[batch, 1, instance]`.
+    /// Tensor of bbox center x coordinates with shape `[batch, 1, flat]`.
     pub cx: Tensor,
-    /// Tensor of bbox heights with shape `[batch, 1, instance]`.
+    /// Tensor of bbox heights with shape `[batch, 1, flat]`.
     pub h: Tensor,
-    /// Tensor of bbox widths with shape `[batch, 1, instance]`.
+    /// Tensor of bbox widths with shape `[batch, 1, flat]`.
     pub w: Tensor,
-    /// Tensor of bbox objectness score with shape `[batch, 1, instance]`.
+    /// Tensor of bbox objectness score with shape `[batch, 1, flat]`.
     pub obj: Tensor,
-    /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, instance]`.
+    /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, flat]`.
     pub class: Tensor,
     /// Saves the shape of exported feature maps.
     pub info: Vec<DetectionInfo>,

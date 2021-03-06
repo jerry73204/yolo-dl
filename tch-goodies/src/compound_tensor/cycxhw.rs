@@ -4,12 +4,16 @@ use crate::{bbox::CyCxHW, common::*, unit::Unit, utils::EPSILON};
 /// Checked tensor of batched box parameters in CyCxHW format.
 #[derive(Debug, TensorLike, Getters)]
 pub struct CyCxHWTensor {
+    /// The center y parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) cy: Tensor,
+    /// The center x parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) cx: Tensor,
+    /// The height parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) h: Tensor,
+    /// The width parameter in shape `[batch, 1]`.
     #[get = "pub"]
     pub(crate) w: Tensor,
 }
@@ -17,9 +21,13 @@ pub struct CyCxHWTensor {
 /// Unchecked tensor of batched box parameters in CyCxHW format.
 #[derive(Debug, TensorLike)]
 pub struct CyCxHWTensorUnchecked {
+    /// The center y parameter in shape `[batch, 1]`.
     pub cy: Tensor,
+    /// The center x parameter in shape `[batch, 1]`.
     pub cx: Tensor,
+    /// The height parameter in shape `[batch, 1]`.
     pub h: Tensor,
+    /// The width parameter in shape `[batch, 1]`.
     pub w: Tensor,
 }
 
