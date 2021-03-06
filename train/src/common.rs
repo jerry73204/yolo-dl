@@ -66,8 +66,9 @@ pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 pub use yolo_dl::{
     loss::{
-        MatchingOutput, YoloInference, YoloInferenceInit, YoloInferenceOutput, YoloLoss,
-        YoloLossAuxiliary, YoloLossInit, YoloLossOutput,
+        MatchingOutput, YoloBenchmark, YoloBenchmarkInit, YoloBenchmarkOutput, YoloInference,
+        YoloInferenceInit, YoloInferenceOutput, YoloLoss, YoloLossAuxiliary, YoloLossInit,
+        YoloLossOutput,
     },
     model::{DetectionInfo, FlatIndex, InstanceIndex, MergeDetect2DOutput, YoloModel},
     processor::{CacheLoader, ColorJitterInit, ParallelMosaicProcessorInit, RandomAffineInit},

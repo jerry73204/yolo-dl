@@ -87,7 +87,8 @@
         "dir": "logs-coco",
         "enable_images": false,
         "enable_debug_stat": false,
-        "enable_inference": true,
+        "enable_inference": false,
+        "enable_benchmark": false,
     },
     "preprocessor": {
         "pipeline": {
@@ -173,5 +174,9 @@
             // "type": "FromFile",
             // "file": "logs-coco/2021-01-29-05-00-26.463+0800/checkpoints/2021-01-29-05-06-38.722+0800_001000_00.42787.ckpt",
         },
+    },
+    "benchmark": {
+        "nms_iou_thresh": 0.5,
+        "nms_conf_thresh": 0.4,
     },
 }

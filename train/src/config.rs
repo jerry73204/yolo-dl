@@ -16,6 +16,7 @@ pub struct Config {
     pub logging: LoggingConfig,
     pub preprocessor: PreprocessorConfig,
     pub training: TrainingConfig,
+    pub benchmark: BenchmarkConfig,
 }
 
 impl Config {
@@ -60,6 +61,7 @@ pub struct LoggingConfig {
     pub enable_images: bool,
     pub enable_debug_stat: bool,
     pub enable_inference: bool,
+    pub enable_benchmark: bool,
 }
 
 mod dataset {
@@ -293,6 +295,12 @@ mod training {
         /// The weight decay parameter for optimizer.
         pub weight_decay: R64,
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkConfig {
+    pub nms_iou_thresh: R64,
+    pub nms_conf_thresh: R64,
 }
 
 fn empty_hashset<T>() -> HashSet<T> {

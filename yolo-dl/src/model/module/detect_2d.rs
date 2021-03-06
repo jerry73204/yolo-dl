@@ -64,7 +64,6 @@ impl Detect2D {
         let outputs = tensor.view([batch_size, num_entries, num_anchors, feature_h, feature_w]);
 
         // positions in grid units
-
         let cy = (outputs.i((.., 0..1, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_h as f64
             + y_offsets.view([1, 1, 1, feature_h, 1]);
         let cx = (outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_w as f64

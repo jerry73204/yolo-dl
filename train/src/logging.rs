@@ -106,6 +106,7 @@ mod logging_worker {
                 losses,
                 matchings,
                 inference,
+                benchmark,
             } = msg;
 
             let step = step as i64;
@@ -317,6 +318,45 @@ mod logging_worker {
                     .await?;
                 self.event_writer
                     .write_scalar_async(format!("{}/stat/w_mean", tag), step, w_mean)
+                    .await?;
+            }
+
+            // log benchmark
+            if let Some(benchmark) = benchmark {
+                let YoloBenchmarkOutput {
+                    obj_accuracy,
+                    obj_recall,
+                    obj_precision,
+                    class_accuracy,
+                } = benchmark;
+
+                self.event_writer
+                    .write_scalar_async(
+                        format!("{}/benchmark/objectness_accuracy", tag),
+                        step,
+                        obj_accuracy as f32,
+                    )
+                    .await?;
+                self.event_writer
+                    .write_scalar_async(
+                        format!("{}/benchmark/objectness_precision", tag),
+                        step,
+                        obj_precision as f32,
+                    )
+                    .await?;
+                self.event_writer
+                    .write_scalar_async(
+                        format!("{}/benchmark/objectness_recall", tag),
+                        step,
+                        obj_recall as f32,
+                    )
+                    .await?;
+                self.event_writer
+                    .write_scalar_async(
+                        format!("{}/benchmark/classification_recall", tag),
+                        step,
+                        class_accuracy as f32,
+                    )
                     .await?;
             }
 
@@ -542,6 +582,7 @@ mod logging_message {
         pub losses: YoloLossOutput,
         pub matchings: MatchingOutput,
         pub inference: Option<YoloInferenceOutput>,
+        pub benchmark: Option<YoloBenchmarkOutput>,
     }
 
     impl Clone for TrainingOutputLog {

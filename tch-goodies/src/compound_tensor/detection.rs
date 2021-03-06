@@ -30,6 +30,11 @@ impl DetectionTensor {
         self.class.size2().unwrap().1
     }
 
+    /// objectness score times classification score
+    pub fn confidence(&self) -> Tensor {
+        self.obj.sigmoid() * self.class.sigmoid()
+    }
+
     pub fn cat<T>(iter: impl IntoIterator<Item = T>) -> Self
     where
         T: Borrow<Self>,

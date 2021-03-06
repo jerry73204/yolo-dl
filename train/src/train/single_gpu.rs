@@ -1,6 +1,9 @@
 use crate::{
     common::*,
-    config::{Config, LoadCheckpoint, LossConfig, OptimizerConfig, TrainingConfig},
+    config::{
+        BenchmarkConfig, Config, LoadCheckpoint, LoggingConfig, LossConfig, OptimizerConfig,
+        TrainingConfig,
+    },
     data::TrainingRecord,
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
@@ -42,6 +45,12 @@ pub fn single_gpu_training_worker(
                     },
                 ..
             },
+        benchmark:
+            BenchmarkConfig {
+                nms_iou_thresh,
+                nms_conf_thresh,
+                ..
+            },
         ..
     } = *config;
 
@@ -68,10 +77,23 @@ pub fn single_gpu_training_worker(
     }
     .build(&root / "loss")?;
     let yolo_inference = YoloInferenceInit {
-        iou_threshold: r64(0.9),
-        confidence_threshold: r64(0.9),
+        nms_iou_thresh,
+        nms_conf_thresh,
     }
     .build()?;
+    let yolo_benchmark = {
+        let BenchmarkConfig {
+            nms_iou_thresh,
+            nms_conf_thresh,
+            ..
+        } = config.benchmark;
+        YoloBenchmarkInit {
+            iou_threshold: nms_iou_thresh,
+            confidence_threshold: nms_conf_thresh,
+        }
+        .build()?
+    };
+
     let mut training_step_tensor = root.zeros_no_train("training_step", &[]);
     let mut optimizer = {
         let TrainingConfig {
@@ -158,9 +180,27 @@ pub fn single_gpu_training_worker(
             timing.add_event("backward");
 
             // run inference
-            let inference = config.logging.enable_inference.then(|| {
-                let inference = yolo_inference.forward(&output);
-                inference
+            let inference = {
+                let LoggingConfig {
+                    enable_inference,
+                    enable_benchmark,
+                    ..
+                } = config.logging;
+                (enable_inference || enable_benchmark).then(|| {
+                    let inference = yolo_inference.forward(&output);
+                    timing.add_event("inference");
+                    inference
+                })
+            };
+
+            // run benchmark
+            let benchmark = config.logging.enable_benchmark.then(|| {
+                let benchmark = yolo_benchmark.forward(
+                    &output,
+                    &loss_auxiliary.matchings,
+                    inference.as_ref().unwrap(),
+                );
+                benchmark
             });
 
             // print message
@@ -206,6 +246,7 @@ pub fn single_gpu_training_worker(
                         losses,
                         matchings: loss_auxiliary.matchings,
                         inference,
+                        benchmark,
                     },
                 ))
                 .map_err(|_err| format_err!("cannot send message to logger"))?;
