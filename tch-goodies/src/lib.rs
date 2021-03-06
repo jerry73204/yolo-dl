@@ -8,6 +8,7 @@ pub mod ratio;
 pub mod size;
 pub mod tensor;
 pub mod unit;
+mod utils;
 
 pub use bbox::*;
 pub use compound_tensor::*;
