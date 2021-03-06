@@ -63,6 +63,7 @@ impl NonMaxSuppression {
                 iou_threshold,
                 confidence_threshold,
             } = *self;
+            let confidence_threshold = confidence_threshold.raw();
             let num_classes = prediction.num_classes;
 
             let MergeDetect2DOutput {
@@ -70,15 +71,16 @@ impl NonMaxSuppression {
                 cx,
                 h,
                 w,
-                class,
-                obj,
+                class: class_logit,
+                obj: obj_logit,
                 ..
             } = prediction;
 
             // select bboxes which confidence is above threshold
             let (batches, classes, instances, bbox, conf) = {
                 // compute confidence score
-                let conf = obj.sigmoid() * class.sigmoid();
+                let obj = obj_logit.sigmoid();
+                let conf = obj.sigmoid() * class_logit.sigmoid();
 
                 // compute tlbr bbox
                 let t = cy - h / 2.0;
@@ -86,7 +88,10 @@ impl NonMaxSuppression {
                 let l = cx - w / 2.0;
                 let r = cx + w / 2.0;
 
-                let mask = conf.ge(confidence_threshold.raw());
+                // filter by objectness and confidence (= obj * class)
+                let obj_mask = obj.ge(confidence_threshold);
+                let conf_mask = conf.ge(confidence_threshold);
+                let mask = obj_mask.logical_and(&conf_mask);
                 let indexes = mask.nonzero();
                 let batches = indexes.select(1, 0);
                 let classes = indexes.select(1, 1);
