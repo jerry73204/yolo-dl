@@ -38,7 +38,7 @@ impl ConvBlockInit {
         } = self;
 
         let conv = nn::conv2d(
-            path,
+            path / "conv",
             in_c as i64,
             out_c as i64,
             k as i64,
@@ -50,7 +50,7 @@ impl ConvBlockInit {
                 ..Default::default()
             },
         );
-        let bn = nn::batch_norm2d(path, out_c as i64, Default::default());
+        let bn = nn::batch_norm2d(path / "bn", out_c as i64, Default::default());
 
         Box::new(move |xs, train| {
             let xs = xs.apply(&conv).apply_t(&bn, train);

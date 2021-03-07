@@ -41,14 +41,14 @@ impl BottleneckInit {
             s: 1,
             ..ConvBlockInit::new(in_c, intermediate_channels)
         }
-        .build(path);
+        .build(path / "conv1");
         let conv2 = ConvBlockInit {
             k: 3,
             s: 1,
             g,
             ..ConvBlockInit::new(intermediate_channels, out_c)
         }
-        .build(path);
+        .build(path / "conv2");
         let with_add = shortcut && in_c == out_c;
 
         Box::new(move |xs, train| {

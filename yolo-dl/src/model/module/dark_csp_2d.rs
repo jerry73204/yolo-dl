@@ -31,22 +31,22 @@ impl DarkCsp2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(in_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "skip_conv");
         let merge_conv = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c * 2, out_c, 1)
         }
-        .build(path);
+        .build(path / "merge_conv");
         let before_repeat_conv = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(in_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "before_repeat_conv");
         let after_repeat_conv = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "after_repeat_conv");
 
         let repeat_convs: Vec<_> = (0..repeat)
             .map(|_| {
@@ -54,12 +54,12 @@ impl DarkCsp2DInit {
                     batch_norm: batch_norm.clone(),
                     ..ConvBn2DInit::new(mid_c, mid_c, 1)
                 }
-                .build(path);
+                .build(path / "first_conv");
                 let second_conv = ConvBn2DInit {
                     batch_norm: batch_norm.clone(),
                     ..ConvBn2DInit::new(mid_c, mid_c, 3)
                 }
-                .build(path);
+                .build(path / "second_conv");
                 (first_conv, second_conv)
             })
             .collect();

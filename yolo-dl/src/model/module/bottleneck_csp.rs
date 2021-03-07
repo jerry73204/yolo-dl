@@ -45,9 +45,9 @@ impl BottleneckCspInit {
             s: 1,
             ..ConvBlockInit::new(in_c, intermediate_channels)
         }
-        .build(path);
+        .build(path / "conv1");
         let conv2 = nn::conv2d(
-            path,
+            path / "conv2",
             in_c as i64,
             intermediate_channels as i64,
             1,
@@ -58,7 +58,7 @@ impl BottleneckCspInit {
             },
         );
         let conv3 = nn::conv2d(
-            path,
+            path / "conv3",
             intermediate_channels as i64,
             intermediate_channels as i64,
             1,
@@ -73,9 +73,13 @@ impl BottleneckCspInit {
             s: 1,
             ..ConvBlockInit::new(out_c, out_c)
         }
-        .build(path);
-        let bn = nn::batch_norm2d(path, intermediate_channels as i64 * 2, Default::default());
-        let bottlenecks = (0..repeat)
+        .build(path / "conv4");
+        let bn = nn::batch_norm2d(
+            path / "bn",
+            intermediate_channels as i64 * 2,
+            Default::default(),
+        );
+        let bottlenecks: Vec<_> = (0..repeat)
             .map(|_| {
                 BottleneckInit {
                     shortcut,
@@ -83,9 +87,9 @@ impl BottleneckCspInit {
                     expansion: R64::new(1.0),
                     ..BottleneckInit::new(intermediate_channels, intermediate_channels)
                 }
-                .build(path)
+                .build(path / "bottlenecks")
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         Box::new(move |xs, train| {
             let y1 = {

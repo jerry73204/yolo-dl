@@ -29,14 +29,14 @@ impl SppInit {
             s: 1,
             ..ConvBlockInit::new(in_c, intermediate_channels)
         }
-        .build(path);
+        .build(path / "conv1");
 
         let conv2 = ConvBlockInit {
             k: 1,
             s: 1,
             ..ConvBlockInit::new(intermediate_channels * (ks.len() + 1), out_c)
         }
-        .build(path);
+        .build(path / "conv2");
 
         Box::new(move |xs, train| {
             let transformed_xs = conv1(xs, train);

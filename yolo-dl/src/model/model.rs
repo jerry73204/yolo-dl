@@ -35,8 +35,6 @@ mod yolo_model {
                     ref input_keys,
                 } = *layer;
 
-                // println!("# {}\t{}", key, module.as_ref());
-
                 let module_input: ModuleInput = match input_keys {
                     InputKeys::None => ModuleInput::None,
                     InputKeys::PlaceHolder => input.take().unwrap().into(),
@@ -81,6 +79,7 @@ mod yolo_model {
                     let graph::Node {
                         input_keys, config, ..
                     } = node;
+                    let module_path = path / format!("module_{}", key);
 
                     let module = match *config {
                         config::Module::Input(config::Input { ref shape, .. }) => {
@@ -125,7 +124,7 @@ mod yolo_model {
                                         config
                                     }),
                                 }
-                                .build(path),
+                                .build(module_path),
                             )
                         }
                         config::Module::UpSample2D(config::UpSample2D { scale, .. }) => {
@@ -164,7 +163,7 @@ mod yolo_model {
                                         config
                                     }),
                                 }
-                                .build(path),
+                                .build(module_path),
                             )
                         }
                         config::Module::SppCsp2D(config::SppCsp2D {
@@ -198,7 +197,7 @@ mod yolo_model {
                                         config
                                     }),
                                 }
-                                .build(path),
+                                .build(module_path),
                             )
                         }
                         config::Module::Sum2D(_) => Module::Sum2D(Sum2D),
@@ -223,7 +222,7 @@ mod yolo_model {
                                     num_classes: classes,
                                     anchors,
                                 }
-                                .build(path),
+                                .build(module_path),
                             )
                         }
                         config::Module::GroupRef(_) => unreachable!(),

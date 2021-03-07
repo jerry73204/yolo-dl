@@ -28,43 +28,43 @@ impl SppCsp2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(in_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "first_conv");
         let last_conv = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c * 2, out_c, 1)
         }
-        .build(path);
+        .build(path / "last_conv");
         let skip_conv = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "skip_conv");
 
         let spp_conv_1 = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "spp_conv_1");
         let spp_conv_2 = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 3)
         }
-        .build(path);
+        .build(path / "spp_conv_2");
         let spp_conv_3 = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "spp_conv_3");
         let spp_conv_4 = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 1)
         }
-        .build(path);
+        .build(path / "spp_conv_4");
         let spp_conv_5 = ConvBn2DInit {
             batch_norm: batch_norm.clone(),
             ..ConvBn2DInit::new(mid_c, mid_c, 3)
         }
-        .build(path);
+        .build(path / "spp_conv_5");
 
         SppCsp2D {
             first_conv,

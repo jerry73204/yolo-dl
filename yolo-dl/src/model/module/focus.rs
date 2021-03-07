@@ -23,7 +23,7 @@ impl FocusInit {
             s: 1,
             ..ConvBlockInit::new(in_c * 4, out_c)
         }
-        .build(path);
+        .build(path / "conv");
 
         Box::new(move |xs, train| {
             let (_bsize, _channels, height, width) = xs.size4().unwrap();

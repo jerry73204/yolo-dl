@@ -47,7 +47,7 @@ impl ConvBn2DInit {
         } = self;
 
         let conv = nn::conv2d(
-            path,
+            path / "conv",
             in_c as i64,
             out_c as i64,
             k as i64,
@@ -60,7 +60,7 @@ impl ConvBn2DInit {
                 ..Default::default()
             },
         );
-        let bn = batch_norm.map(|config| DarkBatchNorm::new_2d(path, out_c as i64, config));
+        let bn = batch_norm.map(|config| DarkBatchNorm::new_2d(path / "bn", out_c as i64, config));
 
         ConvBn2D {
             conv,
