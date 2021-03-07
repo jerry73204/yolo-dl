@@ -69,5 +69,5 @@ fn default_batch_norm() -> bool {
 }
 
 fn default_batch_norm_affine() -> bool {
-    false
+    true
 }

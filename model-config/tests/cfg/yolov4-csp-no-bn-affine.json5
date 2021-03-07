@@ -13,6 +13,7 @@
                 "kind": "ConvBn2D",
                 "c": 32,
                 "k": 3,
+                "bn_affine": false,
             },
             {
                 "name": "fork",
@@ -20,17 +21,20 @@
                 "c": 64,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
             {
                 "kind": "ConvBn2D",
                 "c": 32,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "merge",
                 "kind": "ConvBn2D",
                 "c": 64,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "kind": "Sum2D",
@@ -41,12 +45,14 @@
                 "c": 128,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
             {
                 "name": "output",
                 "kind": "DarkCsp2D",
                 "c": 128,
                 "repeat": 2,
+                "bn_affine": false,
             },
         ],
 
@@ -74,12 +80,14 @@
                 "c": 256,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
             {
                 "name": "dark1",
                 "kind": "DarkCsp2D",
                 "c": 256,
                 "repeat": 8,
+                "bn_affine": false,
             },
 
             // (1, 2)
@@ -89,12 +97,14 @@
                 "c": 512,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
             {
                 "name": "dark2",
                 "kind": "DarkCsp2D",
                 "c": 512,
                 "repeat": 8,
+                "bn_affine": false,
             },
 
             // (1, 3)
@@ -104,12 +114,14 @@
                 "c": 1024,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
             {
                 "name": "dark3",
                 "kind": "DarkCsp2D",
                 "c": 1024,
                 "repeat": 4,
+                "bn_affine": false,
             },
 
 
@@ -122,6 +134,7 @@
                 "kind": "ConvBn2D",
                 "c": 128,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "up1",
@@ -129,6 +142,7 @@
                 "c": 128,
                 "repeat": 2,
                 "shortcut": false,
+                "bn_affine": false,
             },
 
             // (2, 2)
@@ -140,6 +154,7 @@
                 "kind": "ConvBn2D",
                 "c": 256,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "up2",
@@ -147,6 +162,7 @@
                 "c": 256,
                 "repeat": 2,
                 "shortcut": false,
+                "bn_affine": false,
             },
 
             // (2, 3)
@@ -156,6 +172,7 @@
                 "from": "dark3",
                 "c": 512,
                 "k": [1, 5, 9, 13],
+                "bn_affine": false,
             },
 
             // (3, 2)
@@ -167,6 +184,7 @@
                 "kind": "ConvBn2D",
                 "c": 256,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "down2",
@@ -174,6 +192,7 @@
                 "c": 256,
                 "repeat": 2,
                 "shortcut": false,
+                "bn_affine": false,
             },
 
             // (3, 3)
@@ -185,6 +204,7 @@
                 "kind": "ConvBn2D",
                 "c": 512,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "down3",
@@ -192,6 +212,7 @@
                 "c": 512,
                 "repeat": 2,
                 "shortcut": false,
+                "bn_affine": false,
             },
 
 
@@ -232,6 +253,7 @@
                 "from": "dark1",
                 "c": 128,
                 "k": 1,
+                "bn_affine": false,
             },
 
             // (1, 2) -> (2, 2)
@@ -241,6 +263,7 @@
                 "from": "dark2",
                 "c": 256,
                 "k": 1,
+                "bn_affine": false,
             },
 
             // (2, 3) -> (2, 2)
@@ -249,6 +272,7 @@
                 "from": "up3",
                 "c": 256,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "up3_up2",
@@ -262,6 +286,7 @@
                 "from": "up2",
                 "c": 128,
                 "k": 1,
+                "bn_affine": false,
             },
             {
                 "name": "up2_up1",
@@ -277,6 +302,7 @@
                 "c": 256,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
 
 
@@ -288,6 +314,7 @@
                 "c": 512,
                 "k": 3,
                 "s": 2,
+                "bn_affine": false,
             },
 
             // (2, 1) -> (4, 1)
@@ -296,12 +323,14 @@
                 "from": "up1",
                 "c": 256,
                 "k": 3,
+                "bn_affine": false,
             },
             {
                 "name": "up1_detect1",
                 "kind": "ConvBn2D",
                 "c": 255,
                 "k": 1,
+                "bn_affine": false,
             },
 
 
@@ -311,12 +340,14 @@
                 "from": "down2",
                 "c": 512,
                 "k": 3,
+                "bn_affine": false,
             },
             {
                 "name": "down2_detect2",
                 "kind": "ConvBn2D",
                 "c": 255,
                 "k": 1,
+                "bn_affine": false,
             },
 
             // (3, 3) -> (4, 3)
@@ -325,12 +356,14 @@
                 "from": "down3",
                 "c": 1024,
                 "k": 3,
+                "bn_affine": false,
             },
             {
                 "name": "down3_detect3",
                 "kind": "ConvBn2D",
                 "c": 255,
                 "k": 1,
+                "bn_affine": false,
             },
 
             // output
