@@ -1,4 +1,5 @@
 {
+    "version": "0.1.0",
     "model": {
         "kind": "NewslabV1",
         "cfg_file": "model-config/tests/cfg/yolov4-csp-with-bn-affine.json5",

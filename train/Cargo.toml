@@ -51,6 +51,8 @@ csv = "1.1.5"
 imagesize = "0.8.8"
 owning_ref = "0.4.1"
 iii-formosa-dataset = "0.1.0"
+semver ={ version =  "0.11.0", features = ["serde"] }
+once_cell = "1.7.2"
 
 [features]
 profiling = ["yolo-dl/profiling"]
