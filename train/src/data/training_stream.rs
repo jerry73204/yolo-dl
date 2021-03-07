@@ -385,6 +385,7 @@ impl TrainingStream {
                                 horizontal_flip_prob,
                                 vertical_flip_prob,
                             },
+                        cleanse: CleanseConfig { min_bbox_size, .. },
                         ..
                     },
                 ..
@@ -399,6 +400,7 @@ impl TrainingStream {
                     scale,
                     horizontal_flip_prob,
                     vertical_flip_prob,
+                    min_bbox_size: Some(R64::from(min_bbox_size)),
                 }
                 .build()?,
             );
@@ -482,6 +484,7 @@ impl TrainingStream {
                 ParallelMosaicProcessorInit {
                     mosaic_margin: mosaic_margin.to_f64(),
                     max_workers: None,
+                    min_bbox_size: Some(f64::from(min_bbox_size)),
                 }
                 .build()?,
             );

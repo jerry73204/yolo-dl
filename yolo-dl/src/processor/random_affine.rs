@@ -23,6 +23,7 @@ pub struct RandomAffineInit {
     pub horizontal_flip_prob: Option<Ratio>,
     /// The probability to apply vertical flip.
     pub vertical_flip_prob: Option<Ratio>,
+    pub min_bbox_size: Option<R64>,
 }
 
 impl RandomAffineInit {
@@ -38,6 +39,7 @@ impl RandomAffineInit {
             // shear,
             horizontal_flip_prob,
             vertical_flip_prob,
+            min_bbox_size,
         } = self;
 
         let rotate_radians = rotate_radians
@@ -78,6 +80,7 @@ impl RandomAffineInit {
             // shear,
             horizontal_flip_prob: horizontal_flip_prob.as_ref().map(Ratio::to_f64),
             vertical_flip_prob: vertical_flip_prob.as_ref().map(Ratio::to_f64),
+            min_bbox_size,
         })
     }
 }
@@ -95,6 +98,7 @@ impl Default for RandomAffineInit {
             // shear: None,
             horizontal_flip_prob: None,
             vertical_flip_prob: None,
+            min_bbox_size: None,
         }
     }
 }
@@ -112,6 +116,7 @@ pub struct RandomAffine {
     // shear: Option<f64>,
     horizontal_flip_prob: Option<f64>,
     vertical_flip_prob: Option<f64>,
+    min_bbox_size: Option<R64>,
 }
 
 impl RandomAffine {
@@ -375,10 +380,12 @@ impl RandomAffine {
                         let bbox_r = bbox_r.min(r64(1.0));
 
                         // remove small bboxes
-                        if abs_diff_eq!((bbox_b - bbox_t).raw(), 0.0)
-                            || abs_diff_eq!((bbox_r - bbox_l).raw(), 0.0)
-                        {
-                            return None;
+                        if let Some(min_bbox_size) = self.min_bbox_size {
+                            let h = bbox_b - bbox_t;
+                            let w = bbox_r - bbox_l;
+                            if h < min_bbox_size || w < min_bbox_size {
+                                return None;
+                            }
                         }
 
                         let new_bbox: RatioCyCxHW<R64> =

@@ -7,17 +7,30 @@ use crate::common::*;
 pub struct MosaicProcessorInit {
     /// The distance from pivot point to image boundary in ratio unit.
     pub mosaic_margin: f64,
+    pub min_bbox_size: Option<f64>,
 }
 
 impl MosaicProcessorInit {
     pub fn build(self) -> Result<MosaicProcessor> {
-        let Self { mosaic_margin } = self;
+        let Self {
+            mosaic_margin,
+            min_bbox_size,
+        } = self;
         ensure!(
-            (0.0..0.5).contains(&mosaic_margin),
+            (0.0..=0.5).contains(&mosaic_margin),
             "mosaic_margin must be in range 0.0..0.5"
         );
+        if let Some(min_bbox_size) = min_bbox_size {
+            ensure!(
+                (0.0..=1.0).contains(&min_bbox_size),
+                "min_bbox_size must be between 0.0 and 1.0"
+            );
+        }
 
-        Ok(MosaicProcessor { mosaic_margin })
+        Ok(MosaicProcessor {
+            mosaic_margin,
+            min_bbox_size,
+        })
     }
 }
 
@@ -25,6 +38,7 @@ impl MosaicProcessorInit {
 #[derive(Debug, Clone)]
 pub struct MosaicProcessor {
     mosaic_margin: f64,
+    min_bbox_size: Option<f64>,
 }
 
 impl MosaicProcessor {
@@ -41,13 +55,16 @@ impl MosaicProcessor {
         tch::no_grad(|| {
             let input_iter = input.into_iter();
             ensure!(input_iter.len() == 4, "expect exactly 4 images");
-            let Self { mosaic_margin } = *self;
+            let Self {
+                mosaic_margin,
+                min_bbox_size,
+            } = *self;
             let mut rng = StdRng::from_entropy();
 
             // select pivot point randomly and compute margins per image
             let ranges = {
-                let pivot_row = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
-                let pivot_col = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
+                let pivot_row = rng.gen_range(mosaic_margin..=(1.0 - mosaic_margin));
+                let pivot_col = rng.gen_range(mosaic_margin..=(1.0 - mosaic_margin));
                 vec![
                     [0.0, pivot_row, 0.0, pivot_col],
                     [0.0, pivot_row, pivot_col, 1.0],
@@ -82,6 +99,7 @@ impl MosaicProcessor {
                                 &image,
                                 bboxes,
                                 [margin_t, margin_b, margin_l, margin_r],
+                                min_bbox_size,
                             )
                         }();
 
@@ -122,6 +140,7 @@ impl MosaicProcessor {
 pub struct ParallelMosaicProcessorInit {
     pub mosaic_margin: f64,
     pub max_workers: Option<usize>,
+    pub min_bbox_size: Option<f64>,
 }
 
 impl ParallelMosaicProcessorInit {
@@ -129,15 +148,22 @@ impl ParallelMosaicProcessorInit {
         let Self {
             mosaic_margin,
             max_workers,
+            min_bbox_size,
         } = self;
         ensure!(
-            (0.0..0.5).contains(&mosaic_margin),
-            "mosaic_margin must be in range 0.0..0.5"
+            (0.0..=0.5).contains(&mosaic_margin),
+            "mosaic_margin must be between 0.0 and 0.5"
         );
-
+        if let Some(min_bbox_size) = min_bbox_size {
+            ensure!(
+                (0.0..=1.0).contains(&min_bbox_size),
+                "min_bbox_size must be between 0.0 and 1.0"
+            );
+        }
         Ok(ParallelMosaicProcessor {
             mosaic_margin,
             max_workers,
+            min_bbox_size,
         })
     }
 }
@@ -146,7 +172,8 @@ impl ParallelMosaicProcessorInit {
 #[derive(Debug, Clone)]
 pub struct ParallelMosaicProcessor {
     mosaic_margin: f64,
-    pub max_workers: Option<usize>,
+    max_workers: Option<usize>,
+    min_bbox_size: Option<f64>,
 }
 
 impl ParallelMosaicProcessor {
@@ -165,13 +192,14 @@ impl ParallelMosaicProcessor {
         let Self {
             mosaic_margin,
             max_workers,
+            min_bbox_size,
         } = *self;
         let mut rng = StdRng::from_entropy();
 
         // random select pivot point
         let ranges = {
-            let pivot_row = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
-            let pivot_col = rng.gen_range(mosaic_margin..(1.0 - mosaic_margin));
+            let pivot_row = rng.gen_range(mosaic_margin..=(1.0 - mosaic_margin));
+            let pivot_col = rng.gen_range(mosaic_margin..=(1.0 - mosaic_margin));
             vec![
                 [0.0, pivot_row, 0.0, pivot_col],
                 [0.0, pivot_row, pivot_col, 1.0],
@@ -196,10 +224,15 @@ impl ParallelMosaicProcessor {
         // crop images
         let mut crop_iter = stream::iter(pairs.into_iter().zip_eq(ranges.into_iter())).par_map(
             max_workers,
-            |args| {
+            move |args| {
                 let ((image, bboxes), [margin_t, margin_b, margin_l, margin_r]) = args;
                 move || -> Result<_> {
-                    crop_image_bboxes(&image, bboxes, [margin_t, margin_b, margin_l, margin_r])
+                    crop_image_bboxes(
+                        &image,
+                        bboxes,
+                        [margin_t, margin_b, margin_l, margin_r],
+                        min_bbox_size,
+                    )
                 }
             },
         );
@@ -236,6 +269,7 @@ fn crop_image_bboxes(
     image: &Tensor,
     bboxes: impl IntoIterator<Item = RatioLabel>,
     tlbr: [f64; 4],
+    min_bbox_size: Option<f64>,
 ) -> Result<(Tensor, Vec<RatioLabel>)> {
     tch::no_grad(|| {
         let [margin_t, margin_b, margin_l, margin_r] = tlbr;
@@ -247,14 +281,17 @@ fn crop_image_bboxes(
         let cropped_bboxes = bboxes
             .into_iter()
             .filter_map(|bbox| {
-                Some(
-                    bbox.intersect_with(
-                        &CyCxHW::from_tlbr(margin_t, margin_l, margin_b, margin_r)
-                            .unwrap()
-                            .cast::<R64>()
-                            .unwrap(),
-                    )?,
-                )
+                let roi = CyCxHW::from_tlbr(margin_t, margin_l, margin_b, margin_r)
+                    .unwrap()
+                    .cast::<R64>()
+                    .unwrap();
+                let cropped = bbox.intersect_with(&roi)?;
+
+                if let Some(min_bbox_size) = min_bbox_size {
+                    (cropped.h() >= min_bbox_size && cropped.w() >= min_bbox_size).then(|| cropped)
+                } else {
+                    Some(cropped)
+                }
             })
             .collect_vec();
 
