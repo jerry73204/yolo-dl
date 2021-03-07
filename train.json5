@@ -2,7 +2,7 @@
     "version": "0.1.0",
     "model": {
         "kind": "NewslabV1",
-        "cfg_file": "model-config/tests/cfg/yolov4-csp-with-bn-affine.json5",
+        "cfg_file": "model-config/tests/cfg/yolov4-csp-custom.json5",
     },
     "dataset": {
         "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],

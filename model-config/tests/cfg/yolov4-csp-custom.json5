@@ -1,0 +1,509 @@
+{
+    "main_group": "YoloV4Csp",
+    "groups": {
+        // prefix of yolov4
+        "Prefix": [
+            {
+                "name": "input",
+                "kind": "Input",
+                "shape": ["_", 3, "_", "_"],
+            },
+            {
+                "from": "input",
+                "kind": "ConvBn2D",
+                "c": 32,
+                "k": 3,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "fork",
+                "kind": "ConvBn2D",
+                "c": 64,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 32,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "merge",
+                "kind": "ConvBn2D",
+                "c": 64,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "kind": "Sum2D",
+                "from": ["fork", "merge"]
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 128,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "output",
+                "kind": "DarkCsp2D",
+                "c": 128,
+                "repeat": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+        ],
+
+        // the yolov4-csp model
+        "YoloV4Csp": [
+            {
+                "name": "input",
+                "kind": "Input",
+                "shape": ["_", 3, 256, 256],
+            },
+            // initial layers, no forks
+            {
+                "name": "init",
+                "kind": "GroupRef",
+                "from": {
+                    "input": "input",
+                },
+                "group": "Prefix",
+            },
+
+            // (1, 1)
+            {
+                "kind": "ConvBn2D",
+                "from": "init.output",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "dark1",
+                "kind": "DarkCsp2D",
+                "c": 256,
+                "repeat": 8,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (1, 2)
+            {
+                "kind": "ConvBn2D",
+                "from": "dark1",
+                "c": 512,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "dark2",
+                "kind": "DarkCsp2D",
+                "c": 512,
+                "repeat": 8,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (1, 3)
+            {
+                "kind": "ConvBn2D",
+                "from": "dark2",
+                "c": 1024,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "dark3",
+                "kind": "DarkCsp2D",
+                "c": 1024,
+                "repeat": 4,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (2, 1)
+            {
+                "kind": "Concat2D",
+                "from": ["dark1_up1", "up2_up1"],
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 128,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up1",
+                "kind": "DarkCsp2D",
+                "c": 128,
+                "repeat": 2,
+                "shortcut": false,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 2)
+            {
+                "kind": "Concat2D",
+                "from": ["dark2_up2", "up3_up2"],
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 256,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up2",
+                "kind": "DarkCsp2D",
+                "c": 256,
+                "repeat": 2,
+                "shortcut": false,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 3)
+            {
+                "name": "up3",
+                "kind": "SppCsp2D",
+                "from": "dark3",
+                "c": 512,
+                "k": [1, 5, 9, 13],
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (3, 2)
+            {
+                "kind": "Concat2D",
+                "from": ["up2", "up1_down2"],
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 256,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "down2",
+                "kind": "DarkCsp2D",
+                "c": 256,
+                "repeat": 2,
+                "shortcut": false,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (3, 3)
+            {
+                "kind": "Concat2D",
+                "from": ["up3", "down2_down3"],
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 512,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "down3",
+                "kind": "DarkCsp2D",
+                "c": 512,
+                "repeat": 2,
+                "shortcut": false,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (4, 1)
+            {
+                "name": "detect1",
+                "kind": "Detect2D",
+                "from": "up1_detect1",
+                "classes": 80,
+                // "anchors": [[12, 16], [19, 36], [40, 28]],
+                "anchors": [[0.0234375, 0.03125], [0.037109375, 0.0703125], [0.078125, 0.0546875]],
+            },
+
+            // [4, 2]
+            {
+                "name": "detect2",
+                "kind": "Detect2D",
+                "from": "down2_detect2",
+                "classes": 80,
+                // "anchors": [[36, 75], [76, 55], [72, 146]],
+                "anchors": [[0.0703125, 0.146484375], [0.1484375, 0.107421875], [0.140625, 0.28515625]],
+            },
+
+            // [4, 3]
+            {
+                "name": "detect3",
+                "kind": "Detect2D",
+                "from": "down3_detect3",
+                "classes": 80,
+                // "anchors": [[142, 110], [192, 243], [459, 401]],
+                "anchors": [[0.27734375, 0.21484375], [0.375, 0.474609375], [0.896484375, 0.783203125]],
+            },
+
+            // (1, 1) -> (2, 1)
+            {
+                "kind": "ConvBn2D",
+                "name": "dark1_up1",
+                "from": "dark1",
+                "c": 128,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (1, 2) -> (2, 2)
+            {
+                "kind": "ConvBn2D",
+                "name": "dark2_up2",
+                "from": "dark2",
+                "c": 256,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 3) -> (2, 2)
+            {
+                "kind": "ConvBn2D",
+                "from": "up3",
+                "c": 256,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up3_up2",
+                "kind": "UpSample2D",
+                "scale": 2.0,
+            },
+
+            // (2, 2) -> (2, 1)
+            {
+                "kind": "ConvBn2D",
+                "from": "up2",
+                "c": 128,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up2_up1",
+                "kind": "UpSample2D",
+                "scale": 2.0,
+            },
+
+            // (2, 1) -> (3, 2)
+            {
+                "name": "up1_down2",
+                "kind": "ConvBn2D",
+                "from": "up1",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (3, 2) -> (3, 3)
+            {
+                "name": "down2_down3",
+                "kind": "ConvBn2D",
+                "from": "down2",
+                "c": 512,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 1) -> (4, 1)
+            {
+                "kind": "ConvBn2D",
+                "from": "up1",
+                "c": 256,
+                "k": 3,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up1_detect1",
+                "kind": "ConvBn2D",
+                "c": 255,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (3, 2) -> (4, 2)
+            {
+                "kind": "ConvBn2D",
+                "from": "down2",
+                "c": 512,
+                "k": 3,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "down2_detect2",
+                "kind": "ConvBn2D",
+                "c": 255,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (3, 3) -> (4, 3)
+            {
+                "kind": "ConvBn2D",
+                "from": "down3",
+                "c": 1024,
+                "k": 3,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "down3_detect3",
+                "kind": "ConvBn2D",
+                "c": 255,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // output
+            {
+                "name": "output",
+                "kind": "MergeDetect2D",
+                "from": ["detect1", "detect2", "detect3"],
+            },
+        ]
+    }
+}
