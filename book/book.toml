@@ -1,0 +1,6 @@
+[book]
+authors = ["jerry73204"]
+language = "en"
+multilingual = true
+src = "src"
+title = "The YOLO-DL Book"
