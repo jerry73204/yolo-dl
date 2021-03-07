@@ -560,7 +560,9 @@ mod graphviz {
                     dot::escape_html(&format!("{}", output_shape))
                 )),
                 Module::ConvBn2D(conv) => {
-                    let config::ConvBn2D { k, s, p, d, bn, .. } = *conv;
+                    let config::ConvBn2D {
+                        k, s, p, d, ref bn, ..
+                    } = *conv;
 
                     LabelText::escaped(format!(
                         "({}) {}
@@ -578,7 +580,7 @@ batch_norm={}",
                         s,
                         p,
                         d,
-                        if bn { "yes" } else { "no" }
+                        if bn.enabled { "yes" } else { "no" }
                     ))
                 }
                 Module::DarkCsp2D(csp) => {

@@ -16,8 +16,7 @@ pub struct ConvBn2D {
     pub d: usize,
     pub g: usize,
     pub act: Activation,
-    pub bn: bool,
-    pub bn_affine: bool,
+    pub bn: BatchNorm,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -35,10 +34,8 @@ struct RawConvBn2D {
     pub g: usize,
     #[serde(default = "default_activation")]
     pub act: Activation,
-    #[serde(default = "default_batch_norm")]
-    pub bn: bool,
-    #[serde(default = "default_batch_norm_affine")]
-    pub bn_affine: bool,
+    #[serde(default)]
+    pub bn: BatchNorm,
 }
 
 impl From<RawConvBn2D> for ConvBn2D {
@@ -54,7 +51,6 @@ impl From<RawConvBn2D> for ConvBn2D {
             g,
             act,
             bn,
-            bn_affine,
         } = raw;
 
         let p = p.unwrap_or_else(|| k / 2);
@@ -70,7 +66,6 @@ impl From<RawConvBn2D> for ConvBn2D {
             g,
             act,
             bn,
-            bn_affine,
         }
     }
 }
@@ -88,7 +83,6 @@ impl From<ConvBn2D> for RawConvBn2D {
             g,
             act,
             bn,
-            bn_affine,
         } = orig;
 
         Self {
@@ -102,7 +96,6 @@ impl From<ConvBn2D> for RawConvBn2D {
             g,
             act,
             bn,
-            bn_affine,
         }
     }
 }
@@ -124,8 +117,7 @@ impl ConvBn2D {
             d: 1,
             g: default_group(),
             act: default_activation(),
-            bn: default_batch_norm(),
-            bn_affine: default_batch_norm_affine(),
+            bn: Default::default(),
         }
     }
 }
@@ -176,12 +168,4 @@ fn default_group() -> usize {
 
 fn default_activation() -> Activation {
     Activation::Mish
-}
-
-fn default_batch_norm() -> bool {
-    true
-}
-
-fn default_batch_norm_affine() -> bool {
-    true
 }

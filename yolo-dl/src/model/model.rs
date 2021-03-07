@@ -94,8 +94,7 @@ mod yolo_model {
                             d,
                             g,
                             act,
-                            bn,
-                            bn_affine,
+                            ref bn,
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
@@ -117,9 +116,9 @@ mod yolo_model {
                                     d,
                                     g,
                                     activation: act,
-                                    batch_norm: bn.then(|| {
+                                    batch_norm: bn.enabled.then(|| {
                                         let mut config = DarkBatchNormConfig::default();
-                                        if !bn_affine {
+                                        if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
                                         }
@@ -137,8 +136,7 @@ mod yolo_model {
                             repeat,
                             shortcut,
                             c_mul,
-                            bn,
-                            bn_affine,
+                            ref bn,
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
@@ -157,9 +155,9 @@ mod yolo_model {
                                     repeat,
                                     shortcut,
                                     c_mul,
-                                    batch_norm: bn.then(|| {
+                                    batch_norm: bn.enabled.then(|| {
                                         let mut config = DarkBatchNormConfig::default();
-                                        if !bn_affine {
+                                        if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
                                         }
@@ -173,8 +171,7 @@ mod yolo_model {
                             c,
                             ref k,
                             c_mul,
-                            bn,
-                            bn_affine,
+                            ref bn,
                             ..
                         }) => {
                             let src_key = input_keys.single().unwrap();
@@ -192,9 +189,9 @@ mod yolo_model {
                                     out_c: c,
                                     k: k.to_owned(),
                                     c_mul,
-                                    batch_norm: bn.then(|| {
+                                    batch_norm: bn.enabled.then(|| {
                                         let mut config = DarkBatchNormConfig::default();
-                                        if !bn_affine {
+                                        if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
                                         }

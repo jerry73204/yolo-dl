@@ -1,3 +1,4 @@
+mod bn;
 mod concat_2d;
 mod conv_bn_2d_block;
 mod dark_csp_2d;
@@ -15,6 +16,7 @@ mod spp_csp_2d;
 mod sum_2d;
 mod up_sample_2d;
 
+pub use bn::*;
 pub use concat_2d::*;
 pub use conv_bn_2d_block::*;
 pub use dark_csp_2d::*;

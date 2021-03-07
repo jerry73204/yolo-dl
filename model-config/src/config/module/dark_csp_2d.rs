@@ -11,10 +11,8 @@ pub struct DarkCsp2D {
     pub shortcut: bool,
     #[serde(default = "default_c_mul")]
     pub c_mul: R64,
-    #[serde(default = "default_batch_norm")]
-    pub bn: bool,
-    #[serde(default = "default_batch_norm_affine")]
-    pub bn_affine: bool,
+    #[serde(default)]
+    pub bn: BatchNorm,
 }
 
 impl DarkCsp2D {
@@ -31,8 +29,7 @@ impl DarkCsp2D {
             repeat,
             shortcut: default_shortcut(),
             c_mul: default_c_mul(),
-            bn: default_batch_norm(),
-            bn_affine: default_batch_norm_affine(),
+            bn: Default::default(),
         }
     }
 }
@@ -62,12 +59,4 @@ fn default_shortcut() -> bool {
 
 fn default_c_mul() -> R64 {
     r64(1.0)
-}
-
-fn default_batch_norm() -> bool {
-    true
-}
-
-fn default_batch_norm_affine() -> bool {
-    true
 }

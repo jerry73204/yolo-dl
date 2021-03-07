@@ -9,10 +9,8 @@ pub struct SppCsp2D {
     pub k: Vec<usize>,
     #[serde(default = "default_c_mul")]
     pub c_mul: R64,
-    #[serde(default = "default_batch_norm")]
-    pub bn: bool,
-    #[serde(default = "default_batch_norm_affine")]
-    pub bn_affine: bool,
+    #[serde(default)]
+    pub bn: BatchNorm,
 }
 
 impl SppCsp2D {
@@ -23,8 +21,7 @@ impl SppCsp2D {
             c,
             k: vec![1, 5, 9, 13],
             c_mul: default_c_mul(),
-            bn: default_batch_norm(),
-            bn_affine: default_batch_norm_affine(),
+            bn: Default::default(),
         }
     }
 }
@@ -50,12 +47,4 @@ impl ModuleEx for SppCsp2D {
 
 fn default_c_mul() -> R64 {
     r64(0.5)
-}
-
-fn default_batch_norm() -> bool {
-    true
-}
-
-fn default_batch_norm_affine() -> bool {
-    true
 }
