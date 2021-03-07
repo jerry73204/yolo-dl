@@ -78,10 +78,10 @@ pub struct ConvBn2D {
 }
 
 impl ConvBn2D {
-    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> Tensor {
         let Self {
             ref conv,
-            ref bn,
+            ref mut bn,
             activation,
         } = *self;
 

@@ -86,13 +86,13 @@ pub struct DarkCsp2D {
 }
 
 impl DarkCsp2D {
-    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> Tensor {
         let Self {
-            ref skip_conv,
-            ref merge_conv,
-            ref before_repeat_conv,
-            ref after_repeat_conv,
-            ref repeat_convs,
+            ref mut skip_conv,
+            ref mut merge_conv,
+            ref mut before_repeat_conv,
+            ref mut after_repeat_conv,
+            ref mut repeat_convs,
             shortcut,
         } = *self;
 
@@ -100,7 +100,7 @@ impl DarkCsp2D {
         let repeat = {
             let xs = before_repeat_conv.forward_t(xs, train);
             let xs = repeat_convs
-                .iter()
+                .iter_mut()
                 .fold(xs, |xs, (first_conv, second_conv)| {
                     let ys = second_conv.forward_t(&first_conv.forward_t(&xs, train), train);
                     if shortcut {

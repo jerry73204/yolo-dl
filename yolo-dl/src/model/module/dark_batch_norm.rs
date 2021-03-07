@@ -10,6 +10,8 @@ pub struct DarkBatchNormConfig {
     pub momentum: R64,
     pub ws_init: Option<nn::Init>,
     pub bs_init: Option<nn::Init>,
+    pub var_min: Option<R64>,
+    pub var_max: Option<R64>,
 }
 
 #[derive(Debug)]
@@ -22,6 +24,8 @@ pub struct DarkBatchNorm {
     cudnn_enabled: bool,
     eps: f64,
     momentum: f64,
+    var_min: Option<f64>,
+    var_max: Option<f64>,
 }
 
 impl Default for DarkBatchNormConfig {
@@ -32,6 +36,8 @@ impl Default for DarkBatchNormConfig {
             momentum: r64(0.03),
             ws_init: Some(nn::Init::Const(1.0)),
             bs_init: Some(nn::Init::Const(0.0)),
+            var_min: None,
+            var_max: None,
         }
     }
 }
@@ -50,6 +56,8 @@ impl DarkBatchNorm {
             momentum,
             ws_init,
             bs_init,
+            var_min,
+            var_max,
         } = config;
 
         let ws = ws_init.map(|init| path.var("weight", &[out_dim], init));
@@ -64,6 +72,8 @@ impl DarkBatchNorm {
             cudnn_enabled,
             eps: eps.raw(),
             momentum: momentum.raw(),
+            var_min: var_min.map(|min| min.raw()),
+            var_max: var_max.map(|max| max.raw()),
         }
     }
 
@@ -75,17 +85,18 @@ impl DarkBatchNorm {
         Self::new(path, 2, out_dim, config)
     }
 
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> Result<Tensor> {
+    pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<Tensor> {
         let Self {
             ref running_mean,
-            ref running_var,
+            ref mut running_var,
             ref ws,
             ref bs,
             nd,
             momentum,
             eps,
             cudnn_enabled,
-            ..
+            var_min,
+            var_max,
         } = *self;
 
         ensure!(
@@ -106,6 +117,20 @@ impl DarkBatchNorm {
             eps,
             cudnn_enabled,
         );
+
+        // clip running_var
+        match (var_min, var_max) {
+            (Some(min), Some(max)) => {
+                let _ = running_var.clamp_(min, max);
+            }
+            (None, Some(max)) => {
+                let _ = running_var.clamp_max_(max);
+            }
+            (Some(min), None) => {
+                let _ = running_var.clamp_min_(min);
+            }
+            (None, None) => {}
+        }
 
         #[cfg(debug_assertions)]
         {

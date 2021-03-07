@@ -94,7 +94,7 @@ pub struct SppCsp2D {
 }
 
 impl SppCsp2D {
-    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> Tensor {
         let SppCsp2D {
             first_conv,
             last_conv,
