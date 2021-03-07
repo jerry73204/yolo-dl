@@ -36,10 +36,10 @@ cargo doc --open
 If you are developing on the remote site, you can open a remotedocument server with `cargo-docserve`. Please search for `yolo-dl-doc` crate in your browser.
 
 ```sh
-// install if you run cargo-docserve for the first time
+# install if you run cargo-docserve for the first time
 cargo install cargo-docserve
 
-// run doc server
+# run doc server
 cargo docserve
 ```
 
