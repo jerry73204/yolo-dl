@@ -1,5 +1,17 @@
 # Dataset Preparation
 
+## Supported Dataset Formats
+
+The following stock datasets are supported.
+
+- Microsoft COCO
+- Pascal VOC
+- Formosa dataset
+
+and below developer-friendly dataset is supported for testing.
+
+- CSV dataset
+
 ## Microsoft COCO 2017
 
 Download the zips from the following links.
@@ -42,7 +54,6 @@ Configure the `dataset` section in in `train.json5`. Fill the dataset directory 
 
 ```json5
 "dataset": {
-    "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"], // optional
     "kind": {
         "type": "Coco",
         "image_size": 256,
@@ -153,6 +164,60 @@ Edit the `train.json5` configuration file. The `dataset` section will look like 
         "image_dir": "/path/to/images",
         "label_file": "/path/to/label.csv",
         "classes_file": "/path/to/classes.txt",
+    },
+}
+```
+
+## Class Definition
+
+Most dataset requires a `class_file` option that defines the index and class name correspondence. The class file content is a list of words, where each word is implicitly indexed by line number starting from zero.
+
+This is an example class file for Formosa dataset, in which case the `Bicycle` class corresponds to index 0.
+
+```
+Bicycle
+Bulldozer
+Bus
+Car
+ConcreteMixer
+Crane
+Excavator
+JerseyBarrier
+Loader
+Motorcycle
+Mscooter
+Pedestrian
+Rider
+RoadRoller
+Tanker
+Trailer
+TriCone
+Tricycle
+Truck
+```
+
+## Class Whitelisting
+
+By setting the `class_whitelist` option, only boxes with whitelisted classes are visible to the model during training. The `class_whitelist` option should not be confused with class file. It does not change the index and class name correspondence.
+
+For example, we let the model to see only vehicle classes by the `class_whitelist` option.
+
+```json5
+"dataset": {
+    "class_whitelist": [
+        "person",
+        "bicycle",
+        "car",
+        "motorcycle",
+        "bus",
+        "truck",
+    ],
+    "kind": {
+        "type": "Coco",
+        "image_size": 256,
+        "dataset_dir": "/path/to/your/coco/dataset/directory",
+        "dataset_name": "train2017",
+        "classes_file": "cfg/coco.class",
     },
 }
 ```

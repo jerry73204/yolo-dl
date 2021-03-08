@@ -88,3 +88,31 @@ When the training program is running, you can open a TensorBoard server to show 
 ```sh
 tensorboard --bind_all --logdir logs-coco/
 ```
+
+## Training Device Configuration
+
+The training program supports either single device and multi-device training. The devices can be specified by `cpu` and indexed CUDA device `cuda(0)`, `cuda(1)`, etc.
+
+Single device training takes the batch size as the minibatch size for the device.
+
+```json
+"training": {
+    "batch_size": 4,
+    "device_config": {
+        "type": "SingleDevice",
+        "device": "cuda(0)"
+    },
+},
+```
+
+The multi-device training equally splits the batch size into minibatches for each device. Suppose we have 4 devices and batch size 20, the minibatch size is 5.
+
+```json
+"training": {
+    "batch_size": 20,
+    "device_config": {
+        "type": "MultiDevice",
+        "devices": ["cuda(0)", "cuda(1)", "cuda(2)", "cuda(3)"],
+    },
+},
+```
