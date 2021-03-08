@@ -156,7 +156,7 @@
             "box_metric": "Hausdorff",    // IoU, GIoU, DIoU, CIoU, Hausdorff
             "objectness_loss_fn": "Bce",
             "classification_loss_fn": "Bce",
-            "objectness_positive_weight": 55.0,
+            "objectness_positive_weight": 1.0,
 
             // for DIoU
             // "iou_loss_weight": 0.31,
