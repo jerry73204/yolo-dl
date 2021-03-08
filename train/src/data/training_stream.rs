@@ -385,7 +385,12 @@ impl TrainingStream {
                                 horizontal_flip_prob,
                                 vertical_flip_prob,
                             },
-                        cleanse: CleanseConfig { min_bbox_size, .. },
+                        cleanse:
+                            CleanseConfig {
+                                min_bbox_size,
+                                min_bbox_cropping_ratio,
+                                ..
+                            },
                         ..
                     },
                 ..
@@ -401,6 +406,7 @@ impl TrainingStream {
                     horizontal_flip_prob,
                     vertical_flip_prob,
                     min_bbox_size: Some(R64::from(min_bbox_size)),
+                    min_bbox_cropping_ratio: Some(min_bbox_cropping_ratio.into()),
                 }
                 .build()?,
             );
@@ -468,7 +474,12 @@ impl TrainingStream {
                                 mosaic_margin,
                                 ..
                             },
-                        cleanse: CleanseConfig { min_bbox_size, .. },
+                        cleanse:
+                            CleanseConfig {
+                                min_bbox_size,
+                                min_bbox_cropping_ratio,
+                                ..
+                            },
                         ..
                     },
                 ..
@@ -484,7 +495,8 @@ impl TrainingStream {
                 ParallelMosaicProcessorInit {
                     mosaic_margin: mosaic_margin.to_f64(),
                     max_workers: None,
-                    min_bbox_size: Some(f64::from(min_bbox_size)),
+                    min_bbox_size: Some(min_bbox_size.into()),
+                    min_bbox_cropping_ratio: Some(min_bbox_cropping_ratio.into()),
                 }
                 .build()?,
             );

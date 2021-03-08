@@ -78,13 +78,17 @@ impl YoloBenchmark {
 
         // compute classifcation benchmark
         let class_accuracy = {
-            let conf_mask = matchings.pred.confidence().ge(confidence_threshold);
-            let (_, pred_class) = matchings.pred.class().max2(1, true);
-            let class_mask = matchings.target.class().eq1(&pred_class);
-            let mask = conf_mask.any1(1, true).logical_and(&class_mask);
-            let accuracy = i64::from(mask.count_nonzero(&[0])) as f64 / mask.numel() as f64;
-            debug_assert!((0f64..=1f64).contains(&accuracy));
-            accuracy
+            if !matchings.pred.class().is_empty() {
+                let conf_mask = matchings.pred.confidence().ge(confidence_threshold);
+                let (_, pred_class) = matchings.pred.class().max2(1, true);
+                let class_mask = matchings.target.class().eq1(&pred_class);
+                let mask = conf_mask.any1(1, true).logical_and(&class_mask);
+                let accuracy = i64::from(mask.count_nonzero(&[0])) as f64 / mask.numel() as f64;
+                debug_assert!((0f64..=1f64).contains(&accuracy));
+                accuracy
+            } else {
+                1.0
+            }
         };
 
         YoloBenchmarkOutput {

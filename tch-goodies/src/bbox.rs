@@ -313,6 +313,11 @@ mod cycxhw {
             Size::new(h, w).unwrap()
         }
 
+        pub fn area(&self) -> T {
+            let Self { h, w, .. } = *self;
+            h * w
+        }
+
         pub fn to_tlbr(&self) -> TLBR<T, U> {
             self.into()
         }

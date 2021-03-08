@@ -24,6 +24,7 @@ pub struct RandomAffineInit {
     /// The probability to apply vertical flip.
     pub vertical_flip_prob: Option<Ratio>,
     pub min_bbox_size: Option<R64>,
+    pub min_bbox_cropping_ratio: Option<R64>,
 }
 
 impl RandomAffineInit {
@@ -40,6 +41,7 @@ impl RandomAffineInit {
             horizontal_flip_prob,
             vertical_flip_prob,
             min_bbox_size,
+            min_bbox_cropping_ratio,
         } = self;
 
         let rotate_radians = rotate_radians
@@ -69,6 +71,28 @@ impl RandomAffineInit {
         //     })
         //     .transpose()?;
 
+        let min_bbox_size = min_bbox_size
+            .map(|min_bbox_size| {
+                let min_bbox_size = min_bbox_size.raw();
+                ensure!(
+                    (0.0..=1.0).contains(&min_bbox_size),
+                    "min_bbox_size must be between 0.0 and 1.0"
+                );
+                Ok(min_bbox_size)
+            })
+            .transpose()?;
+
+        let min_bbox_cropping_ratio = min_bbox_cropping_ratio
+            .map(|min_bbox_cropping_ratio| {
+                let min_bbox_cropping_ratio = min_bbox_cropping_ratio.raw();
+                ensure!(
+                    (0.0..=1.0).contains(&min_bbox_cropping_ratio),
+                    "min_bbox_cropping_ratio must be between 0.0 and 1.0"
+                );
+                Ok(min_bbox_cropping_ratio)
+            })
+            .transpose()?;
+
         Ok(RandomAffine {
             rotate_prob: rotate_prob.as_ref().map(Ratio::to_f64),
             rotate_radians,
@@ -81,6 +105,7 @@ impl RandomAffineInit {
             horizontal_flip_prob: horizontal_flip_prob.as_ref().map(Ratio::to_f64),
             vertical_flip_prob: vertical_flip_prob.as_ref().map(Ratio::to_f64),
             min_bbox_size,
+            min_bbox_cropping_ratio,
         })
     }
 }
@@ -99,6 +124,7 @@ impl Default for RandomAffineInit {
             horizontal_flip_prob: None,
             vertical_flip_prob: None,
             min_bbox_size: None,
+            min_bbox_cropping_ratio: None,
         }
     }
 }
@@ -116,7 +142,8 @@ pub struct RandomAffine {
     // shear: Option<f64>,
     horizontal_flip_prob: Option<f64>,
     vertical_flip_prob: Option<f64>,
-    min_bbox_size: Option<R64>,
+    min_bbox_size: Option<f64>,
+    min_bbox_cropping_ratio: Option<f64>,
 }
 
 impl RandomAffine {
@@ -298,14 +325,10 @@ impl RandomAffine {
             // transform bboxes
             let new_bboxes = if !orig_bboxes.is_empty() {
                 let (orig_corners_vec, class_vec) = orig_bboxes
-                    .into_iter()
+                    .iter()
                     .map(|label| {
                         let RatioLabel { ref cycxhw, class } = *label;
                         let tlbr: TLBR<_, _> = cycxhw.cast::<f32>().unwrap().into();
-                        // let orig_t = orig_t as f32;
-                        // let orig_l = orig_l as f32;
-                        // let orig_b = orig_b as f32;
-                        // let orig_r = orig_r as f32;
                         let orig_t = tlbr.t();
                         let orig_l = tlbr.l();
                         let orig_b = tlbr.b();
@@ -360,7 +383,8 @@ impl RandomAffine {
                     .chunks(4)
                     .into_iter()
                     .zip_eq(class_vec)
-                    .filter_map(|(points, class)| {
+                    .zip_eq(orig_bboxes)
+                    .filter_map(|((points, class), orig_bbox)| {
                         let points: Vec<_> = points
                             .map(|&[x, y, _]| [R64::new(y as f64), R64::new(x as f64)])
                             .collect();
@@ -380,14 +404,24 @@ impl RandomAffine {
                         let bbox_r = bbox_r.min(r64(1.0));
 
                         // remove small bboxes
+                        let h = bbox_b - bbox_t;
+                        let w = bbox_r - bbox_l;
+
                         if let Some(min_bbox_size) = self.min_bbox_size {
-                            let h = bbox_b - bbox_t;
-                            let w = bbox_r - bbox_l;
                             if h < min_bbox_size || w < min_bbox_size {
                                 return None;
                             }
                         }
 
+                        if let Some(min_bbox_cropping_ratio) = self.min_bbox_cropping_ratio {
+                            let orig_area = orig_bbox.area();
+                            let new_area = h * w;
+                            if new_area < orig_area * min_bbox_cropping_ratio {
+                                return None;
+                            }
+                        }
+
+                        // construct output bbox
                         let new_bbox: RatioCyCxHW<R64> =
                             RatioCyCxHW::from_tlbr(bbox_t, bbox_l, bbox_b, bbox_r)
                                 .unwrap()

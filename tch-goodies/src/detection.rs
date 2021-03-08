@@ -414,6 +414,10 @@ mod label {
             self.cycxhw.size()
         }
 
+        pub fn area(&self) -> T {
+            self.cycxhw.area()
+        }
+
         /// Compute intersection area in TLBR format.
         pub fn intersect_with(&self, other: &CyCxHW<T, U>) -> Option<Self> {
             let intersection: CyCxHW<_, _> =

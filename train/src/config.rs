@@ -188,6 +188,8 @@ mod preprocessor {
         pub out_of_bound_tolerance: R64,
         /// The minimum bounding box size in ratio unit.
         pub min_bbox_size: Ratio,
+        /// The minimum ratio of preserving area after a bounding box is cropped.
+        pub min_bbox_cropping_ratio: Ratio,
     }
 }
 

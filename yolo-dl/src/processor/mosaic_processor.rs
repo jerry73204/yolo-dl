@@ -8,6 +8,7 @@ pub struct MosaicProcessorInit {
     /// The distance from pivot point to image boundary in ratio unit.
     pub mosaic_margin: f64,
     pub min_bbox_size: Option<f64>,
+    pub min_bbox_cropping_ratio: Option<f64>,
 }
 
 impl MosaicProcessorInit {
@@ -15,11 +16,13 @@ impl MosaicProcessorInit {
         let Self {
             mosaic_margin,
             min_bbox_size,
+            min_bbox_cropping_ratio,
         } = self;
         ensure!(
             (0.0..=0.5).contains(&mosaic_margin),
             "mosaic_margin must be in range 0.0..0.5"
         );
+
         if let Some(min_bbox_size) = min_bbox_size {
             ensure!(
                 (0.0..=1.0).contains(&min_bbox_size),
@@ -27,9 +30,17 @@ impl MosaicProcessorInit {
             );
         }
 
+        if let Some(min_bbox_cropping_ratio) = min_bbox_cropping_ratio {
+            ensure!(
+                (0.0..=1.0).contains(&min_bbox_cropping_ratio),
+                "min_bbox_cropping_ratio must be between 0.0 and 1.0"
+            );
+        }
+
         Ok(MosaicProcessor {
             mosaic_margin,
             min_bbox_size,
+            min_bbox_cropping_ratio,
         })
     }
 }
@@ -39,6 +50,7 @@ impl MosaicProcessorInit {
 pub struct MosaicProcessor {
     mosaic_margin: f64,
     min_bbox_size: Option<f64>,
+    min_bbox_cropping_ratio: Option<f64>,
 }
 
 impl MosaicProcessor {
@@ -58,6 +70,7 @@ impl MosaicProcessor {
             let Self {
                 mosaic_margin,
                 min_bbox_size,
+                min_bbox_cropping_ratio,
             } = *self;
             let mut rng = StdRng::from_entropy();
 
@@ -100,6 +113,7 @@ impl MosaicProcessor {
                                 bboxes,
                                 [margin_t, margin_b, margin_l, margin_r],
                                 min_bbox_size,
+                                min_bbox_cropping_ratio,
                             )
                         }();
 
@@ -141,6 +155,7 @@ pub struct ParallelMosaicProcessorInit {
     pub mosaic_margin: f64,
     pub max_workers: Option<usize>,
     pub min_bbox_size: Option<f64>,
+    pub min_bbox_cropping_ratio: Option<f64>,
 }
 
 impl ParallelMosaicProcessorInit {
@@ -149,21 +164,33 @@ impl ParallelMosaicProcessorInit {
             mosaic_margin,
             max_workers,
             min_bbox_size,
+            min_bbox_cropping_ratio,
         } = self;
+
         ensure!(
             (0.0..=0.5).contains(&mosaic_margin),
             "mosaic_margin must be between 0.0 and 0.5"
         );
+
         if let Some(min_bbox_size) = min_bbox_size {
             ensure!(
                 (0.0..=1.0).contains(&min_bbox_size),
                 "min_bbox_size must be between 0.0 and 1.0"
             );
         }
+
+        if let Some(min_bbox_cropping_ratio) = min_bbox_cropping_ratio {
+            ensure!(
+                (0.0..=1.0).contains(&min_bbox_cropping_ratio),
+                "min_bbox_cropping_ratio must be between 0.0 and 1.0"
+            );
+        }
+
         Ok(ParallelMosaicProcessor {
             mosaic_margin,
             max_workers,
             min_bbox_size,
+            min_bbox_cropping_ratio,
         })
     }
 }
@@ -174,6 +201,7 @@ pub struct ParallelMosaicProcessor {
     mosaic_margin: f64,
     max_workers: Option<usize>,
     min_bbox_size: Option<f64>,
+    min_bbox_cropping_ratio: Option<f64>,
 }
 
 impl ParallelMosaicProcessor {
@@ -193,6 +221,7 @@ impl ParallelMosaicProcessor {
             mosaic_margin,
             max_workers,
             min_bbox_size,
+            min_bbox_cropping_ratio,
         } = *self;
         let mut rng = StdRng::from_entropy();
 
@@ -232,6 +261,7 @@ impl ParallelMosaicProcessor {
                         bboxes,
                         [margin_t, margin_b, margin_l, margin_r],
                         min_bbox_size,
+                        min_bbox_cropping_ratio,
                     )
                 }
             },
@@ -270,6 +300,7 @@ fn crop_image_bboxes(
     bboxes: impl IntoIterator<Item = RatioLabel>,
     tlbr: [f64; 4],
     min_bbox_size: Option<f64>,
+    min_bbox_cropping_ratio: Option<f64>,
 ) -> Result<(Tensor, Vec<RatioLabel>)> {
     tch::no_grad(|| {
         let [margin_t, margin_b, margin_l, margin_r] = tlbr;
@@ -287,11 +318,21 @@ fn crop_image_bboxes(
                     .unwrap();
                 let cropped = bbox.intersect_with(&roi)?;
 
-                if let Some(min_bbox_size) = min_bbox_size {
-                    (cropped.h() >= min_bbox_size && cropped.w() >= min_bbox_size).then(|| cropped)
-                } else {
-                    Some(cropped)
-                }
+                let check1 = min_bbox_size
+                    .map(|min_bbox_size| {
+                        cropped.h() >= min_bbox_size && cropped.w() >= min_bbox_size
+                    })
+                    .unwrap_or(true);
+
+                let check2 = min_bbox_cropping_ratio
+                    .map(|min_bbox_cropping_ratio| {
+                        let orig_area = bbox.area().raw();
+                        let cropped_area = cropped.area();
+                        cropped_area >= min_bbox_cropping_ratio * orig_area
+                    })
+                    .unwrap_or(true);
+
+                (check1 && check2).then(|| cropped)
             })
             .collect_vec();
 
