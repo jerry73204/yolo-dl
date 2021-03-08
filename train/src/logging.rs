@@ -353,7 +353,7 @@ mod logging_worker {
                     .await?;
                 self.event_writer
                     .write_scalar_async(
-                        format!("{}/benchmark/classification_recall", tag),
+                        format!("{}/benchmark/classification_accuracy", tag),
                         step,
                         class_accuracy as f32,
                     )
