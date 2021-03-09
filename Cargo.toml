@@ -2,6 +2,7 @@
 members = [
     "yolo-dl",
     "train",
+    "detect",
     "darknet-config",
     # "darknet-test",
     "tch-goodies",
@@ -11,12 +12,12 @@ members = [
 ]
 
 [profile.release]
-debug = true
-debug-assertions = true
-overflow-checks = true
+debug = false
+debug-assertions = false
+overflow-checks = false
 ## enabling 'lto' improves the performance but results in
 ## very long compilation time.
-# lto = true
+lto = true
 
 [patch.crates-io]
 serde_ini = { git = "https://github.com/jerry73204/serde-ini.git", branch = "enum-support" }
