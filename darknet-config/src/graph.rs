@@ -898,16 +898,13 @@ mod graphviz {
 
         fn node_label(&'a self, &key: &NodeKey) -> LabelText<'a> {
             match key {
-                NodeKey::Input => {
-                    let shape = self.net.input_size.to_vec();
-                    LabelText::escaped(format!(
-                        r"input
+                NodeKey::Input => LabelText::escaped(format!(
+                    r"input
 {}",
-                        dot::escape_html(&format!("{:?}", shape))
-                    ))
-                }
+                    dot::escape_html(&format!("{:?}", self.net.input_size))
+                )),
                 NodeKey::Index(layer_index) => {
-                    let output_shape = self.layers[&key].output_shape().to_vec();
+                    let output_shape = self.layers[&key].output_shape();
 
                     match &self.layers[&key] {
                         Node::Convolutional(node) => {
@@ -1048,13 +1045,12 @@ k={} sy={} sx={} p={}",
                     LabelText::label(format!("input -> {}", to_index))
                 }
                 (NodeKey::Index(from_index), NodeKey::Index(to_index)) => {
-                    let shape = self.layers[from_index].output_shape().to_vec();
                     LabelText::escaped(format!(
                         r"{} -> {}
 {}",
                         from_index,
                         to_index,
-                        dot::escape_html(&format!("{:?}", shape))
+                        dot::escape_html(&format!("{:?}", self.layers[from_index].output_shape()))
                     ))
                 }
                 _ => unreachable!(),
