@@ -651,9 +651,9 @@ dependencies = [
 
 [[package]]
 name = "csv"
-version = "1.1.5"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9d58633299b24b515ac72a3f869f8b91306a3cec616a602843a383acd6f9e97"
+checksum = "22813a6dc45b335f9bade10bf7271dc477e81113e89eb251a0bc2a8a81c536e1"
 dependencies = [
  "bstr",
  "csv-core",
@@ -683,9 +683,9 @@ dependencies = [
 
 [[package]]
 name = "curl"
-version = "0.4.34"
+version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e268162af1a5fe89917ae25ba3b0a77c8da752bdc58e7dbb4f15b91fbd33756e"
+checksum = "5a872858e9cb9e3b96c80dd78774ad9e32e44d3b05dc31e142b858d14aebc82c"
 dependencies = [
  "curl-sys",
  "libc",
@@ -698,9 +698,9 @@ dependencies = [
 
 [[package]]
 name = "curl-sys"
-version = "0.4.40+curl-7.75.0"
+version = "0.4.41+curl-7.75.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ffafc1c35958318bd7fdd0582995ce4c72f4f461a8e70499ccee83a619fd562"
+checksum = "0ec466abd277c7cab2905948f3e94d10bc4963f1f5d47921c1cc4ffd2028fe65"
 dependencies = [
  "cc",
  "libc",
@@ -795,6 +795,54 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "detect"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "approx",
+ "async-std",
+ "chrono",
+ "csv",
+ "darknet-config",
+ "derive_more",
+ "futures",
+ "glob",
+ "image",
+ "imagesize",
+ "indexmap",
+ "itertools 0.10.0",
+ "json5",
+ "model-config",
+ "ndarray 0.14.0",
+ "noisy_float",
+ "num_cpus",
+ "once_cell",
+ "owning_ref",
+ "par-stream",
+ "percent-encoding",
+ "rand 0.8.3",
+ "rand_distr",
+ "regex",
+ "semver 0.11.0",
+ "serde 1.0.124",
+ "serde-xml-rs",
+ "serde_json",
+ "structopt",
+ "tch",
+ "tch-goodies",
+ "tch-serde",
+ "tch-tensor-like",
+ "tfrecord",
+ "tokio 1.2.0",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
+ "unzip-n",
+ "uuid",
+ "yolo-dl",
 ]
 
 [[package]]
@@ -3102,13 +3150,11 @@ dependencies = [
  "approx",
  "async-std",
  "chrono",
- "coco",
  "csv",
  "darknet-config",
  "derive_more",
  "futures",
  "glob",
- "iii-formosa-dataset",
  "image",
  "imagesize",
  "indexmap",
@@ -3141,7 +3187,6 @@ dependencies = [
  "tracing-subscriber",
  "unzip-n",
  "uuid",
- "voc-dataset",
  "yolo-dl",
 ]
 
@@ -3506,12 +3551,16 @@ dependencies = [
  "chrono",
  "coco",
  "counter",
+ "csv",
  "cv-convert",
  "dashmap",
  "derivative",
  "envy",
  "futures",
  "getset",
+ "glob",
+ "iii-formosa-dataset",
+ "imagesize",
  "indexmap",
  "itertools 0.10.0",
  "lazy_static 1.4.0",
@@ -3520,6 +3569,7 @@ dependencies = [
  "ndarray 0.14.0",
  "noisy_float",
  "num_cpus",
+ "owning_ref",
  "par-stream",
  "percent-encoding",
  "petgraph",
@@ -3528,6 +3578,7 @@ dependencies = [
  "regex",
  "rusty-perm",
  "serde 1.0.124",
+ "serde-xml-rs",
  "serde_json",
  "slice-of-array",
  "strum",
@@ -3539,6 +3590,7 @@ dependencies = [
  "tokio 1.2.0",
  "unzip-n",
  "uuid",
+ "voc-dataset",
 ]
 
 [[package]]
