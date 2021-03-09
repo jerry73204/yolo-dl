@@ -21,6 +21,7 @@ pub use log::{error, info, warn};
 pub use model_config::graph::Graph;
 pub use ndarray::{Array, Array2, Array3, Array5, ArrayD};
 pub use noisy_float::prelude::*;
+pub use owning_ref::ArcRef;
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use petgraph::graphmap::DiGraphMap;
@@ -65,14 +66,16 @@ pub use tch::{
 };
 pub use tch_goodies::{
     CyCxHW, CyCxHWTensor, CyCxHWTensorUnchecked, DetectionTensor, DetectionTensorUnchecked,
-    GridCyCxHW, GridSize, LabelTensor, PixelCyCxHW, PixelLabel, PixelSize, Ratio, RatioCyCxHW,
-    RatioLabel, RatioSize, TLBRTensor, TLBRTensorUnchecked, TensorExt, UnitlessCyCxHW,
+    GridCyCxHW, GridSize, LabelTensor, PixelCyCxHW, PixelLabel, PixelSize, PixelTLBR, Ratio,
+    RatioCyCxHW, RatioLabel, RatioSize, TLBRTensor, TLBRTensorUnchecked, TensorExt, UnitlessCyCxHW,
     UnitlessTLBR, NONE_INDEX, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, mpsc};
 pub use uuid::Uuid;
+
+pub type Fallible<T> = Result<T, Error>;
 
 unzip_n::unzip_n!(pub 2);
 unzip_n::unzip_n!(pub 3);

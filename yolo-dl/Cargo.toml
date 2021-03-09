@@ -46,6 +46,13 @@ rusty-perm = "0.2.0"
 ptree = { version = "0.3.1", optional = true }
 strum = { version = "0.20.0", features = ["derive"] }
 tch-nms = { version = "0.1.0", path = "../tch-nms" }
+iii-formosa-dataset = "0.1.0"
+voc-dataset = "0.2.2"
+owning_ref = "0.4.1"
+imagesize = "0.8.8"
+csv = "1.1.5"
+glob = "0.3.0"
+serde-xml-rs = "0.4.1"
 
 [features]
 profiling = ["ptree"]

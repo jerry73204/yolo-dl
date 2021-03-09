@@ -3,7 +3,6 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::{abs_diff_eq, AbsDiffEq};
 pub use chrono::{DateTime, Local};
-pub use coco::Category;
 pub use futures::{
     future,
     future::FutureExt,
@@ -67,6 +66,10 @@ pub use tracing::{error, info, warn, Instrument};
 pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 pub use yolo_dl::{
+    dataset::{
+        CachedDataset, CocoDataset, CsvDataset, DataRecord, GenericDataset, IiiDataset,
+        RandomAccessDataset, SanitizedDataset, VocDataset,
+    },
     loss::{
         MatchingOutput, YoloBenchmark, YoloBenchmarkInit, YoloBenchmarkOutput, YoloInference,
         YoloInferenceInit, YoloInferenceOutput, YoloLoss, YoloLossAuxiliary, YoloLossInit,

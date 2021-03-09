@@ -1,4 +1,3 @@
-use super::*;
 use crate::{
     common::*,
     config::{
@@ -681,6 +680,18 @@ impl TrainingStream {
 
         Ok(Box::pin(stream))
     }
+}
+
+/// The record that is accepted by training worker.
+#[derive(Debug, TensorLike)]
+pub struct TrainingRecord {
+    pub epoch: usize,
+    pub step: usize,
+    pub image: Tensor,
+    #[tensor_like(clone)]
+    pub bboxes: Vec<Vec<RatioLabel>>,
+    #[tensor_like(clone)]
+    pub timing: Timing,
 }
 
 #[derive(Debug, Clone, Copy)]

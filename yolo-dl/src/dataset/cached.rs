@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::*;
+use crate::{common::*, processor::CacheLoader};
 
 /// The dataset backed with image data caching.
 #[derive(Debug)]

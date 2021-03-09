@@ -2,16 +2,16 @@
 
 pub mod common;
 pub mod config;
-pub mod data;
 pub mod logging;
 pub mod model;
 pub mod train;
+pub mod training_stream;
 pub mod utils;
 
 use crate::{
     common::*,
     config::{Config, DeviceConfig, WorkerConfig},
-    data::{GenericDataset, TrainingStream},
+    training_stream::TrainingStream,
 };
 
 /// The entry of training program.

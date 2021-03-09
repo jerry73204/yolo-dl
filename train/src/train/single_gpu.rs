@@ -4,9 +4,9 @@ use crate::{
         BenchmarkConfig, Config, LoadCheckpoint, LoggingConfig, LossConfig, OptimizerConfig,
         TrainingConfig,
     },
-    data::TrainingRecord,
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
+    training_stream::TrainingRecord,
     utils::{self, LrScheduler, RateCounter},
 };
 
