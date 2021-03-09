@@ -33,6 +33,7 @@ pub use std::{
     convert::{TryFrom, TryInto},
     env::{self, VarError},
     fmt::Debug,
+    fs,
     future::Future,
     hash::{Hash, Hasher},
     iter::{self, Sum},

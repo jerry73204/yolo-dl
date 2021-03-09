@@ -28,7 +28,7 @@ impl Config {
     where
         P: AsRef<Path>,
     {
-        let text = std::fs::read_to_string(path)?;
+        let text = fs::read_to_string(path)?;
         let config = json5::from_str(&text)?;
         Ok(config)
     }
