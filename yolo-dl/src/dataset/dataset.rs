@@ -4,7 +4,7 @@ use crate::common::*;
 /// The generic dataset trait.
 pub trait GenericDataset
 where
-    Self: Debug + Sync + Send,
+    Self: Debug + Send,
 {
     /// The number of color channels of the dataset.
     fn input_channels(&self) -> usize;
@@ -32,4 +32,12 @@ where
 
     /// Get the nth record in the dataset.
     fn nth(&self, index: usize) -> Pin<Box<dyn Future<Output = Result<DataRecord>> + Send>>;
+}
+
+/// The dataset that can be enumerated through a stream.
+pub trait StreamingDataset
+where
+    Self: GenericDataset,
+{
+    fn stream(&self) -> Result<Pin<Box<dyn Stream<Item = Result<DataRecord>> + Send>>>;
 }

@@ -7,6 +7,7 @@ mod dataset;
 mod iii;
 mod record;
 mod sanitized;
+mod streaming;
 mod utils;
 mod voc;
 
@@ -17,5 +18,6 @@ pub use dataset::*;
 pub use iii::*;
 pub use record::*;
 pub use sanitized::*;
+pub use streaming::*;
 pub use utils::*;
 pub use voc::*;
