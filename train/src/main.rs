@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::{path::PathBuf, sync::Arc};
+use std::{env, path::PathBuf, sync::Arc};
 use structopt::StructOpt;
 use tracing_subscriber::{filter::LevelFilter, prelude::*, EnvFilter};
 use train::config::Config;
@@ -17,7 +17,15 @@ pub async fn main() -> Result<()> {
     // setup tracing
     {
         let fmt_layer = tracing_subscriber::fmt::layer().with_target(true).compact();
-        let filter_layer = EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into());
+        let filter_layer = {
+            let filter = EnvFilter::from_default_env();
+            let filter = if let Err(_) = env::var("RUST_LOG") {
+                filter.add_directive(LevelFilter::INFO.into())
+            } else {
+                filter
+            };
+            filter
+        };
 
         tracing_subscriber::registry()
             .with(filter_layer)
