@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 const MODEL_FILE_NAMES: &[&str] = &[
     "yolov4-csp-with-bn-affine.json5",
     "yolov4-csp-no-bn-affine.json5",
-    "yolov4-csp-custom.json5",
 ];
 
 lazy_static::lazy_static! {
