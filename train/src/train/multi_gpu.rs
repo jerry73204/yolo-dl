@@ -44,7 +44,7 @@ pub async fn multi_gpu_training_worker(
     checkpoint_dir: Arc<PathBuf>,
     _input_channels: usize,
     _num_classes: usize,
-    data_rx: async_std::channel::Receiver<TrainingRecord>,
+    mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     workers: &[(Device, usize)],
 ) -> Result<()> {
@@ -62,11 +62,12 @@ pub async fn multi_gpu_training_worker(
             nms_conf_thresh,
             ..
         } = config.benchmark;
-        YoloInferenceInit {
+        let yolo_inference = YoloInferenceInit {
             nms_iou_thresh,
             nms_conf_thresh,
         }
-        .build()?
+        .build()?;
+        Arc::new(yolo_inference)
     };
     let yolo_benchmark = {
         let BenchmarkConfig {
@@ -74,16 +75,19 @@ pub async fn multi_gpu_training_worker(
             nms_conf_thresh,
             ..
         } = config.benchmark;
-        YoloBenchmarkInit {
+        let yolo_benchmark = YoloBenchmarkInit {
             iou_threshold: nms_iou_thresh,
             confidence_threshold: nms_conf_thresh,
         }
-        .build()?
+        .build()?;
+        Arc::new(yolo_benchmark)
     };
 
     // initialize workers
     let (mut worker_contexts, init_training_step) =
-        initialize_worker_contexts(config.clone(), workers).await?;
+        initialize_worker_contexts(config.clone(), workers)
+            .instrument(trace_span!("initialize_worker_contexts"))
+            .await?;
 
     info!("initialization finished, start training");
 
@@ -120,7 +124,11 @@ pub async fn multi_gpu_training_worker(
         }
 
         loop {
-            let mut record = data_rx.recv().await?;
+            let mut record = data_rx
+                .recv()
+                .instrument(trace_span!("recv_next_batch"))
+                .await
+                .unwrap();
             record.timing.add_event("in channel");
 
             let (epoch, image, bboxes, mut timing) = tokio::task::spawn_blocking(move || {
@@ -137,17 +145,22 @@ pub async fn multi_gpu_training_worker(
 
                 (epoch, image, bboxes, timing)
             })
+            .instrument(trace_span!("move_to_master_device"))
             .await?;
             timing.add_event("move to master device");
 
             // sync weights among workers
-            worker_contexts = sync_weights(worker_contexts).await?;
+            worker_contexts = sync_weights(worker_contexts)
+                .instrument(trace_span!("sync_weights"))
+                .await?;
             timing.add_event("sync weights");
 
             // forward step
             let (worker_contexts_, outputs) = {
                 let image = image.shallow_clone();
-                forward_step(config.clone(), worker_contexts, image, &bboxes).await?
+                forward_step(config.clone(), worker_contexts, image, &bboxes)
+                    .instrument(trace_span!("forward"))
+                    .await?
             };
             worker_contexts = worker_contexts_;
             timing.add_event("forward step");
@@ -160,6 +173,7 @@ pub async fn multi_gpu_training_worker(
                     Ok((worker_contexts, outputs))
                 })
                 .map(|result| Fallible::Ok(result??))
+                .instrument(trace_span!("backward"))
                 .await?
             };
             worker_contexts = worker_contexts_;
@@ -175,62 +189,78 @@ pub async fn multi_gpu_training_worker(
                 });
                 let losses = YoloLossOutput::weighted_mean(weighted_outputs)?;
 
+                // check NaN and infinite number
+                tch::no_grad(|| {
+                    ensure!(
+                        bool::from(losses.total_loss.isfinite()),
+                        "non-finite loss detected"
+                    );
+                    Ok(())
+                })?;
+
                 Ok((losses, worker_outputs))
             })
             .map(|result| Fallible::Ok(result??))
+            .instrument(trace_span!("merge_outputs"))
             .await?;
-
-            // check NaN and infinite number
-            tch::no_grad(|| {
-                ensure!(
-                    bool::from(losses.total_loss.isfinite()),
-                    "non-finite loss detected"
-                );
-                Ok(())
-            })?;
 
             timing.add_event("compute loss");
 
-            // merge output
+            let (model_output, matchings, inference, benchmark, mut timing) = {
+                let config = config.clone();
+                let yolo_benchmark = yolo_benchmark.clone();
+                let yolo_inference = yolo_inference.clone();
 
-            let model_output = MergeDetect2DOutput::cat(
-                worker_outputs
-                    .iter()
-                    .map(|output| output.output.to_device(master_device)),
-            )?;
-            let matchings =
-                MatchingOutput::cat_mini_batches(worker_outputs.iter().map(|worker_output| {
-                    let WorkerOutput {
-                        minibatch_size,
-                        loss_auxiliary: YoloLossAuxiliary { ref matchings, .. },
-                        ..
-                    } = *worker_output;
-                    (matchings, minibatch_size as i64)
-                }));
+                tokio::task::spawn_blocking(move || -> Result<_> {
+                    // merge output
+                    let model_output = MergeDetect2DOutput::cat(
+                        worker_outputs
+                            .iter()
+                            .map(|output| output.output.to_device(master_device)),
+                    )?;
+                    let matchings = MatchingOutput::cat_mini_batches(worker_outputs.iter().map(
+                        |worker_output| {
+                            let WorkerOutput {
+                                minibatch_size,
+                                loss_auxiliary: YoloLossAuxiliary { ref matchings, .. },
+                                ..
+                            } = *worker_output;
+                            (matchings.to_device(master_device), minibatch_size as i64)
+                        },
+                    ));
 
-            timing.add_event("merge outputs");
+                    timing.add_event("merge outputs");
 
-            // run inference
-            let inference = {
-                let LoggingConfig {
-                    enable_inference,
-                    enable_benchmark,
-                    ..
-                } = config.logging;
-                (enable_inference || enable_benchmark).then(|| {
-                    let inference = yolo_inference.forward(&model_output);
-                    timing.add_event("inference");
-                    inference
+                    // run inference
+                    let inference = {
+                        let LoggingConfig {
+                            enable_inference,
+                            enable_benchmark,
+                            ..
+                        } = config.logging;
+                        (enable_inference || enable_benchmark).then(|| {
+                            let inference = yolo_inference.forward(&model_output);
+                            timing.add_event("inference");
+                            inference
+                        })
+                    };
+
+                    // run benchmark
+                    let benchmark = config.logging.enable_inference.then(|| {
+                        let benchmark = yolo_benchmark.forward(
+                            &model_output,
+                            &matchings,
+                            inference.as_ref().unwrap(),
+                        );
+                        timing.add_event("benchmark");
+                        benchmark
+                    });
+
+                    Ok((model_output, matchings, inference, benchmark, timing))
                 })
+                .instrument(trace_span!("compute_benchmark"))
+                .await??
             };
-
-            // run benchmark
-            let benchmark = config.logging.enable_inference.then(|| {
-                let benchmark =
-                    yolo_benchmark.forward(&model_output, &matchings, inference.as_ref().unwrap());
-                timing.add_event("benchmark");
-                benchmark
-            });
 
             // send output to logger
             {
@@ -269,6 +299,7 @@ pub async fn multi_gpu_training_worker(
                     Ok(worker_contexts)
                 })
                 .map(|result| Fallible::Ok(result??))
+                .instrument(trace_span!("save_checkpoint"))
                 .await?;
                 timing.add_event("save checkpoint");
             }

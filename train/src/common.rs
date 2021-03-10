@@ -63,7 +63,7 @@ pub use tch_goodies::{
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::{EventWriter, EventWriterInit};
 pub use tokio::sync::{broadcast, mpsc};
-pub use tracing::{error, info, warn, Instrument};
+pub use tracing::{error, info, info_span, instrument, trace, trace_span, warn, Instrument};
 pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 pub use yolo_dl::{

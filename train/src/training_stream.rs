@@ -16,6 +16,7 @@ pub struct TrainingStream {
 }
 
 impl TrainingStream {
+    #[instrument(skip(config, logging_tx))]
     pub async fn new(
         config: Arc<Config>,
         logging_tx: broadcast::Sender<LoggingMessage>,
@@ -139,7 +140,7 @@ impl TrainingStream {
         })
     }
 
-    pub async fn train_stream(
+    pub fn train_stream(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         // parallel stream config
@@ -239,7 +240,7 @@ impl TrainingStream {
                     // load images
                     let image_bbox_vec: Vec<_> =
                         stream::iter(record_indexes.into_iter().take(mix_kind.num_samples()))
-                            .par_then(par_config.clone(), move |record_index| {
+                            .par_then_unordered(par_config.clone(), move |record_index| {
                                 let dataset = dataset.clone();
 
                                 async move {
@@ -257,6 +258,7 @@ impl TrainingStream {
                                         .collect();
                                     Fallible::Ok((image, bboxes))
                                 }
+                                .instrument(trace_span!("load_sample"))
                             })
                             .try_collect()
                             .await?;
@@ -277,8 +279,10 @@ impl TrainingStream {
                     }
 
                     timing.add_event("data loading");
+
                     Fallible::Ok((index, (step, epoch, data, timing)))
                 }
+                .instrument(trace_span!("data_loading"))
             })
         };
 
@@ -320,7 +324,7 @@ impl TrainingStream {
 
                     let mix_kind = input.kind();
                     let pairs: Vec<_> = stream::iter(input.into_iter())
-                        .par_map(par_config.clone(), move |(image, bboxes)| {
+                        .par_map_unordered(par_config.clone(), move |(image, bboxes)| {
                             let color_jitter = color_jitter.clone();
                             let mut rng = StdRng::from_entropy();
 
@@ -353,6 +357,7 @@ impl TrainingStream {
                     timing.add_event("color jitter");
                     Fallible::Ok((index, (step, epoch, output, timing)))
                 }
+                .instrument(trace_span!("color_jitter"))
             })
         };
 
@@ -412,7 +417,7 @@ impl TrainingStream {
 
                     let mix_kind = data.kind();
                     let pairs: Vec<_> = stream::iter(data.into_iter())
-                        .par_map(par_config.clone(), move |(image, bboxes)| {
+                        .par_map_unordered(par_config.clone(), move |(image, bboxes)| {
                             let random_affine = random_affine.clone();
                             let mut rng = StdRng::from_entropy();
 
@@ -445,6 +450,7 @@ impl TrainingStream {
                     timing.add_event("random affine");
                     Fallible::Ok((index, (step, epoch, new_data, timing)))
                 }
+                .instrument(trace_span!("random_affine"))
             })
         };
 
@@ -540,18 +546,20 @@ impl TrainingStream {
                     timing.add_event("mosaic processor");
                     Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
                 }
+                .instrument(trace_span!("mixup"))
             })
         };
 
         // add batch dimension
-        let stream =
-            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| async move {
+        let stream = stream.try_par_map_unordered(par_config.clone(), move |(index, args)| {
+            move || {
                 let (step, epoch, bboxes, image, mut timing) = args;
                 timing.add_event("in channel");
                 let new_image = image.unsqueeze(0);
                 timing.add_event("batch dimensions");
                 Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
-            });
+            }
+        });
 
         // optionally reorder records
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
@@ -642,8 +650,8 @@ impl TrainingStream {
         });
 
         // map to output type
-        let stream =
-            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| async move {
+        let stream = stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
+            async move {
                 let (step, epoch, bboxes, image, mut timing) = args;
                 timing.add_event("in channel");
 
@@ -657,7 +665,9 @@ impl TrainingStream {
                 record.timing.add_event("map to output type");
 
                 Ok((index, record))
-            });
+            }
+            .instrument(trace_span!("map_to_output"))
+        });
 
         // optionally reorder back
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
@@ -668,7 +678,7 @@ impl TrainingStream {
             }
         };
 
-        Ok(Box::pin(stream))
+        Ok(stream)
     }
 
     pub fn input_channels(&self) -> usize {

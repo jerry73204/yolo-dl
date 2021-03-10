@@ -73,6 +73,7 @@ pub use tch_goodies::{
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;
 pub use tokio::sync::{broadcast, mpsc};
+pub use tracing::instrument;
 pub use uuid::Uuid;
 
 pub type Fallible<T> = Result<T, Error>;

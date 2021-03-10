@@ -17,7 +17,7 @@ pub fn single_gpu_training_worker(
     checkpoint_dir: Arc<PathBuf>,
     _input_channels: usize,
     _num_classes: usize,
-    data_rx: async_std::channel::Receiver<TrainingRecord>,
+    mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     device: Device,
 ) -> Result<()> {
@@ -145,7 +145,6 @@ pub fn single_gpu_training_worker(
         info!("start training");
         let mut training_step = init_training_step;
         let mut rate_counter = RateCounter::with_second_intertal();
-        let runtime = tokio::runtime::Builder::new_current_thread().build()?;
         let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
 
         // set init lr
@@ -155,7 +154,7 @@ pub fn single_gpu_training_worker(
         }
 
         loop {
-            let mut record = runtime.block_on(data_rx.recv())?;
+            let mut record = data_rx.blocking_recv().unwrap();
             record.timing.add_event("in channel");
 
             let TrainingRecord {

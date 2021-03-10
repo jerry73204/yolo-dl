@@ -42,7 +42,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
             DeviceConfig::MultiDevice { devices, .. } => devices.len() * 2,
             DeviceConfig::NonUniformMultiDevice { devices, .. } => devices.len() * 2,
         };
-        async_std::channel::bounded(channel_size)
+        tokio::sync::mpsc::channel(channel_size)
     };
 
     // load dataset
@@ -57,12 +57,17 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
     // feeding worker
     let training_data_future = tokio::task::spawn(async move {
-        let mut train_stream = dataset.train_stream().await?;
+        let mut train_stream = dataset.train_stream()?;
 
-        while let Some(result) = train_stream.next().await {
+        while let Some(result) = train_stream
+            .next()
+            .instrument(trace_span!("recv_next_batch"))
+            .await
+        {
             let record = result?;
             data_tx
                 .send(record)
+                .instrument(trace_span!("send_batch_to_training_loop"))
                 .await
                 .map_err(|_| format_err!("failed to send message to training worker"))?;
         }
@@ -78,7 +83,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
         let logging_dir = logging_dir.clone();
         let checkpoint_dir = checkpoint_dir.clone();
 
-        async move {
+        tokio::task::spawn(async move {
             match config.training.device_config {
                 DeviceConfig::SingleDevice { device } => {
                     tokio::task::spawn_blocking(move || {
@@ -93,8 +98,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                             device,
                         )
                     })
-                    .map(|result| Fallible::Ok(result??))
-                    .await?;
+                    .await??;
                 }
                 DeviceConfig::MultiDevice { ref devices } => {
                     let batch_size = config.training.batch_size.get();
@@ -113,20 +117,16 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                         .map(|device| (device, minibatch_size))
                         .collect();
 
-                    tokio::task::spawn(async move {
-                        train::multi_gpu_training_worker(
-                            config,
-                            logging_dir,
-                            checkpoint_dir,
-                            input_channels,
-                            num_classes,
-                            data_rx,
-                            logging_tx,
-                            &workers,
-                        )
-                        .await
-                    })
-                    .map(|result| Fallible::Ok(result??))
+                    train::multi_gpu_training_worker(
+                        config,
+                        logging_dir,
+                        checkpoint_dir,
+                        input_channels,
+                        num_classes,
+                        data_rx,
+                        logging_tx,
+                        &workers,
+                    )
                     .await?;
                 }
                 DeviceConfig::NonUniformMultiDevice { ref devices } => {
@@ -141,26 +141,23 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                         })
                         .collect();
 
-                    tokio::task::spawn(async move {
-                        train::multi_gpu_training_worker(
-                            config,
-                            logging_dir,
-                            checkpoint_dir,
-                            input_channels,
-                            num_classes,
-                            data_rx,
-                            logging_tx,
-                            &workers,
-                        )
-                        .await
-                    })
-                    .map(|result| Fallible::Ok(result??))
+                    train::multi_gpu_training_worker(
+                        config,
+                        logging_dir,
+                        checkpoint_dir,
+                        input_channels,
+                        num_classes,
+                        data_rx,
+                        logging_tx,
+                        &workers,
+                    )
                     .await?;
                 }
             }
 
             Fallible::Ok(())
-        }
+        })
+        .map(|result| Fallible::Ok(result??))
     };
 
     futures::try_join!(training_data_future, training_worker_future, logging_future)?;

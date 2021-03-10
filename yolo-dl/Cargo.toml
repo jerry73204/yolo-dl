@@ -53,6 +53,8 @@ imagesize = "0.8.8"
 csv = "1.1.5"
 glob = "0.3.0"
 serde-xml-rs = "0.4.1"
+tracing = "0.1.25"
+tracing-futures = "0.2.5"
 
 [features]
 profiling = ["ptree"]

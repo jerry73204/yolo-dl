@@ -206,6 +206,7 @@ pub struct ParallelMosaicProcessor {
 
 impl ParallelMosaicProcessor {
     /// Apply mosaic mixup on a set of 4 images and boxes.
+    #[instrument(skip(input))]
     pub async fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
