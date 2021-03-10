@@ -131,14 +131,28 @@
     },
     "training": {
         // "override_initial_step": 0,
+
+        // RTX 2080ti
         "batch_size": 16,
         "device_config": {
             "type": "SingleDevice",
             "device": "cuda(0)"
-
-            // "type": "MultiDevice",
-            // "devices": ["cuda(0)", "cuda(1)", "cuda(2)", "cuda(3)"],
         },
+
+        // RTX 2080ti x4
+        // "batch_size": 64,
+        // "device_config": {
+        //     "type": "MultiDevice",
+        //     "devices": ["cuda(0)", "cuda(1)", "cuda(2)", "cuda(3)"],
+        // },
+
+        // RTX 3090
+        // "batch_size": 32,
+        // "device_config": {
+        //     "type": "SingleDevice",
+        //     "device": "cuda(0)"
+        // },
+
         "optimizer": {
             "momentum": 0.937,
             "weight_decay": 0.0005,
