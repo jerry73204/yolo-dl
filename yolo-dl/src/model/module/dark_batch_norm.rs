@@ -134,10 +134,22 @@ impl DarkBatchNorm {
 
         #[cfg(debug_assertions)]
         {
+            let has_small_var = bool::from(running_var.abs().le(1e-15).any());
+
             let has_small_ws = ws
                 .as_ref()
                 .map(|ws| bool::from(ws.abs().le(1e-15).any()))
                 .unwrap_or(false);
+
+            if has_small_var {
+                SMALL_SCALING_WARN.call_once(|| {
+                    warn!(
+                        "runing variance {} is too small",
+                        f64::from(running_var.abs().min())
+                    );
+                });
+            }
+
             if has_small_ws {
                 SMALL_SCALING_WARN.call_once(|| {
                     warn!(
