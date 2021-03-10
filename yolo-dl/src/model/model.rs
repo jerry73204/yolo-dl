@@ -1,6 +1,6 @@
 use super::module::{
-    Concat2D, ConvBn2DInit, DarkBatchNormConfig, DarkCsp2DInit, Detect2DInit, Input, MergeDetect2D,
-    Module, ModuleInput, ModuleOutput, SppCsp2DInit, Sum2D, UpSample2D,
+    Concat2D, ConvBn2DInit, DarkBatchNormConfig, DarkCsp2DInit, DeconvBn2DInit, Detect2DInit,
+    Input, MergeDetect2D, Module, ModuleInput, ModuleOutput, SppCsp2DInit, Sum2D, UpSample2D,
 };
 use crate::common::*;
 
@@ -112,6 +112,50 @@ mod yolo_model {
                                     k,
                                     s,
                                     p,
+                                    d,
+                                    g,
+                                    activation: act,
+                                    batch_norm: bn.enabled.then(|| {
+                                        let mut config = DarkBatchNormConfig::default();
+                                        if !bn.affine {
+                                            config.ws_init = None;
+                                            config.bs_init = None;
+                                        }
+                                        config
+                                    }),
+                                }
+                                .build(module_path),
+                            )
+                        }
+                        config::Module::DeconvBn2D(config::DeconvBn2D {
+                            c,
+                            k,
+                            s,
+                            p,
+                            op,
+                            d,
+                            g,
+                            act,
+                            ref bn,
+                            ..
+                        }) => {
+                            let src_key = input_keys.single().unwrap();
+                            let [_b, in_c, _h, _w] = orig_nodes[&src_key]
+                                .output_shape
+                                .tensor()
+                                .unwrap()
+                                .size4()
+                                .unwrap();
+                            let in_c = in_c.size().unwrap();
+
+                            Module::DeconvBn2D(
+                                DeconvBn2DInit {
+                                    in_c,
+                                    out_c: c,
+                                    k,
+                                    s,
+                                    p,
+                                    op,
                                     d,
                                     g,
                                     activation: act,

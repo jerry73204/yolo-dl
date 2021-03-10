@@ -11,6 +11,7 @@ mod module {
     pub enum Module {
         Input(Input),
         ConvBn2D(ConvBn2D),
+        DeconvBn2D(DeconvBn2D),
         UpSample2D(UpSample2D),
         Sum2D(Sum2D),
         Concat2D(Concat2D),
@@ -40,6 +41,9 @@ mod module {
                     .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)?
                     .into(),
                 Self::ConvBn2D(module) => module
+                    .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
+                    .into(),
+                Self::DeconvBn2D(module) => module
                     .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
                     .into(),
                 Self::UpSample2D(module) => module
