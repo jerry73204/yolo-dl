@@ -29,24 +29,13 @@ impl Config {
 mod model {
     use super::*;
 
-    /// The model configuration.
+    /// Model configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(tag = "kind")]
-    pub enum ModelConfig {
-        Darknet(DarknetModelConfig),
-        NewslabV1(NewslabV1ModelConfig),
-    }
-
-    /// The Darknet variant model configuration.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct DarknetModelConfig {
+    pub struct ModelConfig {
         pub cfg_file: PathBuf,
-    }
-
-    /// The NEWSLAB variant model configuration.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct NewslabV1ModelConfig {
-        pub cfg_file: PathBuf,
+        /// The device where the preprocessor works on.
+        #[serde(with = "tch_serde::serde_device")]
+        pub device: Device,
     }
 }
 

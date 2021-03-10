@@ -18,12 +18,15 @@ pub use std::{
     pin::Pin,
     sync::Arc,
 };
-pub use tch::{Device, Tensor};
+pub use tch::{nn, Device, Tensor};
 pub use tch_goodies::{Ratio, RatioLabel};
 pub use tch_tensor_like::TensorLike;
-pub use yolo_dl::dataset::{
-    CachedDataset, CocoDataset, CsvDataset, DataRecord, IiiDataset, RandomAccessStream,
-    SanitizedDataset, StreamingDataset, VocDataset,
+pub use yolo_dl::{
+    dataset::{
+        CachedDataset, CocoDataset, CsvDataset, DataRecord, IiiDataset, RandomAccessStream,
+        SanitizedDataset, StreamingDataset, VocDataset,
+    },
+    model::YoloModel,
 };
 
 pub type Fallible<T> = Result<T, Error>;

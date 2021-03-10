@@ -1,10 +1,10 @@
 {
     "version": "0.1.0",
     "model": {
-        "kind": "NewslabV1",
         "cfg_file": "model-config/tests/cfg/yolov4-csp-custom.json5",
+        "device": "cuda(0)",
     },
-    "dataset": {
+    "input": {
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
         // "kind": {
         //     "type": "Coco",
@@ -85,5 +85,14 @@
             //     "cab-181012/FILE181013-034430F/4350.xml",
             // ]
         },
+    },
+    "preprocess": {
+        "batch_size": 16,
+        "cache_dir": "/home/aeon/yolo-dl-cache",
+        "device": "cpu",
+        "bbox_scaling": 1.0,
+        "out_of_bound_tolerance": 10,
+        "min_bbox_size": 0.05,
+        "min_bbox_cropping_ratio": 0.5,
     },
 }

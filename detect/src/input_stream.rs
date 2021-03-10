@@ -133,7 +133,7 @@ impl InputStream {
         })
     }
 
-    fn stream(&self) -> Result<Pin<Box<dyn Stream<Item = Result<InputRecord>> + Send>>> {
+    pub fn stream(&self) -> Result<Pin<Box<dyn Stream<Item = Result<InputRecord>> + Send>>> {
         let stream = self.dataset.stream()?;
 
         // add indexe
@@ -148,16 +148,15 @@ impl InputStream {
 
             stream
                 .chunks(batch_size.get())
-                .wrapping_enumerate()
-                .par_map_unordered(None, |(index, results)| {
+                .par_map_unordered(None, |results| {
                     move || {
                         let chunk: Vec<_> = results.into_iter().try_collect()?;
-                        Fallible::Ok((index, chunk))
+                        Fallible::Ok(chunk)
                     }
                 })
         };
 
-        let stream = stream.try_par_map_unordered(None, |(index, chunk)| {
+        let stream = stream.try_par_map_unordered(None, |chunk| {
             move || {
                 let (indexes, images, bboxes) = chunk
                     .into_iter()
