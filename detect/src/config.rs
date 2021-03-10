@@ -1,7 +1,8 @@
 use crate::common::*;
 
-pub use dataset::*;
+pub use input::*;
 pub use model::*;
+pub use preprocess::*;
 
 pub static CONFIG_VERSION: Lazy<VersionReq> = Lazy::new(|| VersionReq::parse("0.1.0").unwrap());
 
@@ -10,7 +11,8 @@ pub struct Config {
     #[serde(deserialize_with = "deserialize_version")]
     pub version: Version,
     pub model: ModelConfig,
-    pub dataset: DatasetConfig,
+    pub input: InputConfig,
+    pub preprocess: PreprocessConfig,
 }
 
 impl Config {
@@ -48,12 +50,12 @@ mod model {
     }
 }
 
-mod dataset {
+mod input {
     use super::*;
 
     /// Dataset options.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct DatasetConfig {
+    pub struct InputConfig {
         /// Optional list of whitelisted classes.
         pub class_whitelist: Option<HashSet<String>>,
         /// The dataset configuration.
@@ -93,6 +95,28 @@ mod dataset {
             image_size: NonZeroUsize,
             input_channels: NonZeroUsize,
         },
+    }
+}
+
+mod preprocess {
+    use super::*;
+
+    /// Input data preprocessing options.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct PreprocessConfig {
+        /// Batch size.
+        pub batch_size: NonZeroUsize,
+        /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
+        pub cache_dir: PathBuf,
+        /// The factor that tolerates out-of-image boundary bounding boxes.
+        pub out_of_bound_tolerance: R64,
+        /// The minimum bounding box size in ratio unit.
+        pub min_bbox_size: Ratio,
+        /// The minimum ratio of preserving area after a bounding box is cropped.
+        pub min_bbox_cropping_ratio: Ratio,
+        /// The device where the preprocessor works on.
+        #[serde(with = "tch_serde::serde_device")]
+        pub device: Device,
     }
 }
 
