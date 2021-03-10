@@ -321,7 +321,6 @@ impl TrainingStream {
                     let mix_kind = input.kind();
                     let pairs: Vec<_> = stream::iter(input.into_iter())
                         .par_map(par_config.clone(), move |(image, bboxes)| {
-                            // TODO: fix cumbersome writing
                             let color_jitter = color_jitter.clone();
                             let mut rng = StdRng::from_entropy();
 
@@ -414,7 +413,6 @@ impl TrainingStream {
                     let mix_kind = data.kind();
                     let pairs: Vec<_> = stream::iter(data.into_iter())
                         .par_map(par_config.clone(), move |(image, bboxes)| {
-                            // TODO: fix cumbersome writing
                             let random_affine = random_affine.clone();
                             let mut rng = StdRng::from_entropy();
 
@@ -583,7 +581,7 @@ impl TrainingStream {
         };
 
         // convert to batched type
-        let stream = stream.try_par_then_unordered(par_config.clone(), |(index, mut chunk)| {
+        let stream = stream.try_par_map_unordered(par_config.clone(), |(index, mut chunk)| {
             // summerizable type
             struct State {
                 pub step: usize,
@@ -622,7 +620,7 @@ impl TrainingStream {
                 }
             }
 
-            async move {
+            move || {
                 chunk.iter_mut().for_each(|args| {
                     let (_step, _epoch, _bboxes, _image, timing) = args;
                     timing.add_event("in channel");
