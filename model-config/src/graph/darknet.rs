@@ -365,6 +365,7 @@ impl Graph {
                                         p: padding as usize,
                                         d: dilation as usize,
                                         g: groups as usize,
+                                        bias: true,
                                         act: activation.into(),
                                         bn: config::BatchNorm {
                                             enabled: batch_normalize,

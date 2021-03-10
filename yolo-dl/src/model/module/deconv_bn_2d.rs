@@ -10,6 +10,7 @@ pub struct DeconvBn2DInit {
     pub op: usize,
     pub d: usize,
     pub g: usize,
+    pub bias: bool,
     pub activation: Activation,
     pub batch_norm: Option<DarkBatchNormConfig>,
 }
@@ -25,6 +26,7 @@ impl DeconvBn2DInit {
             op: 0,
             d: 1,
             g: 1,
+            bias: true,
             activation: Activation::Mish,
             batch_norm: Some(Default::default()),
         }
@@ -45,6 +47,7 @@ impl DeconvBn2DInit {
             op,
             d,
             g,
+            bias,
             activation,
             batch_norm,
         } = self;
@@ -60,7 +63,7 @@ impl DeconvBn2DInit {
                 output_padding: op as i64,
                 dilation: d as i64,
                 groups: g as i64,
-                bias: false,
+                bias,
                 ..Default::default()
             },
         );

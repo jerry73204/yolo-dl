@@ -15,6 +15,7 @@ pub struct ConvBn2D {
     pub p: usize,
     pub d: usize,
     pub g: usize,
+    pub bias: bool,
     pub act: Activation,
     pub bn: BatchNorm,
 }
@@ -32,6 +33,8 @@ struct RawConvBn2D {
     pub d: usize,
     #[serde(default = "default_group")]
     pub g: usize,
+    #[serde(default = "default_bias")]
+    pub bias: bool,
     #[serde(default = "default_activation")]
     pub act: Activation,
     #[serde(default)]
@@ -49,6 +52,7 @@ impl From<RawConvBn2D> for ConvBn2D {
             p,
             d,
             g,
+            bias,
             act,
             bn,
         } = raw;
@@ -64,6 +68,7 @@ impl From<RawConvBn2D> for ConvBn2D {
             p,
             d,
             g,
+            bias,
             act,
             bn,
         }
@@ -81,6 +86,7 @@ impl From<ConvBn2D> for RawConvBn2D {
             p,
             d,
             g,
+            bias,
             act,
             bn,
         } = orig;
@@ -94,6 +100,7 @@ impl From<ConvBn2D> for RawConvBn2D {
             p: Some(p),
             d,
             g,
+            bias,
             act,
             bn,
         }
@@ -116,6 +123,7 @@ impl ConvBn2D {
             p: k / 2,
             d: 1,
             g: default_group(),
+            bias: default_bias(),
             act: default_activation(),
             bn: Default::default(),
         }
@@ -168,4 +176,8 @@ fn default_group() -> usize {
 
 fn default_activation() -> Activation {
     Activation::Mish
+}
+
+fn default_bias() -> bool {
+    true
 }

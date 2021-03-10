@@ -16,6 +16,7 @@ pub struct DeconvBn2D {
     pub op: usize,
     pub d: usize,
     pub g: usize,
+    pub bias: bool,
     pub act: Activation,
     pub bn: BatchNorm,
 }
@@ -35,6 +36,8 @@ struct RawDeconvBn2D {
     pub d: usize,
     #[serde(default = "default_group")]
     pub g: usize,
+    #[serde(default = "default_bias")]
+    pub bias: bool,
     #[serde(default = "default_activation")]
     pub act: Activation,
     #[serde(default)]
@@ -53,6 +56,7 @@ impl From<RawDeconvBn2D> for DeconvBn2D {
             op,
             d,
             g,
+            bias,
             act,
             bn,
         } = raw;
@@ -69,6 +73,7 @@ impl From<RawDeconvBn2D> for DeconvBn2D {
             op,
             d,
             g,
+            bias,
             act,
             bn,
         }
@@ -87,6 +92,7 @@ impl From<DeconvBn2D> for RawDeconvBn2D {
             op,
             d,
             g,
+            bias,
             act,
             bn,
         } = orig;
@@ -101,6 +107,7 @@ impl From<DeconvBn2D> for RawDeconvBn2D {
             op,
             d,
             g,
+            bias,
             act,
             bn,
         }
@@ -124,6 +131,7 @@ impl DeconvBn2D {
             op: 0,
             d: 1,
             g: default_group(),
+            bias: default_bias(),
             act: default_activation(),
             bn: Default::default(),
         }
@@ -181,4 +189,8 @@ fn default_activation() -> Activation {
 
 fn default_output_padding() -> usize {
     0
+}
+
+fn default_bias() -> bool {
+    true
 }

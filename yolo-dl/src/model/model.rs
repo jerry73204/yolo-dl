@@ -93,6 +93,7 @@ mod yolo_model {
                             d,
                             g,
                             act,
+                            bias,
                             ref bn,
                             ..
                         }) => {
@@ -114,6 +115,7 @@ mod yolo_model {
                                     p,
                                     d,
                                     g,
+                                    bias,
                                     activation: act,
                                     batch_norm: bn.enabled.then(|| {
                                         let mut config = DarkBatchNormConfig::default();
@@ -135,6 +137,7 @@ mod yolo_model {
                             op,
                             d,
                             g,
+                            bias,
                             act,
                             ref bn,
                             ..
@@ -158,6 +161,7 @@ mod yolo_model {
                                     op,
                                     d,
                                     g,
+                                    bias,
                                     activation: act,
                                     batch_norm: bn.enabled.then(|| {
                                         let mut config = DarkBatchNormConfig::default();

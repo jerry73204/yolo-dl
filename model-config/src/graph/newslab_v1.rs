@@ -368,7 +368,7 @@ impl Graph {
                                 let input_shape: ShapeInput = shapes.as_slice().try_into()?;
                                 let output_shape = layer
                                     .output_shape(input_shape)
-                                    .ok_or_else(|| format_err!("TODO"))?;
+                                    .ok_or_else(|| format_err!("cannot compute output shape from input shapes: {:?}", shapes))?;
                                 output_shape
                             }
                         },

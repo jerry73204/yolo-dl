@@ -9,6 +9,7 @@ pub struct ConvBn2DInit {
     pub p: usize,
     pub d: usize,
     pub g: usize,
+    pub bias: bool,
     pub activation: Activation,
     pub batch_norm: Option<DarkBatchNormConfig>,
 }
@@ -23,6 +24,7 @@ impl ConvBn2DInit {
             p: k / 2,
             d: 1,
             g: 1,
+            bias: true,
             activation: Activation::Mish,
             batch_norm: Some(Default::default()),
         }
@@ -42,6 +44,7 @@ impl ConvBn2DInit {
             p,
             d,
             g,
+            bias,
             activation,
             batch_norm,
         } = self;
@@ -56,7 +59,7 @@ impl ConvBn2DInit {
                 padding: p as i64,
                 dilation: d as i64,
                 groups: g as i64,
-                bias: false,
+                bias,
                 ..Default::default()
             },
         );
