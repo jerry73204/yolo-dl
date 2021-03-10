@@ -12,17 +12,7 @@ use crate::{
 pub struct TrainingStream {
     config: Arc<Config>,
     logging_tx: broadcast::Sender<LoggingMessage>,
-    dataset: Arc<Box<dyn RandomAccessDataset>>,
-}
-
-impl GenericDataset for TrainingStream {
-    fn input_channels(&self) -> usize {
-        self.dataset.input_channels()
-    }
-
-    fn classes(&self) -> &IndexSet<String> {
-        self.dataset.classes()
-    }
+    dataset: Arc<Box<dyn RandomAccessDataset + Sync>>,
 }
 
 impl TrainingStream {
@@ -76,7 +66,7 @@ impl TrainingStream {
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
                     dataset
                 }
                 DatasetKind::Voc {
@@ -92,7 +82,7 @@ impl TrainingStream {
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
                     dataset
                 }
                 DatasetKind::Iii {
@@ -113,7 +103,7 @@ impl TrainingStream {
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
                     dataset
                 }
                 DatasetKind::Csv {
@@ -136,7 +126,7 @@ impl TrainingStream {
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset =
                         CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
                     dataset
                 }
             }
@@ -584,9 +574,11 @@ impl TrainingStream {
             stream
                 .chunks(batch_size.get())
                 .wrapping_enumerate()
-                .par_then_unordered(par_config.clone(), |(index, results)| async move {
-                    let chunk: Vec<_> = results.into_iter().try_collect()?;
-                    Fallible::Ok((index, chunk))
+                .par_map_unordered(par_config.clone(), |(index, results)| {
+                    move || {
+                        let chunk: Vec<_> = results.into_iter().try_collect()?;
+                        Fallible::Ok((index, chunk))
+                    }
                 })
         };
 
@@ -679,6 +671,14 @@ impl TrainingStream {
         };
 
         Ok(Box::pin(stream))
+    }
+
+    pub fn input_channels(&self) -> usize {
+        self.dataset.input_channels()
+    }
+
+    pub fn classes(&self) -> &IndexSet<String> {
+        self.dataset.classes()
     }
 }
 
