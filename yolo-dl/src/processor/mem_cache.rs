@@ -1,25 +1,40 @@
-//! The file caching implementation.
+//! The memory caching implementation.
 
 use crate::{common::*, profiling::Timing};
 
+// cache loader
+
 /// Image caching processor.
-#[derive(Debug, Clone)]
-pub struct CacheLoader {
-    cache_dir: async_std::path::PathBuf,
+#[derive(Debug)]
+pub struct MemoryCache {
     image_size: usize,
     image_channels: usize,
     device: Device,
+    cache: flurry::HashMap<String, CacheEntry>,
 }
 
-impl CacheLoader {
-    /// Build a new image caching processor.
+#[derive(Debug)]
+struct CacheEntry(Tensor);
+
+impl CacheEntry {
+    pub fn new(tensor: Tensor) -> Self {
+        Self(tensor)
+    }
+
+    pub fn get(&self) -> Tensor {
+        self.0.shallow_clone()
+    }
+}
+
+unsafe impl Sync for CacheEntry {}
+
+impl MemoryCache {
+    /// Build a new memory caching processor.
     ///
-    /// * `cache_dir` - The directory to store caches.
     /// * `image_size` - The outcome image size in pixels.
     /// * `image_channels` - The expected number of image channels.
     /// * `device` - The outcome image device. It defaults to CPU if set to `None`.
     pub async fn new<P>(
-        cache_dir: P,
         image_size: usize,
         image_channels: usize,
         device: impl Into<Option<Device>>,
@@ -30,14 +45,11 @@ impl CacheLoader {
         ensure!(image_size > 0, "image_size must be positive");
         ensure!(image_channels > 0, "image_channels must be positive");
 
-        let cache_dir = cache_dir.as_ref().to_owned();
-        async_std::fs::create_dir_all(&*cache_dir).await?;
-
         let loader = Self {
-            cache_dir,
             image_size,
             image_channels,
             device: device.into().unwrap_or(Device::Cpu),
+            cache: flurry::HashMap::new(),
         };
 
         Ok(loader)
@@ -57,13 +69,11 @@ impl CacheLoader {
         P: AsRef<async_std::path::Path>,
         B: Borrow<PixelLabel>,
     {
-        use async_std::{fs::File, io::BufWriter};
-
         let Self {
             image_size,
             image_channels,
             device,
-            ..
+            ref cache,
         } = *self;
         let image_path = image_path.as_ref();
         let [orig_h, orig_w] = orig_size.hw_params();
@@ -79,57 +89,30 @@ impl CacheLoader {
         let cache_h = (orig_h as f64 * resize_ratio) as usize;
         let cache_w = (orig_w as f64 * resize_ratio) as usize;
         let cache_components = cache_h * cache_w * image_channels;
-        let cache_bytes = cache_components * mem::size_of::<f32>();
         let mut timing = Timing::new("cache_loader");
 
+        // compute padding size
+        let top_pad = (image_size - cache_h) / 2;
+        let bottom_pad = image_size - cache_h - top_pad;
+        let left_pad = (image_size - cache_w) / 2;
+        let right_pad = image_size - cache_w - left_pad;
+
         // construct cache path
-        let cache_path = self.cache_dir.join(format!(
+        let cache_key = format!(
             "{}-{}-{}-{}",
             percent_encoding::utf8_percent_encode(image_path.to_str().unwrap(), NON_ALPHANUMERIC),
             image_channels,
             cache_h,
             cache_w,
-        ));
-
-        // check if the cache is valid
-        let is_valid = if cache_path.is_file().await {
-            let image_modified = image_path.metadata().await?.modified()?;
-            let cache_meta = cache_path.metadata().await?;
-            let cache_modified = cache_meta.modified()?;
-            cache_modified > image_modified && cache_meta.len() == cache_bytes as u64
-        } else {
-            false
-        };
-
-        timing.add_event("check cache validity");
+        );
 
         // write cache if the cache is not valid
-        let cached_image = if is_valid {
-            // load from cache
-            let image = async_std::task::spawn_blocking(move || -> Result<_> {
-                // BUG: when the dataset is small, the file opening can race with
-                // cache file saving.
-                let image = Tensor::f_from_file(
-                    cache_path.to_str().unwrap(),
-                    false,
-                    Some(cache_components as i64),
-                    (Kind::Float, Device::Cpu),
-                )?
-                .to_device(device)
-                .view_(&[image_channels as i64, cache_h as i64, cache_w as i64]);
-
-                Ok(image)
-            })
-            .await?;
-
-            timing.add_event("load cache");
-
-            image
-        } else {
-            // load and resize image
-            let image_path = image_path.to_owned();
-            let (tensor, buffer, timing_) =
-                async_std::task::spawn_blocking(move || -> Result<_> {
+        let image = match cache.pin().get(&cache_key) {
+            Some(entry) => entry.get(),
+            None => {
+                // load and resize image
+                let image_path = image_path.to_owned();
+                let (image, timing_) = async_std::task::spawn_blocking(move || -> Result<_> {
                     tch::no_grad(|| -> Result<_> {
                         let image = vision::image::load(image_path)?;
                         {
@@ -147,52 +130,41 @@ impl CacheLoader {
                             // resize on cpu before moving to CUDA due to this issue
                             // https://github.com/LaurentMazare/tch-rs/issues/286
                             .resize2d_exact(cache_h as i64, cache_w as i64)?
-                            .to_device(device)
                             .to_kind(Kind::Float)
                             .g_div1(255.0)
                             .set_requires_grad(false);
                         timing.add_event("load & resize");
 
-                        let mut buffer = vec![0; cache_bytes];
-                        image.copy_data_u8(&mut buffer, cache_components);
-                        timing.add_event("rehape & copy");
+                        // resize and center
+                        let image = {
+                            image
+                                .view([1, image_channels as i64, cache_h as i64, cache_w as i64])
+                                .zero_pad2d(
+                                    left_pad as i64,
+                                    right_pad as i64,
+                                    top_pad as i64,
+                                    bottom_pad as i64,
+                                )
+                                .view([image_channels as i64, image_size as i64, image_size as i64])
+                                .set_requires_grad(false)
+                        };
 
-                        Ok((image, buffer, timing))
+                        timing.add_event("pad");
+
+                        let image = image.to_device(device);
+
+                        Ok((image, timing))
                     })
                 })
                 .await?;
-            timing = timing_;
+                timing = timing_;
 
-            // write cache
-            let mut writer = BufWriter::new(File::create(&cache_path).await?);
-            writer.write_all(&buffer).await?;
-            writer.flush().await?; // make sure the file is ready in the next cache hit
-
-            timing.add_event("write cache");
-
-            tensor
+                cache
+                    .pin()
+                    .insert(cache_key, CacheEntry::new(image.shallow_clone()));
+                image
+            }
         };
-
-        // resize and center
-        let top_pad = (image_size - cache_h) / 2;
-        let bottom_pad = image_size - cache_h - top_pad;
-        let left_pad = (image_size - cache_w) / 2;
-        let right_pad = image_size - cache_w - left_pad;
-
-        let output_image = tch::no_grad(|| {
-            cached_image
-                .view([1, image_channels as i64, cache_h as i64, cache_w as i64])
-                .zero_pad2d(
-                    left_pad as i64,
-                    right_pad as i64,
-                    top_pad as i64,
-                    bottom_pad as i64,
-                )
-                .view([image_channels as i64, image_size as i64, image_size as i64])
-                .set_requires_grad(false)
-        });
-
-        timing.add_event("pad");
 
         // compute new bboxes
         let output_bboxes: Vec<_> = {
@@ -229,6 +201,6 @@ impl CacheLoader {
 
         timing.report();
 
-        Ok((output_image, output_bboxes))
+        Ok((image, output_bboxes))
     }
 }
