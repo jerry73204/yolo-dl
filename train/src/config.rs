@@ -8,6 +8,9 @@ pub use model::*;
 pub use preprocessor::*;
 pub use training::*;
 
+/// The version of configuration format.
+///
+/// The version number follows the SemVer specification.
 pub static CONFIG_VERSION: Lazy<VersionReq> = Lazy::new(|| VersionReq::parse("0.1.0").unwrap());
 
 /// The main training configuration.
