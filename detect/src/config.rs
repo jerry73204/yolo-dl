@@ -4,6 +4,9 @@ pub use input::*;
 pub use model::*;
 pub use preprocess::*;
 
+/// The version of configuration format.
+///
+/// The version number follows the SemVer specification.
 pub static CONFIG_VERSION: Lazy<VersionReq> = Lazy::new(|| VersionReq::parse("0.1.0").unwrap());
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,9 +36,11 @@ mod model {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ModelConfig {
         pub cfg_file: PathBuf,
+        /// Mini-batch size per device.
+        pub minibatch_size: NonZeroUsize,
         /// The device where the preprocessor works on.
-        #[serde(with = "tch_serde::serde_device")]
-        pub device: Device,
+        #[serde(with = "serde_vec_device")]
+        pub devices: Vec<Device>,
     }
 }
 
@@ -93,8 +98,6 @@ mod preprocess {
     /// Input data preprocessing options.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct PreprocessConfig {
-        /// Batch size.
-        pub batch_size: NonZeroUsize,
         /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
         pub cache_dir: PathBuf,
         /// The factor that tolerates out-of-image boundary bounding boxes.
@@ -133,4 +136,31 @@ where
     }
 
     Ok(version)
+}
+
+mod serde_vec_device {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    struct DeviceWrapper(#[serde(with = "tch_serde::serde_device")] Device);
+
+    pub fn serialize<S>(devices: &Vec<Device>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let devices: Vec<_> = devices.iter().cloned().map(DeviceWrapper).collect();
+        devices.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Device>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let devices = Vec::<DeviceWrapper>::deserialize(deserializer)?;
+        let devices: Vec<_> = devices
+            .into_iter()
+            .map(|DeviceWrapper(device)| device)
+            .collect();
+        Ok(devices)
+    }
 }

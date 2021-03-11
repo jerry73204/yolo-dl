@@ -1,8 +1,9 @@
 {
     "version": "0.1.0",
     "model": {
-        "cfg_file": "model-config/tests/cfg/yolov4-csp-custom.json5",
-        "device": "cuda(0)",
+        "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
+        "minibatch_size": 4,
+        "devices": ["cuda(0)"],
     },
     "input": {
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
@@ -11,7 +12,7 @@
         //     "image_size": 256,
         //     "dataset_dir": "/mnt/external1/aeon/dataset/coco/2017",
         //     "dataset_name": "train2017",
-        //     "classes_file": "cfg/coco.class",
+        //     "classes_file": "cfg/class/coco.class",
         // },
         // "kind": {
         //     "type": "Csv",
@@ -29,7 +30,7 @@
             // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/small",
             // "dataset_dir": "/home/aeon/dataset/iii-volume-1",
             // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery",
-            "classes_file": "cfg/iii.class",
+            "classes_file": "cfg/class/iii.class",
             // "blacklist_files": [
             //     "171212/FILE171212-172818F/4012.xml",
             //     "171231/FILE171231-072550F/5162.xml",
@@ -87,7 +88,6 @@
         },
     },
     "preprocess": {
-        "batch_size": 16,
         "cache_dir": "/home/aeon/yolo-dl-cache",
         "device": "cpu",
         "bbox_scaling": 1.0,

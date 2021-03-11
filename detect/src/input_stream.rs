@@ -141,13 +141,10 @@ impl InputStream {
 
         // group into chunks
         let stream = {
-            let Config {
-                preprocess: PreprocessConfig { batch_size, .. },
-                ..
-            } = *self.config;
+            let minibatch_size = self.config.model.minibatch_size.get();
 
             stream
-                .chunks(batch_size.get())
+                .chunks(minibatch_size)
                 .par_map_unordered(None, |results| {
                     move || {
                         let chunk: Vec<_> = results.into_iter().try_collect()?;

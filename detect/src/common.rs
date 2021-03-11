@@ -1,5 +1,8 @@
 pub use anyhow::{Error, Result};
-pub use futures::stream::{Stream, StreamExt, TryStreamExt};
+pub use futures::{
+    future::FutureExt,
+    stream::{self, Stream, StreamExt, TryStreamExt},
+};
 pub use itertools::Itertools;
 pub use noisy_float::prelude::*;
 pub use once_cell::sync::Lazy;
