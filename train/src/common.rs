@@ -68,8 +68,8 @@ pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 pub use yolo_dl::{
     dataset::{
-        CachedDataset, CocoDataset, CsvDataset, DataRecord, GenericDataset, IiiDataset,
-        RandomAccessDataset, SanitizedDataset, VocDataset,
+        CocoDataset, CsvDataset, DataRecord, FileCacheDataset, GenericDataset, IiiDataset,
+        MemoryCacheDataset, OnDemandDataset, RandomAccessDataset, SanitizedDataset, VocDataset,
     },
     loss::{
         MatchingOutput, YoloBenchmark, YoloBenchmarkInit, YoloBenchmarkOutput, YoloInference,
@@ -77,7 +77,7 @@ pub use yolo_dl::{
         YoloLossOutput,
     },
     model::{DetectionInfo, FlatIndex, InstanceIndex, MergeDetect2DOutput, YoloModel},
-    processor::{CacheLoader, ColorJitterInit, ParallelMosaicProcessorInit, RandomAffineInit},
+    processor::{ColorJitterInit, FileCache, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
 };
 

@@ -96,8 +96,15 @@
             // "worker_buf_size": 108,
             "unordered_records": true,
             "unordered_batches": true,
-            "cache_dir": "/home/aeon/yolo-dl-cache",
             "device": "cpu",
+        },
+        "cache": {
+            // "method": "NoCache",
+
+            // "method": "MemoryCache",
+
+            "method": "FileCache",
+            "cache_dir": "/home/aeon/yolo-dl-cache",
         },
         "mixup": {
             "mixup_prob": 0.0,

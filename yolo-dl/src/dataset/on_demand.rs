@@ -1,35 +1,29 @@
 use super::*;
-use crate::{common::*, processor::FileCache};
+use crate::{common::*, processor::OnDemandLoader};
 
 /// The dataset backed with image data caching.
 #[derive(Debug)]
-pub struct FileCacheDataset<D>
+pub struct OnDemandDataset<D>
 where
     D: FileDataset,
 {
-    cache_loader: Arc<FileCache>,
+    loader: Arc<OnDemandLoader>,
     dataset: D,
 }
 
-impl<D> FileCacheDataset<D>
+impl<D> OnDemandDataset<D>
 where
     D: FileDataset,
 {
-    pub async fn new<P>(dataset: D, cache_dir: P, image_size: usize, device: Device) -> Result<Self>
-    where
-        P: AsRef<async_std::path::Path>,
-    {
-        let cache_loader = Arc::new(
-            FileCache::new(cache_dir, image_size, dataset.input_channels(), device).await?,
-        );
-        Ok(Self {
-            cache_loader,
-            dataset,
-        })
+    pub async fn new(dataset: D, image_size: usize, device: Device) -> Result<Self> {
+        let loader =
+            Arc::new(OnDemandLoader::new(image_size, dataset.input_channels(), device).await?);
+
+        Ok(Self { loader, dataset })
     }
 }
 
-impl<D> GenericDataset for FileCacheDataset<D>
+impl<D> GenericDataset for OnDemandDataset<D>
 where
     D: FileDataset,
 {
@@ -42,7 +36,7 @@ where
     }
 }
 
-impl<D> RandomAccessDataset for FileCacheDataset<D>
+impl<D> RandomAccessDataset for OnDemandDataset<D>
 where
     D: FileDataset,
 {
@@ -52,15 +46,15 @@ where
 
     fn nth(&self, index: usize) -> Pin<Box<dyn Future<Output = Result<DataRecord>> + Send>> {
         let record = self.dataset.records().get(index).cloned();
-        let cache_loader = self.cache_loader.clone();
+        let loader = self.loader.clone();
 
         Box::pin(async move {
             let FileRecord {
                 path, bboxes, size, ..
             } = &*record.ok_or_else(|| format_err!("invalid index {}", index))?;
 
-            let (image, bboxes) = cache_loader
-                .load_cache(path, size, bboxes)
+            let (image, bboxes) = loader
+                .load(path, size, bboxes)
                 .await
                 .with_context(|| format!("failed to load image file {}", path.display()))?;
 

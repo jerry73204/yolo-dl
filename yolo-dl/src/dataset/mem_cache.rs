@@ -1,27 +1,23 @@
 use super::*;
-use crate::{common::*, processor::FileCache};
+use crate::{common::*, processor::MemoryCache};
 
 /// The dataset backed with image data caching.
 #[derive(Debug)]
-pub struct FileCacheDataset<D>
+pub struct MemoryCacheDataset<D>
 where
     D: FileDataset,
 {
-    cache_loader: Arc<FileCache>,
+    cache_loader: Arc<MemoryCache>,
     dataset: D,
 }
 
-impl<D> FileCacheDataset<D>
+impl<D> MemoryCacheDataset<D>
 where
     D: FileDataset,
 {
-    pub async fn new<P>(dataset: D, cache_dir: P, image_size: usize, device: Device) -> Result<Self>
-    where
-        P: AsRef<async_std::path::Path>,
-    {
-        let cache_loader = Arc::new(
-            FileCache::new(cache_dir, image_size, dataset.input_channels(), device).await?,
-        );
+    pub async fn new(dataset: D, image_size: usize, device: Device) -> Result<Self> {
+        let cache_loader =
+            Arc::new(MemoryCache::new(image_size, dataset.input_channels(), device).await?);
         Ok(Self {
             cache_loader,
             dataset,
@@ -29,7 +25,7 @@ where
     }
 }
 
-impl<D> GenericDataset for FileCacheDataset<D>
+impl<D> GenericDataset for MemoryCacheDataset<D>
 where
     D: FileDataset,
 {
@@ -42,7 +38,7 @@ where
     }
 }
 
-impl<D> RandomAccessDataset for FileCacheDataset<D>
+impl<D> RandomAccessDataset for MemoryCacheDataset<D>
 where
     D: FileDataset,
 {

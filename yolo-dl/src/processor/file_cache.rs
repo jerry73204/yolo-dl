@@ -4,14 +4,14 @@ use crate::{common::*, profiling::Timing};
 
 /// Image caching processor.
 #[derive(Debug, Clone)]
-pub struct CacheLoader {
+pub struct FileCache {
     cache_dir: async_std::path::PathBuf,
     image_size: usize,
     image_channels: usize,
     device: Device,
 }
 
-impl CacheLoader {
+impl FileCache {
     /// Build a new image caching processor.
     ///
     /// * `cache_dir` - The directory to store caches.

@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     config::{
-        CleanseConfig, ColorJitterConfig, Config, DatasetConfig, DatasetKind, MixUpConfig,
-        PipelineConfig, PreprocessorConfig, RandomAffineConfig, TrainingConfig,
+        CacheConfig, CleanseConfig, ColorJitterConfig, Config, DatasetConfig, DatasetKind,
+        MixUpConfig, PipelineConfig, PreprocessorConfig, RandomAffineConfig, TrainingConfig,
     },
     logging::LoggingMessage,
 };
@@ -31,12 +31,8 @@ impl TrainingStream {
                     },
                 preprocessor:
                     PreprocessorConfig {
-                        pipeline:
-                            PipelineConfig {
-                                ref cache_dir,
-                                device,
-                                ..
-                            },
+                        pipeline: PipelineConfig { device, .. },
+                        ref cache,
                         cleanse:
                             CleanseConfig {
                                 out_of_bound_tolerance,
@@ -65,9 +61,26 @@ impl TrainingStream {
                     .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
+
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
+                        CacheConfig::NoCache => {
+                            let dataset =
+                                OnDemandDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::FileCache { cache_dir } => {
+                            let dataset =
+                                FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
+                                    .await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::MemoryCache => {
+                            let dataset =
+                                MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                    };
+
                     dataset
                 }
                 DatasetKind::Voc {
@@ -81,9 +94,24 @@ impl TrainingStream {
                             .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
+                        CacheConfig::NoCache => {
+                            let dataset =
+                                OnDemandDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::FileCache { cache_dir } => {
+                            let dataset =
+                                FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
+                                    .await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::MemoryCache => {
+                            let dataset =
+                                MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                    };
                     dataset
                 }
                 DatasetKind::Iii {
@@ -102,9 +130,24 @@ impl TrainingStream {
                     .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
+                        CacheConfig::NoCache => {
+                            let dataset =
+                                OnDemandDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::FileCache { cache_dir } => {
+                            let dataset =
+                                FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
+                                    .await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::MemoryCache => {
+                            let dataset =
+                                MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                    };
                     dataset
                 }
                 DatasetKind::Csv {
@@ -125,9 +168,24 @@ impl TrainingStream {
                     .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
-                    let dataset: Box<dyn RandomAccessDataset + Sync> = Box::new(dataset);
+                    let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
+                        CacheConfig::NoCache => {
+                            let dataset =
+                                OnDemandDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::FileCache { cache_dir } => {
+                            let dataset =
+                                FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
+                                    .await?;
+                            Box::new(dataset)
+                        }
+                        CacheConfig::MemoryCache => {
+                            let dataset =
+                                MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
+                            Box::new(dataset)
+                        }
+                    };
                     dataset
                 }
             }

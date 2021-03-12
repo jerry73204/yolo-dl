@@ -34,14 +34,11 @@ impl MemoryCache {
     /// * `image_size` - The outcome image size in pixels.
     /// * `image_channels` - The expected number of image channels.
     /// * `device` - The outcome image device. It defaults to CPU if set to `None`.
-    pub async fn new<P>(
+    pub async fn new(
         image_size: usize,
         image_channels: usize,
         device: impl Into<Option<Device>>,
-    ) -> Result<Self>
-    where
-        P: AsRef<async_std::path::Path>,
-    {
+    ) -> Result<Self> {
         ensure!(image_size > 0, "image_size must be positive");
         ensure!(image_channels > 0, "image_channels must be positive");
 
@@ -88,7 +85,6 @@ impl MemoryCache {
             (image_size as f64 / orig_h as f64).min(image_size as f64 / orig_w as f64);
         let cache_h = (orig_h as f64 * resize_ratio) as usize;
         let cache_w = (orig_w as f64 * resize_ratio) as usize;
-        let cache_components = cache_h * cache_w * image_channels;
         let mut timing = Timing::new("cache_loader");
 
         // compute padding size
@@ -107,8 +103,13 @@ impl MemoryCache {
         );
 
         // write cache if the cache is not valid
-        let image = match cache.pin().get(&cache_key) {
-            Some(entry) => entry.get(),
+        let entry = cache
+            .pin()
+            .get(&cache_key)
+            .map(|entry| entry.get().to_device(device));
+
+        let image = match entry {
+            Some(entry) => entry,
             None => {
                 // load and resize image
                 let image_path = image_path.to_owned();
@@ -150,8 +151,6 @@ impl MemoryCache {
                         };
 
                         timing.add_event("pad");
-
-                        let image = image.to_device(device);
 
                         Ok((image, timing))
                     })

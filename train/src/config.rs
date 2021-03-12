@@ -116,6 +116,7 @@ mod preprocessor {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct PreprocessorConfig {
         pub pipeline: PipelineConfig,
+        pub cache: CacheConfig,
         pub mixup: MixUpConfig,
         pub random_affine: RandomAffineConfig,
         pub color_jitter: ColorJitterConfig,
@@ -130,11 +131,20 @@ mod preprocessor {
         pub unordered_batches: bool,
         /// The maximum number of waiting data records per preprocessing stage.
         pub worker_buf_size: Option<usize>,
-        /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
-        pub cache_dir: PathBuf,
         /// The device where the preprocessor works on.
         #[serde(with = "tch_serde::serde_device")]
         pub device: Device,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(tag = "method")]
+    pub enum CacheConfig {
+        NoCache,
+        FileCache {
+            /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
+            cache_dir: PathBuf,
+        },
+        MemoryCache,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
