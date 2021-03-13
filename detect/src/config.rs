@@ -2,6 +2,7 @@ use crate::common::*;
 
 pub use input::*;
 pub use model::*;
+pub use output::*;
 pub use preprocess::*;
 
 /// The version of configuration format.
@@ -16,6 +17,7 @@ pub struct Config {
     pub model: ModelConfig,
     pub input: InputConfig,
     pub preprocess: PreprocessConfig,
+    pub output: OutputConfig,
 }
 
 impl Config {
@@ -109,6 +111,17 @@ mod preprocess {
         /// The device where the preprocessor works on.
         #[serde(with = "tch_serde::serde_device")]
         pub device: Device,
+    }
+}
+
+mod output {
+    use super::*;
+
+    /// Model configuration.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct OutputConfig {
+        pub nms_iou_thresh: R64,
+        pub nms_conf_thresh: R64,
     }
 }
 

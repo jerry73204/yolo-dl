@@ -4,7 +4,7 @@ pub mod input_stream;
 
 use crate::{
     common::*,
-    config::Config,
+    config::{Config, OutputConfig},
     input_stream::{InputRecord, InputStream},
 };
 
@@ -40,59 +40,83 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     // scatter input to workers
     let (scatter_fut, data_rx) = input_stream.stream()?.par_scatter(None);
 
-    let inference_futs = workers.into_iter().map(|(vs, mut model)| {
-        let data_rx = data_rx.clone();
-        let config = config.clone();
-        let device = vs.device();
-        let output_tx = output_tx.clone();
-
-        async move {
-            while let Ok(record) = data_rx.recv().await {
-                let (model_, images, output) = tokio::task::spawn_blocking(move || -> Result<_> {
-                    let record = record?;
-                    let InputRecord {
-                        indexes,
-                        images,
-                        bboxes,
-                    } = &record;
-                    let images = images.to_device(device);
-                    let output = model
-                        .forward_t(&images, false)?
-                        .merge_detect_2d()
-                        .ok_or_else(|| format_err!("invalid model output type"))?;
-                    Ok((model, record, output))
-                })
-                .await??;
-
-                model = model_;
-                output_tx.send((images, output)).await.unwrap();
+    let inference_futs = {
+        workers.into_iter().map(|(vs, mut model)| {
+            let data_rx = data_rx.clone();
+            let config = config.clone();
+            let device = vs.device();
+            let output_tx = output_tx.clone();
+            let OutputConfig {
+                nms_iou_thresh,
+                nms_conf_thresh,
+            } = config.output;
+            let mut yolo_inference = YoloInferenceInit {
+                nms_iou_thresh,
+                nms_conf_thresh,
             }
-            Ok(())
-        }
-    });
+            .build()
+            .unwrap();
 
-    let output_fut = output_rx
-        .flat_map(|(record, output)| {
-            let InputRecord {
-                indexes,
-                images,
-                bboxes,
-            } = record;
-            let batch_size = images.size4().unwrap().0;
+            async move {
+                while let Ok(record) = data_rx.recv().await {
+                    let (model_, yolo_inference_, images, inferences) =
+                        tokio::task::spawn_blocking(move || -> Result<_> {
+                            let record = record?;
+                            let images = record.images.to_device(device);
+                            let output = model
+                                .forward_t(&images, false)?
+                                .merge_detect_2d()
+                                .ok_or_else(|| format_err!("invalid model output type"))?;
+                            let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
+                            Ok((model, yolo_inference, record, inferences))
+                        })
+                        .await??;
 
-            stream::iter((0..batch_size).zip_eq(indexes).zip_eq(bboxes).map(
-                move |((batch_index, index), bbox)| {
-                    let image = images.i((batch_index, .., .., ..));
-                    (index, image, bbox)
-                },
-            ))
+                    model = model_;
+                    yolo_inference = yolo_inference_;
+                    output_tx.send((images, inferences)).await.unwrap();
+                }
+                Ok(())
+            }
         })
-        .par_for_each_blocking(None, |args| {
-            move || {
-                let (index, image, bbox) = args;
-                // TODO
-            }
-        });
+    };
+
+    let output_fut = {
+        output_rx
+            .flat_map(|(record, inferences)| {
+                let InputRecord {
+                    indexes,
+                    images,
+                    bboxes,
+                } = record;
+                let minibatch_size = images.size4().unwrap().0;
+
+                stream::iter((0..minibatch_size).zip_eq(indexes).zip_eq(bboxes).map(
+                    move |((minibatch_index, index), target_bboxes)| {
+                        Ok((
+                            index,
+                            minibatch_index,
+                            images.shallow_clone(),
+                            target_bboxes,
+                            inferences.shallow_clone(),
+                        ))
+                    },
+                ))
+            })
+            .try_par_for_each_blocking(None, move |args| {
+                move || -> Result<_> {
+                    let (_index, minibatch_index, images, _target_bboxes, inferences) = args;
+                    let _image = images.i((minibatch_index, .., .., ..));
+                    let inference = inferences.batch_select(minibatch_index);
+                    let _pred_bboxes: Vec<RatioCyCxHW<R64>> = inference.bbox.try_into()?;
+
+                    // TODO: plot images
+
+                    Ok(())
+                    // TODO
+                }
+            })
+    };
 
     futures::try_join!(
         scatter_fut.map(|_| Fallible::Ok(())),

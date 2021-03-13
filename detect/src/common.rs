@@ -15,6 +15,7 @@ pub use serde::{
 };
 pub use std::{
     collections::HashSet,
+    convert::TryInto,
     fs,
     num::NonZeroUsize,
     path::{Path, PathBuf},
@@ -22,13 +23,14 @@ pub use std::{
     sync::Arc,
 };
 pub use tch::{nn, Device, IndexOp, Tensor};
-pub use tch_goodies::{Ratio, RatioLabel};
+pub use tch_goodies::{Ratio, RatioCyCxHW, RatioLabel};
 pub use tch_tensor_like::TensorLike;
 pub use yolo_dl::{
     dataset::{
         CocoDataset, CsvDataset, DataRecord, IiiDataset, OnDemandDataset, RandomAccessStream,
         SanitizedDataset, StreamingDataset, VocDataset,
     },
+    loss::YoloInferenceInit,
     model::YoloModel,
 };
 
