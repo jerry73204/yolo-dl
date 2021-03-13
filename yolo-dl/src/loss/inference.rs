@@ -111,4 +111,27 @@ impl YoloInferenceOutput {
     pub fn device(&self) -> Device {
         self.batches.device()
     }
+
+    pub fn index_select(&self, indexes: &Tensor) -> Self {
+        let Self {
+            batches,
+            classes,
+            instances,
+            bbox,
+            confidence,
+        } = self;
+
+        Self {
+            batches: batches.index(&[indexes]),
+            classes: classes.index(&[indexes]),
+            instances: instances.index(&[indexes]),
+            bbox: bbox.index_select(indexes),
+            confidence: confidence.index(&[indexes]),
+        }
+    }
+
+    pub fn batch_select(&self, batch_index: i64) -> Self {
+        let indexes = self.batches.eq(batch_index).nonzero().view([-1]);
+        self.index_select(&indexes)
+    }
 }
