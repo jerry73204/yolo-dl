@@ -188,47 +188,29 @@ impl From<&TLBRTensor> for CyCxHWTensor {
     }
 }
 
-impl<U> From<&CyCxHWTensor> for Vec<CyCxHW<R64, U>>
+impl<T, U> TryFrom<&CyCxHWTensor> for Vec<CyCxHW<T, U>>
 where
+    T: Float,
     U: Unit,
 {
-    fn from(from: &CyCxHWTensor) -> Self {
-        let bboxes: Vec<_> = izip!(
-            Vec::<f32>::from(from.cy()),
-            Vec::<f32>::from(from.cx()),
-            Vec::<f32>::from(from.h()),
-            Vec::<f32>::from(from.w()),
-        )
-        .map(|(cy, cx, h, w)| {
-            CyCxHW::<R64, _>::from_cycxhw(
-                r64(cy as f64),
-                r64(cx as f64),
-                r64(h as f64),
-                r64(w as f64),
-            )
-            .unwrap()
-        })
-        .collect();
-        bboxes
-    }
-}
+    type Error = Error;
 
-impl<U> From<&CyCxHWTensor> for Vec<CyCxHW<f64, U>>
-where
-    U: Unit,
-{
-    fn from(from: &CyCxHWTensor) -> Self {
-        let bboxes: Vec<_> = izip!(
+    fn try_from(from: &CyCxHWTensor) -> Result<Self, Self::Error> {
+        let bboxes: Option<Vec<_>> = izip!(
             Vec::<f32>::from(from.cy()),
             Vec::<f32>::from(from.cx()),
             Vec::<f32>::from(from.h()),
             Vec::<f32>::from(from.w()),
         )
         .map(|(cy, cx, h, w)| {
-            CyCxHW::<f64, _>::from_cycxhw(cy as f64, cx as f64, h as f64, w as f64).unwrap()
+            let cycxhw =
+                CyCxHW::<T, U>::from_cycxhw(T::from(cy)?, T::from(cx)?, T::from(h)?, T::from(w)?)
+                    .unwrap();
+            Some(cycxhw)
         })
         .collect();
-        bboxes
+
+        bboxes.ok_or_else(|| format_err!("casting error"))
     }
 }
 

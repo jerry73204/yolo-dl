@@ -262,21 +262,27 @@ where
     }
 }
 
-impl<U> From<&TLBRTensor> for Vec<CyCxHW<R64, U>>
+impl<T, U> TryFrom<&TLBRTensor> for Vec<CyCxHW<T, U>>
 where
+    T: Float,
     U: Unit,
 {
-    fn from(from: &TLBRTensor) -> Self {
-        (&CyCxHWTensor::from(from)).into()
+    type Error = Error;
+
+    fn try_from(from: &TLBRTensor) -> Result<Self, Self::Error> {
+        (&CyCxHWTensor::from(from)).try_into()
     }
 }
 
-impl<U> From<&TLBRTensor> for Vec<CyCxHW<f64, U>>
+impl<T, U> TryFrom<TLBRTensor> for Vec<CyCxHW<T, U>>
 where
+    T: Float,
     U: Unit,
 {
-    fn from(from: &TLBRTensor) -> Self {
-        (&CyCxHWTensor::from(from)).into()
+    type Error = Error;
+
+    fn try_from(from: TLBRTensor) -> Result<Self, Self::Error> {
+        (&from).try_into()
     }
 }
 
