@@ -1,4 +1,4 @@
-pub use anyhow::{Error, Result};
+pub use anyhow::{format_err, Error, Result};
 pub use futures::{
     future::FutureExt,
     stream::{self, Stream, StreamExt, TryStreamExt},
@@ -21,7 +21,7 @@ pub use std::{
     pin::Pin,
     sync::Arc,
 };
-pub use tch::{nn, Device, Tensor};
+pub use tch::{nn, Device, IndexOp, Tensor};
 pub use tch_goodies::{Ratio, RatioLabel};
 pub use tch_tensor_like::TensorLike;
 pub use yolo_dl::{
