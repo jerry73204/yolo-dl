@@ -29,7 +29,6 @@ impl InputStream {
                     },
                 preprocess:
                     PreprocessConfig {
-                        ref cache_dir,
                         out_of_bound_tolerance,
                         min_bbox_size,
                         device,
@@ -55,8 +54,7 @@ impl InputStream {
                     .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
+                    let dataset = OnDemandDataset::new(dataset, image_size.get(), device).await?;
                     let dataset = RandomAccessStream::new(dataset);
                     let dataset: Box<dyn StreamingDataset + Sync> = Box::new(dataset);
                     dataset
@@ -72,8 +70,7 @@ impl InputStream {
                             .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
+                    let dataset = OnDemandDataset::new(dataset, image_size.get(), device).await?;
                     let dataset = RandomAccessStream::new(dataset);
                     let dataset: Box<dyn StreamingDataset + Sync> = Box::new(dataset);
                     dataset
@@ -94,8 +91,7 @@ impl InputStream {
                     .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
+                    let dataset = OnDemandDataset::new(dataset, image_size.get(), device).await?;
                     let dataset = RandomAccessStream::new(dataset);
                     let dataset: Box<dyn StreamingDataset + Sync> = Box::new(dataset);
                     dataset
@@ -118,8 +114,7 @@ impl InputStream {
                     .await?;
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
-                    let dataset =
-                        CachedDataset::new(dataset, cache_dir, image_size.get(), device).await?;
+                    let dataset = OnDemandDataset::new(dataset, image_size.get(), device).await?;
                     let dataset = RandomAccessStream::new(dataset);
                     let dataset: Box<dyn StreamingDataset + Sync> = Box::new(dataset);
                     dataset

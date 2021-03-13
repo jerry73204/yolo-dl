@@ -98,8 +98,8 @@ mod preprocess {
     /// Input data preprocessing options.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct PreprocessConfig {
-        /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
-        pub cache_dir: PathBuf,
+        // /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
+        // pub cache_dir: PathBuf,
         /// The factor that tolerates out-of-image boundary bounding boxes.
         pub out_of_bound_tolerance: R64,
         /// The minimum bounding box size in ratio unit.

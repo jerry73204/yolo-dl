@@ -26,7 +26,7 @@ pub use tch_goodies::{Ratio, RatioLabel};
 pub use tch_tensor_like::TensorLike;
 pub use yolo_dl::{
     dataset::{
-        CachedDataset, CocoDataset, CsvDataset, DataRecord, IiiDataset, RandomAccessStream,
+        CocoDataset, CsvDataset, DataRecord, IiiDataset, OnDemandDataset, RandomAccessStream,
         SanitizedDataset, StreamingDataset, VocDataset,
     },
     model::YoloModel,
