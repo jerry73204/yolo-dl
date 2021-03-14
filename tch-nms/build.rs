@@ -45,7 +45,7 @@ fn main() {
             build.include(path);
         });
         build
-            .file(cargo_manifest_dir.join("nms_cpu.cpp"))
+            .file(cargo_manifest_dir.join("csrc/nms_cpu.cpp"))
             .compile("libnms_cpu.a");
     }
 
@@ -83,7 +83,7 @@ fn main() {
             build.include(path);
         });
         build
-            .file(cargo_manifest_dir.join("nms_cuda.cu"))
+            .file(cargo_manifest_dir.join("csrc/nms_cuda.cu"))
             .compile("libnms_cuda.a");
     }
 
