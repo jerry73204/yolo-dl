@@ -49,6 +49,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
             let OutputConfig {
                 nms_iou_thresh,
                 nms_conf_thresh,
+                ..
             } = config.output;
             let mut yolo_inference = YoloInferenceInit {
                 nms_iou_thresh,
@@ -82,6 +83,9 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     };
 
     let output_fut = {
+        let output_dir = Arc::new(config.output.output_dir.clone());
+        fs::create_dir_all(&*output_dir)?;
+
         output_rx
             .flat_map(|(record, inferences)| {
                 let InputRecord {
@@ -104,13 +108,69 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                 ))
             })
             .try_par_for_each_blocking(None, move |args| {
-                move || -> Result<_> {
-                    let (_index, minibatch_index, images, _target_bboxes, inferences) = args;
-                    let _image = images.i((minibatch_index, .., .., ..));
-                    let inference = inferences.batch_select(minibatch_index);
-                    let _pred_bboxes: Vec<RatioCyCxHW<R64>> = inference.bbox.try_into()?;
+                let output_dir = output_dir.clone();
 
-                    // TODO: plot images
+                move || -> Result<_> {
+                    let (index, minibatch_index, images, target_bboxes, inferences) = args;
+
+                    let image = images.i((minibatch_index, .., .., ..));
+                    let inference = inferences.batch_select(minibatch_index);
+                    let pred_bboxes: Vec<RatioCyCxHW<R64>> = inference.bbox.try_into()?;
+
+                    let (_c, image_h, image_w) = image.size3().unwrap();
+
+                    let mut canvas: Mat =
+                        TensorAsImage::new(image, ShapeConvention::Chw)?.try_into_cv()?;
+
+                    // plot target boxes
+                    target_bboxes.iter().try_for_each(|bbox| -> Result<_> {
+                        let cycxhw: PixelCyCxHW<_> =
+                            bbox.cycxhw.scale_to_unit(image_h as f64, image_w as f64)?;
+                        let [cy, cx, h, w] = cycxhw.cycxhw_params();
+
+                        imgproc::rectangle(
+                            &mut canvas,
+                            Rect {
+                                x: (cx - w / 2.0) as i32,
+                                y: (cy - h / 2.0) as i32,
+                                width: w as i32,
+                                height: h as i32,
+                            }, // rect
+                            Scalar::new(255.0, 255.0, 0.0, 0.0), // color
+                            1,                                   // thickness
+                            imgproc::LINE_8,                     // line_type
+                            0,                                   // shift
+                        )?;
+
+                        Ok(())
+                    })?;
+
+                    // plot predicted boxes
+                    pred_bboxes.iter().try_for_each(|cycxhw| -> Result<_> {
+                        let cycxhw: PixelCyCxHW<_> =
+                            cycxhw.scale_to_unit(image_h as f64, image_w as f64)?;
+                        let [cy, cx, h, w] = cycxhw.cycxhw_params();
+
+                        imgproc::rectangle(
+                            &mut canvas,
+                            Rect {
+                                x: (cx - w / 2.0) as i32,
+                                y: (cy - h / 2.0) as i32,
+                                width: w as i32,
+                                height: h as i32,
+                            }, // rect
+                            Scalar::new(0.0, 255.0, 255.0, 0.0), // color
+                            1,                                   // thickness
+                            imgproc::LINE_8,                     // line_type
+                            0,                                   // shift
+                        )?;
+
+                        Ok(())
+                    })?;
+
+                    // save image
+                    let output_file = output_dir.join(format!("{}.jpg", index));
+                    imgcodecs::imwrite(output_file.to_str().unwrap(), &canvas, &Vector::new())?;
 
                     Ok(())
                     // TODO

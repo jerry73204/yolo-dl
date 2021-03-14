@@ -1,4 +1,5 @@
 pub use anyhow::{format_err, Error, Result};
+pub use cv_convert::{IntoCv, ShapeConvention, TensorAsImage, TryIntoCv};
 pub use futures::{
     future::FutureExt,
     stream::{self, Stream, StreamExt, TryStreamExt},
@@ -6,6 +7,10 @@ pub use futures::{
 pub use itertools::Itertools;
 pub use noisy_float::prelude::*;
 pub use once_cell::sync::Lazy;
+pub use opencv::{
+    core::{Mat, Rect, Scalar, Vector},
+    imgcodecs, imgproc,
+};
 pub use par_stream::{ParStreamExt, TryParStreamExt};
 pub use semver::{Version, VersionReq};
 pub use serde::{
@@ -23,7 +28,7 @@ pub use std::{
     sync::Arc,
 };
 pub use tch::{nn, Device, IndexOp, Tensor};
-pub use tch_goodies::{Ratio, RatioCyCxHW, RatioLabel};
+pub use tch_goodies::{PixelCyCxHW, PixelLabel, Ratio, RatioCyCxHW, RatioLabel};
 pub use tch_tensor_like::TensorLike;
 pub use yolo_dl::{
     dataset::{

@@ -120,6 +120,7 @@ mod output {
     /// Model configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct OutputConfig {
+        pub output_dir: PathBuf,
         pub nms_iou_thresh: R64,
         pub nms_conf_thresh: R64,
     }

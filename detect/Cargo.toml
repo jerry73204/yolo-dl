@@ -50,3 +50,5 @@ owning_ref = "0.4.1"
 semver ={ version = "0.11.0", features = ["serde"] }
 once_cell = "1.7.2"
 async-channel = "1.5.1"
+cv-convert = { version = "0.3.0", default-features = false, features = ["opencv-4", "tch"] }
+opencv = "0.49.1"
