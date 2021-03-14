@@ -19,3 +19,7 @@ getset = "0.1.1"
 unzip-n = "0.1.2"
 num-traits = "0.2.14"
 maplit = "1.0.2"
+
+[dev-dependencies]
+cv-convert = "0.3.0"
+ndarray = "0.14.0"

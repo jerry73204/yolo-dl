@@ -10,6 +10,25 @@ mod tensor_ext {
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
     pub trait TensorExt {
+        fn f_unfold2d(
+            &self,
+            kernel_size: &[i64],
+            dilation: &[i64],
+            padding: &[i64],
+            stride: &[i64],
+        ) -> Result<Tensor>;
+
+        fn unfold2d(
+            &self,
+            kernel_size: &[i64],
+            dilation: &[i64],
+            padding: &[i64],
+            stride: &[i64],
+        ) -> Tensor {
+            self.f_unfold2d(kernel_size, dilation, padding, stride)
+                .unwrap()
+        }
+
         fn f_index_put_opt_(
             &mut self,
             indexes: impl IntoIndexList,
@@ -288,6 +307,32 @@ mod tensor_ext {
     }
 
     impl TensorExt for Tensor {
+        fn f_unfold2d(
+            &self,
+            kernel_size: &[i64],
+            dilation: &[i64],
+            padding: &[i64],
+            stride: &[i64],
+        ) -> Result<Tensor> {
+            let (b, c, h, w) = self.size4().with_context(|| {
+                format!(
+                    "expect [batch, channel, height, width] shape, but get {:?}",
+                    self.size()
+                )
+            })?;
+
+            let new_h =
+                (h + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0] + 1;
+            let new_w =
+                (w + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1] + 1;
+
+            let output = self
+                .f_im2col(kernel_size, dilation, padding, stride)?
+                .f_view([b, c, kernel_size[0], kernel_size[1], new_h, new_w])?;
+
+            Ok(output)
+        }
+
         fn f_index_put_opt_(
             &mut self,
             indexes: impl IntoIndexList,
@@ -1251,6 +1296,56 @@ mod into_index_list {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cv_convert::TryIntoCv;
+    use itertools::iproduct;
+    use ndarray::{Array4, Array6};
+
+    #[test]
+    fn unfold2d_test() {
+        let b = 16;
+        let c = 3;
+        let h = 10;
+        let w = 11;
+        let ky = 5;
+        let kx = 3;
+
+        let input = Tensor::rand(&[b, c, h, w], (Kind::Float, Device::Cpu));
+        // let input = Tensor::arange(b * c * h * w, (Kind::Float, Device::Cpu)).view([b, c, h, w]);
+        let output = input.unfold2d(&[ky, kx], &[1, 1], &[ky / 2, kx / 2], &[1, 1]);
+
+        assert_eq!(output.size(), vec![b, c, ky, kx, h, w]);
+
+        let input_array: Array4<f32> = input.try_into_cv().unwrap();
+        let output_array: Array6<f32> = output.try_into_cv().unwrap();
+
+        let mut expect_array = Array6::<f32>::zeros([
+            b as usize,
+            c as usize,
+            ky as usize,
+            kx as usize,
+            h as usize,
+            w as usize,
+        ]);
+
+        iproduct!(0..b, 0..c, 0..h, 0..w, 0..ky, 0..kx).for_each(|args| {
+            let (bi, ci, hi, wi, kyi, kxi) = args;
+            let i = hi + kyi - ky / 2;
+            let j = wi + kxi - kx / 2;
+
+            if (0..h).contains(&i) && (0..w).contains(&j) {
+                expect_array[[
+                    bi as usize,
+                    ci as usize,
+                    kyi as usize,
+                    kxi as usize,
+                    hi as usize,
+                    wi as usize,
+                ]] = input_array[[bi as usize, ci as usize, i as usize, j as usize]];
+            }
+        });
+
+        assert_eq!(expect_array, output_array);
+    }
 
     #[test]
     fn hue_rgb_conv() {
