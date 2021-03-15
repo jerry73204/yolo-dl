@@ -10,6 +10,12 @@ mod tensor_ext {
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
     pub trait TensorExt {
+        fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor>;
+
+        fn multi_softmax(&self, dims: &[i64], kind: Kind) -> Tensor {
+            self.f_multi_softmax(dims, kind).unwrap()
+        }
+
         fn f_unfold2d(
             &self,
             kernel_size: &[i64],
@@ -307,6 +313,76 @@ mod tensor_ext {
     }
 
     impl TensorExt for Tensor {
+        fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor> {
+            // check arguments
+            let input_shape = self.size();
+            let n_dims = self.dim();
+
+            let dims_set: HashSet<_> = dims
+                .iter()
+                .map(|&dim_index| {
+                    ensure!(
+                        (0..n_dims).contains(&(dim_index as usize)),
+                        "input tensor has {} dimensions, out of bound index found in {:?}",
+                        n_dims,
+                        dims
+                    );
+                    Ok(dim_index)
+                })
+                .try_collect()?;
+            ensure!(
+                dims_set.len() == dims.len(),
+                "duplicated dim index found in {:?}",
+                dims
+            );
+
+            let remain_dims: Vec<_> = (0..n_dims)
+                .filter_map(|dim_index| {
+                    let dim_index = dim_index as i64;
+                    (!dims_set.contains(&dim_index)).then(|| dim_index)
+                })
+                .collect();
+
+            let perm: Vec<_> = dims
+                .iter()
+                .cloned()
+                .chain(remain_dims.iter().cloned())
+                .collect();
+            let inv_perm = {
+                let mut inv_perm = vec![0; n_dims as usize];
+                perm.iter().enumerate().for_each(|(dst, &src)| {
+                    inv_perm[src as usize] = dst as i64;
+                });
+                inv_perm
+            };
+
+            let shape_before_softmax: Vec<_> = iter::once(-1)
+                .chain(
+                    remain_dims
+                        .iter()
+                        .map(|&dim_index| input_shape[dim_index as usize]),
+                )
+                .collect();
+            let shape_after_softmax: Vec<_> = dims
+                .iter()
+                .map(|&dim_index| input_shape[dim_index as usize])
+                .chain(
+                    remain_dims
+                        .iter()
+                        .map(|&dim_index| input_shape[dim_index as usize]),
+                )
+                .collect();
+
+            let output = self
+                .f_permute(&perm)?
+                .f_reshape(&*shape_before_softmax)?
+                .f_softmax(0, kind)?
+                .f_view(&*shape_after_softmax)?
+                .f_permute(&inv_perm)?;
+
+            Ok(output)
+        }
+
         fn f_unfold2d(
             &self,
             kernel_size: &[i64],
@@ -1299,6 +1375,24 @@ mod tests {
     use cv_convert::TryIntoCv;
     use itertools::iproduct;
     use ndarray::{Array4, Array6};
+    use tch::kind::FLOAT_CPU;
+
+    #[test]
+    fn multi_softmax_test() {
+        let input = Tensor::rand(&[3, 5, 2, 8, 6, 7, 2], FLOAT_CPU);
+        let output = input.multi_softmax(&[1, 2, 4], Kind::Float);
+        assert_eq!(input.size(), output.size());
+
+        let sum = output.sum1(&[1, 2, 4], false, Kind::Float);
+
+        assert!(bool::from(
+            (&sum - Tensor::from(1f32).view([1, 1, 1, 1]).expand_as(&sum))
+                .abs()
+                .lt(1e-6)
+                .all()
+        ));
+        assert!(bool::from(output.ge(0.0).all()) && bool::from(output.le(1.0).all()));
+    }
 
     #[test]
     fn unfold2d_test() {
@@ -1309,8 +1403,7 @@ mod tests {
         let ky = 5;
         let kx = 3;
 
-        let input = Tensor::rand(&[b, c, h, w], (Kind::Float, Device::Cpu));
-        // let input = Tensor::arange(b * c * h * w, (Kind::Float, Device::Cpu)).view([b, c, h, w]);
+        let input = Tensor::rand(&[b, c, h, w], FLOAT_CPU);
         let output = input.unfold2d(&[ky, kx], &[1, 1], &[ky / 2, kx / 2], &[1, 1]);
 
         assert_eq!(output.size(), vec![b, c, ky, kx, h, w]);
@@ -1352,7 +1445,7 @@ mod tests {
         const EPSILON: f64 = 1e-5;
 
         for _ in 0..100 {
-            let input = Tensor::rand(&[3, 512, 512], (Kind::Float, Device::Cpu));
+            let input = Tensor::rand(&[3, 512, 512], FLOAT_CPU);
             let output = input.rgb_to_hsv().hsv_to_rgb();
             assert!(
                 <f32 as From<_>>::from(output.min()) >= 0.0
