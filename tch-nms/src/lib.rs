@@ -103,9 +103,6 @@ pub fn nms_by_scores_cpu(
     groups: &Tensor,
     iou_threshold: f64,
 ) -> Result<Tensor, TchError> {
-    dbg!(dets, scores, groups);
-    dbg!(dets.device(), scores.device(), groups.device());
-
     // workaround to get the internal pointers
     let dets: *mut c_void = unsafe { mem::transmute(dets.shallow_clone()) };
     let scores: *mut c_void = unsafe { mem::transmute(scores.shallow_clone()) };

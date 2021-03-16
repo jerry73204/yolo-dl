@@ -1,5 +1,8 @@
 use crate::{common::*, model::MergeDetect2DOutput};
 
+// it prevents OOM on CUDA.
+const MAX_DETS: usize = 65536;
+
 #[derive(Debug)]
 pub struct NonMaxSuppressionInit {
     pub iou_threshold: R64,
@@ -80,7 +83,8 @@ impl NonMaxSuppression {
             let (batches, classes, instances, bbox, conf) = {
                 // compute confidence score
                 let obj = obj_logit.sigmoid();
-                let conf = obj.sigmoid() * class_logit.sigmoid();
+                let class = class_logit.sigmoid();
+                let conf = &obj * &class;
 
                 // compute tlbr bbox
                 let t = cy - h / 2.0;
@@ -118,10 +122,29 @@ impl NonMaxSuppression {
             };
 
             let keep = {
+                let num_dets = batches.size1().unwrap();
+
                 let ltrb = Tensor::cat(&[bbox.l(), bbox.t(), bbox.r(), bbox.b()], 1);
                 let group = &batches * num_classes as i64 + &classes;
-                tch_nms::nms_by_scores(&ltrb, &conf.view([-1]), &group, iou_threshold.raw())
-                    .unwrap()
+
+                let keep_vec: Vec<_> = (0..num_dets)
+                    .step_by(MAX_DETS)
+                    .map(|start| {
+                        let end = (start + MAX_DETS as i64).min(num_dets);
+                        let ltrb_chunk = ltrb.i((start..end, ..));
+                        let conf_chunk = conf.i((start..end, ..));
+                        let group_chunk = group.i(start..end);
+                        let keep_chunk = tch_nms::nms_by_scores(
+                            &ltrb_chunk,
+                            &conf_chunk.view([-1]),
+                            &group_chunk,
+                            iou_threshold.raw(),
+                        )
+                        .unwrap();
+                        keep_chunk
+                    })
+                    .collect();
+                Tensor::cat(&keep_vec, 0)
             };
 
             let keep_batches = batches.index(&[Some(&keep)]);
