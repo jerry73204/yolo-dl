@@ -88,8 +88,8 @@ fn main() {
     }
 
     // re-compile if C++/CUDA source changed
-    println!("cargo:rerun-if-changed=nms_cpu.cpp");
-    println!("cargo:rerun-if-changed=nms_cuda.cu");
+    println!("cargo:rerun-if-changed=csrc/nms_cpu.cpp");
+    println!("cargo:rerun-if-changed=csrc/nms_cuda.cu");
 
     // link CUDA
     println!("cargo:rustc-link-lib=cudart");
