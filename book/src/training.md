@@ -86,7 +86,7 @@ The program reads The logging directory in `train.json` and write checkpoint fil
 When the training program is running, you can open a TensorBoard server to show the real-time statistics.
 
 ```sh
-tensorboard --bind_all --logdir logs-coco/
+tensorboard --bind_all --logdir logs/
 ```
 
 ## Training Device Configuration
