@@ -72,11 +72,11 @@ impl YoloInference {
                 Tensor::of_slice(&selected).to_device(device)
             };
 
-            let selected_batches = batches.index(&[&selected]);
-            let selected_classes = classes.index(&[&selected]);
-            let selected_instances = instances.index(&[&selected]);
+            let selected_batches = batches.index(&[Some(&selected)]);
+            let selected_classes = classes.index(&[Some(&selected)]);
+            let selected_instances = instances.index(&[Some(&selected)]);
             let selected_bbox = bbox.index_select(&selected);
-            let selected_confidence = confidence.index(&[&selected]);
+            let selected_confidence = confidence.index(&[Some(&selected)]);
 
             YoloInferenceOutput {
                 batches: selected_batches,
@@ -122,11 +122,11 @@ impl YoloInferenceOutput {
         } = self;
 
         Self {
-            batches: batches.index(&[indexes]),
-            classes: classes.index(&[indexes]),
-            instances: instances.index(&[indexes]),
+            batches: batches.index(&[Some(indexes)]),
+            classes: classes.index(&[Some(indexes)]),
+            instances: instances.index(&[Some(indexes)]),
             bbox: bbox.index_select(indexes),
-            confidence: confidence.index(&[indexes]),
+            confidence: confidence.index(&[Some(indexes)]),
         }
     }
 

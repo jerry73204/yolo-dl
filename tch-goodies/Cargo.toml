@@ -8,12 +8,12 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.38"
-tch = "0.3.1"
+tch = "0.4.0"
 itertools = "0.10.0"
 image = "0.23.14"
 noisy_float = { version = "0.1.15", features = ["serde-1", "approx"] }
 serde = { version = "1.0.124", features = ["derive"] }
-tch-tensor-like = { version = "0.2.0", features = ["derive"] }
+tch-tensor-like = { version = "0.3.0", features = ["derive"] }
 approx = "0.3.2"
 getset = "0.1.1"
 unzip-n = "0.1.2"
@@ -21,5 +21,5 @@ num-traits = "0.2.14"
 maplit = "1.0.2"
 
 [dev-dependencies]
-cv-convert = "0.3.0"
+cv-convert = "0.4.0"
 ndarray = "0.14.0"

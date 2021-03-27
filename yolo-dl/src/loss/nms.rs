@@ -97,11 +97,13 @@ impl NonMaxSuppression {
                 let classes = indexes.select(1, 1);
                 let instances = indexes.select(1, 2);
 
-                let new_t = t.index_opt((&batches, NONE_INDEX, &instances));
-                let new_l = l.index_opt((&batches, NONE_INDEX, &instances));
-                let new_b = b.index_opt((&batches, NONE_INDEX, &instances));
-                let new_r = r.index_opt((&batches, NONE_INDEX, &instances));
-                let new_conf = conf.index(&[&batches, &classes, &instances]).view([-1, 1]);
+                let new_t = t.index(&[Some(&batches), None, Some(&instances)]);
+                let new_l = l.index(&[Some(&batches), None, Some(&instances)]);
+                let new_b = b.index(&[Some(&batches), None, Some(&instances)]);
+                let new_r = r.index(&[Some(&batches), None, Some(&instances)]);
+                let new_conf = conf
+                    .index(&[Some(&batches), Some(&classes), Some(&instances)])
+                    .view([-1, 1]);
 
                 let bbox: TLBRTensor = TLBRTensorUnchecked {
                     t: new_t,
@@ -122,11 +124,11 @@ impl NonMaxSuppression {
                     .unwrap()
             };
 
-            let keep_batches = batches.index(&[&keep]);
-            let keep_classes = classes.index(&[&keep]);
-            let keep_instances = instances.index(&[&keep]);
+            let keep_batches = batches.index(&[Some(&keep)]);
+            let keep_classes = classes.index(&[Some(&keep)]);
+            let keep_instances = instances.index(&[Some(&keep)]);
             let keep_bbox = bbox.index_select(&keep);
-            let keep_conf = conf.index(&[&keep]);
+            let keep_conf = conf.index(&[Some(&keep)]);
 
             NmsOutput {
                 batches: keep_batches,

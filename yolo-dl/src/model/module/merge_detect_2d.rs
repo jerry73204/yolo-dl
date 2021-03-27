@@ -292,13 +292,13 @@ impl MergeDetect2DOutput {
 
         DetectionTensorUnchecked {
             cycxhw: CyCxHWTensorUnchecked {
-                cy: cy.index_opt((batches, NONE_INDEX, flats)),
-                cx: cx.index_opt((batches, NONE_INDEX, flats)),
-                h: h.index_opt((batches, NONE_INDEX, flats)),
-                w: w.index_opt((batches, NONE_INDEX, flats)),
+                cy: cy.index(&[Some(batches), None, Some(flats)]),
+                cx: cx.index(&[Some(batches), None, Some(flats)]),
+                h: h.index(&[Some(batches), None, Some(flats)]),
+                w: w.index(&[Some(batches), None, Some(flats)]),
             },
-            obj: obj.index_opt((batches, NONE_INDEX, flats)),
-            class: class.index_opt((batches, NONE_INDEX, flats)),
+            obj: obj.index(&[Some(batches), None, Some(flats)]),
+            class: class.index(&[Some(batches), None, Some(flats)]),
         }
         .try_into()
         .unwrap()

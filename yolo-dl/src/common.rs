@@ -68,7 +68,7 @@ pub use tch_goodies::{
     CyCxHW, CyCxHWTensor, CyCxHWTensorUnchecked, DetectionTensor, DetectionTensorUnchecked,
     GridCyCxHW, GridSize, LabelTensor, PixelCyCxHW, PixelLabel, PixelSize, PixelTLBR, Ratio,
     RatioCyCxHW, RatioLabel, RatioSize, TLBRTensor, TLBRTensorUnchecked, TensorExt, UnitlessCyCxHW,
-    UnitlessTLBR, NONE_INDEX, TLBR,
+    UnitlessTLBR, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::EventWriterInit;

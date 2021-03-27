@@ -409,8 +409,11 @@ mod yolo_loss {
                     let FlatIndexTensor { batches, flats } = &matchings.pred_indexes;
 
                     let mut target = pred_objectness.zeros_like();
-                    let _ =
-                        target.index_put_opt_((batches, NONE_INDEX, flats), &target_scores, false);
+                    let _ = target.index_put_(
+                        &[Some(batches), None, Some(flats)],
+                        &target_scores,
+                        false,
+                    );
                     target
                 };
 

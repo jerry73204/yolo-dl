@@ -35,28 +35,6 @@ mod tensor_ext {
                 .unwrap()
         }
 
-        fn f_index_put_opt_(
-            &mut self,
-            indexes: impl IntoIndexList,
-            values: &Tensor,
-            accumulate: bool,
-        ) -> Result<Tensor>;
-
-        fn index_put_opt_(
-            &mut self,
-            indexes: impl IntoIndexList,
-            values: &Tensor,
-            accumulate: bool,
-        ) -> Tensor {
-            self.f_index_put_opt_(indexes, values, accumulate).unwrap()
-        }
-
-        fn f_index_opt(&self, indexes: impl IntoIndexList) -> Result<Tensor>;
-
-        fn index_opt(&self, indexes: impl IntoIndexList) -> Tensor {
-            self.f_index_opt(indexes).unwrap()
-        }
-
         fn unzip_first(&self) -> Option<Vec<Tensor>>;
 
         /// Reports if the tensor has zero dimension.
@@ -405,84 +383,6 @@ mod tensor_ext {
             let output = self
                 .f_im2col(kernel_size, dilation, padding, stride)?
                 .f_view([b, c, kernel_size[0], kernel_size[1], new_h, new_w])?;
-
-            Ok(output)
-        }
-
-        fn f_index_put_opt_(
-            &mut self,
-            indexes: impl IntoIndexList,
-            values: &Tensor,
-            accumulate: bool,
-        ) -> Result<Tensor> {
-            let device = self.device();
-            let indexes = indexes.into_index_list(device);
-
-            let occurrences: Vec<_> = indexes
-                .iter()
-                .enumerate()
-                .filter_map(|(index, tensor)| tensor.as_ref().map(|_| index))
-                .collect();
-
-            let perm: Vec<_> = occurrences
-                .iter()
-                .cloned()
-                .chain(
-                    indexes
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, tensor)| match tensor {
-                            Some(_) => None,
-                            None => Some(index),
-                        }),
-                )
-                .map(|index| index as i64)
-                .collect();
-
-            let output = {
-                let tch_indexes: Vec<_> = occurrences
-                    .iter()
-                    .map(|&index| indexes[index].as_ref().unwrap())
-                    .collect();
-                self.f_permute(&perm)?
-                    .f_index_put_(&tch_indexes, values, accumulate)?
-            };
-
-            Ok(output)
-        }
-
-        fn f_index_opt(&self, indexes: impl IntoIndexList) -> Result<Tensor> {
-            let device = self.device();
-            let indexes = indexes.into_index_list(device);
-
-            let occurrences: Vec<_> = indexes
-                .iter()
-                .enumerate()
-                .filter_map(|(index, tensor)| tensor.as_ref().map(|_| index))
-                .collect();
-
-            let perm: Vec<_> = occurrences
-                .iter()
-                .cloned()
-                .chain(
-                    indexes
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, tensor)| match tensor {
-                            Some(_) => None,
-                            None => Some(index),
-                        }),
-                )
-                .map(|index| index as i64)
-                .collect();
-
-            let output = {
-                let tch_indexes: Vec<_> = occurrences
-                    .iter()
-                    .map(|&index| indexes[index].as_ref().unwrap())
-                    .collect();
-                self.f_permute(&perm)?.f_index(&tch_indexes)?
-            };
 
             Ok(output)
         }
@@ -1292,8 +1192,6 @@ mod into_index_list {
     pub trait IntoIndexList {
         fn into_index_list(self, device: Device) -> Vec<Option<Tensor>>;
     }
-
-    pub const NONE_INDEX: Option<Tensor> = None;
 
     // slice
     impl<T> IntoIndexList for &[T]
