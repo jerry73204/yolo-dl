@@ -662,23 +662,17 @@ impl TrainingStream {
                 where
                     I: Iterator<Item = (usize, usize, Vec<RatioLabel>, Tensor, Timing)>,
                 {
-                    let (mut min_step, mut min_epoch, bboxes, image, timing) =
-                        iter.next().expect("the iterator canont be empty");
-                    let mut bboxes_vec = vec![bboxes];
-                    let mut image_vec = vec![image];
-                    let mut timing_vec = vec![timing];
-
-                    while let Some((step, epoch, bboxes, image, timing)) = iter.next() {
-                        min_step = min_step.min(step);
-                        min_epoch = min_epoch.min(epoch);
-                        bboxes_vec.push(bboxes);
-                        image_vec.push(image);
-                        timing_vec.push(timing);
-                    }
+                    let (min_step, min_epoch, bboxes_vec, image_vec, timing_vec): (
+                        MinCollector<_>,
+                        MinCollector<_>,
+                        Vec<_>,
+                        Vec<_>,
+                        Vec<_>,
+                    ) = iter.unzip_n();
 
                     Self {
-                        step: min_step,
-                        epoch: min_epoch,
+                        step: min_step.unwrap(),
+                        epoch: min_epoch.unwrap(),
                         bboxes_vec,
                         image_vec,
                         timing_vec,

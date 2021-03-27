@@ -51,6 +51,7 @@ semver ={ version = "0.11.0", features = ["serde"] }
 once_cell = "1.7.2"
 tracing-opentelemetry = "0.11.0"
 opentelemetry-jaeger = "0.11.0"
+collected = "0.1.2"
 
 [features]
 profiling = ["yolo-dl/profiling"]

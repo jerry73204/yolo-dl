@@ -3,6 +3,7 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::{abs_diff_eq, AbsDiffEq};
 pub use chrono::{DateTime, Local};
+pub use collected::MinCollector;
 pub use futures::{
     future,
     future::FutureExt,
