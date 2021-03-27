@@ -8,7 +8,7 @@ In the rest of the book, we assume the Linux operating system with the following
 
 We suggest the [rustup.rs](https://rustup.rs/) toolchain manager to install Rust toolchain.
 
-### PyTorch 1.7.1, torchvision 0.8.1
+### PyTorch 1.8.0, torchvision 0.8.1
 
 This is command to install the up-to-date PyTorch and torchvision.
 
