@@ -658,7 +658,7 @@ impl TrainingStream {
             }
 
             impl Sum<(usize, usize, Vec<RatioLabel>, Tensor, Timing)> for State {
-                fn sum<I>(mut iter: I) -> Self
+                fn sum<I>(iter: I) -> Self
                 where
                     I: Iterator<Item = (usize, usize, Vec<RatioLabel>, Tensor, Timing)>,
                 {

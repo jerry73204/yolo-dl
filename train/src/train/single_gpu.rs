@@ -146,6 +146,7 @@ pub fn single_gpu_training_worker(
         let mut training_step = init_training_step;
         let mut rate_counter = RateCounter::with_second_intertal();
         let mut lr_scheduler = LrScheduler::new(lr_schedule, init_training_step)?;
+        let clip_grad = config.training.optimizer.clip_grad.map(|val| val.raw());
 
         // set init lr
         {
@@ -175,7 +176,15 @@ pub fn single_gpu_training_worker(
             timing.add_event("loss");
 
             // optimizer
-            optimizer.backward_step(&losses.total_loss);
+            match clip_grad {
+                Some(clip_grad) => {
+                    optimizer.backward_step_clip(&losses.total_loss, clip_grad);
+                }
+                None => {
+                    optimizer.backward_step(&losses.total_loss);
+                }
+            }
+
             timing.add_event("backward");
 
             // run inference

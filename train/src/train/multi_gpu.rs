@@ -99,12 +99,15 @@ pub async fn multi_gpu_training_worker(
                     save_checkpoint_steps,
                     optimizer:
                         OptimizerConfig {
-                            ref lr_schedule, ..
+                            ref lr_schedule,
+                            clip_grad,
+                            ..
                         },
                     ..
                 },
             ..
         } = *config;
+        let clip_grad = clip_grad.map(|val| val.raw());
         let save_checkpoint_steps = save_checkpoint_steps.map(|steps| steps.get());
         if let None = save_checkpoint_steps {
             warn!("checkpoint saving is disabled");
@@ -169,7 +172,13 @@ pub async fn multi_gpu_training_worker(
             let (worker_contexts_, worker_outputs) = {
                 let config = config.clone();
                 tokio::task::spawn_blocking(move || -> Result<_> {
-                    backward_step(&config, master_device, &mut worker_contexts, &outputs)?;
+                    backward_step(
+                        &config,
+                        master_device,
+                        &mut worker_contexts,
+                        &outputs,
+                        clip_grad,
+                    )?;
                     Ok((worker_contexts, outputs))
                 })
                 .map(|result| Fallible::Ok(result??))
@@ -646,6 +655,7 @@ fn backward_step(
     master_device: Device,
     worker_contexts: &mut [WorkerContext],
     outputs: &[WorkerOutput],
+    clip_grad: Option<f64>,
 ) -> Result<()> {
     tch::no_grad(|| {
         let Config {
@@ -688,6 +698,10 @@ fn backward_step(
                 .for_each(|(var, grad)| {
                     let _ = var.grad().copy_(&grad);
                 });
+
+            if let Some(clip_grad) = clip_grad {
+                optimizer.clip_grad_value(clip_grad);
+            }
             optimizer.step();
         }
 

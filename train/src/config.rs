@@ -303,6 +303,8 @@ mod training {
         pub momentum: R64,
         /// The weight decay parameter for optimizer.
         pub weight_decay: R64,
+        /// The maximum of absolute gradient values.
+        pub clip_grad: Option<R64>,
     }
 }
 
