@@ -121,9 +121,9 @@ impl NonMaxSuppression {
                 (batches, classes, instances, bbox, new_conf)
             };
 
-            let keep = {
-                let num_dets = batches.size1().unwrap();
+            let num_dets = batches.size1().unwrap();
 
+            let keep = if num_dets > 0 {
                 let ltrb = Tensor::cat(&[bbox.l(), bbox.t(), bbox.r(), bbox.b()], 1);
                 let group = &batches * num_classes as i64 + &classes;
 
@@ -145,6 +145,8 @@ impl NonMaxSuppression {
                     })
                     .collect();
                 Tensor::cat(&keep_vec, 0)
+            } else {
+                Tensor::empty(&[0], (Kind::Int64, prediction.device()))
             };
 
             let keep_batches = batches.index(&[Some(&keep)]);
