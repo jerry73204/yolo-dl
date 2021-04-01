@@ -336,7 +336,7 @@ dependencies = [
  "block-padding",
  "byte-tools",
  "byteorder",
- "generic-array 0.12.4",
+ "generic-array",
 ]
 
 [[package]]
@@ -755,8 +755,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05d74cb1e2cde384372509acfd83e0b134ef4ea03912de4f1f68542af0ef4967"
 dependencies = [
  "anyhow",
- "image",
- "nalgebra",
  "ndarray 0.15.1",
  "opencv",
  "tch",
@@ -895,7 +893,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3d0c8c8752312f9713efd397ff63acb9f85585afbf179282e720e7704954dd5"
 dependencies = [
- "generic-array 0.12.4",
+ "generic-array",
 ]
 
 [[package]]
@@ -1162,16 +1160,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffdf9f34f1447443d37393cc6c2b8313aebddcd96906caf34e54c68d8e57d7bd"
 dependencies = [
  "typenum",
-]
-
-[[package]]
-name = "generic-array"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "501466ecc8a30d1d3b7fc9229b122b2ce8ed6e9d9223f1138d4babb253e51817"
-dependencies = [
- "typenum",
- "version_check",
 ]
 
 [[package]]
@@ -1660,22 +1648,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 
 [[package]]
-name = "nalgebra"
-version = "0.25.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cb5960baf61e6cc763d6a7ab1443381ae0091073861e26cd9d792d06d478a79"
-dependencies = [
- "approx",
- "generic-array 0.14.4",
- "matrixmultiply 0.3.0",
- "num-complex 0.3.1",
- "num-rational",
- "num-traits 0.2.14",
- "simba",
- "typenum",
-]
-
-[[package]]
 name = "nb-connect"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1969,12 +1941,6 @@ dependencies = [
  "smallvec",
  "winapi",
 ]
-
-[[package]]
-name = "paste"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
 
 [[package]]
 name = "percent-encoding"
@@ -2709,18 +2675,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16f1d0fef1604ba8f7a073c7e701f213e056707210e9020af4528e0101ce11a6"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "simba"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5132a955559188f3d13c9ba831e77c802ddc8782783f050ed0c52f5988b95f4c"
-dependencies = [
- "approx",
- "num-complex 0.3.1",
- "num-traits 0.2.14",
- "paste",
 ]
 
 [[package]]
