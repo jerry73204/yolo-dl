@@ -1,5 +1,7 @@
 use super::*;
 
+pub use activation::*;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Deform {
     None,
@@ -9,52 +11,85 @@ pub enum Deform {
     StretchSway,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Activation {
-    #[serde(rename = "mish")]
-    Mish,
-    #[serde(rename = "hard_mish")]
-    HardMish,
-    #[serde(rename = "swish")]
-    Swish,
-    #[serde(rename = "normalize_channels")]
-    NormalizeChannels,
-    #[serde(rename = "normalize_channels_softmax")]
-    NormalizeChannelsSoftmax,
-    #[serde(rename = "normalize_channels_softmax_maxval")]
-    NormalizeChannelsSoftmaxMaxval,
-    #[serde(rename = "logistic")]
-    Logistic,
-    #[serde(rename = "loggy")]
-    Loggy,
-    #[serde(rename = "relu")]
-    Relu,
-    #[serde(rename = "elu")]
-    Elu,
-    #[serde(rename = "selu")]
-    Selu,
-    #[serde(rename = "gelu")]
-    Gelu,
-    #[serde(rename = "relie")]
-    Relie,
-    #[serde(rename = "ramp")]
-    Ramp,
-    #[serde(rename = "linear")]
-    Linear,
-    #[serde(rename = "tanh")]
-    Tanh,
-    #[serde(rename = "plse")]
-    Plse,
-    #[serde(rename = "leaky")]
-    Leaky,
-    #[serde(rename = "stair")]
-    Stair,
-    #[serde(rename = "hardtan")]
-    Hardtan,
-    #[serde(rename = "lhtan")]
-    Lhtan,
-    #[serde(rename = "relu6")]
-    Relu6,
+mod activation {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub enum Activation {
+        #[serde(rename = "mish")]
+        Mish,
+        #[serde(rename = "hard_mish")]
+        HardMish,
+        #[serde(rename = "swish")]
+        Swish,
+        #[serde(rename = "normalize_channels")]
+        NormalizeChannels,
+        #[serde(rename = "normalize_channels_softmax")]
+        NormalizeChannelsSoftmax,
+        #[serde(rename = "normalize_channels_softmax_maxval")]
+        NormalizeChannelsSoftmaxMaxval,
+        #[serde(rename = "logistic")]
+        Logistic,
+        #[serde(rename = "loggy")]
+        Loggy,
+        #[serde(rename = "relu")]
+        Relu,
+        #[serde(rename = "elu")]
+        Elu,
+        #[serde(rename = "selu")]
+        Selu,
+        #[serde(rename = "gelu")]
+        Gelu,
+        #[serde(rename = "relie")]
+        Relie,
+        #[serde(rename = "ramp")]
+        Ramp,
+        #[serde(rename = "linear")]
+        Linear,
+        #[serde(rename = "tanh")]
+        Tanh,
+        #[serde(rename = "plse")]
+        Plse,
+        #[serde(rename = "leaky")]
+        Leaky,
+        #[serde(rename = "stair")]
+        Stair,
+        #[serde(rename = "hardtan")]
+        Hardtan,
+        #[serde(rename = "lhtan")]
+        Lhtan,
+        #[serde(rename = "relu6")]
+        Relu6,
+    }
+
+    impl From<Activation> for tch_goodies::Activation {
+        fn from(act: Activation) -> Self {
+            match act {
+                Activation::Mish => Self::Mish,
+                Activation::HardMish => Self::HardMish,
+                Activation::Swish => Self::Swish,
+                Activation::NormalizeChannels => Self::NormalizeChannels,
+                Activation::NormalizeChannelsSoftmax => Self::NormalizeChannelsSoftmax,
+                Activation::NormalizeChannelsSoftmaxMaxval => Self::NormalizeChannelsSoftmaxMaxval,
+                Activation::Logistic => Self::Logistic,
+                Activation::Loggy => Self::Loggy,
+                Activation::Relu => Self::Relu,
+                Activation::Elu => Self::Elu,
+                Activation::Selu => Self::Selu,
+                Activation::Gelu => Self::Gelu,
+                Activation::Relie => Self::Relie,
+                Activation::Ramp => Self::Ramp,
+                Activation::Linear => Self::Linear,
+                Activation::Tanh => Self::Tanh,
+                Activation::Plse => Self::Plse,
+                Activation::Leaky => Self::Leaky,
+                Activation::Stair => Self::Stair,
+                Activation::Hardtan => Self::Hardtan,
+                Activation::Lhtan => Self::Lhtan,
+                Activation::Relu6 => Self::Relu6,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

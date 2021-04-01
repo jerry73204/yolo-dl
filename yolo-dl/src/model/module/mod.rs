@@ -16,10 +16,6 @@ mod spp_csp_2d;
 mod sum_2d;
 mod up_sample_2d;
 
-use super::*;
-use crate::common::*;
-use model_config::config::Shape;
-
 pub use bottleneck::*;
 pub use bottleneck_csp::*;
 pub use concat_2d::*;

@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    config::{self, Activation, Shape, WeightsNormalization, WeightsType},
+    config::{self, Shape, WeightsNormalization, WeightsType},
     darknet::{self, DarknetModel},
     graph::{
         BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, InputKeys,
@@ -28,28 +28,6 @@ impl ReplaceTensor for Tensor {
                 .to_device(self.device());
             let _ = mem::replace(self, new);
         });
-    }
-}
-
-trait TensorActivationEx {
-    fn activation(&self, activation: Activation) -> Tensor;
-}
-
-impl TensorActivationEx for Tensor {
-    fn activation(&self, activation: Activation) -> Tensor {
-        match activation {
-            Activation::Linear => self.shallow_clone(),
-            Activation::Relu => self.relu(),
-            Activation::Swish => self.swish(),
-            Activation::Mish => self.mish(),
-            Activation::HardMish => self.hardswish(),
-            Activation::Leaky => self.clamp_min(0.0) + self.clamp_max(0.0) * 0.1,
-            Activation::Logistic => self.sigmoid(),
-            // Activation::NormalizeChannels => todo!(),
-            // Activation::NormalizeChannelsSoftmax => todo!(),
-            // Activation::NormalizeChannelsSoftmaxMaxval => todo!(),
-            _ => unimplemented!(),
-        }
     }
 }
 
@@ -694,7 +672,7 @@ mod layer {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
             };
-            let xs = xs.activation(activation);
+            let xs = xs.activation(activation.into());
             xs
         }
     }
@@ -955,7 +933,7 @@ mod layer {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
             };
-            let xs = xs.activation(activation);
+            let xs = xs.activation(activation.into());
             xs
         }
     }

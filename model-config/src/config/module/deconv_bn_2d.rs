@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    common::*,
-    config::misc::{Activation, Shape},
-};
+use crate::{common::*, config::misc::Shape};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(from = "RawDeconvBn2D", into = "RawDeconvBn2D")]

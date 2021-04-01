@@ -1,7 +1,8 @@
+use super::*;
+use crate::common::*;
+
 pub use module::*;
 pub use module_input::*;
-
-use super::*;
 
 mod module {
     use super::*;

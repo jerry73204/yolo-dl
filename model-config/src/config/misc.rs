@@ -1,7 +1,5 @@
 use crate::common::*;
-use darknet_config::config as dark_cfg;
 
-pub use activation::*;
 pub use dim::*;
 pub use shape::*;
 pub use size::*;
@@ -589,89 +587,6 @@ mod size {
     impl From<Size> for (R64, R64) {
         fn from(Size { h, w }: Size) -> Self {
             (h, w)
-        }
-    }
-}
-
-mod activation {
-    use super::*;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    pub enum Activation {
-        #[serde(rename = "mish")]
-        Mish,
-        #[serde(rename = "hard_mish")]
-        HardMish,
-        #[serde(rename = "swish")]
-        Swish,
-        #[serde(rename = "normalize_channels")]
-        NormalizeChannels,
-        #[serde(rename = "normalize_channels_softmax")]
-        NormalizeChannelsSoftmax,
-        #[serde(rename = "normalize_channels_softmax_maxval")]
-        NormalizeChannelsSoftmaxMaxval,
-        #[serde(rename = "logistic")]
-        Logistic,
-        #[serde(rename = "loggy")]
-        Loggy,
-        #[serde(rename = "relu")]
-        Relu,
-        #[serde(rename = "elu")]
-        Elu,
-        #[serde(rename = "selu")]
-        Selu,
-        #[serde(rename = "gelu")]
-        Gelu,
-        #[serde(rename = "relie")]
-        Relie,
-        #[serde(rename = "ramp")]
-        Ramp,
-        #[serde(rename = "linear")]
-        Linear,
-        #[serde(rename = "tanh")]
-        Tanh,
-        #[serde(rename = "plse")]
-        Plse,
-        #[serde(rename = "leaky")]
-        Leaky,
-        #[serde(rename = "stair")]
-        Stair,
-        #[serde(rename = "hardtan")]
-        Hardtan,
-        #[serde(rename = "lhtan")]
-        Lhtan,
-        #[serde(rename = "relu6")]
-        Relu6,
-    }
-
-    impl From<dark_cfg::Activation> for Activation {
-        fn from(act: dark_cfg::Activation) -> Self {
-            match act {
-                dark_cfg::Activation::Mish => Self::Mish,
-                dark_cfg::Activation::HardMish => Self::HardMish,
-                dark_cfg::Activation::Swish => Self::Swish,
-                dark_cfg::Activation::NormalizeChannels => Self::NormalizeChannels,
-                dark_cfg::Activation::NormalizeChannelsSoftmax => Self::NormalizeChannelsSoftmax,
-                dark_cfg::Activation::NormalizeChannelsSoftmaxMaxval => {
-                    Self::NormalizeChannelsSoftmaxMaxval
-                }
-                dark_cfg::Activation::Logistic => Self::Logistic,
-                dark_cfg::Activation::Loggy => Self::Loggy,
-                dark_cfg::Activation::Relu => Self::Relu,
-                dark_cfg::Activation::Elu => Self::Elu,
-                dark_cfg::Activation::Selu => Self::Selu,
-                dark_cfg::Activation::Gelu => Self::Gelu,
-                dark_cfg::Activation::Relie => Self::Relie,
-                dark_cfg::Activation::Ramp => Self::Ramp,
-                dark_cfg::Activation::Linear => Self::Linear,
-                dark_cfg::Activation::Tanh => Self::Tanh,
-                dark_cfg::Activation::Plse => Self::Plse,
-                dark_cfg::Activation::Leaky => Self::Leaky,
-                dark_cfg::Activation::Stair => Self::Stair,
-                dark_cfg::Activation::Hardtan => Self::Hardtan,
-                dark_cfg::Activation::Lhtan => Self::Lhtan,
-                dark_cfg::Activation::Relu6 => Self::Relu6,
-            }
         }
     }
 }

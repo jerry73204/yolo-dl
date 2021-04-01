@@ -1,4 +1,5 @@
-use super::*;
+use crate::common::*;
+use model_config::config::Shape;
 
 #[derive(Debug)]
 pub struct Input {

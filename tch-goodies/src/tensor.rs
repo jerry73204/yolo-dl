@@ -6,10 +6,14 @@ pub use tensor_ext::*;
 pub use try_into_tensor::*;
 
 mod tensor_ext {
+    use crate::Activation;
+
     use super::*;
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
     pub trait TensorExt {
+        fn activation(&self, act: Activation) -> Tensor;
+
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor>;
 
         fn multi_softmax(&self, dims: &[i64], kind: Kind) -> Tensor {
@@ -291,6 +295,21 @@ mod tensor_ext {
     }
 
     impl TensorExt for Tensor {
+        fn activation(&self, act: Activation) -> Tensor {
+            use Activation::*;
+
+            match act {
+                Linear => self.shallow_clone(),
+                Mish => self.mish(),
+                HardMish => self.hard_mish(),
+                Swish => self.swish(),
+                Relu => self.relu(),
+                Leaky => self.clamp_min(0.0) + self.clamp_max(0.0) * 0.1,
+                Logistic => self.sigmoid(),
+                _ => unimplemented!(),
+            }
+        }
+
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor> {
             // check arguments
             let input_shape = self.size();
