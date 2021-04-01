@@ -5,22 +5,24 @@ pub mod bbox;
 mod common;
 pub mod compound_tensor;
 pub mod detection;
+pub mod module;
 pub mod ratio;
 pub mod size;
 pub mod tensor;
+pub mod tensor_list;
 pub mod unit;
 mod utils;
-pub mod module;
 
 pub use activation::*;
 pub use bbox::*;
 pub use compound_tensor::*;
 pub use detection::*;
+pub use module::*;
 pub use ratio::*;
 pub use size::*;
 pub use tensor::*;
+pub use tensor_list::*;
 pub use unit::*;
-pub use module::*;
 
 pub mod prelude {
     pub use crate::tensor::{IntoIndexList, IntoTensor, TensorExt, TryIntoTensor};
