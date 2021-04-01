@@ -1,4 +1,7 @@
-use crate::common::*;
+use crate::{
+    common::*,
+    size::{GridSize, RatioSize},
+};
 
 #[derive(Debug, Clone)]
 pub struct Detect2DInit {

@@ -1,5 +1,6 @@
 use super::cycxhw::{CyCxHWTensor, CyCxHWTensorUnchecked};
 use crate::{common::*, detection::Label, unit::Unit};
+use num_traits::NumCast;
 
 #[derive(Debug, TensorLike, Getters)]
 pub struct LabelTensor {

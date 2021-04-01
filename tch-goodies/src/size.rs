@@ -2,6 +2,7 @@ use crate::{
     common::*,
     unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
+use num_traits::NumCast;
 
 /// Generic size type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike, CopyGetters)]

@@ -1,4 +1,4 @@
-use super::*;
+use super::conv_block::ConvBlockInit;
 use crate::common::*;
 
 pub struct SppInit {

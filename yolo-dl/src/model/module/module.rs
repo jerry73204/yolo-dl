@@ -1,5 +1,9 @@
-use super::*;
+use super::input::Input;
 use crate::common::*;
+use tch_goodies::module::{
+    Concat2D, ConvBn2D, DarkCsp2D, DeconvBn2D, Detect2D, Detect2DOutput, MergeDetect2D,
+    MergeDetect2DOutput, SppCsp2D, Sum2D, UpSample2D,
+};
 
 pub use module::*;
 pub use module_input::*;

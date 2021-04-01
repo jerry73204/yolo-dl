@@ -10,10 +10,10 @@ edition = "2018"
 cc = "1.0.67"
 envy = "0.4.2"
 pkg-config = "0.3.19"
-serde = { version = "1.0.124", features = ["derive"] }
+serde = { version = "1.0.125", features = ["derive"] }
 
 [dependencies]
-libc = "0.2.90"
+libc = "0.2.92"
 static_assertions = "1.1.0"
 tch = "0.4.0"
 torch-sys = "0.4.0"

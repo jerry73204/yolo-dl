@@ -1,5 +1,6 @@
 use super::{area::AreaTensor, size::SizeTensor, tlbr::TLBRTensor};
 use crate::{bbox::CyCxHW, common::*, unit::Unit, utils::EPSILON};
+use num_traits::NumCast;
 
 /// Checked tensor of batched box parameters in CyCxHW format.
 #[derive(Debug, TensorLike, Getters)]

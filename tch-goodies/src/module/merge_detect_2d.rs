@@ -1,5 +1,9 @@
 use super::*;
-use crate::common::*;
+use crate::{
+    common::*,
+    compound_tensor::{CyCxHWTensorUnchecked, DetectionTensor, DetectionTensorUnchecked},
+    size::{GridSize, RatioSize},
+};
 
 pub use flat_index_tensor::*;
 pub use instance_index_tensor::*;

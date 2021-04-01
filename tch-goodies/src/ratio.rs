@@ -1,4 +1,5 @@
 use crate::common::*;
+use num_traits::NumCast;
 
 /// A floating point wrapper that restricts its range from 0 to 1.
 #[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord, Hash)]

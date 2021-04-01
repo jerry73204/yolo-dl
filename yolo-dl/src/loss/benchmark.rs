@@ -1,8 +1,8 @@
 use crate::{
     common::*,
     loss::{inference::YoloInferenceOutput, MatchingOutput},
-    model::MergeDetect2DOutput,
 };
+use tch_goodies::module::MergeDetect2DOutput;
 
 #[derive(Debug, Clone)]
 pub struct YoloBenchmarkInit {

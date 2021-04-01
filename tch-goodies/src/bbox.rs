@@ -5,6 +5,7 @@ use crate::{
     size::Size,
     unit::{GridUnit, PixelUnit, RatioUnit, Unit, Unitless},
 };
+use num_traits::NumCast;
 
 pub use cycxhw::*;
 pub use tlbr::*;

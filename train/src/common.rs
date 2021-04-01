@@ -58,6 +58,7 @@ pub use tch::{
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
+    module::{DetectionInfo, FlatIndex, InstanceIndex, MergeDetect2DOutput},
     CyCxHW, GridCyCxHW, GridLabel, GridSize, PixelCyCxHW, PixelLabel, PixelSize, PixelTLBR, Ratio,
     RatioCyCxHW, RatioLabel, TLBRTensor, TensorExt, TLBR,
 };
@@ -77,7 +78,7 @@ pub use yolo_dl::{
         YoloInferenceInit, YoloInferenceOutput, YoloLoss, YoloLossAuxiliary, YoloLossInit,
         YoloLossOutput,
     },
-    model::{DetectionInfo, FlatIndex, InstanceIndex, MergeDetect2DOutput, YoloModel},
+    model::YoloModel,
     processor::{ColorJitterInit, FileCache, ParallelMosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
 };

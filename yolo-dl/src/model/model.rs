@@ -1,8 +1,9 @@
-use super::module::{
-    Concat2D, ConvBn2DInit, DarkBatchNormConfig, DarkCsp2DInit, DeconvBn2DInit, Detect2DInit,
-    Input, MergeDetect2D, Module, ModuleInput, ModuleOutput, SppCsp2DInit, Sum2D, UpSample2D,
-};
+use super::module::{Input, Module, ModuleInput, ModuleOutput};
 use crate::common::*;
+use tch_goodies::module::{
+    Concat2D, ConvBn2DInit, DarkBatchNormConfig, DarkCsp2DInit, DeconvBn2DInit, Detect2DInit,
+    MergeDetect2D, SppCsp2DInit, Sum2D, UpSample2D,
+};
 
 pub use model_config::graph::{InputKeys, NodeKey};
 pub use yolo_model::*;

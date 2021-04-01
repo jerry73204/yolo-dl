@@ -122,7 +122,7 @@ impl CocoDataset {
                         }
 
                         let [l, t, w, h] = ann.bbox;
-                        let bbox = PixelCyCxHW::from_tlhw(t.into(), l.into(), h.into(), w.into())?;
+                        let bbox = PixelCyCxHW::from_tlhw(t, l, h, w)?;
                         Ok(Some(PixelLabel {
                             cycxhw: bbox,
                             class: class_index,

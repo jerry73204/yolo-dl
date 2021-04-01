@@ -1,4 +1,4 @@
-use super::*;
+use super::{bottleneck::BottleneckInit, conv_block::ConvBlockInit};
 use crate::common::*;
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,6 @@
 use super::nms::{NmsOutput, NonMaxSuppression, NonMaxSuppressionInit};
-use crate::{common::*, model::MergeDetect2DOutput};
+use crate::common::*;
+use tch_goodies::module::MergeDetect2DOutput;
 
 #[derive(Debug)]
 pub struct YoloInferenceInit {

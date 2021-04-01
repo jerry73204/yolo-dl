@@ -8,11 +8,8 @@ use super::{
     misc::{BoxMetric, MatchGrid},
     pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
-use crate::{
-    common::*,
-    model::{FlatIndex, FlatIndexTensor, MergeDetect2DOutput},
-    profiling::Timing,
-};
+use crate::{common::*, profiling::Timing};
+use tch_goodies::module::{FlatIndex, FlatIndexTensor, MergeDetect2DOutput};
 
 pub use yolo_loss::*;
 pub use yolo_loss_init::*;

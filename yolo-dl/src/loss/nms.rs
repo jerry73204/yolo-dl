@@ -1,4 +1,5 @@
-use crate::{common::*, model::MergeDetect2DOutput};
+use crate::common::*;
+use tch_goodies::module::MergeDetect2DOutput;
 
 // it prevents OOM on CUDA.
 const MAX_DETS: usize = 65536;
