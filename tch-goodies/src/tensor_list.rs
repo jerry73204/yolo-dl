@@ -1,82 +1,232 @@
 use crate::common::*;
 
-pub trait TensorList {
-    fn into_owned_tensors(self) -> Vec<Tensor>;
-}
+pub use list::*;
+pub use optional_list::*;
 
-impl TensorList for Vec<Tensor> {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        self
+mod list {
+    use super::*;
+
+    pub const EMPTY_TENSORS: &[Tensor] = &[];
+
+    pub trait TensorList {
+        fn into_tensor_list(self) -> Vec<Tensor>;
+    }
+
+    impl TensorList for Vec<Tensor> {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            self
+        }
+    }
+
+    impl TensorList for Vec<&Tensor> {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self
+                .into_iter()
+                .map(|tensor| tensor.shallow_clone())
+                .collect();
+            tensors
+        }
+    }
+
+    impl TensorList for &Vec<&Tensor> {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self
+                .into_iter()
+                .map(|&tensor| tensor.shallow_clone())
+                .collect();
+            tensors
+        }
+    }
+
+    impl TensorList for &Vec<Tensor> {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self
+                .into_iter()
+                .map(|tensor| tensor.shallow_clone())
+                .collect();
+            tensors
+        }
+    }
+
+    impl TensorList for &[Tensor] {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
+            tensors
+        }
+    }
+
+    impl TensorList for &[&Tensor] {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            tensors
+        }
+    }
+
+    impl<const SIZE: usize> TensorList for &[&Tensor; SIZE] {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            tensors
+        }
+    }
+
+    impl<const SIZE: usize> TensorList for &[Tensor; SIZE] {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
+            tensors
+        }
+    }
+
+    impl<const SIZE: usize> TensorList for [&Tensor; SIZE] {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            tensors
+        }
+    }
+
+    impl<const SIZE: usize> TensorList for [Tensor; SIZE] {
+        fn into_tensor_list(self) -> Vec<Tensor> {
+            Vec::from(self)
+        }
     }
 }
 
-impl TensorList for Vec<&Tensor> {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self
-            .into_iter()
-            .map(|tensor| tensor.shallow_clone())
-            .collect();
-        tensors
-    }
-}
+mod optional_list {
+    use super::*;
 
-impl TensorList for &Vec<&Tensor> {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self
-            .into_iter()
-            .map(|&tensor| tensor.shallow_clone())
-            .collect();
-        tensors
-    }
-}
+    pub const NONE_TENSORS: Option<&[Tensor]> = None;
 
-impl TensorList for &Vec<Tensor> {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self
-            .into_iter()
-            .map(|tensor| tensor.shallow_clone())
-            .collect();
-        tensors
+    pub trait OptionalTensorList {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>>;
     }
-}
 
-impl TensorList for &[Tensor] {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
-        tensors
+    impl OptionalTensorList for Vec<Tensor> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            Some(self)
+        }
     }
-}
 
-impl TensorList for &[&Tensor] {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
-        tensors
+    impl OptionalTensorList for Vec<&Tensor> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self
+                .into_iter()
+                .map(|tensor| tensor.shallow_clone())
+                .collect();
+            Some(tensors)
+        }
     }
-}
 
-impl<const SIZE: usize> TensorList for &[&Tensor; SIZE] {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
-        tensors
+    impl OptionalTensorList for &Vec<&Tensor> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
     }
-}
 
-impl<const SIZE: usize> TensorList for &[Tensor; SIZE] {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
-        tensors
+    impl OptionalTensorList for &Vec<Tensor> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
     }
-}
 
-impl<const SIZE: usize> TensorList for [&Tensor; SIZE] {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
-        tensors
+    impl OptionalTensorList for &[Tensor] {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
     }
-}
 
-impl<const SIZE: usize> TensorList for [Tensor; SIZE] {
-    fn into_owned_tensors(self) -> Vec<Tensor> {
-        Vec::from(self)
+    impl OptionalTensorList for &[&Tensor] {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for &[&Tensor; SIZE] {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for &[Tensor; SIZE] {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for [&Tensor; SIZE] {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
+            Some(tensors)
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for [Tensor; SIZE] {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            Some(Vec::from(self))
+        }
+    }
+
+    impl OptionalTensorList for Option<Vec<Tensor>> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self
+        }
+    }
+
+    impl OptionalTensorList for Option<Vec<&Tensor>> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl OptionalTensorList for Option<&Vec<&Tensor>> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl OptionalTensorList for Option<&Vec<Tensor>> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl OptionalTensorList for Option<&[Tensor]> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl OptionalTensorList for Option<&[&Tensor]> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for Option<&[&Tensor; SIZE]> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for Option<&[Tensor; SIZE]> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for Option<[&Tensor; SIZE]> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
+    }
+
+    impl<const SIZE: usize> OptionalTensorList for Option<[Tensor; SIZE]> {
+        fn into_optional_tensor_list(self) -> Option<Vec<Tensor>> {
+            self.map(|tensors| tensors.into_tensor_list())
+        }
     }
 }
