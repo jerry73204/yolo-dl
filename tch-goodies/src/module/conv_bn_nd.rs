@@ -5,20 +5,20 @@ use super::{
 use crate::{activation::Activation, common::*, tensor::TensorExt};
 
 #[derive(Debug, Clone)]
-pub struct ConvBnNDInit<Param: ConvParam> {
+pub struct ConvBnInit<Param: ConvParam> {
     pub conv: ConvNDInit<Param>,
     pub bn: DarkBatchNormConfig,
     pub bn_first: bool,
     pub activation: Activation,
 }
 
-pub type ConvBn1DInit = ConvBnNDInit<usize>;
-pub type ConvBn2DInit = ConvBnNDInit<[usize; 2]>;
-pub type ConvBn3DInit = ConvBnNDInit<[usize; 3]>;
-pub type ConvBn4DInit = ConvBnNDInit<[usize; 4]>;
-pub type ConvBnNDInitDyn = ConvBnNDInit<Vec<usize>>;
+pub type ConvBnInit1D = ConvBnInit<usize>;
+pub type ConvBnInit2D = ConvBnInit<[usize; 2]>;
+pub type ConvBnInit3D = ConvBnInit<[usize; 3]>;
+pub type ConvBnInit4D = ConvBnInit<[usize; 4]>;
+pub type ConvBnInitDyn = ConvBnInit<Vec<usize>>;
 
-impl ConvBn1DInit {
+impl ConvBnInit1D {
     pub fn new(ksize: usize) -> Self {
         Self {
             conv: Conv1DInit::new(ksize),
@@ -29,7 +29,7 @@ impl ConvBn1DInit {
     }
 }
 
-impl<const DIM: usize> ConvBnNDInit<[usize; DIM]> {
+impl<const DIM: usize> ConvBnInit<[usize; DIM]> {
     pub fn new(ksize: usize) -> Self {
         Self {
             conv: ConvNDInit::<[usize; DIM]>::new(ksize),
@@ -40,7 +40,7 @@ impl<const DIM: usize> ConvBnNDInit<[usize; DIM]> {
     }
 }
 
-impl ConvBnNDInitDyn {
+impl ConvBnInitDyn {
     pub fn new(ndim: usize, ksize: usize) -> Self {
         Self {
             conv: ConvNDInitDyn::new(ndim, ksize),
@@ -51,13 +51,13 @@ impl ConvBnNDInitDyn {
     }
 }
 
-impl<Param: ConvParam> ConvBnNDInit<Param> {
+impl<Param: ConvParam> ConvBnInit<Param> {
     pub fn build<'a>(
         self,
         path: impl Borrow<nn::Path<'a>>,
         in_dim: usize,
         out_dim: usize,
-    ) -> Result<ConvBnND> {
+    ) -> Result<ConvBn> {
         let path = path.borrow();
         let Self {
             conv,
@@ -67,7 +67,7 @@ impl<Param: ConvParam> ConvBnNDInit<Param> {
         } = self;
         let nd = conv.dim()?;
 
-        Ok(ConvBnND {
+        Ok(ConvBn {
             conv: conv.build(path / "conv", in_dim, out_dim)?,
             bn: DarkBatchNorm::new(
                 path / "bn",
@@ -82,14 +82,14 @@ impl<Param: ConvParam> ConvBnNDInit<Param> {
 }
 
 #[derive(Debug)]
-pub struct ConvBnND {
+pub struct ConvBn {
     conv: ConvND,
     bn: DarkBatchNorm,
     bn_first: bool,
     activation: Activation,
 }
 
-impl ConvBnND {
+impl ConvBn {
     pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<Tensor> {
         let Self {
             ref conv,
