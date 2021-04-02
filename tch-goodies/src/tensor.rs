@@ -12,6 +12,8 @@ mod tensor_ext {
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
     pub trait TensorExt {
+        fn has_nan(&self) -> bool;
+
         fn activation(&self, act: Activation) -> Tensor;
 
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor>;
@@ -295,6 +297,10 @@ mod tensor_ext {
     }
 
     impl TensorExt for Tensor {
+        fn has_nan(&self) -> bool {
+            bool::from(self.isnan().any())
+        }
+
         fn activation(&self, act: Activation) -> Tensor {
             use Activation::*;
 
