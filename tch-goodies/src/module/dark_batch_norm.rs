@@ -173,7 +173,7 @@ impl DarkBatchNorm {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, TensorLike)]
 pub struct DarkBatchNormGrad {
     pub ws: Option<Tensor>,
     pub bs: Option<Tensor>,
