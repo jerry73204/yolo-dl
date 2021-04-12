@@ -119,8 +119,18 @@ mod yolo_model {
                                     bias,
                                     activation: act,
                                     batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormInit::default();
-                                        if !bn.affine {
+                                        let config::BatchNorm {
+                                            affine,
+                                            var_min,
+                                            var_max,
+                                            ..
+                                        } = *bn;
+                                        let mut config = DarkBatchNormInit {
+                                            var_min: var_min.map(R64::raw),
+                                            var_max: var_max.map(R64::raw),
+                                            ..Default::default()
+                                        };
+                                        if !affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
                                         }
@@ -165,8 +175,18 @@ mod yolo_model {
                                     bias,
                                     activation: act,
                                     batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormInit::default();
-                                        if !bn.affine {
+                                        let config::BatchNorm {
+                                            affine,
+                                            var_min,
+                                            var_max,
+                                            ..
+                                        } = *bn;
+                                        let mut config = DarkBatchNormInit {
+                                            var_min: var_min.map(R64::raw),
+                                            var_max: var_max.map(R64::raw),
+                                            ..Default::default()
+                                        };
+                                        if !affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
                                         }
