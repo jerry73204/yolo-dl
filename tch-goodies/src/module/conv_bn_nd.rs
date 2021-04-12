@@ -89,10 +89,10 @@ pub struct ConvBn {
 }
 
 impl ConvBn {
-    pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<Tensor> {
+    pub fn forward_t(&self, input: &Tensor, train: bool) -> Result<Tensor> {
         let Self {
             ref conv,
-            ref mut bn,
+            ref bn,
             bn_first,
             activation,
         } = *self;
@@ -117,6 +117,14 @@ impl ConvBn {
             conv: conv.grad(),
             bn: bn.grad(),
         }
+    }
+
+    pub fn clamp_bn_var(&mut self) {
+        self.bn.clamp_bn_var();
+    }
+
+    pub fn denormalize_bn(&mut self) {
+        self.bn.denormalize_bn();
     }
 }
 

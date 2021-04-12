@@ -98,7 +98,7 @@ pub struct SppCsp2D {
 }
 
 impl SppCsp2D {
-    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> Tensor {
+    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
         let SppCsp2D {
             first_conv,
             last_conv,
@@ -127,20 +127,16 @@ impl SppCsp2D {
                     let ceil_mode = false;
                     xs.max_pool2d(&[k, k], &[s, s], &[p, p], &[d, d], ceil_mode)
                 });
-
                 let first = iter.next().unwrap();
-                let spp = iter.fold(first, |acc, xs| acc + xs);
-
-                spp
+                iter.fold(first, |acc, xs| acc + xs)
             };
             let xs = spp_conv_4.forward_t(&spp, train);
-            let xs = spp_conv_5.forward_t(&xs, train);
-            xs
+            spp_conv_5.forward_t(&xs, train)
         };
 
         let merge = Tensor::cat(&[skip, spp], 1);
-        let last = last_conv.forward_t(&merge, train);
-        last
+
+        last_conv.forward_t(&merge, train)
     }
 
     pub fn grad(&self) -> SppCsp2DGrad {
@@ -166,6 +162,52 @@ impl SppCsp2D {
             spp_conv_4: spp_conv_4.grad(),
             spp_conv_5: spp_conv_5.grad(),
         }
+    }
+
+    pub fn clamp_bn_var(&mut self) {
+        let Self {
+            first_conv,
+            last_conv,
+            skip_conv,
+            spp_conv_1,
+            spp_conv_2,
+            spp_conv_3,
+            spp_conv_4,
+            spp_conv_5,
+            ..
+        } = self;
+
+        first_conv.clamp_bn_var();
+        last_conv.clamp_bn_var();
+        skip_conv.clamp_bn_var();
+        spp_conv_1.clamp_bn_var();
+        spp_conv_2.clamp_bn_var();
+        spp_conv_3.clamp_bn_var();
+        spp_conv_4.clamp_bn_var();
+        spp_conv_5.clamp_bn_var();
+    }
+
+    pub fn denormalize_bn(&mut self) {
+        let Self {
+            first_conv,
+            last_conv,
+            skip_conv,
+            spp_conv_1,
+            spp_conv_2,
+            spp_conv_3,
+            spp_conv_4,
+            spp_conv_5,
+            ..
+        } = self;
+
+        first_conv.denormalize_bn();
+        last_conv.denormalize_bn();
+        skip_conv.denormalize_bn();
+        spp_conv_1.denormalize_bn();
+        spp_conv_2.denormalize_bn();
+        spp_conv_3.denormalize_bn();
+        spp_conv_4.denormalize_bn();
+        spp_conv_5.denormalize_bn();
     }
 }
 

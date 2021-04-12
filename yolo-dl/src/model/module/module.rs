@@ -88,6 +88,40 @@ mod module {
 
             Ok(output)
         }
+
+        pub fn clamp_bn_var(&mut self) {
+            match self {
+                Self::Input(_module) => {}
+                Self::ConvBn2D(module) => module.clamp_bn_var(),
+                Self::DeconvBn2D(module) => module.clamp_bn_var(),
+                Self::UpSample2D(_module) => {}
+                Self::Sum2D(_module) => {}
+                Self::Concat2D(_module) => {}
+                Self::DarkCsp2D(module) => module.clamp_bn_var(),
+                Self::SppCsp2D(module) => module.clamp_bn_var(),
+                Self::Detect2D(_module) => {}
+                Self::MergeDetect2D(_module) => {}
+                Self::FnSingle(_module) => {}
+                Self::FnIndexed(_module) => {}
+            }
+        }
+
+        pub fn denormalize_bn(&mut self) {
+            match self {
+                Self::Input(_module) => {}
+                Self::ConvBn2D(module) => module.denormalize_bn(),
+                Self::DeconvBn2D(module) => module.denormalize_bn(),
+                Self::UpSample2D(_module) => {}
+                Self::Sum2D(_module) => {}
+                Self::Concat2D(_module) => {}
+                Self::DarkCsp2D(module) => module.denormalize_bn(),
+                Self::SppCsp2D(module) => module.denormalize_bn(),
+                Self::Detect2D(_module) => {}
+                Self::MergeDetect2D(_module) => {}
+                Self::FnSingle(_module) => {}
+                Self::FnIndexed(_module) => {}
+            }
+        }
     }
 }
 

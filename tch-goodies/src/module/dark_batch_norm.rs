@@ -142,7 +142,7 @@ impl DarkBatchNorm {
         Ok(output)
     }
 
-    pub fn clamp_var(&mut self) {
+    pub fn clamp_bn_var(&mut self) {
         tch::no_grad(|| {
             let Self {
                 ref mut running_var,
@@ -167,7 +167,7 @@ impl DarkBatchNorm {
         });
     }
 
-    pub fn denormalize(&mut self) {
+    pub fn denormalize_bn(&mut self) {
         tch::no_grad(|| {
             let Self {
                 ws, running_var, ..

@@ -691,7 +691,14 @@ fn backward_step(
 
         // optimize
         {
-            let WorkerContext { vs, optimizer, .. } = &mut worker_contexts[0];
+            let WorkerContext {
+                vs,
+                optimizer,
+                model,
+                ..
+            } = &mut worker_contexts[0];
+
+            // copy gradients
             vs.trainable_variables()
                 .into_iter()
                 .zip_eq(mean_gradients)
@@ -699,10 +706,16 @@ fn backward_step(
                     let _ = var.grad().copy_(&grad);
                 });
 
+            // clip gradient
             if let Some(clip_grad) = clip_grad {
                 optimizer.clip_grad_value(clip_grad);
             }
+
+            // optimize
             optimizer.step();
+
+            // clamp batch norm
+            model.clamp_bn_var();
         }
 
         Ok(())

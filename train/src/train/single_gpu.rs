@@ -184,8 +184,10 @@ pub fn single_gpu_training_worker(
                     optimizer.backward_step(&losses.total_loss);
                 }
             }
-
             timing.add_event("backward");
+
+            // clip batch norm
+            model.clamp_bn_var();
 
             // run inference
             let inference = {

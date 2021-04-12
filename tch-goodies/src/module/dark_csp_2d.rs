@@ -90,13 +90,13 @@ pub struct DarkCsp2D {
 }
 
 impl DarkCsp2D {
-    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> Tensor {
+    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
         let Self {
-            ref mut skip_conv,
-            ref mut merge_conv,
-            ref mut before_repeat_conv,
-            ref mut after_repeat_conv,
-            ref mut repeat_convs,
+            ref skip_conv,
+            ref merge_conv,
+            ref before_repeat_conv,
+            ref after_repeat_conv,
+            ref repeat_convs,
             shortcut,
         } = *self;
 
@@ -104,7 +104,7 @@ impl DarkCsp2D {
         let repeat = {
             let xs = before_repeat_conv.forward_t(xs, train);
             let xs = repeat_convs
-                .iter_mut()
+                .iter()
                 .fold(xs, |xs, (first_conv, second_conv)| {
                     let ys = second_conv.forward_t(&first_conv.forward_t(&xs, train), train);
                     if shortcut {
@@ -139,6 +139,46 @@ impl DarkCsp2D {
                 .map(|(first, second)| (first.grad(), second.grad()))
                 .collect(),
         }
+    }
+
+    pub fn clamp_bn_var(&mut self) {
+        let Self {
+            skip_conv,
+            merge_conv,
+            before_repeat_conv,
+            after_repeat_conv,
+            repeat_convs,
+            ..
+        } = self;
+
+        skip_conv.clamp_bn_var();
+        merge_conv.clamp_bn_var();
+        before_repeat_conv.clamp_bn_var();
+        after_repeat_conv.clamp_bn_var();
+        repeat_convs.iter_mut().for_each(|(first, second)| {
+            first.clamp_bn_var();
+            second.clamp_bn_var();
+        });
+    }
+
+    pub fn denormalize_bn(&mut self) {
+        let Self {
+            skip_conv,
+            merge_conv,
+            before_repeat_conv,
+            after_repeat_conv,
+            repeat_convs,
+            ..
+        } = self;
+
+        skip_conv.denormalize_bn();
+        merge_conv.denormalize_bn();
+        before_repeat_conv.denormalize_bn();
+        after_repeat_conv.denormalize_bn();
+        repeat_convs.iter_mut().for_each(|(first, second)| {
+            first.denormalize_bn();
+            second.denormalize_bn();
+        });
     }
 }
 

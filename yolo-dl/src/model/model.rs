@@ -19,52 +19,6 @@ mod yolo_model {
     }
 
     impl YoloModel {
-        /// Run forward pass.
-        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<ModuleOutput> {
-            let Self {
-                ref mut layers,
-                output_key,
-            } = *self;
-            let mut module_outputs: HashMap<NodeKey, ModuleOutput> = HashMap::new();
-            let mut input = Some(input); // it makes sure the input is consumed at most once
-
-            // run the network
-            layers.values_mut().try_for_each(|layer| -> Result<_> {
-                let Layer {
-                    key,
-                    ref mut module,
-                    ref input_keys,
-                } = *layer;
-
-                let module_input: ModuleInput = match input_keys {
-                    InputKeys::None => ModuleInput::None,
-                    InputKeys::PlaceHolder => input.take().unwrap().into(),
-                    InputKeys::Single(src_key) => (&module_outputs[src_key]).try_into()?,
-                    InputKeys::Indexed(src_keys) => {
-                        let inputs: Vec<_> = src_keys
-                            .iter()
-                            .map(|src_key| &module_outputs[src_key])
-                            .collect();
-                        inputs.as_slice().try_into()?
-                    }
-                };
-
-                let module_output = module
-                    .forward_t(module_input, train)
-                    .with_context(|| format!("forward error at node {}", key))?;
-                module_outputs.insert(key, module_output);
-
-                Ok(())
-            })?;
-
-            debug_assert!(input.is_none());
-
-            // extract output
-            let output = module_outputs.remove(&output_key).unwrap();
-
-            Ok(output)
-        }
-
         /// Build a model from a computation graph.
         pub fn from_graph<'p>(
             path: impl Borrow<nn::Path<'p>>,
@@ -323,6 +277,64 @@ mod yolo_model {
             };
 
             Ok(Self { layers, output_key })
+        }
+
+        /// Run forward pass.
+        pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<ModuleOutput> {
+            let Self {
+                ref mut layers,
+                output_key,
+            } = *self;
+            let mut module_outputs: HashMap<NodeKey, ModuleOutput> = HashMap::new();
+            let mut input = Some(input); // it makes sure the input is consumed at most once
+
+            // run the network
+            layers.values_mut().try_for_each(|layer| -> Result<_> {
+                let Layer {
+                    key,
+                    ref mut module,
+                    ref input_keys,
+                } = *layer;
+
+                let module_input: ModuleInput = match input_keys {
+                    InputKeys::None => ModuleInput::None,
+                    InputKeys::PlaceHolder => input.take().unwrap().into(),
+                    InputKeys::Single(src_key) => (&module_outputs[src_key]).try_into()?,
+                    InputKeys::Indexed(src_keys) => {
+                        let inputs: Vec<_> = src_keys
+                            .iter()
+                            .map(|src_key| &module_outputs[src_key])
+                            .collect();
+                        inputs.as_slice().try_into()?
+                    }
+                };
+
+                let module_output = module
+                    .forward_t(module_input, train)
+                    .with_context(|| format!("forward error at node {}", key))?;
+                module_outputs.insert(key, module_output);
+
+                Ok(())
+            })?;
+
+            debug_assert!(input.is_none());
+
+            // extract output
+            let output = module_outputs.remove(&output_key).unwrap();
+
+            Ok(output)
+        }
+
+        pub fn clamp_bn_var(&mut self) {
+            self.layers.values_mut().for_each(|layer| {
+                layer.module.clamp_bn_var();
+            });
+        }
+
+        pub fn denormalize_bn(&mut self) {
+            self.layers.values_mut().for_each(|layer| {
+                layer.module.denormalize_bn();
+            });
         }
     }
 }

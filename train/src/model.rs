@@ -57,4 +57,26 @@ impl Model {
             }
         }
     }
+
+    pub fn clamp_bn_var(&mut self) {
+        match self {
+            Self::Darknet(DarknetModel {}) => {
+                todo!();
+            }
+            Self::NewslabV1(NewslabV1Model { model }) => {
+                model.clamp_bn_var();
+            }
+        }
+    }
+
+    pub fn denormalize_bn(&mut self) {
+        match self {
+            Self::Darknet(DarknetModel {}) => {
+                todo!();
+            }
+            Self::NewslabV1(NewslabV1Model { model }) => {
+                model.denormalize_bn();
+            }
+        }
+    }
 }

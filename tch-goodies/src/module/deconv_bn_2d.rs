@@ -86,21 +86,19 @@ pub struct DeconvBn2D {
 }
 
 impl DeconvBn2D {
-    pub fn forward_t(&mut self, xs: &Tensor, train: bool) -> Tensor {
+    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
         let Self {
             ref deconv,
-            ref mut bn,
+            ref bn,
             activation,
         } = *self;
 
         let xs = xs.apply(deconv).activation(activation);
 
-        let xs = match bn {
+        match bn {
             Some(bn) => bn.forward_t(&xs, train).unwrap(),
             None => xs,
-        };
-
-        xs
+        }
     }
 
     pub fn grad(&self) -> DeconvBn2DGrad {
@@ -116,6 +114,18 @@ impl DeconvBn2D {
                 bs: bs.as_ref().map(Tensor::grad),
             },
             bn: bn.as_ref().map(|bn| bn.grad()),
+        }
+    }
+
+    pub fn clamp_bn_var(&mut self) {
+        if let Some(bn) = &mut self.bn {
+            bn.clamp_bn_var();
+        }
+    }
+
+    pub fn denormalize_bn(&mut self) {
+        if let Some(bn) = &mut self.bn {
+            bn.denormalize_bn();
         }
     }
 }
