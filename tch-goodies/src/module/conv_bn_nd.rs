@@ -121,7 +121,7 @@ impl ConvBn {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, TensorLike)]
 pub struct ConvBnGrad {
     conv: ConvNDGrad,
     bn: DarkBatchNormGrad,
