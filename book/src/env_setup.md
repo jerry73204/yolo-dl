@@ -10,7 +10,7 @@ We suggest the [rustup.rs](https://rustup.rs/) toolchain manager to install Rust
 
 ### PyTorch 1.8.0, torchvision 0.8.1
 
-This is command to install the up-to-date PyTorch and torchvision.
+This command installs the up-to-date PyTorch and torchvision.
 
 ```sh
 pip3 install --user torch torchvision
@@ -21,6 +21,16 @@ If you prefer installing on Conda or on other platforms, visit [pytorch.org](htt
 ### CUDA 10.2
 
 Visit the [NVIDIA CUDA Toolkit Archive](https://developer.nvidia.com/cuda-toolkit-archive) find the installer for your platform.
+
+### OpenCV 4.x
+
+If you are using Ubuntu 20.04, OpenCV 4.2 can be installed from Ubuntu repository.
+
+```sh
+sudo apt install libopencv-dev
+```
+
+Ubuntu 18.04 or earlier version users must build OpenCV manually because official package is outdated. We suggest following the instructions in the [writeup](https://www.pyimagesearch.com/2018/08/15/how-to-install-opencv-4-on-ubuntu/).
 
 ## Environment Variables
 
