@@ -20,7 +20,7 @@ async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", rev = "bfb5425f5ba238dac756a8d79e29e7a76c8120c5", features = ["async"] }
 argh = "0.1.4"
 par-stream = { version = "0.3.1", features = ["runtime_tokio"] }
-futures = "0.3.13"
+futures = "0.3.14"
 rand = "0.8.3"
 percent-encoding = "2.1.0"
 tokio = { version = "1.4.0", features = ["sync"] }
@@ -36,12 +36,12 @@ tch-goodies = { version = "0.1", path = "../tch-goodies" }
 lazy_static = "1.4.0"
 envy = "0.4.2"
 dashmap = "4.0.2"
-slice-of-array = "0.3.0"
+slice-of-array = "0.3.1"
 getset = "0.1.1"
 model-config = { version = "0.1", path = "../model-config" }
 petgraph = "0.5.1"
 derivative = "2.2.0"
-cv-convert = { version = "0.5.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.6.0", default-features = false, features = ["tch", "ndarray"] }
 rusty-perm = "0.2.0"
 ptree = { version = "0.3.2", optional = true }
 strum = { version = "0.20.0", features = ["derive"] }

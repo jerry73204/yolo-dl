@@ -27,9 +27,9 @@ pub async fn main() -> Result<()> {
         filter
     };
 
-    let (tracer, _uninstall) = opentelemetry_jaeger::new_pipeline()
+    let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("train")
-        .install()?;
+        .install_simple()?;
     let otel_layer = tracing_opentelemetry::OpenTelemetryLayer::new(tracer);
 
     tracing_subscriber::registry()
