@@ -1,5 +1,5 @@
 use super::{
-    conv_bn_2d::{ConvBn2D, ConvBn2DInit},
+    conv_bn_2d::{ConvBn2D, ConvBn2DGrad, ConvBn2DInit},
     dark_batch_norm::DarkBatchNormConfig,
 };
 use crate::common::*;
@@ -142,4 +142,41 @@ impl SppCsp2D {
         let last = last_conv.forward_t(&merge, train);
         last
     }
+
+    pub fn grad(&self) -> SppCsp2DGrad {
+        let Self {
+            first_conv,
+            last_conv,
+            skip_conv,
+            spp_conv_1,
+            spp_conv_2,
+            spp_conv_3,
+            spp_conv_4,
+            spp_conv_5,
+            ..
+        } = self;
+
+        SppCsp2DGrad {
+            first_conv: first_conv.grad(),
+            last_conv: last_conv.grad(),
+            skip_conv: skip_conv.grad(),
+            spp_conv_1: spp_conv_1.grad(),
+            spp_conv_2: spp_conv_2.grad(),
+            spp_conv_3: spp_conv_3.grad(),
+            spp_conv_4: spp_conv_4.grad(),
+            spp_conv_5: spp_conv_5.grad(),
+        }
+    }
+}
+
+#[derive(Debug, TensorLike)]
+pub struct SppCsp2DGrad {
+    pub first_conv: ConvBn2DGrad,
+    pub last_conv: ConvBn2DGrad,
+    pub skip_conv: ConvBn2DGrad,
+    pub spp_conv_1: ConvBn2DGrad,
+    pub spp_conv_2: ConvBn2DGrad,
+    pub spp_conv_3: ConvBn2DGrad,
+    pub spp_conv_4: ConvBn2DGrad,
+    pub spp_conv_5: ConvBn2DGrad,
 }

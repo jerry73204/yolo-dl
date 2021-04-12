@@ -1,5 +1,5 @@
 use super::{
-    conv_bn_2d::{ConvBn2D, ConvBn2DInit},
+    conv_bn_2d::{ConvBn2D, ConvBn2DGrad, ConvBn2DInit},
     dark_batch_norm::DarkBatchNormConfig,
 };
 use crate::common::*;
@@ -113,11 +113,40 @@ impl DarkCsp2D {
                         ys
                     }
                 });
-            let xs = after_repeat_conv.forward_t(&xs, train);
-            xs
+            after_repeat_conv.forward_t(&xs, train)
         };
         let merge = Tensor::cat(&[skip, repeat], 1);
-        let output = merge_conv.forward_t(&merge, train);
-        output
+        merge_conv.forward_t(&merge, train)
     }
+
+    pub fn grad(&self) -> DarkCsp2DGrad {
+        let Self {
+            skip_conv,
+            merge_conv,
+            before_repeat_conv,
+            after_repeat_conv,
+            repeat_convs,
+            ..
+        } = self;
+
+        DarkCsp2DGrad {
+            skip_conv: skip_conv.grad(),
+            merge_conv: merge_conv.grad(),
+            before_repeat_conv: before_repeat_conv.grad(),
+            after_repeat_conv: after_repeat_conv.grad(),
+            repeat_convs: repeat_convs
+                .iter()
+                .map(|(first, second)| (first.grad(), second.grad()))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, TensorLike)]
+pub struct DarkCsp2DGrad {
+    pub skip_conv: ConvBn2DGrad,
+    pub merge_conv: ConvBn2DGrad,
+    pub before_repeat_conv: ConvBn2DGrad,
+    pub after_repeat_conv: ConvBn2DGrad,
+    pub repeat_convs: Vec<(ConvBn2DGrad, ConvBn2DGrad)>,
 }

@@ -2,6 +2,7 @@ use crate::common::*;
 
 pub use conv_init::*;
 pub use conv_nd::*;
+pub use conv_nd_grad::*;
 pub use conv_param::*;
 
 mod conv_param {
@@ -301,5 +302,24 @@ mod conv_nd {
                 groups,
             )
         }
+
+        pub fn grad(&self) -> ConvNDGrad {
+            let Self { weight, bias, .. } = self;
+
+            ConvNDGrad {
+                weight: weight.grad(),
+                bias: bias.as_ref().map(Tensor::grad),
+            }
+        }
+    }
+}
+
+mod conv_nd_grad {
+    use super::*;
+
+    #[derive(Debug, TensorLike)]
+    pub struct ConvNDGrad {
+        pub weight: Tensor,
+        pub bias: Option<Tensor>,
     }
 }

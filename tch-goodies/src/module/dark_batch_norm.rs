@@ -162,4 +162,19 @@ impl DarkBatchNorm {
 
         Ok(output)
     }
+
+    pub fn grad(&self) -> DarkBatchNormGrad {
+        let Self { ws, bs, .. } = self;
+
+        DarkBatchNormGrad {
+            ws: ws.as_ref().map(Tensor::grad),
+            bs: bs.as_ref().map(Tensor::grad),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DarkBatchNormGrad {
+    pub ws: Option<Tensor>,
+    pub bs: Option<Tensor>,
 }

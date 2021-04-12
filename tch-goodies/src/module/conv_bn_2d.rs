@@ -1,4 +1,4 @@
-use super::dark_batch_norm::{DarkBatchNorm, DarkBatchNormConfig};
+use super::dark_batch_norm::{DarkBatchNorm, DarkBatchNormConfig, DarkBatchNormGrad};
 use crate::{activation::Activation, common::*, tensor::TensorExt};
 
 #[derive(Debug, Clone)]
@@ -91,11 +91,37 @@ impl ConvBn2D {
 
         let xs = xs.apply(conv).activation(activation);
 
-        let xs = match bn {
+        match bn {
             Some(bn) => bn.forward_t(&xs, train).unwrap(),
             None => xs,
-        };
-
-        xs
+        }
     }
+
+    pub fn grad(&self) -> ConvBn2DGrad {
+        let Self {
+            conv: nn::Conv2D { ws, bs, .. },
+            bn,
+            ..
+        } = self;
+
+        ConvBn2DGrad {
+            conv: Conv2DGrad {
+                ws: ws.grad(),
+                bs: bs.as_ref().map(Tensor::grad),
+            },
+            bn: bn.as_ref().map(|bn| bn.grad()),
+        }
+    }
+}
+
+#[derive(Debug, TensorLike)]
+pub struct Conv2DGrad {
+    pub ws: Tensor,
+    pub bs: Option<Tensor>,
+}
+
+#[derive(Debug, TensorLike)]
+pub struct ConvBn2DGrad {
+    pub conv: Conv2DGrad,
+    pub bn: Option<DarkBatchNormGrad>,
 }

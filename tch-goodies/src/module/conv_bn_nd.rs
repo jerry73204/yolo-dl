@@ -1,6 +1,6 @@
 use super::{
-    conv_nd::{Conv1DInit, ConvND, ConvNDInit, ConvNDInitDyn, ConvParam},
-    dark_batch_norm::{DarkBatchNorm, DarkBatchNormConfig},
+    conv_nd::{Conv1DInit, ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn, ConvParam},
+    dark_batch_norm::{DarkBatchNorm, DarkBatchNormConfig, DarkBatchNormGrad},
 };
 use crate::{activation::Activation, common::*, tensor::TensorExt};
 
@@ -101,15 +101,28 @@ impl ConvBn {
         let output = if bn_first {
             let xs = bn.forward_t(input, train)?;
             let xs = conv.forward(&xs);
-            let xs = xs.activation(activation);
-            xs
+            xs.activation(activation)
         } else {
             let xs = conv.forward(input);
             let xs = xs.activation(activation);
-            let xs = bn.forward_t(&xs, train)?;
-            xs
+            bn.forward_t(&xs, train)?
         };
 
         Ok(output)
     }
+
+    pub fn grad(&self) -> ConvBnGrad {
+        let Self { conv, bn, .. } = self;
+
+        ConvBnGrad {
+            conv: conv.grad(),
+            bn: bn.grad(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ConvBnGrad {
+    conv: ConvNDGrad,
+    bn: DarkBatchNormGrad,
 }
