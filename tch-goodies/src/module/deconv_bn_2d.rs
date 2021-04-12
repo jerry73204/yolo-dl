@@ -1,4 +1,4 @@
-use super::dark_batch_norm::{DarkBatchNorm, DarkBatchNormConfig, DarkBatchNormGrad};
+use super::dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit};
 use crate::{activation::Activation, common::*, tensor::TensorExt};
 
 #[derive(Debug, Clone)]
@@ -13,7 +13,7 @@ pub struct DeconvBn2DInit {
     pub g: usize,
     pub bias: bool,
     pub activation: Activation,
-    pub batch_norm: Option<DarkBatchNormConfig>,
+    pub batch_norm: Option<DarkBatchNormInit>,
 }
 
 impl DeconvBn2DInit {
@@ -68,7 +68,7 @@ impl DeconvBn2DInit {
                 ..Default::default()
             },
         );
-        let bn = batch_norm.map(|config| DarkBatchNorm::new_2d(path / "bn", out_c as i64, config));
+        let bn = batch_norm.map(|init| init.build(path / "bn", 2, out_c as i64));
 
         DeconvBn2D {
             deconv,

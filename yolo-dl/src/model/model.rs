@@ -1,7 +1,7 @@
 use super::module::{Input, Module, ModuleInput, ModuleOutput};
 use crate::common::*;
 use tch_goodies::module::{
-    Concat2D, ConvBn2DInit, DarkBatchNormConfig, DarkCsp2DInit, DeconvBn2DInit, Detect2DInit,
+    Concat2D, ConvBn2DInit, DarkBatchNormInit, DarkCsp2DInit, DeconvBn2DInit, Detect2DInit,
     MergeDetect2D, SppCsp2DInit, Sum2D, UpSample2D,
 };
 
@@ -119,7 +119,7 @@ mod yolo_model {
                                     bias,
                                     activation: act,
                                     batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormConfig::default();
+                                        let mut config = DarkBatchNormInit::default();
                                         if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
@@ -165,7 +165,7 @@ mod yolo_model {
                                     bias,
                                     activation: act,
                                     batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormConfig::default();
+                                        let mut config = DarkBatchNormInit::default();
                                         if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
@@ -204,7 +204,7 @@ mod yolo_model {
                                     shortcut,
                                     c_mul,
                                     batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormConfig::default();
+                                        let mut config = DarkBatchNormInit::default();
                                         if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;
@@ -238,7 +238,7 @@ mod yolo_model {
                                     k: k.to_owned(),
                                     c_mul,
                                     batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormConfig::default();
+                                        let mut config = DarkBatchNormInit::default();
                                         if !bn.affine {
                                             config.ws_init = None;
                                             config.bs_init = None;

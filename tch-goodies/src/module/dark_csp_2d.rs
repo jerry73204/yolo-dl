@@ -1,6 +1,6 @@
 use super::{
     conv_bn_2d::{ConvBn2D, ConvBn2DGrad, ConvBn2DInit},
-    dark_batch_norm::DarkBatchNormConfig,
+    dark_batch_norm::DarkBatchNormInit,
 };
 use crate::common::*;
 
@@ -11,7 +11,7 @@ pub struct DarkCsp2DInit {
     pub repeat: usize,
     pub shortcut: bool,
     pub c_mul: R64,
-    pub batch_norm: Option<DarkBatchNormConfig>,
+    pub batch_norm: Option<DarkBatchNormInit>,
 }
 
 impl DarkCsp2DInit {

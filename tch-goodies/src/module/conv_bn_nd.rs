@@ -1,13 +1,13 @@
 use super::{
     conv_nd::{Conv1DInit, ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn, ConvParam},
-    dark_batch_norm::{DarkBatchNorm, DarkBatchNormConfig, DarkBatchNormGrad},
+    dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
 use crate::{activation::Activation, common::*, tensor::TensorExt};
 
 #[derive(Debug, Clone)]
 pub struct ConvBnInit<Param: ConvParam> {
     pub conv: ConvNDInit<Param>,
-    pub bn: DarkBatchNormConfig,
+    pub bn: DarkBatchNormInit,
     pub bn_first: bool,
     pub activation: Activation,
 }
@@ -69,11 +69,10 @@ impl<Param: ConvParam> ConvBnInit<Param> {
 
         Ok(ConvBn {
             conv: conv.build(path / "conv", in_dim, out_dim)?,
-            bn: DarkBatchNorm::new(
+            bn: bn.build(
                 path / "bn",
                 nd,
                 if bn_first { in_dim } else { out_dim } as i64,
-                bn,
             ),
             bn_first,
             activation,

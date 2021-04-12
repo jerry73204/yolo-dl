@@ -4,14 +4,14 @@ use crate::common::*;
 static SMALL_SCALING_WARN: Once = Once::new();
 
 #[derive(Debug, Clone)]
-pub struct DarkBatchNormConfig {
+pub struct DarkBatchNormInit {
     pub cudnn_enabled: bool,
     pub eps: R64,
     pub momentum: R64,
     pub ws_init: Option<nn::Init>,
     pub bs_init: Option<nn::Init>,
-    pub var_min: Option<R64>,
-    pub var_max: Option<R64>,
+    pub var_min: Option<f64>,
+    pub var_max: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ pub struct DarkBatchNorm {
     var_max: Option<f64>,
 }
 
-impl Default for DarkBatchNormConfig {
+impl Default for DarkBatchNormInit {
     fn default() -> Self {
         Self {
             cudnn_enabled: true,
@@ -42,15 +42,15 @@ impl Default for DarkBatchNormConfig {
     }
 }
 
-impl DarkBatchNorm {
-    pub fn new<'a>(
+impl DarkBatchNormInit {
+    pub fn build<'a>(
+        self,
         path: impl Borrow<nn::Path<'a>>,
         nd: usize,
         out_dim: i64,
-        config: DarkBatchNormConfig,
-    ) -> Self {
+    ) -> DarkBatchNorm {
         let path = path.borrow();
-        let DarkBatchNormConfig {
+        let Self {
             cudnn_enabled,
             eps,
             momentum,
@@ -58,12 +58,12 @@ impl DarkBatchNorm {
             bs_init,
             var_min,
             var_max,
-        } = config;
+        } = self;
 
         let ws = ws_init.map(|init| path.var("weight", &[out_dim], init));
         let bs = bs_init.map(|init| path.var("bias", &[out_dim], init));
 
-        Self {
+        DarkBatchNorm {
             running_mean: path.zeros_no_train("running_mean", &[out_dim]),
             running_var: path.ones_no_train("running_var", &[out_dim]),
             ws,
@@ -72,31 +72,24 @@ impl DarkBatchNorm {
             cudnn_enabled,
             eps: eps.raw(),
             momentum: momentum.raw(),
-            var_min: var_min.map(|min| min.raw()),
-            var_max: var_max.map(|max| max.raw()),
+            var_min,
+            var_max,
         }
     }
+}
 
-    pub fn new_2d<'a>(
-        path: impl Borrow<nn::Path<'a>>,
-        out_dim: i64,
-        config: DarkBatchNormConfig,
-    ) -> Self {
-        Self::new(path, 2, out_dim, config)
-    }
-
-    pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<Tensor> {
+impl DarkBatchNorm {
+    pub fn forward_t(&self, input: &Tensor, train: bool) -> Result<Tensor> {
         let Self {
             ref running_mean,
-            ref mut running_var,
+            ref running_var,
             ref ws,
             ref bs,
             nd,
             momentum,
             eps,
             cudnn_enabled,
-            var_min,
-            var_max,
+            ..
         } = *self;
 
         ensure!(
@@ -117,20 +110,6 @@ impl DarkBatchNorm {
             eps,
             cudnn_enabled,
         );
-
-        // clip running_var
-        match (var_min, var_max) {
-            (Some(min), Some(max)) => {
-                let _ = running_var.clamp_(min, max);
-            }
-            (None, Some(max)) => {
-                let _ = running_var.clamp_max_(max);
-            }
-            (Some(min), None) => {
-                let _ = running_var.clamp_min_(min);
-            }
-            (None, None) => {}
-        }
 
         #[cfg(debug_assertions)]
         {
@@ -161,6 +140,44 @@ impl DarkBatchNorm {
         }
 
         Ok(output)
+    }
+
+    pub fn clamp_var(&mut self) {
+        tch::no_grad(|| {
+            let Self {
+                ref mut running_var,
+                var_min,
+                var_max,
+                ..
+            } = *self;
+
+            // clip running_var
+            match (var_min, var_max) {
+                (Some(min), Some(max)) => {
+                    let _ = running_var.clamp_(min, max);
+                }
+                (None, Some(max)) => {
+                    let _ = running_var.clamp_max_(max);
+                }
+                (Some(min), None) => {
+                    let _ = running_var.clamp_min_(min);
+                }
+                (None, None) => {}
+            }
+        });
+    }
+
+    pub fn denormalize(&mut self) {
+        tch::no_grad(|| {
+            let Self {
+                ws, running_var, ..
+            } = self;
+
+            if let Some(ws) = ws {
+                ws.copy_(&(&*ws / &*running_var));
+                let _ = running_var.fill_(1.0);
+            }
+        });
     }
 
     pub fn grad(&self) -> DarkBatchNormGrad {
