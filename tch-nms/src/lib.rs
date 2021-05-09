@@ -2,6 +2,7 @@ use libc::{c_char, c_void};
 use static_assertions::const_assert_eq;
 use std::{ffi::CStr, mem, ptr};
 use tch::{Device, TchError, Tensor};
+use torch_sys::C_tensor;
 
 const_assert_eq!(mem::size_of::<Tensor>(), mem::size_of::<*mut c_void>());
 
@@ -17,10 +18,10 @@ macro_rules! unsafe_torch_err {
 extern "C" {
     /// The raw FFI interface to the CUDA implementation.
     pub fn nms_cpu_ffi(
-        keep: *mut *mut c_void,
-        dets: *mut c_void,
-        scores: *mut c_void,
-        groups: *mut c_void,
+        keep: *mut *mut C_tensor,
+        dets: *const C_tensor,
+        scores: *const C_tensor,
+        groups: *const C_tensor,
         iou_threshold: f64,
     );
 
@@ -31,10 +32,10 @@ extern "C" {
 extern "C" {
     /// The raw FFI interface to the CUDA implementation.
     pub fn nms_cuda_ffi(
-        keep: *mut *mut c_void,
-        dets: *mut c_void,
-        scores: *mut c_void,
-        groups: *mut c_void,
+        keep: *mut *mut C_tensor,
+        dets: *const C_tensor,
+        scores: *const C_tensor,
+        groups: *const C_tensor,
         iou_threshold: f64,
     );
 }
@@ -72,13 +73,12 @@ pub fn nms_by_scores_cuda(
     groups: &Tensor,
     iou_threshold: f64,
 ) -> Result<Tensor, TchError> {
-    // workaround to get the internal pointers
-    let dets: *mut c_void = unsafe { mem::transmute(dets.shallow_clone()) };
-    let scores: *mut c_void = unsafe { mem::transmute(scores.shallow_clone()) };
-    let groups: *mut c_void = unsafe { mem::transmute(groups.shallow_clone()) };
+    let dets = dets.as_ptr();
+    let scores = scores.as_ptr();
+    let groups = groups.as_ptr();
 
     // create uninitialized output tensors
-    let mut keep: *mut c_void = ptr::null_mut();
+    let mut keep: *mut C_tensor = ptr::null_mut();
 
     unsafe_torch_err!(nms_cuda_ffi(
         &mut keep as *mut _,
@@ -89,7 +89,7 @@ pub fn nms_by_scores_cuda(
     ));
 
     unsafe {
-        let keep: Tensor = mem::transmute(keep);
+        let keep = Tensor::from_ptr(keep);
         Ok(keep)
     }
 }
@@ -103,13 +103,12 @@ pub fn nms_by_scores_cpu(
     groups: &Tensor,
     iou_threshold: f64,
 ) -> Result<Tensor, TchError> {
-    // workaround to get the internal pointers
-    let dets: *mut c_void = unsafe { mem::transmute(dets.shallow_clone()) };
-    let scores: *mut c_void = unsafe { mem::transmute(scores.shallow_clone()) };
-    let groups: *mut c_void = unsafe { mem::transmute(groups.shallow_clone()) };
+    let dets = dets.as_ptr();
+    let scores = scores.as_ptr();
+    let groups = groups.as_ptr();
 
     // create uninitialized output tensors
-    let mut keep: *mut c_void = ptr::null_mut();
+    let mut keep: *mut C_tensor = ptr::null_mut();
 
     unsafe_torch_err!(nms_cpu_ffi(
         &mut keep as *mut _,
@@ -120,7 +119,7 @@ pub fn nms_by_scores_cpu(
     ));
 
     unsafe {
-        let keep: Tensor = mem::transmute(keep);
+        let keep = Tensor::from_ptr(keep);
         Ok(keep)
     }
 }
