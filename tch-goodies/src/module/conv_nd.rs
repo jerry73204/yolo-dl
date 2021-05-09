@@ -1,7 +1,7 @@
 use crate::common::*;
 
 pub use conv_init::*;
-pub use conv_nd::*;
+pub use conv_nd_::*;
 pub use conv_nd_grad::*;
 pub use conv_param::*;
 
@@ -248,7 +248,7 @@ mod conv_init {
     }
 }
 
-mod conv_nd {
+mod conv_nd_ {
     use super::*;
 
     #[derive(Debug)]

@@ -132,10 +132,10 @@ impl TryFrom<DenseDetectionInit> for DenseDetection {
 
         Ok(Self {
             batch_size,
-            feature_size,
-            anchors,
             num_classes,
             device,
+            anchors,
+            feature_size,
             bbox_cy,
             bbox_cx,
             bbox_h,

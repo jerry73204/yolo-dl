@@ -141,7 +141,7 @@ impl TryFrom<Darknet> for Items {
                         Layer::UpSample(layer) => Item::UpSample(layer),
                         Layer::BatchNorm(layer) => Item::BatchNorm(layer),
                         Layer::Dropout(layer) => Item::Dropout(layer),
-                        Layer::Softmax(layer) => Item::Softmax(layer.try_into()?),
+                        Layer::Softmax(layer) => Item::Softmax(layer),
                         Layer::Cost(layer) => Item::Cost(layer),
                         Layer::Crop(layer) => Item::Crop(layer),
                         Layer::AvgPool(layer) => Item::AvgPool(layer),
@@ -213,6 +213,7 @@ impl TryFrom<Darknet> for Items {
                             Item::Yolo(RawYolo {
                                 classes,
                                 num,
+                                mask,
                                 max_boxes,
                                 max_delta,
                                 counters_per_class,
@@ -242,7 +243,6 @@ impl TryFrom<Darknet> for Items {
                                 track_ciou_norm,
                                 embedding_layer,
                                 map,
-                                mask,
                                 anchors,
                                 common,
                             })
@@ -307,8 +307,9 @@ impl TryFrom<Darknet> for Items {
 
                             Item::GaussianYolo(RawGaussianYolo {
                                 classes,
-                                num,
                                 max_boxes,
+                                num,
+                                mask,
                                 max_delta,
                                 counters_per_class,
                                 label_smooth_eps,
@@ -331,7 +332,6 @@ impl TryFrom<Darknet> for Items {
                                 iou_thresh,
                                 random,
                                 map,
-                                mask,
                                 anchors,
                                 common,
                             })

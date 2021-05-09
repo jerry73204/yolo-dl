@@ -453,8 +453,8 @@ mod tensor_ext {
             color: &Tensor,
         ) -> Result<Tensor> {
             tch::no_grad(|| -> Result<_> {
-                match self.size().as_slice() {
-                    &[_bsize, n_channels, _height, _width] => {
+                match *self.size().as_slice() {
+                    [_bsize, n_channels, _height, _width] => {
                         ensure!(
                             color.size1()? == n_channels,
                             "the number of channels of input and color tensors do not match"
@@ -464,7 +464,7 @@ mod tensor_ext {
                             color.f_view([1, n_channels, 1, 1])?.f_expand_as(&rect)?;
                         rect.f_copy_(&expanded_color)?;
                     }
-                    &[n_channels, _height, _width] => {
+                    [n_channels, _height, _width] => {
                         ensure!(
                             color.size1()? == n_channels,
                             "the number of channels of input and color tensors do not match"
@@ -494,9 +494,9 @@ mod tensor_ext {
             tch::no_grad(|| -> Result<_> {
                 ensure!(t <= b && l <= r, "invalid tlbr parameters");
 
-                let (n_channels, height, width) = match self.size().as_slice() {
-                    &[_b, c, h, w] => (c, h, w),
-                    &[c, h, w] => (c, h, w),
+                let (n_channels, height, width) = match *self.size().as_slice() {
+                    [_b, c, h, w] => (c, h, w),
+                    [c, h, w] => (c, h, w),
                     _ => bail!("invalid shape: expect three or four dimensions"),
                 };
                 ensure!(
@@ -749,9 +749,9 @@ mod tensor_ext {
             ensure!(left < right, "invalid range");
             ensure!(top < bottom, "invalid range");
 
-            let [height, width] = match self.size().as_slice() {
-                &[_c, h, w] => [h, w],
-                &[_b, _c, h, w] => [h, w],
+            let [height, width] = match *self.size().as_slice() {
+                [_c, h, w] => [h, w],
+                [_b, _c, h, w] => [h, w],
                 _ => bail!("input tensor must be either 3 or 4 dimensional"),
             };
             let height = height as f64;
@@ -1157,59 +1157,59 @@ mod into_index_list {
     use super::*;
 
     pub trait IntoTensorIndex {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor>;
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor>;
     }
 
     impl IntoTensorIndex for Tensor {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             Some(self.to_device(device))
         }
     }
 
     impl IntoTensorIndex for &Tensor {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             Some((*self).to_device(device))
         }
     }
 
     impl IntoTensorIndex for Option<Tensor> {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             self.as_ref().map(|tensor| tensor.to_device(device))
         }
     }
 
     impl IntoTensorIndex for Option<&Tensor> {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             self.map(|tensor| tensor.to_device(device))
         }
     }
     impl IntoTensorIndex for &Option<Tensor> {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             self.as_ref().map(|tensor| tensor.to_device(device))
         }
     }
     impl IntoTensorIndex for &Option<&Tensor> {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             self.map(|tensor| tensor.to_device(device))
         }
     }
     impl IntoTensorIndex for &[i64] {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             Some(Tensor::of_slice(self).to_device(device))
         }
     }
     impl IntoTensorIndex for Vec<i64> {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             Some(Tensor::of_slice(self.as_slice()).to_device(device))
         }
     }
     impl<const LEN: usize> IntoTensorIndex for [i64; LEN] {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             Some(Tensor::of_slice(self.as_ref()).to_device(device))
         }
     }
     impl<const LEN: usize> IntoTensorIndex for &[i64; LEN] {
-        fn into_tensor_index(&self, device: Device) -> Option<Tensor> {
+        fn to_tensor_index(&self, device: Device) -> Option<Tensor> {
             Some(Tensor::of_slice(self.as_ref()).to_device(device))
         }
     }
@@ -1225,7 +1225,7 @@ mod into_index_list {
     {
         fn into_index_list(self, device: Device) -> Vec<Option<Tensor>> {
             self.iter()
-                .map(|index| index.into_tensor_index(device))
+                .map(|index| index.to_tensor_index(device))
                 .collect()
         }
     }
@@ -1237,7 +1237,7 @@ mod into_index_list {
     {
         fn into_index_list(self, device: Device) -> Vec<Option<Tensor>> {
             self.into_iter()
-                .map(|index| index.into_tensor_index(device))
+                .map(|index| index.to_tensor_index(device))
                 .collect()
         }
     }
@@ -1251,7 +1251,7 @@ mod into_index_list {
             {
                 fn into_index_list(self, device: Device) -> Vec<Option<Tensor>> {
                     let ($($input_arg,)*) = self;
-                    [ $( <$input_ty as IntoTensorIndex>::into_tensor_index(& $input_arg, device) ),* ]
+                    [ $( <$input_ty as IntoTensorIndex>::to_tensor_index(& $input_arg, device) ),* ]
                         .into_index_list(device)
                 }
             }

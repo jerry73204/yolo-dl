@@ -523,7 +523,7 @@ impl From<Net> for RawNet {
             ),
         };
 
-        let net = RawNet {
+        RawNet {
             max_batches,
             batch,
             learning_rate,
@@ -583,8 +583,6 @@ impl From<Net> for RawNet {
             scales,
             seq_scales,
             gamma,
-        };
-
-        net
+        }
     }
 }

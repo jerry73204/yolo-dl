@@ -136,9 +136,9 @@ impl Detect2D {
 
         Ok(Detect2DOutput {
             batch_size,
-            num_classes,
             feature_size,
-            anchors: anchors.to_owned(),
+            num_classes,
+            anchors,
             cy,
             cx,
             h,

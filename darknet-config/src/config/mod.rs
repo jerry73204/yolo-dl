@@ -456,7 +456,7 @@ mod serde_ {
         {
             let text = String::deserialize(deserializer)?;
             let layers_vec: Vec<_> = text
-                .split(",")
+                .split(',')
                 .map(|token| -> Result<_, String> {
                     let index: isize = token
                         .trim()
@@ -498,7 +498,7 @@ mod serde_ {
         {
             let text = String::deserialize(deserializer)?;
             let steps_vec: Vec<u64> = text
-                .split(",")
+                .split(',')
                 .map(|token| {
                     token
                         .trim()
@@ -537,7 +537,7 @@ mod serde_ {
             let text = <Option<String>>::deserialize(deserializer)?;
             let steps: Option<Vec<u64>> = text
                 .map(|text| -> Result<_, String> {
-                    let steps: Vec<u64> = text.split(",")
+                    let steps: Vec<u64> = text.split(',')
                         .enumerate()
                         .map(|(index, token)| {
                             let step:i64  = token
@@ -617,7 +617,7 @@ mod serde_ {
             let text = <Option<String>>::deserialize(deserializer)?;
             let steps: Option<Vec<u64>> = text
                 .map(|text| {
-                    text.split(",")
+                    text.split(',')
                         .map(|token| {
                             token
                                 .trim()
@@ -655,7 +655,7 @@ mod serde_ {
                     text.chars()
                         .filter(|c| !c.is_whitespace())
                         .collect::<String>()
-                        .split(",")
+                        .split(',')
                         .map(|token| {
                             let value: f64 = token.parse().map_err(|err| {
                                 D::Error::custom(format!("failed to parse steps: {:?}", err))

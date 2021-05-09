@@ -12,7 +12,7 @@ impl Darknet {
     where
         P: AsRef<Path>,
     {
-        Ok(Self::from_str(&fs::read_to_string(config_file)?)?)
+        Self::from_str(&fs::read_to_string(config_file)?)
     }
 
     pub fn to_string(&self) -> Result<String> {

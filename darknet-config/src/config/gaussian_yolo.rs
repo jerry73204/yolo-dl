@@ -1,7 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Derivative, Serialize, Deserialize)]
 #[serde(try_from = "RawGaussianYolo")]
 pub struct GaussianYolo {
     pub classes: u64,
@@ -74,7 +73,7 @@ impl TryFrom<RawGaussianYolo> for GaussianYolo {
             common,
         } = from;
 
-        let mask = mask.unwrap_or_else(|| IndexSet::new());
+        let mask = mask.unwrap_or_else(IndexSet::new);
         let anchors = match (num, anchors) {
             (0, None) => vec![],
             (_, None) => bail!("num and length of anchors mismatch"),
@@ -83,18 +82,11 @@ impl TryFrom<RawGaussianYolo> for GaussianYolo {
                     anchors.len() == num as usize,
                     "num and length of anchors mismatch"
                 );
-                let anchors: Vec<_> = mask
+                let anchors: Option<Vec<_>> = mask
                     .into_iter()
-                    .map(|index| -> Result<_> {
-                        Ok(anchors
-                            .get(index as usize)
-                            .ok_or_else(|| {
-                                format_err!("mask index exceeds total number of anchors")
-                            })?
-                            .clone())
-                    })
-                    .try_collect()?;
-                anchors
+                    .map(|index| anchors.get(index as usize).copied())
+                    .collect();
+                anchors.ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?
             }
         };
 
@@ -111,11 +103,8 @@ impl TryFrom<RawGaussianYolo> for GaussianYolo {
             obj_normalizer,
             cls_normalizer,
             delta_normalizer,
-            iou_loss,
             iou_thresh_kind,
             beta_nms,
-            nms_kind,
-            yolo_point,
             jitter,
             resize,
             ignore_thresh,
@@ -124,6 +113,9 @@ impl TryFrom<RawGaussianYolo> for GaussianYolo {
             random,
             map,
             anchors,
+            yolo_point,
+            iou_loss,
+            nms_kind,
             common,
         })
     }

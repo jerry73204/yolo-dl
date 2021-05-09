@@ -4,12 +4,12 @@ use crate::{
     utils::DisplayAsDebug,
 };
 
-pub use graph::*;
+pub use graph_::*;
 pub use node::*;
 pub use node_key::*;
 pub use shape::*;
 
-mod graph {
+mod graph_ {
     use super::*;
 
     #[derive(Debug, Clone)]
@@ -126,11 +126,9 @@ mod graph {
                     graph
                 };
 
-                let sorted_node_keys = petgraph::algo::toposort(&graph, None).map_err(|cycle| {
+                petgraph::algo::toposort(&graph, None).map_err(|cycle| {
                     format_err!("cycle detected at layer index {:?}", cycle.node_id())
-                })?;
-
-                sorted_node_keys
+                })?
             };
 
             let layer_configs_map: IndexMap<NodeKey, _> = sorted_node_keys
@@ -346,7 +344,7 @@ mod graph {
                                 let (input_shape, output_shape) = shapes_map.remove(&key).unwrap();
                                 let layer_config = layer_configs_map.remove(&key).unwrap().clone();
 
-                                let node = match layer_config {
+                                match layer_config {
                                     config::Layer::Connected(conf) => {
                                         let input_shape = input_shape.single_flat().unwrap();
                                         let output_shape = output_shape.flat().unwrap();
@@ -468,9 +466,7 @@ mod graph {
                                         })
                                     }
                                     _ => unimplemented!(),
-                                };
-
-                                node
+                                }
                             }
                         };
 
@@ -584,7 +580,7 @@ mod node_key {
                 Self::Single(index) => write!(f, "{}", index),
                 Self::Multiple(indexes) => f
                     .debug_list()
-                    .entries(indexes.iter().cloned().map(|index| DisplayAsDebug(index)))
+                    .entries(indexes.iter().cloned().map(DisplayAsDebug))
                     .finish(),
             }
         }
@@ -606,10 +602,7 @@ mod shape {
 
     impl ShapeList {
         pub fn is_none(&self) -> bool {
-            match self {
-                Self::None => true,
-                _ => false,
-            }
+            matches!(self, Self::None)
         }
 
         pub fn single_flat(&self) -> Option<u64> {

@@ -30,20 +30,14 @@ mod list {
 
     impl TensorList for &Vec<&Tensor> {
         fn into_tensor_list(self) -> Vec<Tensor> {
-            let tensors: Vec<_> = self
-                .into_iter()
-                .map(|&tensor| tensor.shallow_clone())
-                .collect();
+            let tensors: Vec<_> = self.iter().map(|&tensor| tensor.shallow_clone()).collect();
             tensors
         }
     }
 
     impl TensorList for &Vec<Tensor> {
         fn into_tensor_list(self) -> Vec<Tensor> {
-            let tensors: Vec<_> = self
-                .into_iter()
-                .map(|tensor| tensor.shallow_clone())
-                .collect();
+            let tensors: Vec<_> = self.iter().map(|tensor| tensor.shallow_clone()).collect();
             tensors
         }
     }

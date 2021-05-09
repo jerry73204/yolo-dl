@@ -51,8 +51,8 @@ impl TryFrom<RawCommon> for Common {
         } = from;
 
         let parse_r64 = |text: &str| -> Result<R64> {
-            Ok(R64::try_new(f64::from_str(text)?)
-                .ok_or_else(|| format_err!("'{}' is not a finite number", text))?)
+            R64::try_new(f64::from_str(text)?)
+                .ok_or_else(|| format_err!("'{}' is not a finite number", text))
         };
 
         let parse_zero_one_bool = |text: &str| -> Result<_> {
@@ -69,42 +69,42 @@ impl TryFrom<RawCommon> for Common {
         let only_forward = only_forward
             .map(|text| parse_zero_one_bool(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| false);
+            .unwrap_or(false);
 
         let dont_update = dont_update
             .map(|text| parse_zero_one_bool(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| false);
+            .unwrap_or(false);
 
         let burnin_update = burnin_update
             .map(|text| parse_zero_one_bool(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| false);
+            .unwrap_or(false);
 
         let stop_backward = stop_backward
             .map(|text| text.parse())
             .transpose()?
-            .unwrap_or_else(|| defaults::stop_backward());
+            .unwrap_or_else(defaults::stop_backward);
 
         let train_only_bn = train_only_bn
             .map(|text| parse_zero_one_bool(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| false);
+            .unwrap_or(false);
 
         let dont_load = dont_load
             .map(|text| parse_zero_one_bool(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| false);
+            .unwrap_or(false);
 
         let dont_load_scales = dont_load_scales
             .map(|text| parse_zero_one_bool(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| false);
+            .unwrap_or(false);
 
         let learning_rate_scale = learning_rate_scale
             .map(|text| parse_r64(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(|| defaults::learning_rate_scale());
+            .unwrap_or_else(defaults::learning_rate_scale);
 
         Ok(Self {
             clip,

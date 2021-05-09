@@ -672,8 +672,8 @@ mod layer {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
             };
-            let xs = xs.activation(activation.into());
-            xs
+
+            xs.activation(activation.into())
         }
     }
 
@@ -845,9 +845,10 @@ mod layer {
                         .as_standard_layout()
                         .into_owned();
                     let kernel_shape = {
-                        let [c1, c2, s1, s2] = match permuted_weights.shape() {
-                            &[c1, c2, s1, s2] => [c1, c2, s1, s2],
-                            _ => unreachable!(),
+                        let [c1, c2, s1, s2] = if let [c1, c2, s1, s2] = *permuted_weights.shape() {
+                            [c1, c2, s1, s2]
+                        } else {
+                            unreachable!()
                         };
                         [c1 as i64, c2 as i64, s1 as i64, s2 as i64]
                     };
@@ -869,9 +870,13 @@ mod layer {
                     debug_assert!(matches!(conv.bs, Some(_)));
                     conv.ws
                         .replace(permuted_weights.as_slice().unwrap(), &kernel_shape);
-                    conv.bs
-                        .as_mut()
-                        .map(|bs| bs.replace(biases.as_slice().unwrap(), &[out_c]));
+
+                    if let Some(bs) = &mut conv.bs {
+                        bs.replace(biases.as_slice().unwrap(), &[out_c]);
+                    }
+                    // conv.bs
+                    // .as_mut()
+                    // .map(|bs| bs.replace(biases.as_slice().unwrap(), &[out_c]));
 
                     let batch_norm = scales.as_ref().map(|scales| {
                         let darknet::ScaleWeights {
@@ -933,8 +938,8 @@ mod layer {
                 Some(batch_norm) => xs.apply_t(batch_norm, train),
                 None => xs,
             };
-            let xs = xs.activation(activation.into());
-            xs
+
+            xs.activation(activation.into())
         }
     }
 
@@ -1169,11 +1174,10 @@ mod layer {
                 .map(|(zero_padding, tensor)| {
                     // assume [batch, channel, height, width] shape
                     let tensor = tensor.borrow();
-                    let tensor = match zero_padding {
+                    match zero_padding {
                         Some(zeros) => Tensor::cat(&[tensor, &zeros], 1),
                         None => tensor.narrow(1, 0, out_c),
-                    };
-                    tensor
+                    }
                 })
                 .collect();
 
@@ -1185,7 +1189,7 @@ mod layer {
             // becomes shape [batch, channel, height, width]
             let num_features = from_indexes.len() as i64;
 
-            let tensor = match weights_kind {
+            match weights_kind {
                 ShortcutWeightsKind::None => tensor.sum1(&[1], false, tensor.kind()),
                 ShortcutWeightsKind::PerFeature(weights) => {
                     let weights = match weights_normalization {
@@ -1216,9 +1220,7 @@ mod layer {
 
                     (&tensor * weights).sum1(&[1], false, tensor.kind())
                 }
-            };
-
-            tensor
+            }
         }
     }
 

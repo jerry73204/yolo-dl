@@ -2,7 +2,7 @@ use crate::common::*;
 use num_traits::NumCast;
 
 /// A floating point wrapper that restricts its range from 0 to 1.
-#[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Ratio(R64);
 
@@ -394,14 +394,6 @@ impl From<Ratio> for f32 {
     }
 }
 
-// impl Deref for Ratio {
-//     type Target = R64;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
 impl Add<Ratio> for Ratio {
     type Output = Ratio;
 
@@ -410,14 +402,6 @@ impl Add<Ratio> for Ratio {
     }
 }
 
-// impl Add<f64> for Ratio {
-//     type Output = Ratio;
-
-//     fn add(self, rhs: f64) -> Self::Output {
-//         self.checked_add(Ratio::try_from(rhs).unwrap()).unwrap()
-//     }
-// }
-
 impl Sub<Ratio> for Ratio {
     type Output = Ratio;
 
@@ -425,14 +409,6 @@ impl Sub<Ratio> for Ratio {
         self.checked_sub(rhs).unwrap()
     }
 }
-
-// impl Sub<f64> for Ratio {
-//     type Output = Ratio;
-
-//     fn sub(self, rhs: f64) -> Self::Output {
-//         self.checked_sub(Ratio::try_from(rhs).unwrap()).unwrap()
-//     }
-// }
 
 impl Mul<Ratio> for Ratio {
     type Output = Ratio;
@@ -479,12 +455,6 @@ impl Rem<f64> for Ratio {
 
     fn rem(self, rhs: f64) -> Self::Output {
         Self::try_from(self.0 % rhs).unwrap()
-    }
-}
-
-impl PartialEq<Ratio> for Ratio {
-    fn eq(&self, rhs: &Ratio) -> bool {
-        self.0.eq(&rhs.0)
     }
 }
 

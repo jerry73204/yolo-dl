@@ -75,12 +75,12 @@ impl MergeDetect2D {
                     let end_flat_index = *base_flat_index;
 
                     // compute base flat index
-                    let info = DetectionInfo {
+
+                    DetectionInfo {
                         feature_size: feature_size.to_owned(),
                         anchors: anchors.to_owned(),
                         flat_index_range: begin_flat_index..end_flat_index,
-                    };
-                    info
+                    }
                 };
 
                 Some((cy_flat, cx_flat, h_flat, w_flat, obj_flat, class_flat, info))
@@ -199,17 +199,7 @@ impl MergeDetect2DOutput {
                     ..
                 } = output.shallow_clone();
 
-                (
-                    batch_size,
-                    num_classes,
-                    info.to_owned(),
-                    cy,
-                    cx,
-                    h,
-                    w,
-                    obj,
-                    class,
-                )
+                (batch_size, num_classes, info, cy, cx, h, w, obj, class)
             })
             .unzip_n();
 
@@ -273,13 +263,13 @@ impl MergeDetect2DOutput {
 
         Ok(Self {
             num_classes,
-            info,
             cy,
             cx,
             h,
             w,
             obj,
             class,
+            info,
         })
     }
 

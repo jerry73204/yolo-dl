@@ -79,7 +79,7 @@ impl TryFrom<RawYolo> for Yolo {
             common,
         } = from;
 
-        let mask = mask.unwrap_or_else(|| IndexSet::new());
+        let mask = mask.unwrap_or_else(IndexSet::new);
         let anchors = match (num, anchors) {
             (0, None) => vec![],
             (num, None) => {
@@ -91,18 +91,11 @@ impl TryFrom<RawYolo> for Yolo {
                     warn!("num={} is inconsistent with actual number of anchors ({}), the field is ignored", num, anchors.len());
                 }
 
-                let anchors: Vec<_> = mask
+                let anchors: Option<Vec<_>> = mask
                     .into_iter()
-                    .map(|index| -> Result<_> {
-                        Ok(anchors
-                            .get(index as usize)
-                            .ok_or_else(|| {
-                                format_err!("mask index exceeds total number of anchors")
-                            })?
-                            .clone())
-                    })
-                    .try_collect()?;
-                anchors
+                    .map(|index| anchors.get(index as usize).copied())
+                    .collect();
+                anchors.ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?
             }
         };
 
@@ -118,11 +111,8 @@ impl TryFrom<RawYolo> for Yolo {
             obj_normalizer,
             cls_normalizer,
             delta_normalizer,
-            iou_loss,
             iou_thresh_kind,
             beta_nms,
-            nms_kind,
-            yolo_point,
             jitter,
             resize,
             focal_loss,
@@ -138,6 +128,9 @@ impl TryFrom<RawYolo> for Yolo {
             embedding_layer,
             map,
             anchors,
+            yolo_point,
+            iou_loss,
+            nms_kind,
             common,
         })
     }

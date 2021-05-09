@@ -65,7 +65,7 @@ impl SppCsp2DInit {
         }
         .build(path / "spp_conv_4");
         let spp_conv_5 = ConvBn2DInit {
-            batch_norm: batch_norm.clone(),
+            batch_norm,
             ..ConvBn2DInit::new(mid_c, mid_c, 3)
         }
         .build(path / "spp_conv_5");
