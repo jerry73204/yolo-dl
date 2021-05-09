@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.40"
-tch = "0.4.0"
+tch = "0.4.1"
 itertools = "0.10.0"
 image = "0.23.14"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
@@ -21,8 +21,8 @@ num-traits = "0.2.14"
 maplit = "1.0.2"
 log = "0.4.14"
 ndarray = "0.15.1"
-cv-convert = { version = "0.6.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.7.0", default-features = false, features = ["tch", "ndarray"] }
 
 [dev-dependencies]
-cv-convert = { version = "0.6.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.7.0", default-features = false, features = ["tch", "ndarray"] }
 ndarray = "0.15.1"

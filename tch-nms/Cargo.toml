@@ -13,7 +13,7 @@ pkg-config = "0.3.19"
 serde = { version = "1.0.125", features = ["derive"] }
 
 [dependencies]
-libc = "0.2.93"
+libc = "0.2.94"
 static_assertions = "1.1.0"
-tch = "0.4.0"
-torch-sys = "0.4.0"
+tch = "0.4.1"
+torch-sys = "0.4.1"

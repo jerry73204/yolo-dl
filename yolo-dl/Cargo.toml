@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tch = "0.4.0"
+tch = "0.4.1"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.125", features = ["derive"] }
 itertools = "0.10.0"
@@ -23,13 +23,13 @@ par-stream = { version = "0.3.1", features = ["runtime_tokio"] }
 futures = "0.3.14"
 rand = "0.8.3"
 percent-encoding = "2.1.0"
-tokio = { version = "1.4.0", features = ["sync"] }
+tokio = { version = "1.5.0", features = ["sync"] }
 tfrecord = { version = "0.7.0", features = ["full"] }
 ndarray = "0.15.1"
 log = "0.4.14"
 chrono = "0.4.19"
 uuid = { version = "0.8.2", features = ["v4"] }
-regex = "1.4.5"
+regex = "1.5.4"
 indexmap = "1.6.2"
 num_cpus = "1.13.0"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
@@ -41,7 +41,7 @@ getset = "0.1.1"
 model-config = { version = "0.1", path = "../model-config" }
 petgraph = "0.5.1"
 derivative = "2.2.0"
-cv-convert = { version = "0.6.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.7.0", default-features = false, features = ["tch", "ndarray"] }
 rusty-perm = "0.2.0"
 ptree = { version = "0.3.2", optional = true }
 strum = { version = "0.20.0", features = ["derive"] }
@@ -53,7 +53,7 @@ imagesize = "0.8.8"
 csv = "1.1.6"
 glob = "0.3.0"
 serde-xml-rs = "0.4.1"
-tracing = "0.1.25"
+tracing = "0.1.26"
 tracing-futures = "0.2.5"
 flurry = "0.3.1"
 
