@@ -8,6 +8,12 @@ pub struct Dropout {
     pub common: Common,
 }
 
+impl Dropout {
+    pub fn output_shape(&self, input_shape: Shape) -> Shape {
+        input_shape
+    }
+}
+
 impl TryFrom<RawDropout> for Dropout {
     type Error = Error;
 

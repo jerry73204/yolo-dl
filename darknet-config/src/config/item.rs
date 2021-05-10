@@ -191,7 +191,7 @@ impl TryFrom<Darknet> for Items {
                                 // update counter
                                 mask_count += num_anchors;
 
-                                (mask_begin..mask_end).map(|index| index as u64).collect()
+                                (mask_begin..mask_end).map(|index| index as usize).collect()
                             };
 
                             // make sure mask indexes are valid
@@ -202,7 +202,7 @@ impl TryFrom<Darknet> for Items {
                                 "mask indexes must not exceed total number of anchors"
                             );
 
-                            let num = global_anchors.len() as u64;
+                            let num = global_anchors.len() as usize;
                             let mask = if mask.is_empty() { None } else { Some(mask) };
                             let anchors = if global_anchors.is_empty() {
                                 None
@@ -286,7 +286,7 @@ impl TryFrom<Darknet> for Items {
                                 // update counter
                                 mask_count += num_anchors;
 
-                                (mask_begin..mask_end).map(|index| index as u64).collect()
+                                (mask_begin..mask_end).map(|index| index as usize).collect()
                             };
 
                             // make sure mask indexes are valid
@@ -297,7 +297,7 @@ impl TryFrom<Darknet> for Items {
                                 "mask indexes must not exceed total number of anchors"
                             );
 
-                            let num = global_anchors.len() as u64;
+                            let num = global_anchors.len() as usize;
                             let mask = if mask.is_empty() { None } else { Some(mask) };
                             let anchors = if global_anchors.is_empty() {
                                 None

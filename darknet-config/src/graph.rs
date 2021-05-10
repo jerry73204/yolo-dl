@@ -14,8 +14,8 @@ mod graph_ {
 
     #[derive(Debug, Clone)]
     pub struct Graph {
-        pub seen: u64,
-        pub cur_iteration: u64,
+        pub seen: usize,
+        pub cur_iteration: usize,
         pub net: config::Net,
         pub layers: IndexMap<NodeKey, Node>,
     }
@@ -153,8 +153,8 @@ mod graph_ {
                             _ => return None,
                         };
                         match shape {
-                            Shape::Hwc(hwc) => Some(hwc),
-                            Shape::Flat(_) => None,
+                            Shape::Dim3(hwc) => Some(hwc),
+                            Shape::Dim1(_) => None,
                         }
                     };
                     let flat_input_shape = |from_indexes: &InputKeys| {
@@ -167,8 +167,8 @@ mod graph_ {
                             _ => return None,
                         };
                         match shape {
-                            Shape::Flat(flat) => Some(flat),
-                            Shape::Hwc(_) => None,
+                            Shape::Dim1(flat) => Some(flat),
+                            Shape::Dim3(_) => None,
                         }
                     };
                     let multiple_hwc_input_shapes = |from_index: &InputKeys| match from_index {
@@ -183,8 +183,8 @@ mod graph_ {
                                         *output_shape
                                     };
                                     match shape {
-                                        Shape::Hwc(hwc) => Some(hwc),
-                                        Shape::Flat(_) => None,
+                                        Shape::Dim3(hwc) => Some(hwc),
+                                        Shape::Dim1(_) => None,
                                     }
                                 })
                                 .try_fold(vec![], |mut folded, shape| {
@@ -209,19 +209,19 @@ mod graph_ {
                                     let input_shape = hwc_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = conf.output_shape(input_shape);
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::Connected(conf) => {
                                     let input_shape = flat_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = conf.output;
-                                    (ShapeList::SingleFlat(input_shape), Shape::Flat(output_shape))
+                                    (ShapeList::SingleFlat(input_shape), Shape::Dim1(output_shape))
                                 }
                                 config::Layer::BatchNorm(_conf) => {
                                     let input_shape = hwc_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = input_shape;
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::Shortcut(_conf) => {
                                     let input_shapes = multiple_hwc_input_shapes(from_index)
@@ -236,25 +236,25 @@ mod graph_ {
                                     // copy the shape of first layer as output shape
                                     let output_shape = input_shapes[0];
 
-                                    (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
+                                    (ShapeList::MultipleHwc(input_shapes), Shape::Dim3(output_shape))
                                 },
                                 config::Layer::MaxPool(conf) => {
                                     let input_shape = hwc_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = conf.output_shape(input_shape);
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::Dropout(_conf) => {
                                     let input_shape = hwc_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = input_shape;
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::Softmax(_conf) => {
                                     let input_shape = hwc_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = input_shape;
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::Route(conf) => {
                                     let config::Route { group, .. } = conf;
@@ -268,18 +268,18 @@ mod graph_ {
                                         ensure!(set.len() == 1, "output shapes of input layers to a route layer must have the same heights and widths");
                                         set.into_iter().next().unwrap()
                                     };
-                                    let out_c: u64 = input_shapes.iter().cloned().try_fold(0, |sum, [_h, _w, c]| {
+                                    let out_c: usize = input_shapes.iter().cloned().try_fold(0, |sum, [_h, _w, c]| {
                                         ensure!(c % num_groups == 0, "the input channel size must be multiple of groups");
                                         Ok(sum + c / num_groups)
                                     })?;
                                     let output_shape = [out_h, out_w, out_c];
-                                    (ShapeList::MultipleHwc(input_shapes), Shape::Hwc(output_shape))
+                                    (ShapeList::MultipleHwc(input_shapes), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::UpSample(conf) => {
                                     let input_shape = hwc_input_shape(from_index)
                                         .ok_or_else(|| format_err!("invalid shape"))?;
                                     let output_shape = conf.output_shape(input_shape);
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::Yolo(conf) => {
                                     let [in_h, in_w, in_c] = hwc_input_shape(from_index)
@@ -289,12 +289,12 @@ mod graph_ {
                                     } = conf;
 
                                     // [batch, anchor, entry, h, w]
-                                    let num_anchors = anchors.len() as u64;
+                                    let num_anchors = anchors.len() as usize;
                                     ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
 
                                     let input_shape = [in_h, in_w, in_c];
                                     let output_shape = input_shape;
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 config::Layer::GaussianYolo(conf) => {
                                     let [in_h, in_w, in_c] = hwc_input_shape(from_index)
@@ -304,12 +304,12 @@ mod graph_ {
                                     } = conf;
 
                                     // [batch, anchor, entry, h, w]
-                                    let num_anchors = anchors.len() as u64;
+                                    let num_anchors = anchors.len() as usize;
                                     ensure!(in_c == num_anchors * (classes + 4 + 1), "the output channels and yolo input channels mismatch");
 
                                     let input_shape = [in_h, in_w, in_c];
                                     let output_shape = input_shape;
-                                    (ShapeList::SingleHwc(input_shape), Shape::Hwc(output_shape))
+                                    (ShapeList::SingleHwc(input_shape), Shape::Dim3(output_shape))
                                 }
                                 _ => unimplemented!(),
                             };
@@ -347,7 +347,7 @@ mod graph_ {
                                 match layer_config {
                                     config::Layer::Connected(conf) => {
                                         let input_shape = input_shape.single_flat().unwrap();
-                                        let output_shape = output_shape.flat().unwrap();
+                                        let output_shape = output_shape.dim1().unwrap()[0];
 
                                         Node::Connected(ConnectedNode {
                                             config: conf,
@@ -358,7 +358,7 @@ mod graph_ {
                                     }
                                     config::Layer::Convolutional(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
 
                                         Node::Convolutional(ConvolutionalNode {
                                             config: conf,
@@ -369,7 +369,7 @@ mod graph_ {
                                     }
                                     config::Layer::Route(conf) => {
                                         let input_shape = input_shape.multiple_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
 
                                         Node::Route(RouteNode {
                                             config: conf,
@@ -380,7 +380,7 @@ mod graph_ {
                                     }
                                     config::Layer::Shortcut(conf) => {
                                         let input_shape = input_shape.multiple_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
 
                                         Node::Shortcut(ShortcutNode {
                                             config: conf,
@@ -391,7 +391,7 @@ mod graph_ {
                                     }
                                     config::Layer::MaxPool(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
                                         Node::MaxPool(MaxPoolNode {
                                             config: conf,
                                             from_indexes: from_indexes.single().unwrap(),
@@ -401,7 +401,7 @@ mod graph_ {
                                     }
                                     config::Layer::UpSample(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
 
                                         Node::UpSample(UpSampleNode {
                                             config: conf,
@@ -412,7 +412,7 @@ mod graph_ {
                                     }
                                     config::Layer::BatchNorm(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
                                         debug_assert_eq!(input_shape, output_shape);
 
                                         Node::BatchNorm(BatchNormNode {
@@ -423,7 +423,7 @@ mod graph_ {
                                     }
                                     config::Layer::Dropout(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
                                         debug_assert_eq!(input_shape, output_shape);
 
                                         Node::Dropout(DropoutNode {
@@ -434,7 +434,7 @@ mod graph_ {
                                     }
                                     config::Layer::Softmax(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
                                         debug_assert_eq!(input_shape, output_shape);
 
                                         Node::Softmax(SoftmaxNode {
@@ -445,7 +445,7 @@ mod graph_ {
                                     }
                                     config::Layer::Yolo(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
                                         debug_assert_eq!(input_shape, output_shape);
 
                                         Node::Yolo(YoloNode {
@@ -456,7 +456,7 @@ mod graph_ {
                                     }
                                     config::Layer::GaussianYolo(conf) => {
                                         let input_shape = input_shape.single_hwc().unwrap();
-                                        let output_shape = output_shape.hwc().unwrap();
+                                        let output_shape = output_shape.dim3().unwrap();
                                         debug_assert_eq!(input_shape, output_shape);
 
                                         Node::GaussianYolo(GaussianYoloNode {
@@ -595,9 +595,9 @@ mod shape {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum ShapeList {
         None,
-        SingleFlat(u64),
-        SingleHwc([u64; 3]),
-        MultipleHwc(Vec<[u64; 3]>),
+        SingleFlat(usize),
+        SingleHwc([usize; 3]),
+        MultipleHwc(Vec<[usize; 3]>),
     }
 
     impl ShapeList {
@@ -605,21 +605,21 @@ mod shape {
             matches!(self, Self::None)
         }
 
-        pub fn single_flat(&self) -> Option<u64> {
+        pub fn single_flat(&self) -> Option<usize> {
             match *self {
                 Self::SingleFlat(size) => Some(size),
                 _ => None,
             }
         }
 
-        pub fn single_hwc(&self) -> Option<[u64; 3]> {
+        pub fn single_hwc(&self) -> Option<[usize; 3]> {
             match *self {
                 Self::SingleHwc(hwc) => Some(hwc),
                 _ => None,
             }
         }
 
-        pub fn multiple_hwc(&self) -> Option<Vec<[u64; 3]>> {
+        pub fn multiple_hwc(&self) -> Option<Vec<[usize; 3]>> {
             match self {
                 Self::MultipleHwc(hwc) => Some(hwc.clone()),
                 _ => None,
@@ -681,17 +681,17 @@ mod node {
         pub fn output_shape(&self) -> Shape {
             match self {
                 Self::Input(layer) => layer.output_shape.to_owned(),
-                Self::Connected(layer) => Shape::Flat(layer.output_shape),
-                Self::Convolutional(layer) => Shape::Hwc(layer.output_shape),
-                Self::Route(layer) => Shape::Hwc(layer.output_shape),
-                Self::Shortcut(layer) => Shape::Hwc(layer.output_shape),
-                Self::MaxPool(layer) => Shape::Hwc(layer.output_shape),
-                Self::UpSample(layer) => Shape::Hwc(layer.output_shape),
-                Self::BatchNorm(layer) => Shape::Hwc(layer.inout_shape),
-                Self::Dropout(layer) => Shape::Hwc(layer.inout_shape),
-                Self::Softmax(layer) => Shape::Hwc(layer.inout_shape),
-                Self::Yolo(layer) => Shape::Hwc(layer.inout_shape),
-                Self::GaussianYolo(layer) => Shape::Hwc(layer.inout_shape),
+                Self::Connected(layer) => Shape::Dim1(layer.output_shape),
+                Self::Convolutional(layer) => Shape::Dim3(layer.output_shape),
+                Self::Route(layer) => Shape::Dim3(layer.output_shape),
+                Self::Shortcut(layer) => Shape::Dim3(layer.output_shape),
+                Self::MaxPool(layer) => Shape::Dim3(layer.output_shape),
+                Self::UpSample(layer) => Shape::Dim3(layer.output_shape),
+                Self::BatchNorm(layer) => Shape::Dim3(layer.inout_shape),
+                Self::Dropout(layer) => Shape::Dim3(layer.inout_shape),
+                Self::Softmax(layer) => Shape::Dim3(layer.inout_shape),
+                Self::Yolo(layer) => Shape::Dim3(layer.inout_shape),
+                Self::GaussianYolo(layer) => Shape::Dim3(layer.inout_shape),
             }
         }
 
@@ -741,35 +741,47 @@ mod node {
         pub output_shape: Shape,
     }
 
-    declare_layer_base_inout_shape!(ConnectedNode, config::Connected, NodeKey, u64, u64);
+    declare_layer_base_inout_shape!(ConnectedNode, config::Connected, NodeKey, usize, usize);
     declare_layer_base_inout_shape!(
         ConvolutionalNode,
         config::Convolutional,
         NodeKey,
-        [u64; 3],
-        [u64; 3]
+        [usize; 3],
+        [usize; 3]
     );
     declare_layer_base_inout_shape!(
         RouteNode,
         config::Route,
         IndexSet<NodeKey>,
-        Vec<[u64; 3]>,
-        [u64; 3]
+        Vec<[usize; 3]>,
+        [usize; 3]
     );
     declare_layer_base_inout_shape!(
         ShortcutNode,
         config::Shortcut,
         IndexSet<NodeKey>,
-        Vec<[u64; 3]>,
-        [u64; 3]
+        Vec<[usize; 3]>,
+        [usize; 3]
     );
-    declare_layer_base_inout_shape!(MaxPoolNode, config::MaxPool, NodeKey, [u64; 3], [u64; 3]);
-    declare_layer_base_inout_shape!(UpSampleNode, config::UpSample, NodeKey, [u64; 3], [u64; 3]);
-    declare_layer_base_single_shape!(YoloNode, config::Yolo, NodeKey, [u64; 3]);
-    declare_layer_base_single_shape!(GaussianYoloNode, config::GaussianYolo, NodeKey, [u64; 3]);
-    declare_layer_base_single_shape!(BatchNormNode, config::BatchNorm, NodeKey, [u64; 3]);
-    declare_layer_base_single_shape!(DropoutNode, config::Dropout, NodeKey, [u64; 3]);
-    declare_layer_base_single_shape!(SoftmaxNode, config::Softmax, NodeKey, [u64; 3]);
+    declare_layer_base_inout_shape!(
+        MaxPoolNode,
+        config::MaxPool,
+        NodeKey,
+        [usize; 3],
+        [usize; 3]
+    );
+    declare_layer_base_inout_shape!(
+        UpSampleNode,
+        config::UpSample,
+        NodeKey,
+        [usize; 3],
+        [usize; 3]
+    );
+    declare_layer_base_single_shape!(YoloNode, config::Yolo, NodeKey, [usize; 3]);
+    declare_layer_base_single_shape!(GaussianYoloNode, config::GaussianYolo, NodeKey, [usize; 3]);
+    declare_layer_base_single_shape!(BatchNormNode, config::BatchNorm, NodeKey, [usize; 3]);
+    declare_layer_base_single_shape!(DropoutNode, config::Dropout, NodeKey, [usize; 3]);
+    declare_layer_base_single_shape!(SoftmaxNode, config::Softmax, NodeKey, [usize; 3]);
 
     impl From<ConnectedNode> for Node {
         fn from(from: ConnectedNode) -> Self {
@@ -897,7 +909,7 @@ mod graphviz {
                     dot::escape_html(&format!("{:?}", self.net.input_size))
                 )),
                 NodeKey::Index(layer_index) => {
-                    let output_shape = Vec::<u64>::from(&self.layers[&key].output_shape());
+                    let output_shape = Vec::<usize>::from(&self.layers[&key].output_shape());
 
                     match &self.layers[&key] {
                         Node::Convolutional(node) => {

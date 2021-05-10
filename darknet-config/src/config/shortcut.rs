@@ -14,3 +14,10 @@ pub struct Shortcut {
     #[serde(flatten)]
     pub common: Common,
 }
+
+impl Shortcut {
+    pub fn output_shape(&self, input_shapes: &[[usize; 3]]) -> Option<[usize; 3]> {
+        let set: HashSet<_> = input_shapes.iter().map(|&[h, w, _c]| [h, w]).collect();
+        (set.len() == 1).then(|| input_shapes[0])
+    }
+}

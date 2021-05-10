@@ -3,19 +3,19 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(from = "RawMaxPool", into = "RawMaxPool")]
 pub struct MaxPool {
-    pub stride_x: u64,
-    pub stride_y: u64,
-    pub size: u64,
-    pub padding: u64,
+    pub stride_x: usize,
+    pub stride_y: usize,
+    pub size: usize,
+    pub padding: usize,
     pub maxpool_depth: bool,
-    pub out_channels: u64,
+    pub out_channels: usize,
     pub antialiasing: bool,
     #[serde(flatten)]
     pub common: Common,
 }
 
 impl MaxPool {
-    pub fn output_shape(&self, input_shape: [u64; 3]) -> [u64; 3] {
+    pub fn output_shape(&self, input_shape: [usize; 3]) -> [usize; 3] {
         let Self {
             padding,
             size,
@@ -68,15 +68,15 @@ impl From<RawMaxPool> for MaxPool {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawMaxPool {
     #[serde(default = "defaults::maxpool_stride")]
-    pub stride: u64,
-    pub stride_x: Option<u64>,
-    pub stride_y: Option<u64>,
-    pub size: Option<u64>,
-    pub padding: Option<u64>,
+    pub stride: usize,
+    pub stride_x: Option<usize>,
+    pub stride_y: Option<usize>,
+    pub size: Option<usize>,
+    pub padding: Option<usize>,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub maxpool_depth: bool,
     #[serde(default = "defaults::out_channels")]
-    pub out_channels: u64,
+    pub out_channels: usize,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub antialiasing: bool,
     #[serde(flatten)]

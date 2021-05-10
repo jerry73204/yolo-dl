@@ -4,10 +4,10 @@ use super::*;
 #[derivative(Hash)]
 #[serde(try_from = "RawYolo")]
 pub struct Yolo {
-    pub classes: u64,
-    pub max_boxes: u64,
+    pub classes: usize,
+    pub max_boxes: usize,
     pub max_delta: Option<R64>,
-    pub counters_per_class: Option<Vec<u64>>,
+    pub counters_per_class: Option<Vec<usize>>,
     pub label_smooth_eps: R64,
     pub scale_x_y: R64,
     pub objectness_smooth: bool,
@@ -24,18 +24,36 @@ pub struct Yolo {
     pub truth_thresh: R64,
     pub iou_thresh: R64,
     pub random: R64,
-    pub track_history_size: u64,
+    pub track_history_size: usize,
     pub sim_thresh: R64,
-    pub dets_for_track: u64,
-    pub dets_for_show: u64,
+    pub dets_for_track: usize,
+    pub dets_for_show: usize,
     pub track_ciou_norm: R64,
     pub embedding_layer: Option<LayerIndex>,
     pub map: Option<PathBuf>,
-    pub anchors: Vec<(u64, u64)>,
+    pub anchors: Vec<(usize, usize)>,
     pub yolo_point: YoloPoint,
     pub iou_loss: IouLoss,
     pub nms_kind: NmsKind,
     pub common: Common,
+}
+
+impl Yolo {
+    pub fn output_shape(&self, input_shape: [usize; 3]) -> Option<OutputShape> {
+        let Self {
+            classes,
+            ref anchors,
+            ..
+        } = *self;
+        let num_anchors = anchors.len();
+        let [in_h, in_w, in_c] = input_shape;
+
+        if in_c != num_anchors * (classes + 4 + 1) {
+            return None;
+        }
+
+        Some(OutputShape::Yolo([in_h, in_w, in_c]))
+    }
 }
 
 impl TryFrom<RawYolo> for Yolo {
@@ -140,17 +158,17 @@ impl TryFrom<RawYolo> for Yolo {
 #[derivative(Hash)]
 pub(super) struct RawYolo {
     #[serde(default = "defaults::classes")]
-    pub classes: u64,
+    pub classes: usize,
     #[serde(default = "defaults::num")]
-    pub num: u64,
-    #[derivative(Hash(hash_with = "hash_option_vec_indexset::<u64, _>"))]
+    pub num: usize,
+    #[derivative(Hash(hash_with = "hash_option_vec_indexset::<usize, _>"))]
     #[serde(with = "serde_::mask", default)]
-    pub mask: Option<IndexSet<u64>>,
+    pub mask: Option<IndexSet<usize>>,
     #[serde(rename = "max", default = "defaults::max_boxes")]
-    pub max_boxes: u64,
+    pub max_boxes: usize,
     pub max_delta: Option<R64>,
-    #[serde(with = "serde_::opt_vec_u64", default)]
-    pub counters_per_class: Option<Vec<u64>>,
+    #[serde(with = "serde_::opt_vec_usize", default)]
+    pub counters_per_class: Option<Vec<usize>>,
     #[serde(default = "defaults::yolo_label_smooth_eps")]
     pub label_smooth_eps: R64,
     #[serde(default = "defaults::scale_x_y")]
@@ -190,19 +208,19 @@ pub(super) struct RawYolo {
     #[serde(default = "defaults::random")]
     pub random: R64,
     #[serde(default = "defaults::track_history_size")]
-    pub track_history_size: u64,
+    pub track_history_size: usize,
     #[serde(default = "defaults::sim_thresh")]
     pub sim_thresh: R64,
     #[serde(default = "defaults::dets_for_track")]
-    pub dets_for_track: u64,
+    pub dets_for_track: usize,
     #[serde(default = "defaults::dets_for_show")]
-    pub dets_for_show: u64,
+    pub dets_for_show: usize,
     #[serde(default = "defaults::track_ciou_norm")]
     pub track_ciou_norm: R64,
     pub embedding_layer: Option<LayerIndex>,
     pub map: Option<PathBuf>,
     #[serde(with = "serde_::anchors", default)]
-    pub anchors: Option<Vec<(u64, u64)>>,
+    pub anchors: Option<Vec<(usize, usize)>>,
     #[serde(flatten)]
     pub common: Common,
 }

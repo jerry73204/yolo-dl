@@ -12,15 +12,15 @@ pub enum ShapeOutput {
 }
 
 impl ShapeOutput {
-    pub fn tensor_nd<'a, Out>(&'a self) -> Result<Out, &'static str>
+    pub fn tensor_nd<'a, Out>(&'a self) -> Result<Out>
     where
         Out: TryFrom<&'a Shape>,
     {
         match self {
             Self::Shape(shape) => shape
                 .try_into()
-                .map_err(|_| "shape mismatch or not fully determined"),
-            _ => Err("not a tensor"),
+                .map_err(|_| format_err!("shape mismatch or not fully determined")),
+            _ => bail!("not a tensor"),
         }
     }
 

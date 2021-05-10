@@ -15,7 +15,7 @@ pub struct Common {
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub burnin_update: bool,
     #[serde(rename = "stopbackward", default = "defaults::stop_backward")]
-    pub stop_backward: u64,
+    pub stop_backward: usize,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub train_only_bn: bool,
     #[serde(

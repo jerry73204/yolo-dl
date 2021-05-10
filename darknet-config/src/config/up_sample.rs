@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UpSample {
     #[serde(default = "defaults::upsample_stride")]
-    pub stride: u64,
+    pub stride: usize,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub reverse: bool,
     #[serde(flatten)]
@@ -11,7 +11,7 @@ pub struct UpSample {
 }
 
 impl UpSample {
-    pub fn output_shape(&self, input_shape: [u64; 3]) -> [u64; 3] {
+    pub fn output_shape(&self, input_shape: [usize; 3]) -> [usize; 3] {
         let Self {
             stride, reverse, ..
         } = *self;

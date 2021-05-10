@@ -188,8 +188,8 @@ mod tch_model {
             };
 
             match shape {
-                Shape::Flat(size) => ShapeList::SingleFlat(size),
-                Shape::Hwc(size) => ShapeList::SingleHwc(size),
+                Shape::Dim1(size) => ShapeList::SingleFlat(size),
+                Shape::Dim3(size) => ShapeList::SingleHwc(size),
             }
         }
 
@@ -364,15 +364,15 @@ mod layer {
         pub fn output_shape(&self) -> Shape {
             match self {
                 Self::Input(layer) => layer.node.output_shape,
-                Self::Connected(layer) => Shape::Flat(layer.node.output_shape),
-                Self::Convolutional(layer) => Shape::Hwc(layer.node.output_shape),
-                Self::Route(layer) => Shape::Hwc(layer.node.output_shape),
-                Self::Shortcut(layer) => Shape::Hwc(layer.node.output_shape),
-                Self::MaxPool(layer) => Shape::Hwc(layer.node.output_shape),
-                Self::UpSample(layer) => Shape::Hwc(layer.node.output_shape),
-                Self::BatchNorm(layer) => Shape::Hwc(layer.node.inout_shape),
-                Self::Yolo(layer) => Shape::Hwc(layer.node.inout_shape),
-                Self::GaussianYolo(layer) => Shape::Hwc(layer.node.inout_shape),
+                Self::Connected(layer) => Shape::Dim1(layer.node.output_shape),
+                Self::Convolutional(layer) => Shape::Dim3(layer.node.output_shape),
+                Self::Route(layer) => Shape::Dim3(layer.node.output_shape),
+                Self::Shortcut(layer) => Shape::Dim3(layer.node.output_shape),
+                Self::MaxPool(layer) => Shape::Dim3(layer.node.output_shape),
+                Self::UpSample(layer) => Shape::Dim3(layer.node.output_shape),
+                Self::BatchNorm(layer) => Shape::Dim3(layer.node.inout_shape),
+                Self::Yolo(layer) => Shape::Dim3(layer.node.inout_shape),
+                Self::GaussianYolo(layer) => Shape::Dim3(layer.node.inout_shape),
             }
         }
 
@@ -507,17 +507,17 @@ mod layer {
             } = self;
 
             match output_shape {
-                Shape::Hwc(hwc) => {
+                Shape::Dim3(hwc) => {
                     let [expect_h, expect_w, expect_c] = *hwc;
                     let (_b, c, h, w) = xs.size4()?;
                     ensure!(
-                        c as u64 == expect_c && h as u64 == expect_h && w as u64 == expect_w,
+                        c as usize == expect_c && h as usize == expect_h && w as usize == expect_w,
                         "input shape mismatch"
                     );
                 }
-                Shape::Flat(expect_size) => {
+                Shape::Dim1(expect_size) => {
                     let (_b, c) = xs.size2()?;
-                    ensure!(c as u64 == *expect_size, "input shape mismatch");
+                    ensure!(c as usize == *expect_size, "input shape mismatch");
                 }
             }
 

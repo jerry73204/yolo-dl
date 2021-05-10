@@ -3,12 +3,18 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawSoftmax")]
 pub struct Softmax {
-    pub groups: u64,
+    pub groups: usize,
     pub temperature: R64,
     pub tree: Option<(PathBuf, Tree)>,
     pub spatial: R64,
     pub noloss: bool,
     pub common: Common,
+}
+
+impl Softmax {
+    pub fn output_shape(&self, input_shape: Shape) -> Shape {
+        input_shape
+    }
 }
 
 impl TryFrom<RawSoftmax> for Softmax {
@@ -44,7 +50,7 @@ impl TryFrom<RawSoftmax> for Softmax {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawSoftmax {
     #[serde(default = "defaults::softmax_groups")]
-    pub groups: u64,
+    pub groups: usize,
     #[serde(default = "defaults::temperature")]
     pub temperature: R64,
     pub tree_file: Option<PathBuf>,

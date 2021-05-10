@@ -1,77 +1,83 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "Items")]
-pub struct Darknet {
-    pub net: Net,
-    pub layers: Vec<Layer>,
-}
+pub use darknet::*;
 
-impl Darknet {
-    pub fn load<P>(config_file: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        Self::from_str(&fs::read_to_string(config_file)?)
+mod darknet {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(try_from = "Items")]
+    pub struct Darknet {
+        pub net: Net,
+        pub layers: Vec<Layer>,
     }
 
-    pub fn to_string(&self) -> Result<String> {
-        Ok(serde_ini::to_string(self)?)
-    }
-}
-
-impl FromStr for Darknet {
-    type Err = Error;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        // remove comments and trailing whitespaces
-        let regex = RegexBuilder::new(r" *(#.*)?$")
-            .multi_line(true)
-            .build()
-            .unwrap();
-        let text = regex.replace_all(text, "");
-
-        // parse
-        Ok(serde_ini::from_str(&text)?)
-    }
-}
-
-impl TryFrom<Items> for Darknet {
-    type Error = anyhow::Error;
-
-    fn try_from(Items(items): Items) -> Result<Self, Self::Error> {
-        // ensure only the first item is "net" item
+    impl Darknet {
+        pub fn load<P>(config_file: P) -> Result<Self>
+        where
+            P: AsRef<Path>,
         {
-            let mut iter = items.iter();
-            ensure!(
-                matches!(iter.next(), Some(Item::Net(_))),
-                "the first item must be [net]"
-            );
-            ensure!(
-                iter.all(|item| !matches!(item, Item::Net(_))),
-                "net item must be the first item"
-            );
-        };
+            Ok(Self::from_str(&fs::read_to_string(config_file)?)?)
+        }
 
-        let mut items_iter = items.into_iter();
+        pub fn to_string(&self) -> Result<String> {
+            Ok(serde_ini::to_string(self)?)
+        }
+    }
 
-        // build net item
-        let net = items_iter
-            .next()
-            .unwrap()
-            .try_into_net()
-            .map_err(|_| format_err!("the first section must be [net]"))?;
+    impl FromStr for Darknet {
+        type Err = Error;
 
-        // build layers
-        let layers: Vec<_> = items_iter
-            .map(|item| item.try_into_layer_config())
-            .try_collect()?;
+        fn from_str(text: &str) -> Result<Self, Self::Err> {
+            // remove comments and trailing whitespaces
+            let regex = RegexBuilder::new(r" *(#.*)?$")
+                .multi_line(true)
+                .build()
+                .unwrap();
+            let text = regex.replace_all(text, "");
 
-        Ok(Self { net, layers })
+            // parse
+            Ok(serde_ini::from_str(&text)?)
+        }
+    }
+
+    impl TryFrom<Items> for Darknet {
+        type Error = anyhow::Error;
+
+        fn try_from(Items(items): Items) -> Result<Self, Self::Error> {
+            // ensure only the first item is "net" item
+            {
+                let mut iter = items.iter();
+                ensure!(
+                    matches!(iter.next(), Some(Item::Net(_))),
+                    "the first item must be [net]"
+                );
+                ensure!(
+                    iter.all(|item| !matches!(item, Item::Net(_))),
+                    "net item must be the first item"
+                );
+            };
+
+            let mut items_iter = items.into_iter();
+
+            // build net item
+            let net = items_iter
+                .next()
+                .unwrap()
+                .try_into_net()
+                .map_err(|_| format_err!("the first section must be [net]"))?;
+
+            // build layers
+            let layers: Vec<_> = items_iter
+                .map(|item| item.try_into_layer_config())
+                .try_collect()?;
+
+            Ok(Self { net, layers })
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, strum::AsRefStr)]
 pub enum Layer {
     Connected(Connected),
     Convolutional(Convolutional),
@@ -91,6 +97,27 @@ pub enum Layer {
 }
 
 impl Layer {
+    pub fn output_shape(&self, input_shape: &InputShape) -> Option<OutputShape> {
+        let output_shape: OutputShape = match self {
+            Layer::Connected(layer) => layer.output_shape(input_shape.single_dim1()?)?.into(),
+            Layer::Convolutional(layer) => layer.output_shape(input_shape.single_dim3()?).into(),
+            Layer::Route(layer) => layer.output_shape(&input_shape.multiple_dim3()?)?.into(),
+            Layer::Shortcut(layer) => layer.output_shape(&input_shape.multiple_dim3()?)?.into(),
+            Layer::MaxPool(layer) => layer.output_shape(input_shape.single_dim3()?).into(),
+            Layer::UpSample(layer) => layer.output_shape(input_shape.single_dim3()?).into(),
+            Layer::BatchNorm(layer) => layer.output_shape(input_shape.single()?).into(),
+            Layer::Dropout(layer) => layer.output_shape(input_shape.single()?).into(),
+            Layer::Softmax(layer) => layer.output_shape(input_shape.single()?).into(),
+            Layer::Yolo(layer) => layer.output_shape(input_shape.single_dim3()?)?,
+            Layer::GaussianYolo(layer) => layer.output_shape(input_shape.single_dim3()?)?,
+            Layer::Cost(_layer) => unimplemented!(),
+            Layer::Crop(_layer) => unimplemented!(),
+            Layer::AvgPool(_layer) => unimplemented!(),
+            Layer::Unimplemented(_layer) => return None,
+        };
+        Some(output_shape)
+    }
+
     pub fn common(&self) -> &Common {
         match self {
             Layer::Connected(layer) => &layer.common,

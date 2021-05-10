@@ -15,6 +15,7 @@ mod max_pool;
 mod misc;
 mod net;
 mod route;
+mod shape;
 mod shortcut;
 mod softmax;
 mod unimplemented;
@@ -36,6 +37,7 @@ pub use max_pool::*;
 pub use misc::*;
 pub use net::*;
 pub use route::*;
+pub use shape::*;
 pub use shortcut::*;
 pub use softmax::*;
 pub use unimplemented::*;
@@ -55,11 +57,11 @@ mod defaults {
         false
     }
 
-    pub fn stop_backward() -> u64 {
+    pub fn stop_backward() -> usize {
         0
     }
 
-    pub fn crop_stride() -> u64 {
+    pub fn crop_stride() -> usize {
         1
     }
 
@@ -75,11 +77,11 @@ mod defaults {
         r64(0.0)
     }
 
-    pub fn max_batches() -> u64 {
+    pub fn max_batches() -> usize {
         0
     }
 
-    pub fn batch() -> u64 {
+    pub fn batch() -> usize {
         1
     }
 
@@ -91,7 +93,7 @@ mod defaults {
         R64::new(0.00001)
     }
 
-    pub fn sgdr_mult() -> u64 {
+    pub fn sgdr_mult() -> usize {
         2
     }
 
@@ -103,23 +105,23 @@ mod defaults {
         R64::new(0.0001)
     }
 
-    pub fn subdivisions() -> u64 {
+    pub fn subdivisions() -> usize {
         1
     }
 
-    pub fn time_steps() -> u64 {
+    pub fn time_steps() -> usize {
         1
     }
 
-    pub fn track() -> u64 {
+    pub fn track() -> usize {
         1
     }
 
-    pub fn augment_speed() -> u64 {
+    pub fn augment_speed() -> usize {
         2
     }
 
-    pub fn workspace_size_limit_mb() -> u64 {
+    pub fn workspace_size_limit_mb() -> usize {
         1024
     }
 
@@ -135,15 +137,15 @@ mod defaults {
         R64::new(0.000001)
     }
 
-    pub fn groups() -> u64 {
+    pub fn groups() -> usize {
         1
     }
 
-    pub fn stride() -> u64 {
+    pub fn stride() -> usize {
         1
     }
 
-    pub fn dilation() -> u64 {
+    pub fn dilation() -> usize {
         1
     }
 
@@ -163,7 +165,7 @@ mod defaults {
         R64::new(0.0)
     }
 
-    pub fn resize_step() -> u64 {
+    pub fn resize_step() -> usize {
         32
     }
 
@@ -199,7 +201,7 @@ mod defaults {
         PolicyKind::Constant
     }
 
-    pub fn step() -> u64 {
+    pub fn step() -> usize {
         1
     }
 
@@ -211,15 +213,15 @@ mod defaults {
         R64::new(1.0)
     }
 
-    pub fn burn_in() -> u64 {
+    pub fn burn_in() -> usize {
         0
     }
 
-    pub fn route_groups() -> NonZeroU64 {
-        NonZeroU64::new(1).unwrap()
+    pub fn route_groups() -> NonZeroUsize {
+        NonZeroUsize::new(1).unwrap()
     }
 
-    pub fn route_group_id() -> u64 {
+    pub fn route_group_id() -> usize {
         0
     }
 
@@ -231,28 +233,28 @@ mod defaults {
         WeightsNormalization::None
     }
 
-    pub fn maxpool_stride() -> u64 {
+    pub fn maxpool_stride() -> usize {
         1
     }
 
-    pub fn out_channels() -> u64 {
+    pub fn out_channels() -> usize {
         1
     }
 
-    pub fn upsample_stride() -> u64 {
+    pub fn upsample_stride() -> usize {
         2
     }
 
-    pub fn classes() -> u64 {
+    pub fn classes() -> usize {
         warn!("classes option is not specified, use default 20");
         20
     }
 
-    pub fn num() -> u64 {
+    pub fn num() -> usize {
         1
     }
 
-    pub fn max_boxes() -> u64 {
+    pub fn max_boxes() -> usize {
         200
     }
 
@@ -328,7 +330,7 @@ mod defaults {
         R64::new(0.0)
     }
 
-    pub fn track_history_size() -> u64 {
+    pub fn track_history_size() -> usize {
         5
     }
 
@@ -336,11 +338,11 @@ mod defaults {
         R64::new(0.8)
     }
 
-    pub fn dets_for_track() -> u64 {
+    pub fn dets_for_track() -> usize {
         1
     }
 
-    pub fn dets_for_show() -> u64 {
+    pub fn dets_for_show() -> usize {
         1
     }
 
@@ -348,7 +350,7 @@ mod defaults {
         R64::new(0.01)
     }
 
-    pub fn connected_output() -> u64 {
+    pub fn connected_output() -> usize {
         1
     }
 
@@ -364,7 +366,7 @@ mod defaults {
         R64::new(0.2)
     }
 
-    pub fn softmax_groups() -> u64 {
+    pub fn softmax_groups() -> usize {
         1
     }
 
@@ -414,18 +416,18 @@ mod serde_ {
         where
             S: Serializer,
         {
-            (yes as i64).serialize(serializer)
+            (yes as isize).serialize(serializer)
         }
 
         pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error>
         where
             D: Deserializer<'de>,
         {
-            match i64::deserialize(deserializer)? {
+            match isize::deserialize(deserializer)? {
                 0 => Ok(false),
                 1 => Ok(true),
                 value => Err(D::Error::invalid_value(
-                    de::Unexpected::Signed(value),
+                    de::Unexpected::Signed(value as i64),
                     &"0 or 1",
                 )),
             }
@@ -482,7 +484,10 @@ mod serde_ {
     pub mod mask {
         use super::*;
 
-        pub fn serialize<S>(steps: &Option<IndexSet<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+        pub fn serialize<S>(
+            steps: &Option<IndexSet<usize>>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
@@ -492,12 +497,12 @@ mod serde_ {
                 .serialize(serializer)
         }
 
-        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IndexSet<u64>>, D::Error>
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<IndexSet<usize>>, D::Error>
         where
             D: Deserializer<'de>,
         {
             let text = String::deserialize(deserializer)?;
-            let steps_vec: Vec<u64> = text
+            let steps_vec: Vec<usize> = text
                 .split(',')
                 .map(|token| {
                     token
@@ -520,7 +525,7 @@ mod serde_ {
     pub mod net_steps {
         use super::*;
 
-        pub fn serialize<S>(steps: &Option<Vec<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+        pub fn serialize<S>(steps: &Option<Vec<usize>>, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
@@ -530,22 +535,22 @@ mod serde_ {
                 .serialize(serializer)
         }
 
-        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<usize>>, D::Error>
         where
             D: Deserializer<'de>,
         {
             let text = <Option<String>>::deserialize(deserializer)?;
-            let steps: Option<Vec<u64>> = text
+            let steps: Option<Vec<usize>> = text
                 .map(|text| -> Result<_, String> {
-                    let steps: Vec<u64> = text.split(',')
+                    let steps: Vec<usize> = text.split(',')
                         .enumerate()
                         .map(|(index, token)| {
-                            let step:i64  = token
+                            let step: isize  = token
                                 .trim()
                                 .parse()
                                 .map_err(|_| format!("'{}' is not an integer", token))?;
 
-                            let step: u64 = match (index, step) {
+                            let step: usize = match (index, step) {
                                 (0, -1) => {
                                     warn!("the first -1 in 'steps' option is regarded as 0");
                                     0
@@ -554,13 +559,13 @@ mod serde_ {
                                     if step < 0 {
                                         return Err(format!("invalid steps '{}': the first step must be -1 or non-negative integer", text));
                                     }
-                                    step as u64
+                                    step as usize
                                 }
                                 (_, step) => {
                                     if step < 0 {
                                         return Err(format!("invalid steps '{}': all steps except the first step must be positive integer", text));
                                     }
-                                    step as u64
+                                    step as usize
                                 }
                             };
 
@@ -597,10 +602,10 @@ mod serde_ {
         }
     }
 
-    pub mod opt_vec_u64 {
+    pub mod opt_vec_usize {
         use super::*;
 
-        pub fn serialize<S>(steps: &Option<Vec<u64>>, serializer: S) -> Result<S::Ok, S::Error>
+        pub fn serialize<S>(steps: &Option<Vec<usize>>, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
@@ -610,12 +615,12 @@ mod serde_ {
                 .serialize(serializer)
         }
 
-        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<usize>>, D::Error>
         where
             D: Deserializer<'de>,
         {
             let text = <Option<String>>::deserialize(deserializer)?;
-            let steps: Option<Vec<u64>> = text
+            let steps: Option<Vec<usize>> = text
                 .map(|text| {
                     text.split(',')
                         .map(|token| {
@@ -676,7 +681,7 @@ mod serde_ {
         use super::*;
 
         pub fn serialize<S>(
-            steps: &Option<Vec<(u64, u64)>>,
+            steps: &Option<Vec<(usize, usize)>>,
             serializer: S,
         ) -> Result<S::Ok, S::Error>
         where
@@ -694,7 +699,7 @@ mod serde_ {
                 .serialize(serializer)
         }
 
-        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(u64, u64)>>, D::Error>
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<(usize, usize)>>, D::Error>
         where
             D: Deserializer<'de>,
         {
@@ -702,7 +707,7 @@ mod serde_ {
                 Some(text) => text,
                 None => return Ok(None),
             };
-            let values: Vec<u64> = text
+            let values: Vec<usize> = text
                 .split(',')
                 .map(|token| {
                     token

@@ -1,6 +1,7 @@
 use super::*;
 
 pub use activation::*;
+pub use layer_index::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Deform {
@@ -164,7 +165,7 @@ pub enum Policy {
     Poly,
     Constant,
     Step {
-        step: u64,
+        step: usize,
         scale: R64,
     },
     Exp {
@@ -172,23 +173,23 @@ pub enum Policy {
     },
     Sigmoid {
         gamma: R64,
-        step: u64,
+        step: usize,
     },
     Steps {
-        steps: Vec<u64>,
+        steps: Vec<usize>,
         scales: Vec<R64>,
         seq_scales: Vec<R64>,
     },
     Sgdr,
     SgdrCustom {
-        steps: Vec<u64>,
+        steps: Vec<usize>,
         scales: Vec<R64>,
         seq_scales: Vec<R64>,
     },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
-#[repr(u64)]
+#[repr(usize)]
 pub enum MixUp {
     MixUp = 1,
     CutMix = 2,
@@ -196,120 +197,92 @@ pub enum MixUp {
     Random = 4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LayerIndex {
-    Relative(NonZeroUsize),
-    Absolute(usize),
-}
+mod layer_index {
+    use super::*;
 
-impl LayerIndex {
-    pub fn relative(&self) -> Option<usize> {
-        match *self {
-            Self::Relative(index) => Some(index.get()),
-            Self::Absolute(_) => None,
-        }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum LayerIndex {
+        Relative(NonZeroUsize),
+        Absolute(usize),
     }
 
-    pub fn absolute(&self) -> Option<usize> {
-        match *self {
-            Self::Absolute(index) => Some(index),
-            Self::Relative(_) => None,
+    impl LayerIndex {
+        pub fn relative(&self) -> Option<usize> {
+            match *self {
+                Self::Relative(index) => Some(index.get()),
+                Self::Absolute(_) => None,
+            }
         }
-    }
 
-    pub fn to_absolute(&self, curr_index: usize) -> Option<usize> {
-        match *self {
-            Self::Absolute(index) => Some(index),
-            Self::Relative(index) => {
-                let index = index.get();
-                if index <= curr_index {
-                    Some(curr_index - index)
-                } else {
-                    None
+        pub fn absolute(&self) -> Option<usize> {
+            match *self {
+                Self::Absolute(index) => Some(index),
+                Self::Relative(_) => None,
+            }
+        }
+
+        pub fn to_absolute(&self, curr_index: usize) -> Option<usize> {
+            match *self {
+                Self::Absolute(index) => Some(index),
+                Self::Relative(index) => {
+                    let index = index.get();
+                    if index <= curr_index {
+                        Some(curr_index - index)
+                    } else {
+                        None
+                    }
                 }
             }
         }
     }
-}
 
-impl From<isize> for LayerIndex {
-    fn from(index: isize) -> Self {
-        if index < 0 {
-            Self::Relative(NonZeroUsize::new(-index as usize).unwrap())
-        } else {
-            Self::Absolute(index as usize)
-        }
-    }
-}
-
-impl From<LayerIndex> for isize {
-    fn from(index: LayerIndex) -> Self {
-        match index {
-            LayerIndex::Relative(index) => -(index.get() as isize),
-            LayerIndex::Absolute(index) => index as isize,
-        }
-    }
-}
-
-impl Serialize for LayerIndex {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        isize::from(*self).serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for LayerIndex {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let index: Self = isize::deserialize(deserializer)?.into();
-        Ok(index)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Shape {
-    Hwc([u64; 3]),
-    Flat(u64),
-}
-
-impl From<&Shape> for Vec<u64> {
-    fn from(from: &Shape) -> Self {
-        match *from {
-            Shape::Hwc(hwc) => Vec::from(hwc),
-            Shape::Flat(flat) => vec![flat],
-        }
-    }
-}
-
-impl Shape {
-    pub fn iter(&self) -> impl Iterator<Item = u64> {
-        Vec::<u64>::from(self).into_iter()
-    }
-
-    pub fn hwc(&self) -> Option<[u64; 3]> {
-        match *self {
-            Self::Hwc(hwc) => Some(hwc),
-            Self::Flat(_) => None,
+    impl Display for LayerIndex {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let text = match *self {
+                LayerIndex::Relative(index) => {
+                    format!("-{}", index)
+                }
+                LayerIndex::Absolute(index) => index.to_string(),
+            };
+            formatter.write_str(&text)
         }
     }
 
-    pub fn flat(&self) -> Option<u64> {
-        match *self {
-            Self::Flat(flat) => Some(flat),
-            Self::Hwc(_) => None,
+    impl From<isize> for LayerIndex {
+        fn from(index: isize) -> Self {
+            if index < 0 {
+                Self::Relative(NonZeroUsize::new(-index as usize).unwrap())
+            } else {
+                Self::Absolute(index as usize)
+            }
         }
     }
-}
 
-impl Display for Shape {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Hwc([h, w, c]) => f.debug_list().entries(vec![h, w, c]).finish(),
-            Self::Flat(size) => write!(f, "{}", size),
+    impl From<LayerIndex> for isize {
+        fn from(index: LayerIndex) -> Self {
+            match index {
+                LayerIndex::Relative(index) => -(index.get() as isize),
+                LayerIndex::Absolute(index) => index as isize,
+            }
+        }
+    }
+
+    impl Serialize for LayerIndex {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            isize::from(*self).serialize(serializer)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for LayerIndex {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let index: Self = isize::deserialize(deserializer)?.into();
+            Ok(index)
         }
     }
 }
@@ -343,12 +316,12 @@ pub enum WeightsNormalization {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RouteGroup {
-    group_id: u64,
-    num_groups: u64,
+    group_id: usize,
+    num_groups: usize,
 }
 
 impl RouteGroup {
-    pub fn new(group_id: u64, num_groups: u64) -> Option<Self> {
+    pub fn new(group_id: usize, num_groups: usize) -> Option<Self> {
         if num_groups == 0 || group_id >= num_groups {
             None
         } else {
@@ -359,11 +332,11 @@ impl RouteGroup {
         }
     }
 
-    pub fn group_id(&self) -> u64 {
+    pub fn group_id(&self) -> usize {
         self.group_id
     }
 
-    pub fn num_groups(&self) -> u64 {
+    pub fn num_groups(&self) -> usize {
         self.num_groups
     }
 }

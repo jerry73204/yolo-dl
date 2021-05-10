@@ -3,28 +3,28 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawNet", into = "RawNet")]
 pub struct Net {
-    pub max_batches: u64,
-    pub batch: u64,
+    pub max_batches: usize,
+    pub batch: usize,
     pub learning_rate: R64,
     pub learning_rate_min: R64,
-    pub sgdr_cycle: u64,
-    pub sgdr_mult: u64,
+    pub sgdr_cycle: usize,
+    pub sgdr_mult: usize,
     pub momentum: R64,
     pub decay: R64,
-    pub subdivisions: u64,
-    pub time_steps: u64,
-    pub track: u64,
-    pub augment_speed: u64,
-    pub sequential_subdivisions: u64,
+    pub subdivisions: usize,
+    pub time_steps: usize,
+    pub track: usize,
+    pub augment_speed: usize,
+    pub sequential_subdivisions: usize,
     pub try_fix_nan: bool,
     pub loss_scale: R64,
     pub dynamic_minibatch: bool,
     pub optimized_memory: bool,
-    pub workspace_size_limit_mb: u64,
+    pub workspace_size_limit_mb: usize,
     pub adam: Option<Adam>,
     pub input_size: Shape,
-    pub max_crop: u64,
-    pub min_crop: u64,
+    pub max_crop: usize,
+    pub min_crop: usize,
     pub flip: bool,
     pub blur: bool,
     pub gaussian_noise: bool,
@@ -38,7 +38,7 @@ pub struct Net {
     pub contrastive_color: bool,
     pub unsupervised: bool,
     pub label_smooth_eps: R64,
-    pub resize_step: u64,
+    pub resize_step: usize,
     pub attention: bool,
     pub adversarial_lr: R64,
     pub max_chart_loss: R64,
@@ -49,11 +49,11 @@ pub struct Net {
     pub hue: R64,
     pub power: R64,
     pub policy: Policy,
-    pub burn_in: u64,
+    pub burn_in: usize,
 }
 
 impl Net {
-    pub fn iteration(&self, seen: u64) -> u64 {
+    pub fn iteration(&self, seen: usize) -> usize {
         seen / (self.batch * self.subdivisions)
     }
 }
@@ -134,9 +134,9 @@ impl TryFrom<RawNet> for Net {
         let max_crop = max_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0) * 2);
         let min_crop = min_crop.unwrap_or_else(|| width.map(|w| w.get()).unwrap_or(0));
         let input_size = match (inputs, height, width, channels) {
-            (Some(inputs), None, None, None) => Shape::Flat(inputs.get()),
+            (Some(inputs), None, None, None) => Shape::Dim1(inputs.get()),
             (None, Some(height), Some(width), Some(channels)) => {
-                Shape::Hwc([height.get(), width.get(), channels.get()])
+                Shape::Dim3([height.get(), width.get(), channels.get()])
             }
             _ => bail!("either inputs or height/width/channels must be specified"),
         };
@@ -253,29 +253,29 @@ impl TryFrom<RawNet> for Net {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawNet {
     #[serde(default = "defaults::max_batches")]
-    pub max_batches: u64,
+    pub max_batches: usize,
     #[serde(default = "defaults::batch")]
-    pub batch: u64,
+    pub batch: usize,
     #[serde(default = "defaults::learning_rate")]
     pub learning_rate: R64,
     #[serde(default = "defaults::learning_rate_min")]
     pub learning_rate_min: R64,
-    pub sgdr_cycle: Option<u64>,
+    pub sgdr_cycle: Option<usize>,
     #[serde(default = "defaults::sgdr_mult")]
-    pub sgdr_mult: u64,
+    pub sgdr_mult: usize,
     #[serde(default = "defaults::momentum")]
     pub momentum: R64,
     #[serde(default = "defaults::decay")]
     pub decay: R64,
     #[serde(default = "defaults::subdivisions")]
-    pub subdivisions: u64,
+    pub subdivisions: usize,
     #[serde(default = "defaults::time_steps")]
-    pub time_steps: u64,
+    pub time_steps: usize,
     #[serde(default = "defaults::track")]
-    pub track: u64,
+    pub track: usize,
     #[serde(default = "defaults::augment_speed")]
-    pub augment_speed: u64,
-    pub sequential_subdivisions: Option<u64>,
+    pub augment_speed: usize,
+    pub sequential_subdivisions: Option<usize>,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub try_fix_nan: bool,
     #[serde(default = "defaults::loss_scale")]
@@ -288,7 +288,7 @@ pub(super) struct RawNet {
         rename = "workspace_size_limit_MB",
         default = "defaults::workspace_size_limit_mb"
     )]
-    pub workspace_size_limit_mb: u64,
+    pub workspace_size_limit_mb: usize,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub adam: bool,
     #[serde(rename = "B1", default = "defaults::b1")]
@@ -297,12 +297,12 @@ pub(super) struct RawNet {
     pub b2: R64,
     #[serde(default = "defaults::eps")]
     pub eps: R64,
-    pub width: Option<NonZeroU64>,
-    pub height: Option<NonZeroU64>,
-    pub channels: Option<NonZeroU64>,
-    pub inputs: Option<NonZeroU64>,
-    pub max_crop: Option<u64>,
-    pub min_crop: Option<u64>,
+    pub width: Option<NonZeroUsize>,
+    pub height: Option<NonZeroUsize>,
+    pub channels: Option<NonZeroUsize>,
+    pub inputs: Option<NonZeroUsize>,
+    pub max_crop: Option<usize>,
+    pub min_crop: Option<usize>,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_true")]
     pub flip: bool,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
@@ -330,7 +330,7 @@ pub(super) struct RawNet {
     #[serde(default = "defaults::label_smooth_eps")]
     pub label_smooth_eps: R64,
     #[serde(default = "defaults::resize_step")]
-    pub resize_step: u64,
+    pub resize_step: usize,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub attention: bool,
     #[serde(default = "defaults::adversarial_lr")]
@@ -352,13 +352,13 @@ pub(super) struct RawNet {
     #[serde(default = "defaults::policy")]
     pub policy: PolicyKind,
     #[serde(default = "defaults::burn_in")]
-    pub burn_in: u64,
+    pub burn_in: usize,
     #[serde(default = "defaults::step")]
-    pub step: u64,
+    pub step: usize,
     #[serde(default = "defaults::scale")]
     pub scale: R64,
     #[serde(with = "serde_::net_steps", default)]
-    pub steps: Option<Vec<u64>>,
+    pub steps: Option<Vec<usize>>,
     #[serde(with = "serde_::opt_vec_r64", default)]
     pub scales: Option<Vec<R64>>,
     #[serde(with = "serde_::opt_vec_r64", default)]
@@ -425,10 +425,10 @@ impl From<Net> for RawNet {
         };
 
         let (inputs, height, width, channels) = match input_size {
-            Shape::Hwc([height, width, channels]) => {
+            Shape::Dim3([height, width, channels]) => {
                 (None, Some(height), Some(width), Some(channels))
             }
-            Shape::Flat(inputs) => (Some(inputs), None, None, None),
+            Shape::Dim1(inputs) => (Some(inputs), None, None, None),
         };
 
         let (policy, step, scale, steps, scales, seq_scales, gamma) = match policy {
@@ -546,10 +546,10 @@ impl From<Net> for RawNet {
             b1,
             b2,
             eps,
-            width: width.map(|w| NonZeroU64::new(w).unwrap()),
-            height: height.map(|h| NonZeroU64::new(h).unwrap()),
-            channels: channels.map(|c| NonZeroU64::new(c).unwrap()),
-            inputs: inputs.map(|i| NonZeroU64::new(i).unwrap()),
+            width: width.map(|w| NonZeroUsize::new(w).unwrap()),
+            height: height.map(|h| NonZeroUsize::new(h).unwrap()),
+            channels: channels.map(|c| NonZeroUsize::new(c).unwrap()),
+            inputs: inputs.map(|i| NonZeroUsize::new(i).unwrap()),
             max_crop: Some(max_crop),
             min_crop: Some(min_crop),
             flip,

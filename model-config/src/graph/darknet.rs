@@ -1,86 +1,106 @@
 use super::graph::*;
 use crate::{
     common::*,
-    config::{self, Module, Shape, ShapeOutput},
+    config::{self, Module, ShapeOutput},
 };
 use darknet_config::config as dark_cfg;
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
-enum DarkNodeKey {
-    Input,
-    Index(usize),
-}
+use dark_input_keys::*;
+use dark_node_key::*;
 
-impl DarkNodeKey {
-    fn index(&self) -> Option<usize> {
-        match *self {
-            Self::Index(index) => Some(index),
-            Self::Input => None,
+mod dark_node_key {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+    pub enum DarkNodeKey {
+        Input,
+        Index(usize),
+    }
+
+    impl DarkNodeKey {
+        pub fn index(&self) -> Option<usize> {
+            match *self {
+                Self::Index(index) => Some(index),
+                Self::Input => None,
+            }
         }
     }
-}
 
-impl From<DarkNodeKey> for NodeKey {
-    fn from(from: DarkNodeKey) -> Self {
-        match from {
-            DarkNodeKey::Input => Self(0),
-            DarkNodeKey::Index(index) => Self(index + 1),
+    impl Display for DarkNodeKey {
+        fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+            match *self {
+                DarkNodeKey::Input => formatter.write_str("[input]"),
+                DarkNodeKey::Index(index) => formatter.write_str(&index.to_string()),
+            }
         }
     }
-}
 
-impl From<NodeKey> for DarkNodeKey {
-    fn from(from: NodeKey) -> Self {
-        match from.0 {
-            0 => Self::Input,
-            key => Self::Index(key - 1),
+    impl From<DarkNodeKey> for NodeKey {
+        fn from(from: DarkNodeKey) -> Self {
+            match from {
+                DarkNodeKey::Input => Self(0),
+                DarkNodeKey::Index(index) => Self(index + 1),
+            }
         }
     }
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum DarkInputKeys {
-    None,
-    PlaceHolder,
-    Single(DarkNodeKey),
-    Indexed(Vec<DarkNodeKey>),
-}
-
-impl From<DarkInputKeys> for InputKeys {
-    fn from(from: DarkInputKeys) -> Self {
-        match from {
-            DarkInputKeys::None => Self::None,
-            DarkInputKeys::PlaceHolder => Self::PlaceHolder,
-            DarkInputKeys::Single(key) => Self::Single(key.into()),
-            DarkInputKeys::Indexed(keys) => {
-                Self::Indexed(keys.into_iter().map(Into::into).collect())
+    impl From<NodeKey> for DarkNodeKey {
+        fn from(from: NodeKey) -> Self {
+            match from.0 {
+                0 => Self::Input,
+                key => Self::Index(key - 1),
             }
         }
     }
 }
 
-impl DarkInputKeys {
-    pub fn iter(&self) -> impl Iterator<Item = DarkNodeKey> {
-        let iter: Box<dyn Iterator<Item = DarkNodeKey>> = match *self {
-            Self::None => Box::new(iter::empty()),
-            Self::PlaceHolder => Box::new(iter::empty()),
-            Self::Single(key) => Box::new(iter::once(key)),
-            Self::Indexed(ref keys) => Box::new(keys.clone().into_iter()),
-        };
-        iter
+mod dark_input_keys {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub enum DarkInputKeys {
+        None,
+        PlaceHolder,
+        Single(DarkNodeKey),
+        Indexed(Vec<DarkNodeKey>),
     }
 
-    pub fn single(&self) -> Option<DarkNodeKey> {
-        match *self {
-            Self::Single(key) => Some(key),
-            _ => None,
+    impl From<DarkInputKeys> for InputKeys {
+        fn from(from: DarkInputKeys) -> Self {
+            match from {
+                DarkInputKeys::None => Self::None,
+                DarkInputKeys::PlaceHolder => Self::PlaceHolder,
+                DarkInputKeys::Single(key) => Self::Single(key.into()),
+                DarkInputKeys::Indexed(keys) => {
+                    Self::Indexed(keys.into_iter().map(Into::into).collect())
+                }
+            }
         }
     }
 
-    pub fn indexed(&self) -> Option<&[DarkNodeKey]> {
-        match self {
-            Self::Indexed(keys) => Some(keys.as_slice()),
-            _ => None,
+    impl DarkInputKeys {
+        pub fn iter(&self) -> impl Iterator<Item = DarkNodeKey> {
+            let iter: Box<dyn Iterator<Item = DarkNodeKey>> = match *self {
+                Self::None => Box::new(iter::empty()),
+                Self::PlaceHolder => Box::new(iter::empty()),
+                Self::Single(key) => Box::new(iter::once(key)),
+                Self::Indexed(ref keys) => Box::new(keys.clone().into_iter()),
+            };
+            iter
+        }
+
+        pub fn single(&self) -> Option<DarkNodeKey> {
+            match *self {
+                Self::Single(key) => Some(key),
+                _ => None,
+            }
+        }
+
+        pub fn indexed(&self) -> Option<&[DarkNodeKey]> {
+            match self {
+                Self::Indexed(keys) => Some(keys.as_slice()),
+                _ => None,
+            }
         }
     }
 }
@@ -132,7 +152,7 @@ impl Graph {
                                     let from_indexes: Vec<_> = iter::once(Ok(first_index))
                                         .chain(from.iter().map(|index| -> Result<_> {
                                             let index = index.to_absolute(layer_index).ok_or_else(
-                                                || format_err!("invalid layer index"),
+                                                || format_err!("invalid layer index {}", index),
                                             )?;
                                             Ok(DarkNodeKey::Index(index))
                                         }))
@@ -149,18 +169,10 @@ impl Graph {
                                     let from_indexes: Vec<_> = conf
                                         .layers
                                         .iter()
-                                        .map(|&index| {
-                                            let index = match index {
-                                                dark_cfg::LayerIndex::Relative(index) => {
-                                                    let index = index.get();
-                                                    ensure!(
-                                                        index <= layer_index,
-                                                        "invalid layer index"
-                                                    );
-                                                    layer_index - index
-                                                }
-                                                dark_cfg::LayerIndex::Absolute(index) => index,
-                                            };
+                                        .map(|&index| -> Result<_> {
+                                            let index = index.to_absolute(layer_index).ok_or_else(
+                                                || format_err!("invalid layer index {}", index),
+                                            )?;
                                             Ok(DarkNodeKey::Index(index))
                                         })
                                         .try_collect()?;
@@ -188,9 +200,8 @@ impl Graph {
                 graph
             };
 
-            let sorted_node_keys = petgraph::algo::toposort(&graph, None).map_err(|cycle| {
-                format_err!("cycle detected at layer index {:?}", cycle.node_id())
-            })?;
+            let sorted_node_keys = petgraph::algo::toposort(&graph, None)
+                .map_err(|cycle| format_err!("cycle detected at layer {:?}", cycle.node_id()))?;
 
             sorted_node_keys
         };
@@ -204,116 +215,79 @@ impl Graph {
         let output_shape: HashMap<DarkNodeKey, ShapeOutput> = sorted_node_keys.iter().try_fold(
             HashMap::new(),
             |mut collected: HashMap<DarkNodeKey, ShapeOutput>, &key| -> Result<_> {
-                let output_shape = match key {
-                    DarkNodeKey::Input => {
-                        let shape: Vec<_> =
-                            model_input_shape.iter().map(|size| size as usize).collect();
-                        ShapeOutput::from(shape)
-                    }
-                    DarkNodeKey::Index(_) => {
-                        let from_keys = &input_keys_map[&key];
-                        let layer_config = &layer_configs[&key];
+                (|| -> Result<_> {
+                    let output_shape: ShapeOutput = match key {
+                        DarkNodeKey::Input => match model_input_shape {
+                            dark_cfg::Shape::Dim3([h, w, c]) => [c, h, w].into(),
+                            dark_cfg::Shape::Dim1(c) => [c].into(),
+                        },
+                        DarkNodeKey::Index(_) => {
+                            let from_keys = &input_keys_map[&key];
+                            let layer_config = &layer_configs[&key];
+                            // eprintln!("{}\t{:?}\t{}", key, from_keys, layer_config.as_ref());
 
-                        match layer_config {
-                            dark_cfg::Layer::Convolutional(conf) => {
-                                let from_key = from_keys.single().unwrap();
-                                let [in_c, in_h, in_w]: [usize; 3] =
-                                    collected[&from_key].tensor_nd().unwrap();
-                                let [out_h, out_w, out_c] =
-                                    conf.output_shape([in_h as u64, in_w as u64, in_c as u64]);
-                                ShapeOutput::from([out_c as usize, out_h as usize, out_w as usize])
-                            }
-                            dark_cfg::Layer::Connected(conf) => {
-                                ShapeOutput::from([conf.output as usize])
-                            }
-                            dark_cfg::Layer::Shortcut(_conf) => {
-                                let input_shapes: Vec<[usize; 3]> = from_keys
-                                    .indexed()
-                                    .unwrap()
-                                    .iter()
-                                    .map(|&key| collected[&key].tensor_nd().unwrap())
-                                    .collect();
-
-                                // ensure input layers have equal heights and widths
-                                ensure!(
-                                    {
-                                        let set: HashSet<_> =
-                                            input_shapes.iter().map(|[_c, h, w]| [h, w]).collect();
-
-                                        set.len() == 1
-                                    },
-                                    "the input layers must have equal heights and widths"
-                                );
-
-                                // copy the shape of first layer as output shape
-                                let output_shape = input_shapes[0];
-
-                                ShapeOutput::from(output_shape)
-                            }
-                            dark_cfg::Layer::MaxPool(conf) => {
-                                let from_key = from_keys.single().unwrap();
-                                let [in_c, in_h, in_w]: [usize; 3] =
-                                    collected[&from_key].tensor_nd().unwrap();
-                                let [out_h, out_w, out_c] =
-                                    conf.output_shape([in_h as u64, in_w as u64, in_c as u64]);
-                                ShapeOutput::from([out_c as usize, out_h as usize, out_w as usize])
-                            }
-                            dark_cfg::Layer::Route(conf) => {
-                                let dark_cfg::Route { group, .. } = conf;
-                                let num_groups = group.num_groups();
-
-                                let input_shapes: Vec<[usize; 3]> = from_keys
-                                    .indexed()
-                                    .unwrap()
-                                    .iter()
-                                    .map(|&key| collected[&key].tensor_nd().unwrap())
-                                    .collect();
-
-                                ensure!(
-                                    {
-                                        let set: HashSet<_> =
-                                            input_shapes.iter().map(|&[_c, h, w]| [h, w]).collect();
-                                        set.len() == 1
-                                    },
-                                    "shape mismatch"
-                                );
-
-                                let [_c, out_h, out_w] = input_shapes[0];
-                                let out_c: usize =
-                                    input_shapes.iter().try_fold(0, |sum, &[in_c, _h, _w]| {
-                                        ensure!(
-                                            in_c % num_groups as usize == 0,
-                                            "the input channel size must be multiple of groups"
-                                        );
-                                        Ok(sum + in_c / num_groups as usize)
+                            let input_shape: dark_cfg::InputShape = match from_keys {
+                                DarkInputKeys::Single(from_key) => {
+                                    let input_shape = &collected[&from_key];
+                                    let shape = input_shape.tensor().ok_or_else(|| {
+                                        format_err!(
+                                            "invalid input shape '{}' for layer {}",
+                                            input_shape,
+                                            key
+                                        )
                                     })?;
-                                let output_shape = [out_c, out_h, out_w];
-                                ShapeOutput::from(output_shape)
-                            }
-                            dark_cfg::Layer::UpSample(conf) => {
-                                let from_key = from_keys.single().unwrap();
-                                let [in_c, in_h, in_w]: [usize; 3] =
-                                    collected[&from_key].tensor_nd().unwrap();
-                                let [out_h, out_w, out_c] =
-                                    conf.output_shape([in_h as u64, in_w as u64, in_c as u64]);
-                                ShapeOutput::from([out_c as usize, out_h as usize, out_w as usize])
-                            }
-                            dark_cfg::Layer::Yolo(_) => ShapeOutput::Detect2D,
-                            dark_cfg::Layer::GaussianYolo(_) => ShapeOutput::Detect2D,
-                            dark_cfg::Layer::BatchNorm(_)
-                            | dark_cfg::Layer::Dropout(_)
-                            | dark_cfg::Layer::Softmax(_) => {
-                                let from_key = from_keys.single().unwrap();
-                                let input_shape: Shape = collected[&from_key].tensor_nd().unwrap();
-                                ShapeOutput::from(input_shape)
-                            }
-                            _ => unimplemented!(),
-                        }
-                    }
-                };
+                                    let shape: Vec<usize> = shape.try_into().unwrap();
 
-                collected.insert(key, output_shape);
-                Ok(collected)
+                                    match *shape {
+                                        [in_c] => [in_c].into(),
+                                        [in_c, in_h, in_w] => [in_h, in_w, in_c].into(),
+                                        _ => {
+                                            bail!(
+                                                "invalid input shape '{}' for layer {}",
+                                                input_shape,
+                                                key
+                                            );
+                                        }
+                                    }
+                                }
+                                DarkInputKeys::Indexed(from_keys) => {
+                                    let input_shapes: Vec<[usize; 3]> = from_keys
+                                        .iter()
+                                        .map(|&key| -> Result<_> {
+                                            let shape = &collected[&key];
+                                            let [in_c, in_h, in_w]: [usize; 3] =
+                                                shape.tensor_nd().with_context(|| {
+                                                    format!("invalid input shape from key: {}", key)
+                                                })?;
+                                            Ok([in_h, in_w, in_c])
+                                        })
+                                        .try_collect()?;
+                                    input_shapes.into()
+                                }
+                                _ => unreachable!(),
+                            };
+                            let output_shape =
+                                layer_config.output_shape(&input_shape).ok_or_else(|| {
+                                    format_err!("cannot compute output shape at layer {}", key)
+                                })?;
+
+                            match output_shape {
+                                dark_cfg::OutputShape::Shape(dark_cfg::Shape::Dim1(out_c)) => {
+                                    [out_c].into()
+                                }
+                                dark_cfg::OutputShape::Shape(dark_cfg::Shape::Dim3(
+                                    [out_h, out_w, out_c],
+                                )) => [out_c, out_h, out_w].into(),
+                                dark_cfg::OutputShape::Yolo(_shape) => ShapeOutput::Detect2D,
+                            }
+                        }
+                    };
+
+                    // eprintln!("{}\t{}", key, &output_shape);
+                    collected.insert(key, output_shape);
+                    Ok(collected)
+                })()
+                .with_context(|| format!("cannot compute output shape at layer {}", key))
             },
         )?;
 
@@ -330,10 +304,16 @@ impl Graph {
                     let output_shape = shapes_map.remove(&key).unwrap();
 
                     let module: Module = match key {
-                        DarkNodeKey::Input => Module::Input(config::Input {
-                            name: "input".parse().unwrap(),
-                            shape: convert_darknet_shape(&model_input_shape),
-                        }),
+                        DarkNodeKey::Input => {
+                            let shape = match model_input_shape {
+                                dark_cfg::Shape::Dim3([h, w, c]) => vec![c, h, w].into(),
+                                dark_cfg::Shape::Dim1(size) => vec![size].into(),
+                            };
+                            Module::Input(config::Input {
+                                name: "input".parse().unwrap(),
+                                shape,
+                            })
+                        }
                         DarkNodeKey::Index(_) => {
                             let layer_config = layer_configs.remove(&key).unwrap().clone();
 
@@ -353,18 +333,18 @@ impl Graph {
                                     } = conf;
 
                                     let s = (stride_x == stride_y)
-                                        .then(|| stride_x as usize)
+                                        .then(|| stride_x)
                                         .ok_or_else(|| format_err!("TODO"))?;
 
                                     Module::ConvBn2D(config::ConvBn2D {
                                         name: None,
                                         from: None,
-                                        c: filters as usize,
-                                        k: size as usize,
+                                        c: filters,
+                                        k: size,
                                         s,
-                                        p: padding as usize,
-                                        d: dilation as usize,
-                                        g: groups as usize,
+                                        p: padding,
+                                        d: dilation,
+                                        g: groups,
                                         bias: true,
                                         act: activation.into(),
                                         bn: config::BatchNorm {
@@ -375,7 +355,7 @@ impl Graph {
                                         },
                                     })
                                 }
-                                _ => unimplemented!(),
+                                layer => bail!("the layer '{}' is not implemented", layer.as_ref()),
                             }
                         }
                     };
@@ -397,9 +377,21 @@ impl Graph {
     }
 }
 
-fn convert_darknet_shape(from: &dark_cfg::Shape) -> Shape {
-    match *from {
-        dark_cfg::Shape::Hwc([h, w, c]) => vec![c as usize, h as usize, w as usize].into(),
-        dark_cfg::Shape::Flat(size) => vec![size as usize].into(),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_graph_from_darknet_config_file() -> Result<()> {
+        glob::glob(&format!(
+            "{}/../darknet-config/cfg/yolov4-csp.cfg",
+            env!("CARGO_MANIFEST_DIR")
+        ))?
+        .try_for_each(|file| -> Result<_> {
+            let config = darknet_config::Darknet::load(file?)?;
+            let _graph = Graph::from_darknet(&config)?;
+            Ok(())
+        })?;
+        Ok(())
     }
 }

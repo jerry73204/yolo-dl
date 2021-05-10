@@ -3,15 +3,15 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawConvolutional", into = "RawConvolutional")]
 pub struct Convolutional {
-    pub filters: u64,
-    pub groups: u64,
-    pub size: u64,
+    pub filters: usize,
+    pub groups: usize,
+    pub size: usize,
     pub batch_normalize: bool,
-    pub stride_x: u64,
-    pub stride_y: u64,
-    pub dilation: u64,
+    pub stride_x: usize,
+    pub stride_y: usize,
+    pub dilation: usize,
     pub antialiasing: bool,
-    pub padding: u64,
+    pub padding: usize,
     pub activation: Activation,
     pub assisted_excitation: bool,
     pub share_index: Option<LayerIndex>,
@@ -31,7 +31,7 @@ pub struct Convolutional {
 }
 
 impl Convolutional {
-    pub fn output_shape(&self, [h, w, _c]: [u64; 3]) -> [u64; 3] {
+    pub fn output_shape(&self, [in_h, in_w, _in_c]: [usize; 3]) -> [usize; 3] {
         let Self {
             filters,
             padding,
@@ -40,8 +40,8 @@ impl Convolutional {
             stride_y,
             ..
         } = *self;
-        let out_h = (h + 2 * padding - size) / stride_y + 1;
-        let out_w = (w + 2 * padding - size) / stride_x + 1;
+        let out_h = (in_h + 2 * padding - size) / stride_y + 1;
+        let out_w = (in_w + 2 * padding - size) / stride_x + 1;
         [out_h, out_w, filters]
     }
 }
@@ -154,21 +154,21 @@ impl TryFrom<RawConvolutional> for Convolutional {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawConvolutional {
-    pub filters: u64,
+    pub filters: usize,
     #[serde(default = "defaults::groups")]
-    pub groups: u64,
-    pub size: u64,
+    pub groups: usize,
+    pub size: usize,
     #[serde(default = "defaults::stride")]
-    pub stride: u64,
-    pub stride_x: Option<u64>,
-    pub stride_y: Option<u64>,
+    pub stride: usize,
+    pub stride_x: Option<usize>,
+    pub stride_y: Option<usize>,
     #[serde(default = "defaults::dilation")]
-    pub dilation: u64,
+    pub dilation: usize,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub antialiasing: bool,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub pad: bool,
-    pub padding: Option<u64>,
+    pub padding: Option<usize>,
     pub activation: Activation,
     #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
     pub assisted_excitation: bool,

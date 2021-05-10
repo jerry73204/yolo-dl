@@ -94,11 +94,12 @@ mod model {
                 let version: Version = reader.read_le()?;
                 let Version { major, minor, .. } = version;
 
-                let seen: u64 = if major * 10 + minor >= 2 {
-                    reader.read_le()?
+                let seen: usize = if major * 10 + minor >= 2 {
+                    let seen: u64 = reader.read_le()?;
+                    seen as usize
                 } else {
                     let seen: u32 = reader.read_le()?;
-                    seen as u64
+                    seen as usize
                 };
                 let transpose = (major > 1000) || (minor > 1000);
 
