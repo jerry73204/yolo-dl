@@ -252,6 +252,18 @@ mod yolo_model {
                         config::Module::MergeDetect2D(_) => {
                             Module::MergeDetect2D(MergeDetect2D::new())
                         }
+                        config::Module::DarknetRoute(_) => {
+                            todo!();
+                        }
+                        config::Module::DarknetShortcut(_) => {
+                            todo!();
+                        }
+                        config::Module::MaxPool(_) => {
+                            todo!();
+                        }
+                        config::Module::Linear(_) => {
+                            todo!();
+                        }
                     };
 
                     let layer = Layer {

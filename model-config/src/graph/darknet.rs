@@ -334,7 +334,7 @@ impl Graph {
                                         .then(|| stride_x)
                                         .ok_or_else(|| format_err!("TODO"))?;
 
-                                    Module::ConvBn2D(config::ConvBn2D {
+                                    config::ConvBn2D {
                                         name: None,
                                         from: None,
                                         c: filters,
@@ -351,9 +351,92 @@ impl Graph {
                                             var_min: None,
                                             var_max: None,
                                         },
-                                    })
+                                    }
+                                    .into()
                                 }
-                                layer => bail!("the layer '{}' is not implemented", layer.as_ref()),
+                                dark_cfg::Layer::Connected(dark_cfg::Connected {
+                                    output,
+                                    batch_normalize,
+                                    ..
+                                }) => config::Linear {
+                                    name: None,
+                                    from: None,
+                                    out: output,
+                                    bn: config::BatchNorm {
+                                        enabled: batch_normalize,
+                                        affine: true,
+                                        var_min: None,
+                                        var_max: None,
+                                    },
+                                }
+                                .into(),
+                                dark_cfg::Layer::Route(dark_cfg::Route { group, .. }) => {
+                                    config::DarknetRoute {
+                                        name: None,
+                                        from: None,
+                                        group_id: group.group_id(),
+                                        num_groups: group.num_groups(),
+                                    }
+                                    .into()
+                                }
+                                dark_cfg::Layer::Shortcut(dark_cfg::Shortcut {
+                                    weights_type,
+                                    ..
+                                }) => config::DarknetShortcut {
+                                    name: None,
+                                    from: None,
+                                    weights_type,
+                                }
+                                .into(),
+                                dark_cfg::Layer::MaxPool(dark_cfg::MaxPool {
+                                    stride_x,
+                                    stride_y,
+                                    size,
+                                    padding,
+                                    maxpool_depth,
+                                    ..
+                                }) => config::MaxPool {
+                                    name: None,
+                                    from: None,
+                                    stride_x,
+                                    stride_y,
+                                    size,
+                                    padding,
+                                    maxpool_depth,
+                                }
+                                .into(),
+                                dark_cfg::Layer::UpSample(dark_cfg::UpSample { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::BatchNorm(dark_cfg::BatchNorm { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::Dropout(dark_cfg::Dropout { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::Softmax(dark_cfg::Softmax { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::Cost(dark_cfg::Cost { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::Crop(dark_cfg::Crop { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::AvgPool(dark_cfg::AvgPool { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::Yolo(dark_cfg::Yolo { .. }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::GaussianYolo(dark_cfg::GaussianYolo {
+                                    ..
+                                }) => {
+                                    todo!();
+                                }
+                                dark_cfg::Layer::Unimplemented(_) => {
+                                    bail!("the layer {} is not implemented", key)
+                                }
                             }
                         }
                     };

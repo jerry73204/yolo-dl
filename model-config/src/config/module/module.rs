@@ -21,6 +21,34 @@ pub enum Module {
     Detect2D(Detect2D),
     GroupRef(GroupRef),
     MergeDetect2D(MergeDetect2D),
+    DarknetRoute(DarknetRoute),
+    DarknetShortcut(DarknetShortcut),
+    MaxPool(MaxPool),
+    Linear(Linear),
+}
+
+impl From<Linear> for Module {
+    fn from(v: Linear) -> Self {
+        Module::Linear(v)
+    }
+}
+
+impl From<MaxPool> for Module {
+    fn from(v: MaxPool) -> Self {
+        Module::MaxPool(v)
+    }
+}
+
+impl From<DarknetShortcut> for Module {
+    fn from(v: DarknetShortcut) -> Self {
+        Module::DarknetShortcut(v)
+    }
+}
+
+impl From<DarknetRoute> for Module {
+    fn from(v: DarknetRoute) -> Self {
+        Module::DarknetRoute(v)
+    }
 }
 
 impl From<MergeDetect2D> for Module {
@@ -103,6 +131,10 @@ impl ModuleEx for Module {
             Module::Detect2D(layer) => layer.name(),
             Module::GroupRef(layer) => layer.name(),
             Module::MergeDetect2D(layer) => layer.name(),
+            Module::DarknetRoute(layer) => layer.name(),
+            Module::DarknetShortcut(layer) => layer.name(),
+            Module::MaxPool(layer) => layer.name(),
+            Module::Linear(layer) => layer.name(),
         }
     }
 
@@ -119,6 +151,10 @@ impl ModuleEx for Module {
             Module::Detect2D(layer) => layer.input_paths(),
             Module::GroupRef(layer) => layer.input_paths(),
             Module::MergeDetect2D(layer) => layer.input_paths(),
+            Module::DarknetRoute(layer) => layer.input_paths(),
+            Module::DarknetShortcut(layer) => layer.input_paths(),
+            Module::MaxPool(layer) => layer.input_paths(),
+            Module::Linear(layer) => layer.input_paths(),
         }
     }
 
@@ -135,6 +171,10 @@ impl ModuleEx for Module {
             Module::Detect2D(layer) => layer.output_shape(input_shape),
             Module::GroupRef(layer) => layer.output_shape(input_shape),
             Module::MergeDetect2D(layer) => layer.output_shape(input_shape),
+            Module::DarknetRoute(layer) => layer.output_shape(input_shape),
+            Module::DarknetShortcut(layer) => layer.output_shape(input_shape),
+            Module::MaxPool(layer) => layer.output_shape(input_shape),
+            Module::Linear(layer) => layer.output_shape(input_shape),
         }
     }
 }
