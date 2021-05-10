@@ -20,7 +20,7 @@ impl ModuleEx for UpSample2D {
     fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
         let Self { scale, .. } = *self;
 
-        match input_shape.tensor()?.as_ref() {
+        match input_shape.single_tensor()?.as_ref() {
             &[b, c, h, w] => {
                 let out_h = h.scale_r64(scale);
                 let out_w = w.scale_r64(scale);

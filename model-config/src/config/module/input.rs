@@ -19,9 +19,7 @@ impl ModuleEx for Input {
     fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
         // expect a none shape
         let output_shape = match input_shape {
-            ShapeInput::Single(ShapeKind::Tensor(input_shape)) => {
-                input_shape.equalize(&self.shape)?
-            }
+            ShapeInput::SingleTensor(input_shape) => input_shape.equalize(&self.shape)?,
             ShapeInput::PlaceHolder => self.shape.clone(),
             _ => return None,
         };

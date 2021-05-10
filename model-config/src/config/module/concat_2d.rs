@@ -18,7 +18,7 @@ impl ModuleEx for Concat2D {
 
     fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
         let Self { from, .. } = self;
-        let input_shapes = input_shape.indexed_tensor()?;
+        let input_shapes = input_shape.indexed_tensors()?;
 
         if input_shapes.len() != from.len() {
             return None;

@@ -146,7 +146,7 @@ impl ModuleEx for ConvBn2D {
             ..
         } = *self;
 
-        let [in_b, _in_c, in_h, in_w] = match input_shape.tensor()?.as_ref() {
+        let [in_b, _in_c, in_h, in_w] = match input_shape.single_tensor()?.as_ref() {
             &[b, c, h, w] => [b, c, h, w],
             _ => return None,
         };

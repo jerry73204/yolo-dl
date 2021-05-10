@@ -27,7 +27,7 @@ impl ModuleEx for Detect2D {
             ref anchors,
             ..
         } = *self;
-        let input_shape = input_shape.tensor()?;
+        let input_shape = input_shape.single_tensor()?;
 
         match input_shape.as_ref() {
             &[_b, Dim::Size(c), _h, _w] => {

@@ -1,42 +1,16 @@
 use super::*;
 use crate::{common::*, config::misc::Shape};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Derivative)]
-#[derivative(Hash)]
-pub enum ShapeKind<'a> {
-    Tensor(&'a Shape),
-    Detect2D,
-}
-
-impl ShapeKind<'_> {
-    pub fn tensor(&self) -> Option<&Shape> {
-        match self {
-            Self::Tensor(shape) => Some(shape),
-            _ => None,
-        }
-    }
-
-    pub fn is_detect_2d(&self) -> bool {
-        match self {
-            Self::Detect2D => true,
-            _ => false,
-        }
-    }
-}
-
-impl<'a> From<&'a Shape> for ShapeKind<'a> {
-    fn from(from: &'a Shape) -> Self {
-        Self::Tensor(from)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Derivative)]
 #[derivative(Hash)]
 pub enum ShapeInput<'a> {
     None,
     PlaceHolder,
-    Single(ShapeKind<'a>),
-    Indexed(Vec<ShapeKind<'a>>),
+    SingleDetect2D,
+    SingleMergeDetect2D,
+    IndexedDetect2D(usize),
+    SingleTensor(&'a Shape),
+    IndexedTensors(Vec<&'a Shape>),
 }
 
 impl ShapeInput<'_> {
@@ -54,41 +28,32 @@ impl ShapeInput<'_> {
         }
     }
 
-    pub fn tensor(&self) -> Option<&Shape> {
+    pub fn single_tensor(&self) -> Option<&Shape> {
         match self {
-            Self::Single(ShapeKind::Tensor(shape)) => Some(shape),
+            Self::SingleTensor(shape) => Some(shape),
             _ => None,
         }
     }
 
-    pub fn is_detect_2d(&self) -> bool {
-        match self {
-            Self::Single(ShapeKind::Detect2D) => true,
-            _ => false,
-        }
+    pub fn is_single_detect_2d(&self) -> bool {
+        matches!(self, Self::SingleDetect2D)
     }
 
-    pub fn indexed_tensor(&self) -> Option<Vec<&Shape>> {
+    pub fn indexed_tensors(&self) -> Option<&[&Shape]> {
         match self {
-            Self::Indexed(vec) => {
-                let shapes: Option<Vec<_>> = vec.iter().map(|kind| kind.tensor()).collect();
-                shapes
-            }
+            Self::IndexedTensors(shapes) => Some(shapes),
             _ => None,
         }
     }
 
     pub fn is_indexed_detect_2d(&self) -> bool {
-        match self {
-            Self::Indexed(vec) => vec.iter().all(|kind| kind.is_detect_2d()),
-            _ => false,
-        }
+        matches!(self, Self::IndexedDetect2D(_))
     }
 }
 
 impl<'a> From<&'a Shape> for ShapeInput<'a> {
     fn from(from: &'a Shape) -> Self {
-        Self::Single(from.into())
+        Self::SingleTensor(from)
     }
 }
 
@@ -98,8 +63,8 @@ impl<'a> TryFrom<&'a ShapeOutput> for ShapeInput<'a> {
     fn try_from(from: &'a ShapeOutput) -> Result<Self, Self::Error> {
         let input_shape: Self = match from {
             ShapeOutput::Shape(shape) => shape.into(),
-            ShapeOutput::Detect2D => Self::Single(ShapeKind::Detect2D),
-            ShapeOutput::MergeDetect2D => bail!("TODO"),
+            ShapeOutput::Detect2D => Self::SingleDetect2D,
+            ShapeOutput::MergeDetect2D => Self::SingleMergeDetect2D,
         };
         Ok(input_shape)
     }
@@ -107,8 +72,7 @@ impl<'a> TryFrom<&'a ShapeOutput> for ShapeInput<'a> {
 
 impl<'a, 'b> From<&'b [&'a Shape]> for ShapeInput<'a> {
     fn from(from: &'b [&'a Shape]) -> Self {
-        let shapes: Vec<ShapeKind> = from.iter().cloned().map(|shape| shape.into()).collect();
-        Self::Indexed(shapes)
+        Self::IndexedTensors(from.into())
     }
 }
 
@@ -116,17 +80,28 @@ impl<'a, 'b> TryFrom<&'b [&'a ShapeOutput]> for ShapeInput<'a> {
     type Error = Error;
 
     fn try_from(from: &'b [&'a ShapeOutput]) -> Result<Self, Self::Error> {
-        let kinds: Vec<_> = from
-            .iter()
-            .map(|output_shape| -> Result<_> {
-                let kind = match output_shape {
-                    ShapeOutput::Shape(shape) => ShapeKind::Tensor(shape),
-                    ShapeOutput::Detect2D => ShapeKind::Detect2D,
-                    _ => bail!("TODO"),
-                };
-                Ok(kind)
-            })
-            .try_collect()?;
-        Ok(Self::Indexed(kinds))
+        ensure!(!from.is_empty(), "input shape list must not be empty");
+
+        let shape = match from[0] {
+            ShapeOutput::Shape(_) => {
+                let shapes: Option<Vec<_>> = from.iter().map(|shape| shape.tensor()).collect();
+                let shapes =
+                    shapes.ok_or_else(|| format_err!("invalid input shape list {:?}", from))?;
+                Self::IndexedTensors(shapes)
+            }
+            ShapeOutput::Detect2D => {
+                ensure!(
+                    from.iter().all(|shape| shape.is_detect_2d()),
+                    "invalid input shape list {:?}",
+                    from
+                );
+                Self::IndexedDetect2D(from.len())
+            }
+            ShapeOutput::MergeDetect2D => {
+                bail!("invalid input shape {:?}", from)
+            }
+        };
+
+        Ok(shape)
     }
 }

@@ -23,6 +23,72 @@ pub enum Module {
     MergeDetect2D(MergeDetect2D),
 }
 
+impl From<MergeDetect2D> for Module {
+    fn from(v: MergeDetect2D) -> Self {
+        Module::MergeDetect2D(v)
+    }
+}
+
+impl From<GroupRef> for Module {
+    fn from(v: GroupRef) -> Self {
+        Module::GroupRef(v)
+    }
+}
+
+impl From<Detect2D> for Module {
+    fn from(v: Detect2D) -> Self {
+        Module::Detect2D(v)
+    }
+}
+
+impl From<Sum2D> for Module {
+    fn from(v: Sum2D) -> Self {
+        Module::Sum2D(v)
+    }
+}
+
+impl From<Concat2D> for Module {
+    fn from(v: Concat2D) -> Self {
+        Module::Concat2D(v)
+    }
+}
+
+impl From<UpSample2D> for Module {
+    fn from(v: UpSample2D) -> Self {
+        Module::UpSample2D(v)
+    }
+}
+
+impl From<SppCsp2D> for Module {
+    fn from(v: SppCsp2D) -> Self {
+        Module::SppCsp2D(v)
+    }
+}
+
+impl From<DarkCsp2D> for Module {
+    fn from(v: DarkCsp2D) -> Self {
+        Module::DarkCsp2D(v)
+    }
+}
+
+impl From<DeconvBn2D> for Module {
+    fn from(v: DeconvBn2D) -> Self {
+        Module::DeconvBn2D(v)
+    }
+}
+
+impl From<ConvBn2D> for Module {
+    fn from(v: ConvBn2D) -> Self {
+        Module::ConvBn2D(v)
+    }
+}
+
+impl From<Input> for Module {
+    fn from(v: Input) -> Self {
+        Module::Input(v)
+    }
+}
+
 impl ModuleEx for Module {
     fn name(&self) -> Option<&ModuleName> {
         match self {

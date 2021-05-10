@@ -38,7 +38,7 @@ impl ModuleEx for SppCsp2D {
     fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
         let Self { c: out_c, .. } = *self;
 
-        match input_shape.tensor()?.as_ref() {
+        match input_shape.single_tensor()?.as_ref() {
             &[b, _c, h, w] => Some(vec![b, out_c.into(), h, w].into()),
             _ => None,
         }

@@ -17,7 +17,7 @@ impl ModuleEx for Sum2D {
     }
 
     fn output_shape(&self, input_shape: ShapeInput<'_>) -> Option<ShapeOutput> {
-        let input_shapes: Vec<&Shape> = input_shape.indexed_tensor()?;
+        let input_shapes: &[&Shape] = input_shape.indexed_tensors()?;
         let mut iter = input_shapes.iter().cloned();
         let first = iter.next()?.to_owned();
         let output_shape = iter.try_fold(first, |acc, shape| acc.equalize(shape))?;

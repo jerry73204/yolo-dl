@@ -318,20 +318,18 @@ impl Graph {
                             let layer_config = layer_configs.remove(&key).unwrap().clone();
 
                             match layer_config {
-                                dark_cfg::Layer::Convolutional(conf) => {
-                                    let dark_cfg::Convolutional {
-                                        filters,
-                                        size,
-                                        stride_x,
-                                        stride_y,
-                                        dilation,
-                                        padding,
-                                        groups,
-                                        activation,
-                                        batch_normalize,
-                                        ..
-                                    } = conf;
-
+                                dark_cfg::Layer::Convolutional(dark_cfg::Convolutional {
+                                    filters,
+                                    size,
+                                    stride_x,
+                                    stride_y,
+                                    dilation,
+                                    padding,
+                                    groups,
+                                    activation,
+                                    batch_normalize,
+                                    ..
+                                }) => {
                                     let s = (stride_x == stride_y)
                                         .then(|| stride_x)
                                         .ok_or_else(|| format_err!("TODO"))?;
