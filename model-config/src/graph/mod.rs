@@ -1,6 +1,7 @@
 mod dag;
 mod darknet;
 mod graph;
+mod graphviz;
 mod newslab_v1;
 
 pub use dag::MultiDag;

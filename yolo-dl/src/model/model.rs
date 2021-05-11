@@ -36,9 +36,9 @@ mod yolo_model {
                     } = node;
                     let module_path = path / format!("module_{}", key);
 
-                    let module = match *config {
+                    let module: Module = match *config {
                         config::Module::Input(config::Input { ref shape, .. }) => {
-                            Module::Input(Input::new(shape))
+                            Input::new(shape).into()
                         }
                         config::Module::ConvBn2D(config::ConvBn2D {
                             c,
@@ -61,38 +61,37 @@ mod yolo_model {
                                 .unwrap();
                             let in_c = in_c.size().unwrap();
 
-                            Module::ConvBn2D(
-                                ConvBn2DInit {
-                                    in_c,
-                                    out_c: c,
-                                    k,
-                                    s,
-                                    p,
-                                    d,
-                                    g,
-                                    bias,
-                                    activation: act,
-                                    batch_norm: bn.enabled.then(|| {
-                                        let config::BatchNorm {
-                                            affine,
-                                            var_min,
-                                            var_max,
-                                            ..
-                                        } = *bn;
-                                        let mut config = DarkBatchNormInit {
-                                            var_min: var_min.map(R64::raw),
-                                            var_max: var_max.map(R64::raw),
-                                            ..Default::default()
-                                        };
-                                        if !affine {
-                                            config.ws_init = None;
-                                            config.bs_init = None;
-                                        }
-                                        config
-                                    }),
-                                }
-                                .build(module_path),
-                            )
+                            ConvBn2DInit {
+                                in_c,
+                                out_c: c,
+                                k,
+                                s,
+                                p,
+                                d,
+                                g,
+                                bias,
+                                activation: act,
+                                batch_norm: bn.enabled.then(|| {
+                                    let config::BatchNorm {
+                                        affine,
+                                        var_min,
+                                        var_max,
+                                        ..
+                                    } = *bn;
+                                    let mut config = DarkBatchNormInit {
+                                        var_min: var_min.map(R64::raw),
+                                        var_max: var_max.map(R64::raw),
+                                        ..Default::default()
+                                    };
+                                    if !affine {
+                                        config.ws_init = None;
+                                        config.bs_init = None;
+                                    }
+                                    config
+                                }),
+                            }
+                            .build(module_path)
+                            .into()
                         }
                         config::Module::DeconvBn2D(config::DeconvBn2D {
                             c,
@@ -116,42 +115,48 @@ mod yolo_model {
                                 .unwrap();
                             let in_c = in_c.size().unwrap();
 
-                            Module::DeconvBn2D(
-                                DeconvBn2DInit {
-                                    in_c,
-                                    out_c: c,
-                                    k,
-                                    s,
-                                    p,
-                                    op,
-                                    d,
-                                    g,
-                                    bias,
-                                    activation: act,
-                                    batch_norm: bn.enabled.then(|| {
-                                        let config::BatchNorm {
-                                            affine,
-                                            var_min,
-                                            var_max,
-                                            ..
-                                        } = *bn;
-                                        let mut config = DarkBatchNormInit {
-                                            var_min: var_min.map(R64::raw),
-                                            var_max: var_max.map(R64::raw),
-                                            ..Default::default()
-                                        };
-                                        if !affine {
-                                            config.ws_init = None;
-                                            config.bs_init = None;
-                                        }
-                                        config
-                                    }),
-                                }
-                                .build(module_path),
-                            )
+                            DeconvBn2DInit {
+                                in_c,
+                                out_c: c,
+                                k,
+                                s,
+                                p,
+                                op,
+                                d,
+                                g,
+                                bias,
+                                activation: act,
+                                batch_norm: bn.enabled.then(|| {
+                                    let config::BatchNorm {
+                                        affine,
+                                        var_min,
+                                        var_max,
+                                        ..
+                                    } = *bn;
+                                    let mut config = DarkBatchNormInit {
+                                        var_min: var_min.map(R64::raw),
+                                        var_max: var_max.map(R64::raw),
+                                        ..Default::default()
+                                    };
+                                    if !affine {
+                                        config.ws_init = None;
+                                        config.bs_init = None;
+                                    }
+                                    config
+                                }),
+                            }
+                            .build(module_path)
+                            .into()
                         }
-                        config::Module::UpSample2D(config::UpSample2D { scale, .. }) => {
-                            Module::UpSample2D(UpSample2D::new(scale.raw())?)
+                        config::Module::UpSample2D(config::UpSample2D { ref config, .. }) => {
+                            match config {
+                                config::UpSample2DConfig::ByScale { scale } => {
+                                    UpSample2D::new(scale.raw())?.into()
+                                }
+                                config::UpSample2DConfig::ByStride { stride, reverse } => {
+                                    todo!();
+                                }
+                            }
                         }
                         config::Module::DarkCsp2D(config::DarkCsp2D {
                             c,
@@ -170,24 +175,23 @@ mod yolo_model {
                                 .unwrap();
                             let in_c = in_c.size().unwrap();
 
-                            Module::DarkCsp2D(
-                                DarkCsp2DInit {
-                                    in_c,
-                                    out_c: c,
-                                    repeat,
-                                    shortcut,
-                                    c_mul,
-                                    batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormInit::default();
-                                        if !bn.affine {
-                                            config.ws_init = None;
-                                            config.bs_init = None;
-                                        }
-                                        config
-                                    }),
-                                }
-                                .build(module_path),
-                            )
+                            DarkCsp2DInit {
+                                in_c,
+                                out_c: c,
+                                repeat,
+                                shortcut,
+                                c_mul,
+                                batch_norm: bn.enabled.then(|| {
+                                    let mut config = DarkBatchNormInit::default();
+                                    if !bn.affine {
+                                        config.ws_init = None;
+                                        config.bs_init = None;
+                                    }
+                                    config
+                                }),
+                            }
+                            .build(module_path)
+                            .into()
                         }
                         config::Module::SppCsp2D(config::SppCsp2D {
                             c,
@@ -205,23 +209,22 @@ mod yolo_model {
                                 .unwrap();
                             let in_c = in_c.size().unwrap();
 
-                            Module::SppCsp2D(
-                                SppCsp2DInit {
-                                    in_c,
-                                    out_c: c,
-                                    k: k.to_owned(),
-                                    c_mul,
-                                    batch_norm: bn.enabled.then(|| {
-                                        let mut config = DarkBatchNormInit::default();
-                                        if !bn.affine {
-                                            config.ws_init = None;
-                                            config.bs_init = None;
-                                        }
-                                        config
-                                    }),
-                                }
-                                .build(module_path),
-                            )
+                            SppCsp2DInit {
+                                in_c,
+                                out_c: c,
+                                k: k.to_owned(),
+                                c_mul,
+                                batch_norm: bn.enabled.then(|| {
+                                    let mut config = DarkBatchNormInit::default();
+                                    if !bn.affine {
+                                        config.ws_init = None;
+                                        config.bs_init = None;
+                                    }
+                                    config
+                                }),
+                            }
+                            .build(module_path)
+                            .into()
                         }
                         config::Module::Sum2D(_) => Module::Sum2D(Sum2D),
                         config::Module::Concat2D(_) => Module::Concat2D(Concat2D),
@@ -240,18 +243,14 @@ mod yolo_model {
                                 })
                                 .try_collect()?;
 
-                            Module::Detect2D(
-                                Detect2DInit {
-                                    num_classes: classes,
-                                    anchors,
-                                }
-                                .build(module_path),
-                            )
+                            Detect2DInit {
+                                num_classes: classes,
+                                anchors,
+                            }
+                            .build(module_path)
+                            .into()
                         }
-                        config::Module::GroupRef(_) => unreachable!(),
-                        config::Module::MergeDetect2D(_) => {
-                            Module::MergeDetect2D(MergeDetect2D::new())
-                        }
+                        config::Module::MergeDetect2D(_) => MergeDetect2D::new().into(),
                         config::Module::DarknetRoute(_) => {
                             todo!();
                         }
@@ -264,6 +263,7 @@ mod yolo_model {
                         config::Module::Linear(_) => {
                             todo!();
                         }
+                        config::Module::GroupRef(_) => unreachable!(),
                     };
 
                     let layer = Layer {

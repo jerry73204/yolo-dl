@@ -10,6 +10,9 @@ mod merge_detect_2d;
 mod spp_csp_2d;
 mod sum_2d;
 mod up_sample_2d;
+mod darknet_route;
+mod darknet_shortcut;
+mod max_pool;
 
 pub use concat_2d::*;
 pub use conv_bn_2d::*;
@@ -23,3 +26,6 @@ pub use merge_detect_2d::*;
 pub use spp_csp_2d::*;
 pub use sum_2d::*;
 pub use up_sample_2d::*;
+pub use darknet_route::*;
+pub use darknet_shortcut::*;
+pub use max_pool::*;

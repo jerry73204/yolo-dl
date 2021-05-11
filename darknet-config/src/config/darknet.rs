@@ -96,6 +96,90 @@ pub enum Layer {
     Unimplemented(UnimplementedLayer),
 }
 
+impl From<UnimplementedLayer> for Layer {
+    fn from(v: UnimplementedLayer) -> Self {
+        Self::Unimplemented(v)
+    }
+}
+
+impl From<GaussianYolo> for Layer {
+    fn from(v: GaussianYolo) -> Self {
+        Self::GaussianYolo(v)
+    }
+}
+
+impl From<Yolo> for Layer {
+    fn from(v: Yolo) -> Self {
+        Self::Yolo(v)
+    }
+}
+
+impl From<AvgPool> for Layer {
+    fn from(v: AvgPool) -> Self {
+        Self::AvgPool(v)
+    }
+}
+
+impl From<Crop> for Layer {
+    fn from(v: Crop) -> Self {
+        Self::Crop(v)
+    }
+}
+
+impl From<Cost> for Layer {
+    fn from(v: Cost) -> Self {
+        Self::Cost(v)
+    }
+}
+
+impl From<Softmax> for Layer {
+    fn from(v: Softmax) -> Self {
+        Self::Softmax(v)
+    }
+}
+
+impl From<Dropout> for Layer {
+    fn from(v: Dropout) -> Self {
+        Self::Dropout(v)
+    }
+}
+
+impl From<BatchNorm> for Layer {
+    fn from(v: BatchNorm) -> Self {
+        Self::BatchNorm(v)
+    }
+}
+
+impl From<UpSample> for Layer {
+    fn from(v: UpSample) -> Self {
+        Self::UpSample(v)
+    }
+}
+
+impl From<Shortcut> for Layer {
+    fn from(v: Shortcut) -> Self {
+        Self::Shortcut(v)
+    }
+}
+
+impl From<Route> for Layer {
+    fn from(v: Route) -> Self {
+        Self::Route(v)
+    }
+}
+
+impl From<Convolutional> for Layer {
+    fn from(v: Convolutional) -> Self {
+        Self::Convolutional(v)
+    }
+}
+
+impl From<Connected> for Layer {
+    fn from(v: Connected) -> Self {
+        Self::Connected(v)
+    }
+}
+
 impl Layer {
     pub fn output_shape(&self, input_shape: &InputShape) -> Option<OutputShape> {
         let output_shape: OutputShape = match self {

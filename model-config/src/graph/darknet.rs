@@ -405,9 +405,16 @@ impl Graph {
                                     maxpool_depth,
                                 }
                                 .into(),
-                                dark_cfg::Layer::UpSample(dark_cfg::UpSample { .. }) => {
-                                    todo!();
+                                dark_cfg::Layer::UpSample(dark_cfg::UpSample {
+                                    stride,
+                                    reverse,
+                                    ..
+                                }) => config::UpSample2D {
+                                    name: None,
+                                    from: None,
+                                    config: config::UpSample2DConfig::ByStride { stride, reverse },
                                 }
+                                .into(),
                                 dark_cfg::Layer::BatchNorm(dark_cfg::BatchNorm { .. }) => {
                                     todo!();
                                 }

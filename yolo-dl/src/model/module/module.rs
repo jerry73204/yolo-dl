@@ -1,9 +1,6 @@
 use super::input::Input;
 use crate::common::*;
-use tch_goodies::module::{
-    Concat2D, ConvBn2D, DarkCsp2D, DeconvBn2D, Detect2D, Detect2DOutput, MergeDetect2D,
-    MergeDetect2DOutput, SppCsp2D, Sum2D, UpSample2D,
-};
+use tch_goodies::module as goodies_mod;
 
 pub use module::*;
 pub use module_input::*;
@@ -15,15 +12,18 @@ mod module {
     #[derivative(Debug)]
     pub enum Module {
         Input(Input),
-        ConvBn2D(ConvBn2D),
-        DeconvBn2D(DeconvBn2D),
-        UpSample2D(UpSample2D),
-        Sum2D(Sum2D),
-        Concat2D(Concat2D),
-        DarkCsp2D(DarkCsp2D),
-        SppCsp2D(SppCsp2D),
-        Detect2D(Detect2D),
-        MergeDetect2D(MergeDetect2D),
+        ConvBn2D(goodies_mod::ConvBn2D),
+        DeconvBn2D(goodies_mod::DeconvBn2D),
+        UpSample2D(goodies_mod::UpSample2D),
+        Sum2D(goodies_mod::Sum2D),
+        Concat2D(goodies_mod::Concat2D),
+        DarkCsp2D(goodies_mod::DarkCsp2D),
+        SppCsp2D(goodies_mod::SppCsp2D),
+        Detect2D(goodies_mod::Detect2D),
+        DarknetRoute(goodies_mod::DarknetRoute),
+        DarknetShortcut(goodies_mod::DarknetShortcut),
+        MaxPool(goodies_mod::MaxPool),
+        MergeDetect2D(goodies_mod::MergeDetect2D),
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -31,6 +31,96 @@ mod module {
             #[derivative(Debug = "ignore")]
             Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
         ),
+    }
+
+    impl From<goodies_mod::DarknetRoute> for Module {
+        fn from(v: goodies_mod::DarknetRoute) -> Self {
+            Self::DarknetRoute(v)
+        }
+    }
+
+    impl From<goodies_mod::DarknetShortcut> for Module {
+        fn from(v: goodies_mod::DarknetShortcut) -> Self {
+            Self::DarknetShortcut(v)
+        }
+    }
+
+    impl From<goodies_mod::MaxPool> for Module {
+        fn from(v: goodies_mod::MaxPool) -> Self {
+            Self::MaxPool(v)
+        }
+    }
+
+    impl From<Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>> for Module {
+        fn from(v: Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>) -> Self {
+            Self::FnIndexed(v)
+        }
+    }
+
+    impl From<Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>> for Module {
+        fn from(v: Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>) -> Self {
+            Self::FnSingle(v)
+        }
+    }
+
+    impl From<goodies_mod::MergeDetect2D> for Module {
+        fn from(v: goodies_mod::MergeDetect2D) -> Self {
+            Self::MergeDetect2D(v)
+        }
+    }
+
+    impl From<goodies_mod::Detect2D> for Module {
+        fn from(v: goodies_mod::Detect2D) -> Self {
+            Self::Detect2D(v)
+        }
+    }
+
+    impl From<goodies_mod::SppCsp2D> for Module {
+        fn from(v: goodies_mod::SppCsp2D) -> Self {
+            Self::SppCsp2D(v)
+        }
+    }
+
+    impl From<goodies_mod::DarkCsp2D> for Module {
+        fn from(v: goodies_mod::DarkCsp2D) -> Self {
+            Self::DarkCsp2D(v)
+        }
+    }
+
+    impl From<goodies_mod::Concat2D> for Module {
+        fn from(v: goodies_mod::Concat2D) -> Self {
+            Self::Concat2D(v)
+        }
+    }
+
+    impl From<goodies_mod::Sum2D> for Module {
+        fn from(v: goodies_mod::Sum2D) -> Self {
+            Self::Sum2D(v)
+        }
+    }
+
+    impl From<goodies_mod::UpSample2D> for Module {
+        fn from(v: goodies_mod::UpSample2D) -> Self {
+            Self::UpSample2D(v)
+        }
+    }
+
+    impl From<goodies_mod::DeconvBn2D> for Module {
+        fn from(v: goodies_mod::DeconvBn2D) -> Self {
+            Self::DeconvBn2D(v)
+        }
+    }
+
+    impl From<goodies_mod::ConvBn2D> for Module {
+        fn from(v: goodies_mod::ConvBn2D) -> Self {
+            Self::ConvBn2D(v)
+        }
+    }
+
+    impl From<Input> for Module {
+        fn from(v: Input) -> Self {
+            Self::Input(v)
+        }
     }
 
     impl Module {
@@ -84,6 +174,15 @@ mod module {
                     train,
                 )
                 .into(),
+                Module::DarknetRoute(_) => {
+                    todo!();
+                }
+                Module::DarknetShortcut(_) => {
+                    todo!();
+                }
+                Module::MaxPool(_) => {
+                    todo!();
+                }
             };
 
             Ok(output)
@@ -91,35 +190,41 @@ mod module {
 
         pub fn clamp_bn_var(&mut self) {
             match self {
-                Self::Input(_module) => {}
                 Self::ConvBn2D(module) => module.clamp_bn_var(),
                 Self::DeconvBn2D(module) => module.clamp_bn_var(),
-                Self::UpSample2D(_module) => {}
-                Self::Sum2D(_module) => {}
-                Self::Concat2D(_module) => {}
                 Self::DarkCsp2D(module) => module.clamp_bn_var(),
                 Self::SppCsp2D(module) => module.clamp_bn_var(),
-                Self::Detect2D(_module) => {}
-                Self::MergeDetect2D(_module) => {}
-                Self::FnSingle(_module) => {}
-                Self::FnIndexed(_module) => {}
+                Self::Input(_)
+                | Self::UpSample2D(_)
+                | Self::Sum2D(_)
+                | Self::Concat2D(_)
+                | Self::Detect2D(_)
+                | Self::MergeDetect2D(_)
+                | Self::FnSingle(_)
+                | Self::FnIndexed(_)
+                | Module::DarknetRoute(_)
+                | Module::DarknetShortcut(_)
+                | Module::MaxPool(_) => {}
             }
         }
 
         pub fn denormalize_bn(&mut self) {
             match self {
-                Self::Input(_module) => {}
                 Self::ConvBn2D(module) => module.denormalize_bn(),
                 Self::DeconvBn2D(module) => module.denormalize_bn(),
-                Self::UpSample2D(_module) => {}
-                Self::Sum2D(_module) => {}
-                Self::Concat2D(_module) => {}
                 Self::DarkCsp2D(module) => module.denormalize_bn(),
                 Self::SppCsp2D(module) => module.denormalize_bn(),
-                Self::Detect2D(_module) => {}
-                Self::MergeDetect2D(_module) => {}
-                Self::FnSingle(_module) => {}
-                Self::FnIndexed(_module) => {}
+                Self::Input(_)
+                | Self::UpSample2D(_)
+                | Self::Sum2D(_)
+                | Self::Concat2D(_)
+                | Self::Detect2D(_)
+                | Self::MergeDetect2D(_)
+                | Self::FnSingle(_)
+                | Self::FnIndexed(_)
+                | Module::DarknetRoute(_)
+                | Module::DarknetShortcut(_)
+                | Module::MaxPool(_) => {}
             }
         }
     }
@@ -131,7 +236,7 @@ mod module_input {
     #[derive(Debug, Clone)]
     pub enum DataKind<'a> {
         Tensor(&'a Tensor),
-        Detect2D(&'a Detect2DOutput),
+        Detect2D(&'a goodies_mod::Detect2DOutput),
     }
 
     impl<'a> DataKind<'a> {
@@ -142,7 +247,7 @@ mod module_input {
             }
         }
 
-        pub fn detect_2d(&self) -> Option<&Detect2DOutput> {
+        pub fn detect_2d(&self) -> Option<&goodies_mod::Detect2DOutput> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
                 _ => None,
@@ -156,8 +261,8 @@ mod module_input {
         }
     }
 
-    impl<'a> From<&'a Detect2DOutput> for DataKind<'a> {
-        fn from(from: &'a Detect2DOutput) -> Self {
+    impl<'a> From<&'a goodies_mod::Detect2DOutput> for DataKind<'a> {
+        fn from(from: &'a goodies_mod::Detect2DOutput) -> Self {
             Self::Detect2D(from)
         }
     }
@@ -190,7 +295,7 @@ mod module_input {
             }
         }
 
-        pub fn detect_2d(&self) -> Option<&Detect2DOutput> {
+        pub fn detect_2d(&self) -> Option<&goodies_mod::Detect2DOutput> {
             match self {
                 Self::Single(DataKind::Detect2D(detect)) => Some(detect),
                 _ => None,
@@ -208,7 +313,7 @@ mod module_input {
             }
         }
 
-        pub fn indexed_detect_2d(&self) -> Option<Vec<&Detect2DOutput>> {
+        pub fn indexed_detect_2d(&self) -> Option<Vec<&goodies_mod::Detect2DOutput>> {
             match self {
                 Self::Indexed(indexed) => {
                     let detects: Option<Vec<_>> =
@@ -243,14 +348,14 @@ mod module_input {
         }
     }
 
-    impl<'a> From<&'a Detect2DOutput> for ModuleInput<'a> {
-        fn from(from: &'a Detect2DOutput) -> Self {
+    impl<'a> From<&'a goodies_mod::Detect2DOutput> for ModuleInput<'a> {
+        fn from(from: &'a goodies_mod::Detect2DOutput) -> Self {
             Self::Single(DataKind::from(from))
         }
     }
 
-    impl<'a, 'b> From<&'b [&'a Detect2DOutput]> for ModuleInput<'a> {
-        fn from(from: &'b [&'a Detect2DOutput]) -> Self {
+    impl<'a, 'b> From<&'b [&'a goodies_mod::Detect2DOutput]> for ModuleInput<'a> {
+        fn from(from: &'b [&'a goodies_mod::Detect2DOutput]) -> Self {
             Self::Indexed(
                 from.iter()
                     .cloned()
@@ -260,8 +365,8 @@ mod module_input {
         }
     }
 
-    impl<'a> From<&'a [Detect2DOutput]> for ModuleInput<'a> {
-        fn from(from: &'a [Detect2DOutput]) -> Self {
+    impl<'a> From<&'a [goodies_mod::Detect2DOutput]> for ModuleInput<'a> {
+        fn from(from: &'a [goodies_mod::Detect2DOutput]) -> Self {
             Self::Indexed(from.iter().map(|output| DataKind::from(output)).collect())
         }
     }
@@ -307,8 +412,8 @@ mod module_input {
     #[derive(Debug, TensorLike)]
     pub enum ModuleOutput {
         Tensor(Tensor),
-        Detect2D(Detect2DOutput),
-        MergeDetect2D(MergeDetect2DOutput),
+        Detect2D(goodies_mod::Detect2DOutput),
+        MergeDetect2D(goodies_mod::MergeDetect2DOutput),
     }
 
     impl ModuleOutput {
@@ -326,21 +431,21 @@ mod module_input {
             }
         }
 
-        pub fn as_detect_2d(&self) -> Option<&Detect2DOutput> {
+        pub fn as_detect_2d(&self) -> Option<&goodies_mod::Detect2DOutput> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
                 _ => None,
             }
         }
 
-        pub fn detect_2d(self) -> Option<Detect2DOutput> {
+        pub fn detect_2d(self) -> Option<goodies_mod::Detect2DOutput> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
                 _ => None,
             }
         }
 
-        pub fn merge_detect_2d(self) -> Option<MergeDetect2DOutput> {
+        pub fn merge_detect_2d(self) -> Option<goodies_mod::MergeDetect2DOutput> {
             match self {
                 Self::MergeDetect2D(detect) => Some(detect),
                 _ => None,
@@ -354,14 +459,14 @@ mod module_input {
         }
     }
 
-    impl From<Detect2DOutput> for ModuleOutput {
-        fn from(from: Detect2DOutput) -> Self {
+    impl From<goodies_mod::Detect2DOutput> for ModuleOutput {
+        fn from(from: goodies_mod::Detect2DOutput) -> Self {
             Self::Detect2D(from)
         }
     }
 
-    impl From<MergeDetect2DOutput> for ModuleOutput {
-        fn from(from: MergeDetect2DOutput) -> Self {
+    impl From<goodies_mod::MergeDetect2DOutput> for ModuleOutput {
+        fn from(from: goodies_mod::MergeDetect2DOutput) -> Self {
             Self::MergeDetect2D(from)
         }
     }
