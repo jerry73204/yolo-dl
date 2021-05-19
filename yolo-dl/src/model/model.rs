@@ -19,6 +19,17 @@ mod yolo_model {
     }
 
     impl YoloModel {
+        pub fn open_newslab_v1<'p>(
+            path: impl Borrow<nn::Path<'p>>,
+            cfg_file: impl AsRef<Path>,
+        ) -> Result<Self> {
+            use model_config::{config, graph};
+            let config = config::Model::load(cfg_file)?;
+            let graph = graph::Graph::new(&config)?;
+            let model = Self::from_graph(path, &graph)?;
+            Ok(model)
+        }
+
         /// Build a model from a computation graph.
         pub fn from_graph<'p>(
             path: impl Borrow<nn::Path<'p>>,
