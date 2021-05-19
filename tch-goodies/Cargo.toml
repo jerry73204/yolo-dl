@@ -12,7 +12,7 @@ tch = "0.4.1"
 itertools = "0.10.0"
 image = "0.23.14"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
-serde = { version = "1.0.125", features = ["derive"] }
+serde = { version = "1.0.126", features = ["derive"] }
 tch-tensor-like = { version = "0.3.0", features = ["derive"] }
 approx = "0.4.0"
 getset = "0.1.1"
@@ -20,9 +20,9 @@ unzip-n = "0.1.2"
 num-traits = "0.2.14"
 maplit = "1.0.2"
 log = "0.4.14"
-ndarray = "0.15.1"
+ndarray = "0.15.2"
 cv-convert = { version = "0.7.0", default-features = false, features = ["tch", "ndarray"] }
 
 [dev-dependencies]
 cv-convert = { version = "0.7.0", default-features = false, features = ["tch", "ndarray"] }
-ndarray = "0.15.1"
+ndarray = "0.15.2"

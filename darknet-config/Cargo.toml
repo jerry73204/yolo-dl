@@ -5,7 +5,7 @@ authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-serde = { version = "1.0.125", features = ["derive"] }
+serde = { version = "1.0.126", features = ["derive"] }
 serde_ini = "0.2.0"
 anyhow = "1.0.40"
 noisy_float = { version = "0.2.0", features = ["serde"] }
@@ -13,12 +13,12 @@ itertools = "0.10.0"
 binread = "2.1.1"
 owning_ref = "0.4.1"
 log = "0.4.14"
-serde_repr = "0.1.6"
+serde_repr = "0.1.7"
 petgraph = "0.5.1"
 indexmap = { version = "1.6.2", features = ["serde"] }
 byteorder = "1.4.3"
 derivative = "2.2.0"
-ndarray = "0.15.1"
+ndarray = "0.15.2"
 tch = { version = "0.4.1", optional = true }
 unzip-n = "0.1.2"
 strum = { version = "0.20.0", features = ["derive"] }

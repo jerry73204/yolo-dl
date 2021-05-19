@@ -10,7 +10,7 @@ edition = "2018"
 cc = "1.0.67"
 envy = "0.4.2"
 pkg-config = "0.3.19"
-serde = { version = "1.0.125", features = ["derive"] }
+serde = { version = "1.0.126", features = ["derive"] }
 
 [dependencies]
 libc = "0.2.94"
