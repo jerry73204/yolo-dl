@@ -325,7 +325,10 @@
             {
                 "name": "up3_up2",
                 "kind": "UpSample2D",
-                "scale": 2.0,
+                "config": {
+                    "type": "ByScale",
+                    "scale": 2.0,
+                }
             },
 
             // (2, 2) -> (2, 1)
@@ -341,7 +344,10 @@
             {
                 "name": "up2_up1",
                 "kind": "UpSample2D",
-                "scale": 2.0,
+                "config": {
+                    "type": "ByScale",
+                    "scale": 2.0,
+                }
             },
 
             // (2, 1) -> (3, 2)
