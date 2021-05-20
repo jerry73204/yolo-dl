@@ -9,6 +9,7 @@ pub struct UpSample2D {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum UpSample2DConfig {
     ByScale { scale: R64 },
     ByStride { stride: usize, reverse: bool },
