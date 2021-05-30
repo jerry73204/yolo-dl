@@ -1,5 +1,5 @@
 use crate::common::*;
-use tch_goodies::module::MergeDetect2DOutput;
+use tch_goodies::detection::MergedDenseDetection;
 
 // it prevents OOM on CUDA.
 const MAX_DETS: usize = 65536;
@@ -61,7 +61,7 @@ pub struct NonMaxSuppression {
 }
 
 impl NonMaxSuppression {
-    pub fn forward(&self, prediction: &MergeDetect2DOutput) -> NmsOutput {
+    pub fn forward(&self, prediction: &MergedDenseDetection) -> NmsOutput {
         tch::no_grad(|| {
             let Self {
                 iou_threshold,
@@ -70,7 +70,7 @@ impl NonMaxSuppression {
             let confidence_threshold = confidence_threshold.raw();
             let num_classes = prediction.num_classes;
 
-            let MergeDetect2DOutput {
+            let MergedDenseDetection {
                 cy,
                 cx,
                 h,

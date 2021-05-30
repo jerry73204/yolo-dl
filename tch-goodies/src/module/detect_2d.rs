@@ -4,8 +4,6 @@ use crate::{
     size::{GridSize, RatioSize},
 };
 
-pub type Detect2DOutput = DenseDetectionTensor;
-
 #[derive(Debug, Clone)]
 pub struct Detect2DInit {
     pub num_classes: usize,

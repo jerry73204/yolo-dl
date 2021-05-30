@@ -6,6 +6,7 @@ use crate::{
     utils::{CowTensor, RateCounter},
 };
 use async_std::{fs::File, io::BufWriter};
+use tch_goodies::MergedDenseDetection;
 
 pub use logging_message::*;
 pub use logging_worker::*;
@@ -182,7 +183,8 @@ mod logging_worker {
                     let objectness_image = if enable_debug_stat && enable_images {
                         let batch_size = output.batch_size();
                         let objectness_maps: Vec<_> = output
-                            .feature_maps()
+                            .tensors()
+                            .tensors
                             .into_iter()
                             .map(|feature_map| feature_map.obj)
                             .zip_eq(output.info.iter())
@@ -578,7 +580,7 @@ mod logging_message {
         #[tensor_like(clone)]
         pub lr: R64,
         pub input: Tensor,
-        pub output: MergeDetect2DOutput,
+        pub output: MergedDenseDetection,
         pub losses: YoloLossOutput,
         pub matchings: MatchingOutput,
         pub inference: Option<YoloInferenceOutput>,

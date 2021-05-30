@@ -1,6 +1,6 @@
 use super::nms::{NmsOutput, NonMaxSuppression, NonMaxSuppressionInit};
 use crate::common::*;
-use tch_goodies::module::MergeDetect2DOutput;
+use tch_goodies::detection::MergedDenseDetection;
 
 #[derive(Debug)]
 pub struct YoloInferenceInit {
@@ -31,7 +31,7 @@ pub struct YoloInference {
 }
 
 impl YoloInference {
-    pub fn forward(&self, prediction: &MergeDetect2DOutput) -> YoloInferenceOutput {
+    pub fn forward(&self, prediction: &MergedDenseDetection) -> YoloInferenceOutput {
         tch::no_grad(|| {
             let device = prediction.device();
 

@@ -119,7 +119,7 @@ mod merged_dense_detection {
             };
 
             debug_assert!({
-                let feature_maps = output.feature_maps();
+                let feature_maps = output.tensors().tensors;
                 izip!(feature_maps, tensors).all(|(feature_map, detection)| {
                     let detection = detection.borrow();
                     feature_map.cy == detection.cy
@@ -150,10 +150,7 @@ mod merged_dense_detection {
             instances
         }
 
-        pub fn cat<T>(outputs: impl IntoIterator<Item = T>) -> Result<Self>
-        where
-            T: Borrow<Self>,
-        {
+        pub fn cat(outputs: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
             let (
                 batch_size_set,
                 num_classes_set,
@@ -443,83 +440,8 @@ mod merged_dense_detection {
             })
         }
 
-        pub fn feature_maps(&self) -> Vec<DenseDetectionTensor> {
-            let batch_size = self.batch_size();
-            let Self {
-                num_classes,
-                ref info,
-                ..
-            } = *self;
-
-            let feature_maps = info
-                .iter()
-                .enumerate()
-                .map(|(_layer_index, meta)| {
-                    let DetectionInfo {
-                        ref feature_size,
-                        ref anchors,
-                        ref flat_index_range,
-                        ..
-                    } = *meta;
-                    let num_anchors = anchors.len() as i64;
-                    let [feature_h, feature_w] = feature_size.hw_params();
-
-                    let cy_map = self.cy.i((.., .., flat_index_range.clone())).view([
-                        batch_size,
-                        1,
-                        num_anchors,
-                        feature_h,
-                        feature_w,
-                    ]);
-                    let cx_map = self.cx.i((.., .., flat_index_range.clone())).view([
-                        batch_size,
-                        1,
-                        num_anchors,
-                        feature_h,
-                        feature_w,
-                    ]);
-                    let h_map = self.h.i((.., .., flat_index_range.clone())).view([
-                        batch_size,
-                        1,
-                        num_anchors,
-                        feature_h,
-                        feature_w,
-                    ]);
-                    let w_map = self.w.i((.., .., flat_index_range.clone())).view([
-                        batch_size,
-                        1,
-                        num_anchors,
-                        feature_h,
-                        feature_w,
-                    ]);
-                    let obj_map = self.obj.i((.., .., flat_index_range.clone())).view([
-                        batch_size,
-                        1,
-                        num_anchors,
-                        feature_h,
-                        feature_w,
-                    ]);
-                    let class_map = self.class.i((.., .., flat_index_range.clone())).view([
-                        batch_size,
-                        num_classes as i64,
-                        num_anchors,
-                        feature_h,
-                        feature_w,
-                    ]);
-
-                    DenseDetectionTensor {
-                        cy: cy_map,
-                        cx: cx_map,
-                        h: h_map,
-                        w: w_map,
-                        obj: obj_map,
-                        class: class_map,
-                        anchors: anchors.clone(),
-                    }
-                })
-                .collect_vec();
-
-            feature_maps
+        pub fn tensors(&self) -> DenseDetectionTensorList {
+            self.shallow_clone().into()
         }
     }
 
@@ -553,6 +475,21 @@ mod merged_dense_detection {
 
 mod dense_detection_tensor {
     use super::*;
+
+    #[derive(Debug, TensorLike)]
+    pub struct DenseDetectionTensorList {
+        pub tensors: Vec<DenseDetectionTensor>,
+    }
+
+    impl DenseDetectionTensorList {
+        pub fn from_detection_tensors(tensors: &[impl Borrow<DenseDetectionTensor>]) -> Self {
+            let tensors: Vec<_> = tensors
+                .iter()
+                .map(|tensor| tensor.borrow().shallow_clone())
+                .collect();
+            Self { tensors }
+        }
+    }
 
     /// Represents the output feature map of a layer.
     ///
@@ -839,6 +776,96 @@ mod instance_index_tensor {
                 grid_rows: Tensor::of_slice(&grid_rows),
                 grid_cols: Tensor::of_slice(&grid_cols),
             }
+        }
+    }
+}
+
+mod convert {
+    use super::*;
+
+    impl TryFrom<DenseDetectionTensorList> for MergedDenseDetection {
+        type Error = Error;
+
+        fn try_from(from: DenseDetectionTensorList) -> Result<Self, Self::Error> {
+            Self::from_detection_tensors(&from.tensors)
+        }
+    }
+
+    impl From<MergedDenseDetection> for DenseDetectionTensorList {
+        fn from(from: MergedDenseDetection) -> DenseDetectionTensorList {
+            let batch_size = from.batch_size();
+            let num_classes = from.num_classes;
+
+            let tensors = from
+                .info
+                .iter()
+                .enumerate()
+                .map(|(_layer_index, meta)| {
+                    let DetectionInfo {
+                        ref feature_size,
+                        ref anchors,
+                        ref flat_index_range,
+                        ..
+                    } = *meta;
+                    let num_anchors = anchors.len() as i64;
+                    let [feature_h, feature_w] = feature_size.hw_params();
+
+                    let cy_map = from.cy.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let cx_map = from.cx.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let h_map = from.h.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let w_map = from.w.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let obj_map = from.obj.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let class_map = from.class.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        num_classes as i64,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+
+                    DenseDetectionTensor {
+                        cy: cy_map,
+                        cx: cx_map,
+                        h: h_map,
+                        w: w_map,
+                        obj: obj_map,
+                        class: class_map,
+                        anchors: anchors.clone(),
+                    }
+                })
+                .collect_vec();
+
+            DenseDetectionTensorList { tensors }
         }
     }
 }

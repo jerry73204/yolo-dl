@@ -9,10 +9,7 @@ use super::{
     pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
 use crate::{common::*, profiling::Timing};
-use tch_goodies::{
-    detection::{FlatIndex, FlatIndexTensor},
-    module::MergeDetect2DOutput,
-};
+use tch_goodies::detection::{FlatIndex, FlatIndexTensor, MergedDenseDetection};
 
 pub use yolo_loss::*;
 pub use yolo_loss_init::*;
@@ -231,7 +228,7 @@ mod yolo_loss {
     impl YoloLoss {
         pub fn forward(
             &self,
-            prediction: &MergeDetect2DOutput,
+            prediction: &MergedDenseDetection,
             target: &[Vec<RatioLabel>],
         ) -> (YoloLossOutput, YoloLossAuxiliary) {
             let mut timing = Timing::new("loss function");
@@ -376,7 +373,7 @@ mod yolo_loss {
 
         fn objectness_loss(
             &self,
-            prediction: &MergeDetect2DOutput,
+            prediction: &MergedDenseDetection,
             matchings: &MatchingOutput,
             scores: Option<impl Borrow<Tensor>>,
         ) -> Tensor {

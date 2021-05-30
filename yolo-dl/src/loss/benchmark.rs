@@ -2,7 +2,7 @@ use crate::{
     common::*,
     loss::{inference::YoloInferenceOutput, MatchingOutput},
 };
-use tch_goodies::module::MergeDetect2DOutput;
+use tch_goodies::detection::MergedDenseDetection;
 
 #[derive(Debug, Clone)]
 pub struct YoloBenchmarkInit {
@@ -33,7 +33,7 @@ pub struct YoloBenchmark {
 impl YoloBenchmark {
     pub fn forward(
         &self,
-        prediction: &MergeDetect2DOutput,
+        prediction: &MergedDenseDetection,
         matchings: &MatchingOutput,
         _inference: &YoloInferenceOutput,
     ) -> YoloBenchmarkOutput {

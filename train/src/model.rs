@@ -41,7 +41,7 @@ impl Model {
         }
     }
 
-    pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<MergeDetect2DOutput> {
+    pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<DenseDetectionTensorList> {
         match self {
             Self::Darknet(DarknetModel {}) => {
                 todo!();

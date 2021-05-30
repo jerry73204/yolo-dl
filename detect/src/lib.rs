@@ -7,6 +7,7 @@ use crate::{
     config::{Config, OutputConfig},
     input_stream::{InputRecord, InputStream},
 };
+use tch_goodies::MergedDenseDetection;
 
 pub async fn start(config: Arc<Config>) -> Result<()> {
     let num_devices = config.model.devices.len();
@@ -65,6 +66,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                                 .forward_t(&images, false)?
                                 .merge_detect_2d()
                                 .ok_or_else(|| format_err!("invalid model output type"))?;
+                            let output = MergedDenseDetection::try_from(output)?;
                             let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
                             Ok((model, yolo_inference, record, inferences))
                         })

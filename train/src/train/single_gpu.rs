@@ -9,6 +9,7 @@ use crate::{
     training_stream::TrainingRecord,
     utils::{self, LrScheduler, RateCounter},
 };
+use tch_goodies::MergedDenseDetection;
 
 /// Start the single-GPU training worker.
 pub fn single_gpu_training_worker(
@@ -169,6 +170,7 @@ pub fn single_gpu_training_worker(
 
             // forward pass
             let output = model.forward_t(&image, true)?;
+            let output = MergedDenseDetection::try_from(output)?;
             timing.add_event("forward");
 
             // compute loss

@@ -1,8 +1,7 @@
 use super::misc::MatchGrid;
 use crate::common::*;
-use tch_goodies::{
-    detection::{DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor},
-    module::MergeDetect2DOutput,
+use tch_goodies::detection::{
+    DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergedDenseDetection,
 };
 
 #[derive(Debug, Clone)]
@@ -51,7 +50,7 @@ impl CyCxHWMatcher {
     /// Match predicted and target bboxes.
     pub fn match_bboxes(
         &self,
-        prediction: &MergeDetect2DOutput,
+        prediction: &MergedDenseDetection,
         target: &[Vec<RatioLabel>],
     ) -> MatchingOutput {
         let snap_thresh = 0.5;

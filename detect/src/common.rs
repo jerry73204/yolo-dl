@@ -20,7 +20,7 @@ pub use serde::{
 };
 pub use std::{
     collections::HashSet,
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fs,
     num::NonZeroUsize,
     path::{Path, PathBuf},

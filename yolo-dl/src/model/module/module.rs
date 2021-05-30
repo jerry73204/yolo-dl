@@ -164,7 +164,7 @@ mod module {
                         &input
                             .indexed_detect_2d()
                             .ok_or_else(|| format_err!("TODO"))?,
-                    )?
+                    )
                     .into(),
                 Self::FnSingle(module) => {
                     module(input.tensor().ok_or_else(|| format_err!("TODO"))?, train).into()
@@ -236,7 +236,7 @@ mod module_input {
     #[derive(Debug, Clone)]
     pub enum DataKind<'a> {
         Tensor(&'a Tensor),
-        Detect2D(&'a goodies_mod::Detect2DOutput),
+        Detect2D(&'a tch_goodies::DenseDetectionTensor),
     }
 
     impl<'a> DataKind<'a> {
@@ -247,7 +247,7 @@ mod module_input {
             }
         }
 
-        pub fn detect_2d(&self) -> Option<&goodies_mod::Detect2DOutput> {
+        pub fn detect_2d(&self) -> Option<&tch_goodies::DenseDetectionTensor> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
                 _ => None,
@@ -261,8 +261,8 @@ mod module_input {
         }
     }
 
-    impl<'a> From<&'a goodies_mod::Detect2DOutput> for DataKind<'a> {
-        fn from(from: &'a goodies_mod::Detect2DOutput) -> Self {
+    impl<'a> From<&'a tch_goodies::DenseDetectionTensor> for DataKind<'a> {
+        fn from(from: &'a tch_goodies::DenseDetectionTensor) -> Self {
             Self::Detect2D(from)
         }
     }
@@ -295,7 +295,7 @@ mod module_input {
             }
         }
 
-        pub fn detect_2d(&self) -> Option<&goodies_mod::Detect2DOutput> {
+        pub fn detect_2d(&self) -> Option<&tch_goodies::DenseDetectionTensor> {
             match self {
                 Self::Single(DataKind::Detect2D(detect)) => Some(detect),
                 _ => None,
@@ -313,7 +313,7 @@ mod module_input {
             }
         }
 
-        pub fn indexed_detect_2d(&self) -> Option<Vec<&goodies_mod::Detect2DOutput>> {
+        pub fn indexed_detect_2d(&self) -> Option<Vec<&tch_goodies::DenseDetectionTensor>> {
             match self {
                 Self::Indexed(indexed) => {
                     let detects: Option<Vec<_>> =
@@ -348,14 +348,14 @@ mod module_input {
         }
     }
 
-    impl<'a> From<&'a goodies_mod::Detect2DOutput> for ModuleInput<'a> {
-        fn from(from: &'a goodies_mod::Detect2DOutput) -> Self {
+    impl<'a> From<&'a tch_goodies::DenseDetectionTensor> for ModuleInput<'a> {
+        fn from(from: &'a tch_goodies::DenseDetectionTensor) -> Self {
             Self::Single(DataKind::from(from))
         }
     }
 
-    impl<'a, 'b> From<&'b [&'a goodies_mod::Detect2DOutput]> for ModuleInput<'a> {
-        fn from(from: &'b [&'a goodies_mod::Detect2DOutput]) -> Self {
+    impl<'a, 'b> From<&'b [&'a tch_goodies::DenseDetectionTensor]> for ModuleInput<'a> {
+        fn from(from: &'b [&'a tch_goodies::DenseDetectionTensor]) -> Self {
             Self::Indexed(
                 from.iter()
                     .cloned()
@@ -365,8 +365,8 @@ mod module_input {
         }
     }
 
-    impl<'a> From<&'a [goodies_mod::Detect2DOutput]> for ModuleInput<'a> {
-        fn from(from: &'a [goodies_mod::Detect2DOutput]) -> Self {
+    impl<'a> From<&'a [tch_goodies::DenseDetectionTensor]> for ModuleInput<'a> {
+        fn from(from: &'a [tch_goodies::DenseDetectionTensor]) -> Self {
             Self::Indexed(from.iter().map(|output| DataKind::from(output)).collect())
         }
     }
@@ -412,8 +412,8 @@ mod module_input {
     #[derive(Debug, TensorLike)]
     pub enum ModuleOutput {
         Tensor(Tensor),
-        Detect2D(goodies_mod::Detect2DOutput),
-        MergeDetect2D(goodies_mod::MergeDetect2DOutput),
+        Detect2D(tch_goodies::DenseDetectionTensor),
+        MergeDetect2D(tch_goodies::DenseDetectionTensorList),
     }
 
     impl ModuleOutput {
@@ -431,21 +431,21 @@ mod module_input {
             }
         }
 
-        pub fn as_detect_2d(&self) -> Option<&goodies_mod::Detect2DOutput> {
+        pub fn as_detect_2d(&self) -> Option<&tch_goodies::DenseDetectionTensor> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
                 _ => None,
             }
         }
 
-        pub fn detect_2d(self) -> Option<goodies_mod::Detect2DOutput> {
+        pub fn detect_2d(self) -> Option<tch_goodies::DenseDetectionTensor> {
             match self {
                 Self::Detect2D(detect) => Some(detect),
                 _ => None,
             }
         }
 
-        pub fn merge_detect_2d(self) -> Option<goodies_mod::MergeDetect2DOutput> {
+        pub fn merge_detect_2d(self) -> Option<tch_goodies::DenseDetectionTensorList> {
             match self {
                 Self::MergeDetect2D(detect) => Some(detect),
                 _ => None,
@@ -459,14 +459,14 @@ mod module_input {
         }
     }
 
-    impl From<goodies_mod::Detect2DOutput> for ModuleOutput {
-        fn from(from: goodies_mod::Detect2DOutput) -> Self {
+    impl From<tch_goodies::DenseDetectionTensor> for ModuleOutput {
+        fn from(from: tch_goodies::DenseDetectionTensor) -> Self {
             Self::Detect2D(from)
         }
     }
 
-    impl From<goodies_mod::MergeDetect2DOutput> for ModuleOutput {
-        fn from(from: goodies_mod::MergeDetect2DOutput) -> Self {
+    impl From<tch_goodies::DenseDetectionTensorList> for ModuleOutput {
+        fn from(from: tch_goodies::DenseDetectionTensorList) -> Self {
             Self::MergeDetect2D(from)
         }
     }

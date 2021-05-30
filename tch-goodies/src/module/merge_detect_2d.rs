@@ -1,5 +1,7 @@
-use super::*;
-use crate::{common::*, detection::MergedDenseDetection};
+use crate::{
+    common::*,
+    detection::{DenseDetectionTensor, DenseDetectionTensorList},
+};
 
 #[derive(Debug)]
 pub struct MergeDetect2D {
@@ -13,10 +15,12 @@ impl MergeDetect2D {
 
     pub fn forward(
         &mut self,
-        detections: &[impl Borrow<Detect2DOutput>],
-    ) -> Result<MergeDetect2DOutput> {
-        MergedDenseDetection::from_detection_tensors(detections)
+        detections: &[impl Borrow<DenseDetectionTensor>],
+    ) -> DenseDetectionTensorList {
+        let tensors: Vec<_> = detections
+            .iter()
+            .map(|det| det.borrow().shallow_clone())
+            .collect();
+        DenseDetectionTensorList { tensors }
     }
 }
-
-pub type MergeDetect2DOutput = MergedDenseDetection;

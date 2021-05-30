@@ -1,3 +1,5 @@
+use tch_goodies::MergedDenseDetection;
+
 use crate::{
     common::*,
     config::{
@@ -31,7 +33,7 @@ struct WorkerOutput {
     job_index: usize,
     worker_index: usize,
     minibatch_size: usize,
-    output: MergeDetect2DOutput,
+    output: MergedDenseDetection,
     losses: YoloLossOutput,
     loss_auxiliary: YoloLossAuxiliary,
     gradients: Vec<Tensor>,
@@ -222,7 +224,7 @@ pub async fn multi_gpu_training_worker(
 
                 tokio::task::spawn_blocking(move || -> Result<_> {
                     // merge output
-                    let model_output = MergeDetect2DOutput::cat(
+                    let model_output = MergedDenseDetection::cat(
                         worker_outputs
                             .iter()
                             .map(|output| output.output.to_device(master_device)),
@@ -281,7 +283,7 @@ pub async fn multi_gpu_training_worker(
                             step: training_step,
                             lr: r64(lr_scheduler.lr()),
                             input: image,
-                            output: model_output,
+                            output: model_output.into(),
                             losses,
                             matchings,
                             inference,
@@ -602,6 +604,7 @@ async fn forward_step(
 
                             // forward pass
                             let output = model.forward_t(&image, true)?;
+                            let output = MergedDenseDetection::try_from(output)?;
                             worker_timing.add_event("forward");
 
                             // compute loss

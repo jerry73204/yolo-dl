@@ -58,8 +58,7 @@ pub use tch::{
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
-    detection::{DetectionInfo, FlatIndex, InstanceIndex},
-    module::MergeDetect2DOutput,
+    detection::{DenseDetectionTensorList, DetectionInfo, FlatIndex, InstanceIndex},
     CyCxHW, GridCyCxHW, GridLabel, GridSize, PixelCyCxHW, PixelLabel, PixelSize, PixelTLBR, Ratio,
     RatioCyCxHW, RatioLabel, TLBRTensor, TensorExt, TLBR,
 };
