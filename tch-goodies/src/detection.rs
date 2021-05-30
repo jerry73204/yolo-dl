@@ -1,370 +1,490 @@
 use crate::{
     bbox::{CyCxHW, TLBR},
     common::*,
-    size::{GridSize, PixelSize, Size},
+    compound_tensor::{CyCxHWTensorUnchecked, DetectionTensor, DetectionTensorUnchecked},
+    size::{GridSize, RatioSize, Size},
     unit::{GridUnit, PixelUnit, RatioUnit, Unit},
 };
 
+pub use dense_detection_tensor::*;
+pub use flat_index_tensor::*;
+pub use instance_index_tensor::*;
 pub use label::*;
+pub use merged_dense_detection::*;
 
-#[derive(Debug, TensorLike)]
-pub struct DenseDetectionInit {
-    pub anchors: Vec<GridSize<f64>>,
-    pub num_classes: usize,
-    pub bbox_cy: Tensor,
-    pub bbox_cx: Tensor,
-    pub bbox_h: Tensor,
-    pub bbox_w: Tensor,
-    pub objectness: Tensor,
-    pub classification: Tensor,
-}
+mod merged_dense_detection {
+    use super::*;
 
-#[derive(Debug, Getters, TensorLike)]
-pub struct DenseDetection {
-    #[getset(get_copy = "pub")]
-    batch_size: i64,
-    #[getset(get_copy = "pub")]
-    num_classes: usize,
-    #[getset(get_copy = "pub")]
-    #[tensor_like(copy)]
-    device: Device,
-    #[getset(get = "pub")]
-    anchors: Vec<GridSize<f64>>,
-    #[getset(get = "pub")]
-    feature_size: GridSize<i64>,
-    #[getset(get = "pub")]
-    bbox_cy: Tensor,
-    #[getset(get = "pub")]
-    bbox_cx: Tensor,
-    #[getset(get = "pub")]
-    bbox_h: Tensor,
-    #[getset(get = "pub")]
-    bbox_w: Tensor,
-    #[getset(get = "pub")]
-    objectness: Tensor,
-    #[getset(get = "pub")]
-    classification: Tensor,
-}
+    #[derive(Debug, TensorLike)]
+    pub struct MergedDenseDetection {
+        /// Number of predicted classes.
+        pub num_classes: usize,
+        /// Tensor of bbox center y coordinates with shape `[batch, 1, flat]`.
+        pub cy: Tensor,
+        /// Tensor of bbox center x coordinates with shape `[batch, 1, flat]`.
+        pub cx: Tensor,
+        /// Tensor of bbox heights with shape `[batch, 1, flat]`.
+        pub h: Tensor,
+        /// Tensor of bbox widths with shape `[batch, 1, flat]`.
+        pub w: Tensor,
+        /// Tensor of bbox objectness score with shape `[batch, 1, flat]`.
+        pub obj: Tensor,
+        /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, flat]`.
+        pub class: Tensor,
+        /// Saves the shape of exported feature maps.
+        pub info: Vec<DetectionInfo>,
+    }
 
-impl TryFrom<DenseDetectionInit> for DenseDetection {
-    type Error = Error;
-
-    fn try_from(from: DenseDetectionInit) -> Result<Self, Self::Error> {
-        let DenseDetectionInit {
-            anchors,
-            num_classes,
-            bbox_cy,
-            bbox_cx,
-            bbox_h,
-            bbox_w,
-            objectness,
-            classification,
-        } = from;
-
-        let num_anchors = anchors.len() as i64;
-
-        // ensure all tensors are on the same device
-        let device = {
-            let mut iter = vec![
-                bbox_cy.device(),
-                bbox_cx.device(),
-                bbox_h.device(),
-                bbox_w.device(),
-                objectness.device(),
-                classification.device(),
-            ]
-            .into_iter();
-            let first = iter.next().unwrap();
-            ensure!(
-                iter.all(|dev| first == dev),
-                "all tensors must be on the same device"
-            );
-            first
-        };
-
-        // ensure all tensors have Float kind
-        {
-            let kinds = vec![
-                bbox_cy.kind(),
-                bbox_cx.kind(),
-                bbox_h.kind(),
-                bbox_w.kind(),
-                objectness.kind(),
-                classification.kind(),
-            ];
-            ensure!(
-                kinds.into_iter().all(|kind| matches!(kind, Kind::Float)),
-                "all tensors must have float kind"
-            );
+    impl MergedDenseDetection {
+        /// Gets the device of belonging tensors.
+        pub fn device(&self) -> Device {
+            self.cy.device()
         }
 
-        // ensure every tensor has shape (batch_size x num_entries x num_anchors x height x width)
-        let (batch_size, feature_size) = {
-            let (batch_size, _entries, _anchors, height, width) = bbox_cy.size5()?;
+        /// Gets the batch size of belonging tensors.
+        pub fn batch_size(&self) -> i64 {
+            let (batch_size, _entries, _instances) = self.cy.size3().unwrap();
+            batch_size
+        }
+
+        pub fn num_instances(&self) -> i64 {
+            let (_batch_size, _entries, instances) = self.cy.size3().unwrap();
+            instances
+        }
+
+        pub fn cat<T>(outputs: impl IntoIterator<Item = T>) -> Result<Self>
+        where
+            T: Borrow<Self>,
+        {
+            let (
+                batch_size_set,
+                num_classes_set,
+                info_set,
+                cy_vec,
+                cx_vec,
+                h_vec,
+                w_vec,
+                obj_vec,
+                class_vec,
+            ): (
+                HashSet<i64>,
+                HashSet<usize>,
+                HashSet<Vec<DetectionInfo>>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+                Vec<Tensor>,
+            ) = outputs
+                .into_iter()
+                .map(|output| {
+                    let output = output.borrow();
+                    let batch_size = output.batch_size();
+                    let Self {
+                        num_classes,
+                        info,
+                        cy,
+                        cx,
+                        h,
+                        w,
+                        obj,
+                        class,
+                        ..
+                    } = output.shallow_clone();
+
+                    (batch_size, num_classes, info, cy, cx, h, w, obj, class)
+                })
+                .unzip_n();
+
+            let num_outputs = cy_vec.len();
+            let batch_size = {
+                ensure!(batch_size_set.len() == 1, "batch_size must be equal");
+                batch_size_set.into_iter().next().unwrap() * num_outputs as i64
+            };
+            let num_classes = {
+                ensure!(num_classes_set.len() == 1, "num_classes must be equal");
+                num_classes_set.into_iter().next().unwrap()
+            };
+            let info = {
+                ensure!(info_set.len() == 1, "detection info must be equal");
+                info_set.into_iter().next().unwrap()
+            };
+            let cy = Tensor::cat(&cy_vec, 0);
+            let cx = Tensor::cat(&cx_vec, 0);
+            let h = Tensor::cat(&h_vec, 0);
+            let w = Tensor::cat(&w_vec, 0);
+            let obj = Tensor::cat(&obj_vec, 0);
+            let class = Tensor::cat(&class_vec, 0);
+
+            let flat_index_size: i64 = info
+                .iter()
+                .map(|meta| {
+                    let DetectionInfo {
+                        ref feature_size,
+                        ref anchors,
+                        ..
+                    } = *meta;
+                    let [h, w] = feature_size.hw_params();
+                    h * w * anchors.len() as i64
+                })
+                .sum();
+
             ensure!(
-                bbox_cy.size5()? == (batch_size, 1, num_anchors, height, width),
-                "bbox_cy has invalid shape"
+                cy.size3()? == (batch_size, 1, flat_index_size),
+                "invalid cy shape"
             );
             ensure!(
-                bbox_cx.size5()? == (batch_size, 1, num_anchors, height, width),
-                "bbox_cx has invalid shape"
+                cx.size3()? == (batch_size, 1, flat_index_size),
+                "invalid cx shape"
             );
             ensure!(
-                bbox_h.size5()? == (batch_size, 1, num_anchors, height, width),
-                "bbox_h has invalid shape"
+                h.size3()? == (batch_size, 1, flat_index_size),
+                "invalid height shape"
             );
             ensure!(
-                bbox_w.size5()? == (batch_size, 1, num_anchors, height, width),
-                "bbox_w has invalid shape"
+                w.size3()? == (batch_size, 1, flat_index_size),
+                "invalid width shape"
             );
             ensure!(
-                objectness.size5()? == (batch_size, 1, num_anchors, height, width),
-                "objectness has invalid shape"
+                obj.size3()? == (batch_size, 1, flat_index_size),
+                "invalid objectness shape"
             );
             ensure!(
-                classification.size5()?
-                    == (batch_size, num_classes as i64, num_anchors, height, width),
-                "classification has invalid shape"
+                class.size3()? == (batch_size, num_classes as i64, flat_index_size),
+                "invalid classification shape"
             );
 
-            (batch_size, GridSize::new(height, width).unwrap())
-        };
+            Ok(Self {
+                num_classes,
+                cy,
+                cx,
+                h,
+                w,
+                obj,
+                class,
+                info,
+            })
+        }
 
-        Ok(Self {
-            batch_size,
-            num_classes,
-            device,
-            anchors,
-            feature_size,
-            bbox_cy,
-            bbox_cx,
-            bbox_h,
-            bbox_w,
-            objectness,
-            classification,
-        })
-    }
-}
+        pub fn index_by_flats(&self, flat_indexes: &FlatIndexTensor) -> DetectionTensor {
+            let Self {
+                cy,
+                cx,
+                h,
+                w,
+                class,
+                obj,
+                ..
+            } = self;
+            let FlatIndexTensor { batches, flats } = flat_indexes;
 
-#[derive(Debug, Getters, TensorLike)]
-pub struct MultiDenseDetection {
-    #[getset(get = "pub")]
-    image_size: PixelSize<i64>,
-    #[getset(get_copy = "pub")]
-    batch_size: i64,
-    #[getset(get_copy = "pub")]
-    num_classes: usize,
-    #[getset(get_copy = "pub")]
-    #[tensor_like(copy)]
-    #[getset(get = "pub")]
-    device: Device,
-    #[getset(get = "pub")]
-    layer_meta: Vec<LayerMeta>,
-    // below tensors are indexed by (batch x entry x flat_index), where
-    // flat_index is ( \sum_i anchor_i x height_i x width_i )
-    #[getset(get = "pub")]
-    bbox_cy: Tensor,
-    #[getset(get = "pub")]
-    bbox_cx: Tensor,
-    #[getset(get = "pub")]
-    bbox_h: Tensor,
-    #[getset(get = "pub")]
-    bbox_w: Tensor,
-    #[getset(get = "pub")]
-    objectness: Tensor,
-    #[getset(get = "pub")]
-    classification: Tensor,
-}
+            DetectionTensorUnchecked {
+                cycxhw: CyCxHWTensorUnchecked {
+                    cy: cy.index(&[Some(batches), None, Some(flats)]),
+                    cx: cx.index(&[Some(batches), None, Some(flats)]),
+                    h: h.index(&[Some(batches), None, Some(flats)]),
+                    w: w.index(&[Some(batches), None, Some(flats)]),
+                },
+                obj: obj.index(&[Some(batches), None, Some(flats)]),
+                class: class.index(&[Some(batches), None, Some(flats)]),
+            }
+            .try_into()
+            .unwrap()
+        }
 
-impl MultiDenseDetection {
-    pub fn new(
-        image_height: usize,
-        image_width: usize,
-        detections: impl IntoIterator<Item = DenseDetection>,
-    ) -> Result<Self> {
-        // unzip iterator
-        let (
-            batch_size_set,
-            num_classes_set,
-            meta_vec,
-            device_vec,
-            bbox_cy_vec,
-            bbox_cx_vec,
-            bbox_h_vec,
-            bbox_w_vec,
-            objectness_vec,
-            classification_vec,
-        ): (
-            HashSet<_>,
-            HashSet<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-            Vec<_>,
-        ) = detections
-            .into_iter()
-            .scan(0, |flat_index, detection| {
-                let DenseDetection {
-                    batch_size,
+        pub fn index_by_instances(
+            &self,
+            instance_indexes: &InstanceIndexTensor,
+        ) -> DetectionTensor {
+            let flat_indexes = self.instances_to_flats(instance_indexes).unwrap();
+            self.index_by_flats(&flat_indexes)
+        }
+
+        pub fn flat_to_instance_index(&self, flat_index: &FlatIndex) -> Option<InstanceIndex> {
+            let FlatIndex {
+                batch_index,
+                flat_index,
+            } = *flat_index;
+            let batch_size = self.batch_size();
+            if batch_index as i64 >= batch_size || flat_index < 0 {
+                return None;
+            }
+
+            let (
+                layer_index,
+                DetectionInfo {
                     feature_size,
-                    anchors,
-                    num_classes,
-                    device,
-                    bbox_cy,
-                    bbox_cx,
-                    bbox_h,
-                    bbox_w,
-                    objectness,
-                    classification,
-                } = detection;
-
-                let num_anchors = anchors.len() as i64;
-                let [feature_h, feature_w] = feature_size.hw_params();
-
-                // compute flat index
-                let flat_index_range = {
-                    let num_flat_indexes = num_anchors * feature_h * feature_w;
-                    let begin = *flat_index;
-                    let end = begin + num_flat_indexes;
-
-                    // update state
-                    *flat_index = end;
-
-                    begin..end
-                };
-
-                let grid_size = {
-                    let grid_h = image_height as f64 / feature_h as f64;
-                    let grid_w = image_width as f64 / feature_w as f64;
-                    PixelSize::new(grid_h, grid_w).unwrap()
-                };
-
-                let meta = LayerMeta {
-                    feature_size,
-                    grid_size,
                     anchors,
                     flat_index_range,
-                };
+                    ..
+                },
+            ) = self
+                .info
+                .iter()
+                .enumerate()
+                .find(|(_layer_index, meta)| flat_index < meta.flat_index_range.end)?;
 
-                Some((
-                    batch_size,
-                    num_classes,
-                    meta,
-                    device,
-                    bbox_cy.view([batch_size, 1, -1]),
-                    bbox_cx.view([batch_size, 1, -1]),
-                    bbox_h.view([batch_size, 1, -1]),
-                    bbox_w.view([batch_size, 1, -1]),
-                    objectness.view([batch_size, 1, -1]),
-                    classification.view([batch_size, num_classes as i64, -1]),
-                ))
+            let remainder = flat_index - flat_index_range.start;
+            let grid_col = remainder % feature_size.w();
+            let grid_row = remainder / feature_size.w() % feature_size.h();
+            let anchor_index = remainder / feature_size.w() / feature_size.h();
+
+            if anchor_index >= anchors.len() as i64 {
+                return None;
+            }
+
+            Some(InstanceIndex {
+                batch_index: batch_index as i64,
+                layer_index: layer_index as i64,
+                anchor_index,
+                grid_row,
+                grid_col,
             })
-            .unzip_n();
+        }
 
-        // ensure non-empty
-        ensure!(
-            !batch_size_set.is_empty(),
-            "at least one dense detection must be given"
-        );
+        pub fn instance_to_flat_index(&self, instance_index: &InstanceIndex) -> Option<FlatIndex> {
+            let InstanceIndex {
+                batch_index,
+                layer_index,
+                anchor_index,
+                grid_row,
+                grid_col,
+            } = *instance_index;
 
-        // ensure batch_sizes are equal
-        let batch_size = {
-            ensure!(
-                batch_size_set.len() == 1,
-                "batch sizes of every detection must be equal"
-            );
-            batch_size_set.into_iter().next().unwrap()
-        };
+            let DetectionInfo {
+                ref flat_index_range,
+                ref feature_size,
+                ..
+            } = self.info.get(layer_index as usize)?;
 
-        // ensure num_classes are equal
-        let num_classes = {
-            ensure!(
-                num_classes_set.len() == 1,
-                "number of classes of every detection must be equal"
-            );
-            num_classes_set.into_iter().next().unwrap()
-        };
+            let flat_index = flat_index_range.start
+                + grid_col
+                + feature_size.w() * (grid_row + feature_size.h() * anchor_index);
 
-        // ensure devices must be equal
-        let device = {
-            let mut iter = device_vec.into_iter();
-            let first = iter.next().unwrap();
-            ensure!(
-                iter.all(|dev| first == dev),
-                "device of every detection must be equal"
-            );
-            first
-        };
+            Some(FlatIndex {
+                batch_index,
+                flat_index,
+            })
+        }
 
-        // image size
-        let image_size = PixelSize::new(image_height as i64, image_width as i64).unwrap();
+        pub fn flats_to_instances(
+            &self,
+            flat_indexes: &FlatIndexTensor,
+        ) -> Option<InstanceIndexTensor> {
+            let FlatIndexTensor { batches, flats } = flat_indexes;
 
-        // concatenate tensors
-        let bbox_cy = Tensor::cat(&bbox_cy_vec, 2);
-        let bbox_cx = Tensor::cat(&bbox_cx_vec, 2);
-        let bbox_h = Tensor::cat(&bbox_h_vec, 2);
-        let bbox_w = Tensor::cat(&bbox_w_vec, 2);
-        let objectness = Tensor::cat(&objectness_vec, 2);
-        let classification = Tensor::cat(&classification_vec, 2);
+            let tuples: Option<Vec<_>> = izip!(Vec::<i64>::from(batches), Vec::<i64>::from(flats))
+                .map(|(batch_index, flat_index)| {
+                    let InstanceIndex {
+                        batch_index,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    } = self.flat_to_instance_index(&FlatIndex {
+                        batch_index,
+                        flat_index,
+                    })?;
 
-        Ok(Self {
-            image_size,
-            batch_size,
-            num_classes,
-            device,
-            layer_meta: meta_vec,
-            bbox_cy,
-            bbox_cx,
-            bbox_h,
-            bbox_w,
-            objectness,
-            classification,
-        })
+                    Some((batch_index, layer_index, anchor_index, grid_row, grid_col))
+                })
+                .collect();
+            let (batches, layers, anchors, grid_rows, grid_cols) =
+                tuples?.into_iter().unzip_n_vec();
+
+            Some(InstanceIndexTensor {
+                batches: Tensor::of_slice(&batches),
+                layers: Tensor::of_slice(&layers),
+                anchors: Tensor::of_slice(&anchors),
+                grid_rows: Tensor::of_slice(&grid_rows),
+                grid_cols: Tensor::of_slice(&grid_cols),
+            })
+        }
+
+        pub fn instances_to_flats(
+            &self,
+            instance_indexes: &InstanceIndexTensor,
+        ) -> Option<FlatIndexTensor> {
+            let InstanceIndexTensor {
+                batches,
+                layers,
+                anchors,
+                grid_rows,
+                grid_cols,
+            } = instance_indexes;
+
+            let tuples: Option<Vec<_>> = izip!(
+                Vec::<i64>::from(batches),
+                Vec::<i64>::from(layers),
+                Vec::<i64>::from(anchors),
+                Vec::<i64>::from(grid_rows),
+                Vec::<i64>::from(grid_cols),
+            )
+            .map(
+                |(batch_index, layer_index, anchor_index, grid_row, grid_col)| {
+                    let FlatIndex {
+                        batch_index,
+                        flat_index,
+                    } = self.instance_to_flat_index(&InstanceIndex {
+                        batch_index,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    })?;
+                    Some((batch_index, flat_index))
+                },
+            )
+            .collect();
+            let (batches, flats) = tuples?.into_iter().unzip_n_vec();
+
+            Some(FlatIndexTensor {
+                batches: Tensor::of_slice(&batches),
+                flats: Tensor::of_slice(&flats),
+            })
+        }
+
+        pub fn feature_maps(&self) -> Vec<DenseDetectionTensor> {
+            let batch_size = self.batch_size();
+            let Self {
+                num_classes,
+                ref info,
+                ..
+            } = *self;
+
+            let feature_maps = info
+                .iter()
+                .enumerate()
+                .map(|(_layer_index, meta)| {
+                    let DetectionInfo {
+                        ref feature_size,
+                        ref anchors,
+                        ref flat_index_range,
+                        ..
+                    } = *meta;
+                    let num_anchors = anchors.len() as i64;
+                    let [feature_h, feature_w] = feature_size.hw_params();
+
+                    let cy_map = self.cy.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let cx_map = self.cx.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let h_map = self.h.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let w_map = self.w.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let obj_map = self.obj.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        1,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+                    let class_map = self.class.i((.., .., flat_index_range.clone())).view([
+                        batch_size,
+                        num_classes as i64,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
+
+                    DenseDetectionTensor {
+                        cy: cy_map,
+                        cx: cx_map,
+                        h: h_map,
+                        w: w_map,
+                        obj: obj_map,
+                        class: class_map,
+                    }
+                })
+                .collect_vec();
+
+            feature_maps
+        }
     }
 
-    pub fn to_flat_index(&self, instance_index: &InstanceIndex) -> i64 {
-        let InstanceIndex {
-            layer_index,
-            anchor_index,
-            grid_row,
-            grid_col,
-            ..
-        } = *instance_index;
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+    pub struct DetectionInfo {
+        /// feature map size in grid units
+        #[tensor_like(clone)]
+        pub feature_size: GridSize<i64>,
+        /// Anchros (height, width) in grid units
+        #[tensor_like(clone)]
+        pub anchors: Vec<RatioSize<R64>>,
+        #[tensor_like(clone)]
+        pub flat_index_range: Range<i64>,
+    }
 
-        let LayerMeta {
-            ref flat_index_range,
-            ref feature_size,
-            ..
-        } = self.layer_meta[layer_index];
-        let [h, w] = feature_size.hw_params();
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+    pub struct FlatIndex {
+        pub batch_index: i64,
+        pub flat_index: i64,
+    }
 
-        flat_index_range.start + grid_col + w * (grid_row + h * anchor_index)
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
+    pub struct InstanceIndex {
+        pub batch_index: i64,
+        pub layer_index: i64,
+        pub anchor_index: i64,
+        pub grid_row: i64,
+        pub grid_col: i64,
     }
 }
 
-#[derive(Debug, TensorLike)]
-pub struct LayerMeta {
-    /// feature map size in grid units
-    pub feature_size: GridSize<i64>,
-    /// per grid size in pixel units
-    pub grid_size: PixelSize<f64>,
-    /// Anchros (height, width) in grid units
-    pub anchors: Vec<GridSize<f64>>,
-    #[tensor_like(clone)]
-    pub flat_index_range: Range<i64>,
-}
+mod dense_detection_tensor {
+    use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
-pub struct InstanceIndex {
-    pub batch_index: usize,
-    pub layer_index: usize,
-    pub anchor_index: i64,
-    pub grid_row: i64,
-    pub grid_col: i64,
+    /// Represents the output feature map of a layer.
+    ///
+    /// Every belonging tensor has shape `[batch, entry, anchor, height, width]`.
+    #[derive(Debug, TensorLike)]
+    pub struct DenseDetectionTensor {
+        /// The bounding box center y position in ratio unit. It has 1 entry.
+        pub cy: Tensor,
+        /// The bounding box center x position in ratio unit. It has 1 entry.
+        pub cx: Tensor,
+        /// The bounding box height in ratio unit. It has 1 entry.
+        pub h: Tensor,
+        /// The bounding box width in ratio unit. It has 1 entry.
+        pub w: Tensor,
+        /// The likelihood score an object in the position. It has 1 entry.
+        pub obj: Tensor,
+        /// The scores the object is of that class. It number of entries is the number of classes.
+        pub class: Tensor,
+    }
+
+    impl DenseDetectionTensor {
+        pub fn height(&self) -> usize {
+            let (_, _, _, height, _) = self.cy.size5().unwrap();
+            height as usize
+        }
+
+        pub fn width(&self) -> usize {
+            let (_, _, _, _, width) = self.cy.size5().unwrap();
+            width as usize
+        }
+    }
 }
 
 mod label {
@@ -445,6 +565,164 @@ mod label {
     {
         fn as_ref(&self) -> &CyCxHW<T, U> {
             &self.cycxhw
+        }
+    }
+}
+
+mod flat_index_tensor {
+    use super::*;
+
+    #[derive(Debug, TensorLike)]
+    pub struct FlatIndexTensor {
+        pub batches: Tensor,
+        pub flats: Tensor,
+    }
+
+    impl FlatIndexTensor {
+        pub fn num_samples(&self) -> i64 {
+            self.batches.size1().unwrap()
+        }
+
+        pub fn cat_mini_batches<T>(indexes: impl IntoIterator<Item = (T, i64)>) -> Self
+        where
+            T: Borrow<Self>,
+        {
+            let (batches_vec, flats_vec) = indexes
+                .into_iter()
+                .scan(0i64, |batch_base, (flat_indexes, mini_batch_size)| {
+                    let Self { batches, flats } = flat_indexes.borrow().shallow_clone();
+
+                    let new_batches = batches + *batch_base;
+                    *batch_base += mini_batch_size;
+
+                    Some((new_batches, flats))
+                })
+                .unzip_n_vec();
+
+            Self {
+                batches: Tensor::cat(&batches_vec, 0),
+                flats: Tensor::cat(&flats_vec, 0),
+            }
+        }
+    }
+
+    impl<'a> From<&'a FlatIndexTensor> for Vec<FlatIndex> {
+        fn from(from: &'a FlatIndexTensor) -> Self {
+            let FlatIndexTensor { batches, flats } = from;
+
+            izip!(Vec::<i64>::from(batches), Vec::<i64>::from(flats))
+                .map(|(batch_index, flat_index)| FlatIndex {
+                    batch_index,
+                    flat_index,
+                })
+                .collect()
+        }
+    }
+
+    impl From<FlatIndexTensor> for Vec<FlatIndex> {
+        fn from(from: FlatIndexTensor) -> Self {
+            (&from).into()
+        }
+    }
+
+    impl FromIterator<FlatIndex> for FlatIndexTensor {
+        fn from_iter<T: IntoIterator<Item = FlatIndex>>(iter: T) -> Self {
+            let (batches, flats) = iter
+                .into_iter()
+                .map(|index| {
+                    let FlatIndex {
+                        batch_index,
+                        flat_index,
+                    } = index;
+                    (batch_index, flat_index)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                flats: Tensor::of_slice(&flats),
+            }
+        }
+    }
+
+    impl<'a> FromIterator<&'a FlatIndex> for FlatIndexTensor {
+        fn from_iter<T: IntoIterator<Item = &'a FlatIndex>>(iter: T) -> Self {
+            let (batches, flats) = iter
+                .into_iter()
+                .map(|index| {
+                    let FlatIndex {
+                        batch_index,
+                        flat_index,
+                    } = *index;
+                    (batch_index, flat_index)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                flats: Tensor::of_slice(&flats),
+            }
+        }
+    }
+}
+
+mod instance_index_tensor {
+    use super::*;
+
+    #[derive(Debug, TensorLike)]
+    pub struct InstanceIndexTensor {
+        pub batches: Tensor,
+        pub layers: Tensor,
+        pub anchors: Tensor,
+        pub grid_rows: Tensor,
+        pub grid_cols: Tensor,
+    }
+
+    impl FromIterator<InstanceIndex> for InstanceIndexTensor {
+        fn from_iter<T: IntoIterator<Item = InstanceIndex>>(iter: T) -> Self {
+            let (batches, layers, anchors, grid_rows, grid_cols) = iter
+                .into_iter()
+                .map(|index| {
+                    let InstanceIndex {
+                        batch_index,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    } = index;
+                    (batch_index, layer_index, anchor_index, grid_row, grid_col)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                layers: Tensor::of_slice(&layers),
+                anchors: Tensor::of_slice(&anchors),
+                grid_rows: Tensor::of_slice(&grid_rows),
+                grid_cols: Tensor::of_slice(&grid_cols),
+            }
+        }
+    }
+
+    impl<'a> FromIterator<&'a InstanceIndex> for InstanceIndexTensor {
+        fn from_iter<T: IntoIterator<Item = &'a InstanceIndex>>(iter: T) -> Self {
+            let (batches, layers, anchors, grid_rows, grid_cols) = iter
+                .into_iter()
+                .map(|index| {
+                    let InstanceIndex {
+                        batch_index,
+                        layer_index,
+                        anchor_index,
+                        grid_row,
+                        grid_col,
+                    } = *index;
+                    (batch_index, layer_index, anchor_index, grid_row, grid_col)
+                })
+                .unzip_n_vec();
+            Self {
+                batches: Tensor::of_slice(&batches),
+                layers: Tensor::of_slice(&layers),
+                anchors: Tensor::of_slice(&anchors),
+                grid_rows: Tensor::of_slice(&grid_rows),
+                grid_cols: Tensor::of_slice(&grid_cols),
+            }
         }
     }
 }

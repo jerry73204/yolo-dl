@@ -37,10 +37,7 @@ pub use std::{
     sync::{Arc, Mutex},
 };
 pub use strum::AsRefStr;
-pub use tch_goodies::{
-    DenseDetection, DenseDetectionInit, GridSize, LayerMeta, MultiDenseDetection, PixelSize,
-    TensorExt,
-};
+pub use tch_goodies::{GridSize, PixelSize, TensorExt};
 pub use tch_tensor_like::TensorLike;
 pub use unzip_n::unzip_n;
 

@@ -1,4 +1,4 @@
-use anyhow::{format_err, Context, Result};
+use anyhow::{Context, Result};
 use darknet_config::{Darknet, DarknetModel, Graph, NodeKey};
 use prettytable::{cell, row, Table};
 use std::{
@@ -27,14 +27,6 @@ enum Args {
         /// output DOT file
         output_file: PathBuf,
     },
-    DetectImage {
-        /// configuration file
-        config_file: PathBuf,
-        /// weights file
-        weights_file: PathBuf,
-        /// image file
-        image_file: PathBuf,
-    },
 }
 
 fn main() -> Result<()> {
@@ -50,13 +42,6 @@ fn main() -> Result<()> {
             config_file,
             output_file,
         } => make_dot_file(config_file, output_file)?,
-        Args::DetectImage {
-            config_file,
-            weights_file,
-            image_file,
-        } => {
-            detect_image(config_file, weights_file, image_file)?;
-        }
     }
 
     Ok(())
@@ -123,60 +108,4 @@ fn make_dot_file(config_file: impl AsRef<Path>, output_file: impl AsRef<Path>) -
 fn make_dot_file(_config_file: impl AsRef<Path>, _output_file: impl AsRef<Path>) -> Result<()> {
     use anyhow::bail;
     bail!("'dot' feature must be enabled to run this command");
-}
-
-#[cfg(feature = "tch")]
-fn detect_image(
-    config_file: impl AsRef<Path>,
-    weights_file: impl AsRef<Path>,
-    input_file: impl AsRef<Path>,
-) -> Result<()> {
-    use darknet_config::TchModel;
-    use tch::{nn, vision, Device, Kind};
-    use tch_goodies::TensorExt;
-
-    // load model
-    let device = Device::cuda_if_available();
-    let vs = nn::VarStore::new(device);
-    let root = vs.root();
-
-    let mut model = {
-        println!("loading config...");
-        let mut darknet_model = DarknetModel::from_config_file(&config_file)?;
-
-        println!("loading weights...");
-        darknet_model.load_weights(&weights_file)?;
-
-        println!("initializing model...");
-        TchModel::from_darknet_model(&root, &darknet_model)?
-    };
-
-    let [_in_c, in_h, in_w] = {
-        let [in_h, in_w, in_c] = model
-            .input_shape()
-            .single_hwc()
-            .ok_or_else(|| format_err!("only model with 3D input is supported"))?;
-        [in_c as i64, in_h as i64, in_w as i64]
-    };
-
-    // load image
-    let image = vision::image::load(input_file)?;
-    let image = image.resize2d_letterbox(in_h, in_w)?;
-    let image = image.to_device(device).unsqueeze(0).to_kind(Kind::Float) / 255.0; // add batch dimension
-
-    let _pred = model.forward_t(&image, false)?;
-
-    println!("detection runs successfully");
-    println!("detection visualization is not implemented");
-    Ok(())
-}
-
-#[cfg(not(feature = "tch"))]
-fn detect_image(
-    config_file: impl AsRef<Path>,
-    weights_file: impl AsRef<Path>,
-    input_file: impl AsRef<Path>,
-) -> Result<()> {
-    use anyhow::bail;
-    bail!("'tch' feature must be enabled to run this command");
 }

@@ -1,7 +1,8 @@
 use super::misc::MatchGrid;
 use crate::common::*;
-use tch_goodies::module::{
-    DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergeDetect2DOutput,
+use tch_goodies::{
+    detection::{DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor},
+    module::MergeDetect2DOutput,
 };
 
 #[derive(Debug, Clone)]

@@ -9,7 +9,10 @@ use super::{
     pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
 use crate::{common::*, profiling::Timing};
-use tch_goodies::module::{FlatIndex, FlatIndexTensor, MergeDetect2DOutput};
+use tch_goodies::{
+    detection::{FlatIndex, FlatIndexTensor},
+    module::MergeDetect2DOutput,
+};
 
 pub use yolo_loss::*;
 pub use yolo_loss_init::*;

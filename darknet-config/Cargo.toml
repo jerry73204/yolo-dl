@@ -19,7 +19,6 @@ indexmap = { version = "1.6.2", features = ["serde"] }
 byteorder = "1.4.3"
 derivative = "2.2.0"
 ndarray = "0.15.2"
-tch = { version = "0.4.1", optional = true }
 unzip-n = "0.1.2"
 strum = { version = "0.20.0", features = ["derive"] }
 image = "0.23.14"
@@ -36,4 +35,4 @@ regex = "1.5.4"
 glob = "0.3.0"
 
 [features]
-default = ["tch", "dot"]
+default = ["dot"]
