@@ -489,6 +489,37 @@ mod dense_detection_tensor {
                 .collect();
             Self { tensors }
         }
+
+        pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+            Self::cat(tensors, 0)
+        }
+
+        pub fn cat_height(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+            Self::cat(tensors, 3)
+        }
+
+        pub fn cat_width(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+            Self::cat(tensors, 4)
+        }
+
+        fn cat(lists: impl IntoIterator<Item = impl Borrow<Self>>, index: i64) -> Result<Self> {
+            // list index -> layer index -> tensor
+            let tensors_vec: Vec<Vec<_>> = lists
+                .into_iter()
+                .map(|list| list.borrow().shallow_clone().tensors)
+                .collect();
+
+            // layer index -> list index -> tensor
+            let tensors_vec = tensors_vec.transpose().unwrap();
+
+            // concatenate each layer of tensors
+            let tensors: Vec<_> = tensors_vec
+                .into_iter()
+                .map(|layer| DenseDetectionTensor::cat(layer, index))
+                .try_collect()?;
+
+            Ok(Self { tensors })
+        }
     }
 
     /// Represents the output feature map of a layer.
@@ -536,6 +567,82 @@ mod dense_detection_tensor {
         pub fn width(&self) -> usize {
             let (_, _, _, _, width) = self.cy.size5().unwrap();
             width as usize
+        }
+
+        pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+            Self::cat(tensors, 0)
+        }
+
+        pub fn cat_height(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+            Self::cat(tensors, 3)
+        }
+
+        pub fn cat_width(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+            Self::cat(tensors, 4)
+        }
+
+        fn cat(tensors: impl IntoIterator<Item = impl Borrow<Self>>, index: i64) -> Result<Self> {
+            let (
+                batch_size_set,
+                num_classes_set,
+                anchors_set,
+                cy_vec,
+                cx_vec,
+                h_vec,
+                w_vec,
+                obj_vec,
+                class_vec,
+            ): (
+                HashSet<_>,
+                HashSet<_>,
+                HashSet<_>,
+                Vec<_>,
+                Vec<_>,
+                Vec<_>,
+                Vec<_>,
+                Vec<_>,
+                Vec<_>,
+            ) = tensors
+                .into_iter()
+                .map(|tensor| {
+                    let tensor = tensor.borrow().shallow_clone();
+                    let batch_size = tensor.batch_size();
+                    let num_classes = tensor.num_classes();
+                    let Self {
+                        cy,
+                        cx,
+                        h,
+                        w,
+                        obj,
+                        class,
+                        anchors,
+                    } = tensor;
+                    (batch_size, num_classes, anchors, cy, cx, h, w, obj, class)
+                })
+                .unzip_n();
+
+            ensure!(batch_size_set.len() == 1);
+            ensure!(num_classes_set.len() == 1);
+            ensure!(anchors_set.len() == 1);
+
+            let anchors = anchors_set.into_iter().next().unwrap();
+
+            let cy = Tensor::cat(&cy_vec, index);
+            let cx = Tensor::cat(&cx_vec, index);
+            let h = Tensor::cat(&h_vec, index);
+            let w = Tensor::cat(&w_vec, index);
+            let obj = Tensor::cat(&obj_vec, index);
+            let class = Tensor::cat(&class_vec, index);
+
+            Ok(Self {
+                cy,
+                cx,
+                h,
+                w,
+                obj,
+                class,
+                anchors,
+            })
         }
     }
 }

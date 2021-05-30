@@ -6,6 +6,7 @@ pub use image::{DynamicImage, GenericImageView, ImageBuffer, Pixel};
 pub use itertools::{izip, Itertools};
 pub use log::warn;
 pub use maplit::hashset;
+pub use mona::prelude::*;
 pub use ndarray::Array5;
 pub use noisy_float::prelude::*;
 pub use num_traits::{FromPrimitive, Num, NumOps, One, ToPrimitive, Zero};
