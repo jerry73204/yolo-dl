@@ -1,8 +1,5 @@
-use crate::{
-    common::*,
-    config::{Module, ModulePath, ShapeOutput},
-    utils,
-};
+use crate::{common::*, utils};
+use model_config::{Module, ModulePath, ShapeOutput};
 
 pub use graph::*;
 

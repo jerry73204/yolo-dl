@@ -1,11 +1,12 @@
 use super::module::{Input, Module, ModuleInput, ModuleOutput};
 use crate::common::*;
+use model_config as config;
+use model_graph as graph;
 use tch_goodies::module::{
     Concat2D, ConvBn2DInit, DarkBatchNormInit, DarkCsp2DInit, DeconvBn2DInit, Detect2DInit,
     MergeDetect2D, SppCsp2DInit, Sum2D, UpSample2D,
 };
 
-pub use model_config::graph::{InputKeys, NodeKey};
 pub use yolo_model::*;
 
 mod yolo_model {
@@ -14,8 +15,8 @@ mod yolo_model {
     /// The model running on libtorch.
     #[derive(Debug)]
     pub struct YoloModel {
-        pub(crate) layers: IndexMap<NodeKey, Layer>,
-        pub(crate) output_key: NodeKey,
+        pub(crate) layers: IndexMap<graph::NodeKey, Layer>,
+        pub(crate) output_key: graph::NodeKey,
     }
 
     impl YoloModel {
@@ -23,9 +24,7 @@ mod yolo_model {
             path: impl Borrow<nn::Path<'p>>,
             cfg_file: impl AsRef<Path>,
         ) -> Result<Self> {
-            use model_config::{config, graph};
-            let config = config::Model::load(cfg_file)?;
-            let graph = graph::Graph::new(&config)?;
+            let graph = graph::Graph::load_newslab_v1_json(cfg_file)?;
             let model = Self::from_graph(path, &graph)?;
             Ok(model)
         }
@@ -33,9 +32,8 @@ mod yolo_model {
         /// Build a model from a computation graph.
         pub fn from_graph<'p>(
             path: impl Borrow<nn::Path<'p>>,
-            orig_graph: &'_ model_config::graph::Graph,
+            orig_graph: &'_ graph::Graph,
         ) -> Result<Self> {
-            use model_config::{config, graph};
             let path = path.borrow();
             let orig_nodes = orig_graph.nodes();
 
@@ -308,7 +306,7 @@ mod yolo_model {
                 ref mut layers,
                 output_key,
             } = *self;
-            let mut module_outputs: HashMap<NodeKey, ModuleOutput> = HashMap::new();
+            let mut module_outputs: HashMap<graph::NodeKey, ModuleOutput> = HashMap::new();
             let mut input = Some(input); // it makes sure the input is consumed at most once
 
             // run the network
@@ -320,10 +318,10 @@ mod yolo_model {
                 } = *layer;
 
                 let module_input: ModuleInput = match input_keys {
-                    InputKeys::None => ModuleInput::None,
-                    InputKeys::PlaceHolder => input.take().unwrap().into(),
-                    InputKeys::Single(src_key) => (&module_outputs[src_key]).try_into()?,
-                    InputKeys::Indexed(src_keys) => {
+                    graph::InputKeys::None => ModuleInput::None,
+                    graph::InputKeys::PlaceHolder => input.take().unwrap().into(),
+                    graph::InputKeys::Single(src_key) => (&module_outputs[src_key]).try_into()?,
+                    graph::InputKeys::Indexed(src_keys) => {
                         let inputs: Vec<_> = src_keys
                             .iter()
                             .map(|src_key| &module_outputs[src_key])
@@ -364,7 +362,7 @@ mod yolo_model {
 
 #[derive(Debug)]
 pub struct Layer {
-    pub(crate) key: NodeKey,
+    pub(crate) key: graph::NodeKey,
     pub(crate) module: Module,
-    pub(crate) input_keys: InputKeys,
+    pub(crate) input_keys: graph::InputKeys,
 }

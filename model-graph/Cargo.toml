@@ -1,5 +1,5 @@
 [package]
-name = "model-config"
+name = "model-graph"
 version = "0.1.0"
 authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2018"
@@ -25,7 +25,11 @@ getset = "0.1.1"
 prettytable-rs = "0.8.0"
 darknet-config = { path = "../darknet-config" }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
+model-config = { version = "0.1.0", path = "../model-config" }
 
 [dev-dependencies]
 glob = "0.3.0"
 lazy_static = "1.4.0"
+
+[features]
+default = ["dot"]

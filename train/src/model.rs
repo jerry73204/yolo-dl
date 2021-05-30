@@ -4,6 +4,7 @@ use crate::{
     common::*,
     config::{DarknetModelConfig, ModelConfig, NewslabV1ModelConfig},
 };
+use model_graph as graph;
 
 /// The generic model adaptor.
 #[derive(Debug)]
@@ -32,10 +33,7 @@ impl Model {
                 todo!();
             }
             ModelConfig::NewslabV1(NewslabV1ModelConfig { cfg_file }) => {
-                use model_config::{config, graph};
-
-                let config = config::Model::load(cfg_file)?;
-                let graph = graph::Graph::new(&config)?;
+                let graph = graph::Graph::load_newslab_v1_json(cfg_file)?;
                 let model = YoloModel::from_graph(path, &graph)?;
 
                 Ok(Self::NewslabV1(NewslabV1Model { model }))

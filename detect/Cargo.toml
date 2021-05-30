@@ -42,7 +42,7 @@ tracing = "0.1.26"
 tracing-subscriber = "0.2.18"
 tracing-futures = "0.2.5"
 structopt = "0.3.21"
-model-config = { version = "0.1", path = "../model-config" }
+model-graph = { version = "0.1", path = "../model-graph" }
 darknet-config = { version = "0.1", path = "../darknet-config" }
 csv = "1.1.6"
 imagesize = "0.8.8"

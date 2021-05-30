@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     common::*,
-    config::misc::{Dim, Size},
+    types::{Dim, Size},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

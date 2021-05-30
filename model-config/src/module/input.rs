@@ -1,5 +1,5 @@
 use super::*;
-use crate::{common::*, config::misc::Shape};
+use crate::{common::*, types::Shape};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Input {

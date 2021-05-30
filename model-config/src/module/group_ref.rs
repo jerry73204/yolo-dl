@@ -1,5 +1,5 @@
 use super::*;
-use crate::{common::*, config::group::GroupName, utils};
+use crate::{common::*, group::GroupName, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
 #[derivative(Hash)]

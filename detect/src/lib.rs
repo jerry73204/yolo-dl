@@ -19,12 +19,9 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
             || config.clone(),
             move |config, device| {
                 move || -> Result<_> {
-                    use model_config::{config, graph};
-
                     let vs = nn::VarStore::new(device);
                     let root = vs.root();
-                    let config = config::Model::load(&config.model.cfg_file)?;
-                    let graph = graph::Graph::new(&config)?;
+                    let graph = model_graph::Graph::load_newslab_v1_json(&config.model.cfg_file)?;
                     let model = YoloModel::from_graph(root, &graph)?;
 
                     Ok((vs, model))

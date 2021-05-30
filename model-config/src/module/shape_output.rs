@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    config::misc::{Dim, Shape},
+    types::{Dim, Shape},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]

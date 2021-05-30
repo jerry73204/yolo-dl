@@ -1,8 +1,9 @@
-mod dag;
+mod common;
 mod darknet;
 mod graph;
 mod graphviz;
 mod newslab_v1;
+mod utils;
 
-pub use dag::MultiDag;
 pub use graph::{Graph, InputKeys, Node, NodeKey};
+pub use model_config::types::Shape;

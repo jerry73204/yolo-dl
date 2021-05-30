@@ -1,12 +1,9 @@
 #![cfg(feature = "dot")]
 
 use super::*;
-use crate::{
-    common::*,
-    config::{self, Module},
-    utils::OptionEx,
-};
+use crate::{common::*, utils::OptionEx};
 use dot::{Arrow, Edges, GraphWalk, Id, LabelText, Labeller, Nodes, Style};
+use model_config::{self as config, Module};
 
 impl Graph {
     pub fn render_dot(&self, writer: &mut impl Write) -> Result<()> {

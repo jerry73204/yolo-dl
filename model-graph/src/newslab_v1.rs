@@ -1,14 +1,17 @@
 use super::graph::*;
-use crate::{
-    common::*,
-    config::{
-        self, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath, ShapeInput,
-        ShapeOutput,
-    },
+use crate::common::*;
+use model_config::{
+    self as config, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath,
+    ShapeInput, ShapeOutput,
 };
 
 impl Graph {
-    pub fn new(config: &Model) -> Result<Self> {
+    pub fn load_newslab_v1_json(file: impl AsRef<Path>) -> Result<Self> {
+        let model = Model::load(file)?;
+        Self::from_newslab_v1_model(&model)
+    }
+
+    pub fn from_newslab_v1_model(config: &Model) -> Result<Self> {
         let Model { main_group, groups } = config;
         let graph = Self::from_model_groups(&groups, &main_group)?;
         Ok(graph)

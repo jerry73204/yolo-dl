@@ -1,15 +1,16 @@
 use super::*;
-use crate::{common::*, config::misc::Shape};
+use crate::{common::*, types::Shape};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(from = "RawConvBn2D", into = "RawConvBn2D")]
-pub struct ConvBn2D {
+#[serde(from = "RawDeconvBn2D", into = "RawDeconvBn2D")]
+pub struct DeconvBn2D {
     pub name: Option<ModuleName>,
     pub from: Option<ModulePath>,
     pub c: usize,
     pub k: usize,
     pub s: usize,
     pub p: usize,
+    pub op: usize,
     pub d: usize,
     pub g: usize,
     pub bias: bool,
@@ -18,7 +19,7 @@ pub struct ConvBn2D {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-struct RawConvBn2D {
+struct RawDeconvBn2D {
     pub name: Option<ModuleName>,
     pub from: Option<ModulePath>,
     pub c: usize,
@@ -26,6 +27,8 @@ struct RawConvBn2D {
     #[serde(default = "default_stride")]
     pub s: usize,
     pub p: Option<usize>,
+    #[serde(default = "default_output_padding")]
+    pub op: usize,
     #[serde(default = "default_dilation")]
     pub d: usize,
     #[serde(default = "default_group")]
@@ -38,15 +41,16 @@ struct RawConvBn2D {
     pub bn: BatchNorm,
 }
 
-impl From<RawConvBn2D> for ConvBn2D {
-    fn from(raw: RawConvBn2D) -> Self {
-        let RawConvBn2D {
+impl From<RawDeconvBn2D> for DeconvBn2D {
+    fn from(raw: RawDeconvBn2D) -> Self {
+        let RawDeconvBn2D {
             name,
             from,
             c,
             k,
             s,
             p,
+            op,
             d,
             g,
             bias,
@@ -63,6 +67,7 @@ impl From<RawConvBn2D> for ConvBn2D {
             k,
             s,
             p,
+            op,
             d,
             g,
             bias,
@@ -72,15 +77,16 @@ impl From<RawConvBn2D> for ConvBn2D {
     }
 }
 
-impl From<ConvBn2D> for RawConvBn2D {
-    fn from(orig: ConvBn2D) -> Self {
-        let ConvBn2D {
+impl From<DeconvBn2D> for RawDeconvBn2D {
+    fn from(orig: DeconvBn2D) -> Self {
+        let DeconvBn2D {
             name,
             from,
             c,
             k,
             s,
             p,
+            op,
             d,
             g,
             bias,
@@ -95,6 +101,7 @@ impl From<ConvBn2D> for RawConvBn2D {
             k,
             s,
             p: Some(p),
+            op,
             d,
             g,
             bias,
@@ -104,7 +111,7 @@ impl From<ConvBn2D> for RawConvBn2D {
     }
 }
 
-impl ConvBn2D {
+impl DeconvBn2D {
     pub fn new(
         name: impl Into<Option<ModuleName>>,
         from: impl Into<Option<ModulePath>>,
@@ -118,6 +125,7 @@ impl ConvBn2D {
             k,
             s: default_stride(),
             p: k / 2,
+            op: 0,
             d: 1,
             g: default_group(),
             bias: default_bias(),
@@ -127,7 +135,7 @@ impl ConvBn2D {
     }
 }
 
-impl ModuleEx for ConvBn2D {
+impl ModuleEx for DeconvBn2D {
     fn name(&self) -> Option<&ModuleName> {
         self.name.as_ref()
     }
@@ -142,6 +150,7 @@ impl ModuleEx for ConvBn2D {
             k,
             s,
             p,
+            op,
             d,
             ..
         } = *self;
@@ -151,8 +160,8 @@ impl ModuleEx for ConvBn2D {
             _ => return None,
         };
 
-        let out_h = (in_h + 2 * p - d * (k - 1) - 1) / s + 1;
-        let out_w = (in_w + 2 * p - d * (k - 1) - 1) / s + 1;
+        let out_h = (in_h - 1) * s - 2 * p + d * (k - 1) + op + 1;
+        let out_w = (in_w - 1) * s - 2 * p + d * (k - 1) + op + 1;
         let output_shape: Shape = vec![in_b, out_c.into(), out_h, out_w].into();
 
         Some(output_shape.into())
@@ -173,6 +182,10 @@ fn default_group() -> usize {
 
 fn default_activation() -> Activation {
     Activation::Mish
+}
+
+fn default_output_padding() -> usize {
+    0
 }
 
 fn default_bias() -> bool {

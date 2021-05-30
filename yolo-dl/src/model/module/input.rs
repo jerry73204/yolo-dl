@@ -1,5 +1,5 @@
 use crate::common::*;
-use model_config::config::Shape;
+use model_graph::Shape;
 
 #[derive(Debug)]
 pub struct Input {

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use model_config::{config::Model, graph::Graph};
+use model_graph::Graph;
 use prettytable::{cell, row, Table};
 use std::{
     fs::File,
@@ -39,8 +39,7 @@ fn main() -> Result<()> {
 }
 
 fn info(config_file: impl AsRef<Path>) -> Result<()> {
-    let config = Model::load(config_file)?;
-    let graph = Graph::new(&config)?;
+    let graph = Graph::load_newslab_v1_json(config_file)?;
     let nodes = graph.nodes();
 
     // print layer information
@@ -69,8 +68,7 @@ fn info(config_file: impl AsRef<Path>) -> Result<()> {
 
 #[cfg(feature = "dot")]
 fn make_dot_file(config_file: impl AsRef<Path>, output_file: impl AsRef<Path>) -> Result<()> {
-    let config = Model::load(config_file)?;
-    let graph = Graph::new(&config)?;
+    let graph = Graph::load_newslab_v1_json(config_file)?;
     let mut writer = BufWriter::new(File::create(output_file)?);
     graph.render_dot(&mut writer)?;
     Ok(())

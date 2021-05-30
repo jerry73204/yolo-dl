@@ -1,9 +1,7 @@
 use super::graph::*;
-use crate::{
-    common::*,
-    config::{self, Module, ShapeOutput},
-};
+use crate::common::*;
 use darknet_config::config as dark_cfg;
+use model_config::{self as config, Module, ShapeOutput};
 
 use dark_input_keys::*;
 use dark_node_key::*;

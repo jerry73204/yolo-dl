@@ -18,7 +18,6 @@ pub use indexmap::{IndexMap, IndexSet};
 pub use itertools::{iproduct, izip, Itertools};
 pub use lazy_static::lazy_static;
 pub use log::{error, info, warn};
-pub use model_config::graph::Graph;
 pub use ndarray::{Array, Array2, Array3, Array5, ArrayD};
 pub use noisy_float::prelude::*;
 pub use owning_ref::ArcRef;
