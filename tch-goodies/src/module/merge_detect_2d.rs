@@ -557,6 +557,18 @@ pub struct FeatureMap {
     pub class: Tensor,
 }
 
+impl FeatureMap {
+    pub fn height(&self) -> usize {
+        let (_, _, _, height, _) = self.cy.size5().unwrap();
+        height as usize
+    }
+
+    pub fn width(&self) -> usize {
+        let (_, _, _, _, width) = self.cy.size5().unwrap();
+        width as usize
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, TensorLike)]
 pub struct FlatIndex {
     pub batch_index: i64,
