@@ -2,7 +2,9 @@
     "version": "0.1.0",
     "model": {
         "kind": "NewslabV1",
-        "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
+        // "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
+        // "cfg_file": "model-config/tests/cfg/yolov4-csp-with-bn-affine.json5",
+        "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5"
     },
     "dataset": {
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
@@ -35,10 +37,10 @@
     },
     "logging": {
         "dir": "logs-coco",
-        "enable_images": false,
-        "enable_debug_stat": false,
-        "enable_inference": false,
-        "enable_benchmark": false,
+        "enable_images": true,
+        "enable_debug_stat": true,
+        "enable_inference": true,
+        "enable_benchmark": true,
     },
     "preprocessor": {
         "pipeline": {
@@ -89,10 +91,10 @@
         // "override_initial_step": 0,
 
         // RTX 2080ti
-        "batch_size": 16,
+        "batch_size": 8,
         "device_config": {
             "type": "SingleDevice",
-            "device": "cuda(0)"
+            "device": "cuda(2)"
         },
 
         // RTX 2080ti x4
@@ -127,7 +129,7 @@
             "box_metric": "Hausdorff",    // IoU, GIoU, DIoU, CIoU, Hausdorff
             "objectness_loss_fn": "Bce",
             "classification_loss_fn": "Bce",
-            "objectness_positive_weight": 1.0,
+            "objectness_positive_weight": 55.0,
 
             // for DIoU
             // "iou_loss_weight": 0.31,
@@ -137,14 +139,16 @@
             // for Hausdorff
             "iou_loss_weight": 55.0,
             "objectness_loss_weight": 1.0,
-            "classification_loss_weight": 55.0,
+            "classification_loss_weight": 55.0
         },
         "save_checkpoint_steps": 1000,
         "load_checkpoint": {
-            "type": "Disabled",
+            // "type": "Disabled",
             // "type": "FromRecent",
-            // "type": "FromFile",
+            "type": "FromFile",
             // "file": "logs-coco/2021-03-08-18-21-24.726+0800/checkpoints/2021-03-09-02-10-16.637+0800_280000_02.29987.ckpt"
+            // "file": "logs-coco/2021-03-03-04-31-01.227+0800/checkpoints/2021-03-03-09-30-16.323+0800_071000_01.10042.ckpt"
+            "file": "logs-coco/2021-03-17-03-02-44.764+0800/checkpoints/2021-03-28-12-02-57.728+0800_4582000_04.74864.ckpt"
         },
     },
     "benchmark": {
