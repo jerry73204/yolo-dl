@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     common::*,
     detection::{DetectionInfo, MergedDenseDetection},
+    size::GridSize,
 };
 
 #[derive(Debug)]
@@ -19,15 +20,7 @@ impl MergeDetect2D {
         let (batch_size_set, num_classes_set): (HashSet<i64>, HashSet<usize>) = detections
             .iter()
             .cloned()
-            .map(|detection| {
-                let Detect2DOutput {
-                    batch_size,
-                    num_classes,
-                    ..
-                } = *detection;
-
-                (batch_size, num_classes)
-            })
+            .map(|detection| (detection.batch_size() as i64, detection.num_classes()))
             .unzip_n();
 
         ensure!(batch_size_set.len() == 1, "TODO");
@@ -40,9 +33,6 @@ impl MergeDetect2D {
             .cloned()
             .scan(0, |base_flat_index, detection| {
                 let Detect2DOutput {
-                    batch_size,
-                    num_classes,
-                    ref feature_size,
                     ref anchors,
                     ref cy,
                     ref cx,
@@ -52,9 +42,10 @@ impl MergeDetect2D {
                     ref class,
                     ..
                 } = *detection;
-
-                let num_anchors = anchors.len();
-                let [feature_h, feature_w] = feature_size.hw_params();
+                let batch_size = detection.batch_size() as i64;
+                let feature_h = detection.height() as i64;
+                let feature_w = detection.width() as i64;
+                let num_anchors = detection.num_anchors();
 
                 // flatten tensors
                 let cy_flat = cy.view([batch_size, 1, -1]);
@@ -73,7 +64,7 @@ impl MergeDetect2D {
                     // compute base flat index
 
                     DetectionInfo {
-                        feature_size: feature_size.to_owned(),
+                        feature_size: GridSize::new(feature_h, feature_w).unwrap(),
                         anchors: anchors.to_owned(),
                         flat_index_range: begin_flat_index..end_flat_index,
                     }

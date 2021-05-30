@@ -416,6 +416,7 @@ mod merged_dense_detection {
                         w: w_map,
                         obj: obj_map,
                         class: class_map,
+                        anchors: anchors.clone(),
                     }
                 })
                 .collect_vec();
@@ -472,9 +473,26 @@ mod dense_detection_tensor {
         pub obj: Tensor,
         /// The scores the object is of that class. It number of entries is the number of classes.
         pub class: Tensor,
+        #[tensor_like(clone)]
+        pub anchors: Vec<RatioSize<R64>>,
     }
 
     impl DenseDetectionTensor {
+        pub fn batch_size(&self) -> usize {
+            let (batch_size, _, _, _, _) = self.cy.size5().unwrap();
+            batch_size as usize
+        }
+
+        pub fn num_classes(&self) -> usize {
+            let (_, num_classes, _, _, _) = self.class.size5().unwrap();
+            num_classes as usize
+        }
+
+        pub fn num_anchors(&self) -> usize {
+            let (_, _, num_anchors, _, _) = self.cy.size5().unwrap();
+            num_anchors as usize
+        }
+
         pub fn height(&self) -> usize {
             let (_, _, _, height, _) = self.cy.size5().unwrap();
             height as usize

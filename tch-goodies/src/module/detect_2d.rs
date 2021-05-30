@@ -1,7 +1,10 @@
 use crate::{
     common::*,
+    detection::DenseDetectionTensor,
     size::{GridSize, RatioSize},
 };
+
+pub type Detect2DOutput = DenseDetectionTensor;
 
 #[derive(Debug, Clone)]
 pub struct Detect2DInit {
@@ -40,14 +43,13 @@ pub struct Detect2D {
 }
 
 impl Detect2D {
-    pub fn forward(&mut self, tensor: &Tensor) -> Result<Detect2DOutput> {
+    pub fn forward(&mut self, tensor: &Tensor) -> Result<DenseDetectionTensor> {
         let Self {
             num_classes,
             ref anchors,
             ..
         } = *self;
         let (batch_size, channels, feature_h, feature_w) = tensor.size4()?;
-        let feature_size = GridSize::new(feature_h, feature_w).unwrap();
         let anchors = anchors.to_owned();
 
         // load cached data
@@ -134,17 +136,14 @@ impl Detect2D {
         // sparse classification
         let class = outputs.i((.., 5.., .., .., ..));
 
-        Ok(Detect2DOutput {
-            batch_size,
-            feature_size,
-            num_classes,
-            anchors,
+        Ok(DenseDetectionTensor {
             cy,
             cx,
             h,
             w,
             obj,
             class,
+            anchors,
         })
     }
 
@@ -215,20 +214,4 @@ struct Cache {
     x_offsets: Tensor,
     anchor_heights: Tensor,
     anchor_widths: Tensor,
-}
-
-#[derive(Debug, TensorLike)]
-pub struct Detect2DOutput {
-    pub batch_size: i64,
-    #[tensor_like(clone)]
-    pub feature_size: GridSize<i64>,
-    pub num_classes: usize,
-    #[tensor_like(clone)]
-    pub anchors: Vec<RatioSize<R64>>,
-    pub cy: Tensor,
-    pub cx: Tensor,
-    pub h: Tensor,
-    pub w: Tensor,
-    pub obj: Tensor,
-    pub class: Tensor,
 }
