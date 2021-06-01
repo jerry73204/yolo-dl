@@ -183,14 +183,14 @@ mod logging_worker {
                     let objectness_image = if enable_debug_stat && enable_images {
                         let batch_size = output.batch_size();
                         let objectness_maps: Vec<_> = output
-                            .tensors()
+                            .to_tensor_list()
                             .tensors
-                            .into_iter()
-                            .map(|feature_map| feature_map.obj)
+                            .iter()
                             .zip_eq(output.info.iter())
-                            .map(|(objectness_map, meta)| {
+                            .map(|(feature_map, meta)| {
                                 let num_anchors = meta.anchors.len() as i64;
-                                objectness_map
+                                feature_map
+                                    .obj
                                     .copy()
                                     .resize_(&[batch_size, 1, num_anchors, image_h, image_w])
                                     .view([batch_size, num_anchors, image_h, image_w])

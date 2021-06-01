@@ -1,5 +1,5 @@
 use crate::common::*;
-use tch_goodies::detection::MergedDenseDetection;
+use tch_goodies::detection::{MergedDenseDetection, MergedDenseDetectionUnchecked};
 
 // it prevents OOM on CUDA.
 const MAX_DETS: usize = 65536;
@@ -68,9 +68,9 @@ impl NonMaxSuppression {
                 confidence_threshold,
             } = *self;
             let confidence_threshold = confidence_threshold.raw();
-            let num_classes = prediction.num_classes;
+            let num_classes = prediction.num_classes();
 
-            let MergedDenseDetection {
+            let MergedDenseDetectionUnchecked {
                 cy,
                 cx,
                 h,
@@ -78,7 +78,7 @@ impl NonMaxSuppression {
                 class: class_logit,
                 obj: obj_logit,
                 ..
-            } = prediction;
+            } = &**prediction;
 
             // select bboxes which confidence is above threshold
             let (batches, classes, instances, bbox, conf) = {

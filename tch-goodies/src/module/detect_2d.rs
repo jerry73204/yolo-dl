@@ -1,6 +1,6 @@
 use crate::{
     common::*,
-    detection::DenseDetectionTensor,
+    detection::{DenseDetectionTensor, DenseDetectionTensorUnchecked},
     size::{GridSize, RatioSize},
 };
 
@@ -134,7 +134,7 @@ impl Detect2D {
         // sparse classification
         let class = outputs.i((.., 5.., .., .., ..));
 
-        Ok(DenseDetectionTensor {
+        Ok(DenseDetectionTensorUnchecked {
             cy,
             cx,
             h,
@@ -142,7 +142,9 @@ impl Detect2D {
             obj,
             class,
             anchors,
-        })
+        }
+        .try_into()
+        .unwrap())
     }
 
     fn cache(&mut self, tensor: &Tensor) -> Result<&Cache> {

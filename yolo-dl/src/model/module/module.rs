@@ -164,7 +164,7 @@ mod module {
                         &input
                             .indexed_detect_2d()
                             .ok_or_else(|| format_err!("TODO"))?,
-                    )
+                    )?
                     .into(),
                 Self::FnSingle(module) => {
                     module(input.tensor().ok_or_else(|| format_err!("TODO"))?, train).into()

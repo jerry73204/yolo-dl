@@ -17,22 +17,7 @@ mod merged_dense_detection {
 
     #[derive(Debug, TensorLike)]
     pub struct MergedDenseDetection {
-        /// Number of predicted classes.
-        pub num_classes: usize,
-        /// Tensor of bbox center y coordinates with shape `[batch, 1, flat]`.
-        pub cy: Tensor,
-        /// Tensor of bbox center x coordinates with shape `[batch, 1, flat]`.
-        pub cx: Tensor,
-        /// Tensor of bbox heights with shape `[batch, 1, flat]`.
-        pub h: Tensor,
-        /// Tensor of bbox widths with shape `[batch, 1, flat]`.
-        pub w: Tensor,
-        /// Tensor of bbox objectness score with shape `[batch, 1, flat]`.
-        pub obj: Tensor,
-        /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, flat]`.
-        pub class: Tensor,
-        /// Saves the shape of exported feature maps.
-        pub info: Vec<DetectionInfo>,
+        inner: MergedDenseDetectionUnchecked,
     }
 
     impl MergedDenseDetection {
@@ -58,16 +43,16 @@ mod merged_dense_detection {
                 .scan(0, |base_flat_index, detection| {
                     let detection = detection.borrow();
 
-                    let DenseDetectionTensor {
-                        ref anchors,
-                        ref cy,
-                        ref cx,
-                        ref h,
-                        ref w,
-                        ref obj,
-                        ref class,
+                    let DenseDetectionTensorUnchecked {
+                        anchors,
+                        cy,
+                        cx,
+                        h,
+                        w,
+                        obj,
+                        class,
                         ..
-                    } = *detection;
+                    } = &**detection;
                     let batch_size = detection.batch_size() as i64;
                     let feature_h = detection.height() as i64;
                     let feature_w = detection.width() as i64;
@@ -108,19 +93,20 @@ mod merged_dense_detection {
             let class = Tensor::cat(&class_vec, 2);
 
             let output = Self {
-                num_classes,
-                cy,
-                cx,
-                h,
-                w,
-                obj,
-                class,
-                info,
+                inner: MergedDenseDetectionUnchecked {
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj,
+                    class,
+                    info,
+                },
             };
 
             debug_assert!({
-                let feature_maps = output.tensors().tensors;
-                izip!(feature_maps, tensors).all(|(feature_map, detection)| {
+                let feature_maps = output.to_tensor_list();
+                izip!(&feature_maps.tensors, tensors).all(|(feature_map, detection)| {
                     let detection = detection.borrow();
                     feature_map.cy == detection.cy
                         && feature_map.cx == detection.cx
@@ -150,6 +136,11 @@ mod merged_dense_detection {
             instances
         }
 
+        pub fn num_classes(&self) -> i64 {
+            let (_batch_size, num_classes, _instances) = self.class.size3().unwrap();
+            num_classes
+        }
+
         pub fn cat(outputs: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
             let (
                 batch_size_set,
@@ -163,7 +154,7 @@ mod merged_dense_detection {
                 class_vec,
             ): (
                 HashSet<i64>,
-                HashSet<usize>,
+                HashSet<i64>,
                 HashSet<Vec<DetectionInfo>>,
                 Vec<Tensor>,
                 Vec<Tensor>,
@@ -176,16 +167,19 @@ mod merged_dense_detection {
                 .map(|output| {
                     let output = output.borrow();
                     let batch_size = output.batch_size();
+                    let num_classes = output.num_classes();
                     let Self {
-                        num_classes,
-                        info,
-                        cy,
-                        cx,
-                        h,
-                        w,
-                        obj,
-                        class,
-                        ..
+                        inner:
+                            MergedDenseDetectionUnchecked {
+                                info,
+                                cy,
+                                cx,
+                                h,
+                                w,
+                                obj,
+                                class,
+                                ..
+                            },
                     } = output.shallow_clone();
 
                     (batch_size, num_classes, info, cy, cx, h, w, obj, class)
@@ -251,26 +245,30 @@ mod merged_dense_detection {
             );
 
             Ok(Self {
-                num_classes,
-                cy,
-                cx,
-                h,
-                w,
-                obj,
-                class,
-                info,
+                inner: MergedDenseDetectionUnchecked {
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj,
+                    class,
+                    info,
+                },
             })
         }
 
         pub fn index_by_flats(&self, flat_indexes: &FlatIndexTensor) -> DetectionTensor {
             let Self {
-                cy,
-                cx,
-                h,
-                w,
-                class,
-                obj,
-                ..
+                inner:
+                    MergedDenseDetectionUnchecked {
+                        cy,
+                        cx,
+                        h,
+                        w,
+                        class,
+                        obj,
+                        ..
+                    },
             } = self;
             let FlatIndexTensor { batches, flats } = flat_indexes;
 
@@ -440,8 +438,40 @@ mod merged_dense_detection {
             })
         }
 
-        pub fn tensors(&self) -> DenseDetectionTensorList {
+        pub fn to_tensor_list(&self) -> DenseDetectionTensorList {
             self.shallow_clone().into()
+        }
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct MergedDenseDetectionUnchecked {
+        /// Tensor of bbox center y coordinates with shape `[batch, 1, flat]`.
+        pub cy: Tensor,
+        /// Tensor of bbox center x coordinates with shape `[batch, 1, flat]`.
+        pub cx: Tensor,
+        /// Tensor of bbox heights with shape `[batch, 1, flat]`.
+        pub h: Tensor,
+        /// Tensor of bbox widths with shape `[batch, 1, flat]`.
+        pub w: Tensor,
+        /// Tensor of bbox objectness score with shape `[batch, 1, flat]`.
+        pub obj: Tensor,
+        /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, flat]`.
+        pub class: Tensor,
+        /// Saves the shape of exported feature maps.
+        pub info: Vec<DetectionInfo>,
+    }
+
+    impl Deref for MergedDenseDetection {
+        type Target = MergedDenseDetectionUnchecked;
+
+        fn deref(&self) -> &Self::Target {
+            &self.inner
+        }
+    }
+
+    impl Borrow<MergedDenseDetectionUnchecked> for MergedDenseDetection {
+        fn borrow(&self) -> &MergedDenseDetectionUnchecked {
+            &self.inner
         }
     }
 
@@ -478,16 +508,32 @@ mod dense_detection_tensor {
 
     #[derive(Debug, TensorLike)]
     pub struct DenseDetectionTensorList {
-        pub tensors: Vec<DenseDetectionTensor>,
+        pub(super) inner: DenseDetectionTensorListUnchecked,
     }
 
     impl DenseDetectionTensorList {
-        pub fn from_detection_tensors(tensors: &[impl Borrow<DenseDetectionTensor>]) -> Self {
-            let tensors: Vec<_> = tensors
+        pub fn from_detection_tensors(
+            tensors: &[impl Borrow<DenseDetectionTensor>],
+        ) -> Result<Self> {
+            let (tensors, batch_size_set): (Vec<_>, HashSet<_>) = tensors
                 .iter()
-                .map(|tensor| tensor.borrow().shallow_clone())
-                .collect();
-            Self { tensors }
+                .map(|tensor| {
+                    let tensor = tensor.borrow().shallow_clone();
+                    let batch_size = tensor.batch_size();
+                    (tensor, batch_size)
+                })
+                .unzip();
+
+            ensure!(!tensors.is_empty());
+            ensure!(batch_size_set.len() == 1);
+
+            Ok(Self {
+                inner: DenseDetectionTensorListUnchecked { tensors },
+            })
+        }
+
+        pub fn batch_size(&self) -> usize {
+            self.tensors[0].batch_size()
         }
 
         pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
@@ -506,7 +552,7 @@ mod dense_detection_tensor {
             // list index -> layer index -> tensor
             let tensors_vec: Vec<Vec<_>> = lists
                 .into_iter()
-                .map(|list| list.borrow().shallow_clone().tensors)
+                .map(|list| list.borrow().tensors.shallow_clone())
                 .collect();
 
             // layer index -> list index -> tensor
@@ -518,29 +564,61 @@ mod dense_detection_tensor {
                 .map(|layer| DenseDetectionTensor::cat(layer, index))
                 .try_collect()?;
 
-            Ok(Self { tensors })
+            Ok(Self {
+                inner: DenseDetectionTensorListUnchecked { tensors },
+            })
+        }
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct DenseDetectionTensorListUnchecked {
+        pub tensors: Vec<DenseDetectionTensor>,
+    }
+
+    impl Borrow<DenseDetectionTensorListUnchecked> for DenseDetectionTensorList {
+        fn borrow(&self) -> &DenseDetectionTensorListUnchecked {
+            &self.inner
+        }
+    }
+
+    impl Deref for DenseDetectionTensorList {
+        type Target = DenseDetectionTensorListUnchecked;
+
+        fn deref(&self) -> &Self::Target {
+            &self.inner
+        }
+    }
+
+    impl From<DenseDetectionTensorList> for DenseDetectionTensorListUnchecked {
+        fn from(from: DenseDetectionTensorList) -> Self {
+            from.inner
+        }
+    }
+
+    impl TryFrom<DenseDetectionTensorListUnchecked> for DenseDetectionTensorList {
+        type Error = Error;
+
+        fn try_from(from: DenseDetectionTensorListUnchecked) -> Result<Self, Self::Error> {
+            let DenseDetectionTensorListUnchecked { tensors } = &from;
+
+            let (batch_size_set, num_classes_set): (HashSet<_>, HashSet<_>) = tensors
+                .iter()
+                .map(|tensor| (tensor.batch_size(), tensor.num_classes()))
+                .unzip();
+
+            ensure!(num_classes_set.len() == 1);
+            ensure!(batch_size_set.len() == 1);
+
+            Ok(Self { inner: from })
         }
     }
 
     /// Represents the output feature map of a layer.
     ///
     /// Every belonging tensor has shape `[batch, entry, anchor, height, width]`.
-    #[derive(Debug, TensorLike)]
+    #[derive(Debug, TensorLike, Getters)]
     pub struct DenseDetectionTensor {
-        /// The bounding box center y position in ratio unit. It has 1 entry.
-        pub cy: Tensor,
-        /// The bounding box center x position in ratio unit. It has 1 entry.
-        pub cx: Tensor,
-        /// The bounding box height in ratio unit. It has 1 entry.
-        pub h: Tensor,
-        /// The bounding box width in ratio unit. It has 1 entry.
-        pub w: Tensor,
-        /// The likelihood score an object in the position. It has 1 entry.
-        pub obj: Tensor,
-        /// The scores the object is of that class. It number of entries is the number of classes.
-        pub class: Tensor,
-        #[tensor_like(clone)]
-        pub anchors: Vec<RatioSize<R64>>,
+        pub(super) inner: DenseDetectionTensorUnchecked,
     }
 
     impl DenseDetectionTensor {
@@ -608,7 +686,7 @@ mod dense_detection_tensor {
                     let tensor = tensor.borrow().shallow_clone();
                     let batch_size = tensor.batch_size();
                     let num_classes = tensor.num_classes();
-                    let Self {
+                    let DenseDetectionTensorUnchecked {
                         cy,
                         cx,
                         h,
@@ -616,7 +694,7 @@ mod dense_detection_tensor {
                         obj,
                         class,
                         anchors,
-                    } = tensor;
+                    } = tensor.into();
                     (batch_size, num_classes, anchors, cy, cx, h, w, obj, class)
                 })
                 .unzip_n();
@@ -635,6 +713,62 @@ mod dense_detection_tensor {
             let class = Tensor::cat(&class_vec, index);
 
             Ok(Self {
+                inner: DenseDetectionTensorUnchecked {
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj,
+                    class,
+                    anchors: anchors.to_owned(),
+                },
+            })
+        }
+    }
+
+    #[derive(Debug, TensorLike)]
+    pub struct DenseDetectionTensorUnchecked {
+        /// The bounding box center y position in ratio unit. It has 1 entry.
+        pub cy: Tensor,
+        /// The bounding box center x position in ratio unit. It has 1 entry.
+        pub cx: Tensor,
+        /// The bounding box height in ratio unit. It has 1 entry.
+        pub h: Tensor,
+        /// The bounding box width in ratio unit. It has 1 entry.
+        pub w: Tensor,
+        /// The likelihood score an object in the position. It has 1 entry.
+        pub obj: Tensor,
+        /// The scores the object is of that class. It number of entries is the number of classes.
+        pub class: Tensor,
+        #[tensor_like(clone)]
+        pub anchors: Vec<RatioSize<R64>>,
+    }
+
+    impl Deref for DenseDetectionTensor {
+        type Target = DenseDetectionTensorUnchecked;
+
+        fn deref(&self) -> &Self::Target {
+            &self.inner
+        }
+    }
+
+    impl Borrow<DenseDetectionTensorUnchecked> for DenseDetectionTensor {
+        fn borrow(&self) -> &DenseDetectionTensorUnchecked {
+            &self.inner
+        }
+    }
+
+    impl From<DenseDetectionTensor> for DenseDetectionTensorUnchecked {
+        fn from(from: DenseDetectionTensor) -> Self {
+            from.inner
+        }
+    }
+
+    impl TryFrom<DenseDetectionTensorUnchecked> for DenseDetectionTensor {
+        type Error = Error;
+
+        fn try_from(from: DenseDetectionTensorUnchecked) -> Result<Self, Self::Error> {
+            let DenseDetectionTensorUnchecked {
                 cy,
                 cx,
                 h,
@@ -642,7 +776,17 @@ mod dense_detection_tensor {
                 obj,
                 class,
                 anchors,
-            })
+            } = &from;
+
+            let (batch_size, _num_classes, num_anchors, height, width) = class.size5()?;
+            ensure!(cy.size5()? == (batch_size, 1, num_anchors, height, width),);
+            ensure!(cx.size5()? == (batch_size, 1, num_anchors, height, width),);
+            ensure!(h.size5()? == (batch_size, 1, num_anchors, height, width),);
+            ensure!(w.size5()? == (batch_size, 1, num_anchors, height, width),);
+            ensure!(obj.size5()? == (batch_size, 1, num_anchors, height, width),);
+            ensure!(anchors.len() == num_anchors as usize);
+
+            Ok(Self { inner: from })
         }
     }
 }
@@ -901,7 +1045,7 @@ mod convert {
     impl From<MergedDenseDetection> for DenseDetectionTensorList {
         fn from(from: MergedDenseDetection) -> DenseDetectionTensorList {
             let batch_size = from.batch_size();
-            let num_classes = from.num_classes;
+            let num_classes = from.num_classes();
 
             let tensors = from
                 .info
@@ -961,18 +1105,22 @@ mod convert {
                     ]);
 
                     DenseDetectionTensor {
-                        cy: cy_map,
-                        cx: cx_map,
-                        h: h_map,
-                        w: w_map,
-                        obj: obj_map,
-                        class: class_map,
-                        anchors: anchors.clone(),
+                        inner: DenseDetectionTensorUnchecked {
+                            cy: cy_map,
+                            cx: cx_map,
+                            h: h_map,
+                            w: w_map,
+                            obj: obj_map,
+                            class: class_map,
+                            anchors: anchors.clone(),
+                        },
                     }
                 })
                 .collect_vec();
 
-            DenseDetectionTensorList { tensors }
+            DenseDetectionTensorList {
+                inner: DenseDetectionTensorListUnchecked { tensors },
+            }
         }
     }
 }
