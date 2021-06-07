@@ -12,7 +12,7 @@ impl MergeDetect2D {
 
     pub fn forward(
         &mut self,
-        detections: &[impl Borrow<DenseDetectionTensor>],
+        detections: impl IntoIterator<Item = impl Borrow<DenseDetectionTensor>>,
     ) -> Result<DenseDetectionTensorList> {
         DenseDetectionTensorList::from_detection_tensors(detections)
     }

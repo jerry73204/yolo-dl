@@ -177,7 +177,7 @@ mod module {
                     .into(),
                 Self::MergeDetect2D(module) => module
                     .forward(
-                        &input
+                        input
                             .indexed_detect_2d()
                             .ok_or_else(|| format_err!("TODO"))?,
                     )?
