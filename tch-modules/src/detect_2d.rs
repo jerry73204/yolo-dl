@@ -1,8 +1,4 @@
-use crate::{
-    common::*,
-    detection::{DenseDetectionTensor, DenseDetectionTensorUnchecked},
-    size::{GridSize, RatioSize},
-};
+use crate::common::*;
 
 #[derive(Debug, Clone)]
 pub struct Detect2DInit {

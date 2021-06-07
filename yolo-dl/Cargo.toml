@@ -57,6 +57,7 @@ tracing = "0.1.26"
 tracing-futures = "0.2.5"
 flurry = "0.3.1"
 model-graph = { version = "0.1.0", path = "../model-graph" }
+tch-modules = { path = "../tch-modules" }
 
 [features]
 profiling = ["ptree"]

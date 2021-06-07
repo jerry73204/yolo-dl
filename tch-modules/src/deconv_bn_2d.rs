@@ -1,5 +1,7 @@
-use super::dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit};
-use crate::{activation::Activation, common::*, tensor::TensorExt};
+use crate::{
+    common::*,
+    dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
+};
 
 #[derive(Debug, Clone)]
 pub struct DeconvBn2DInit {

@@ -1,8 +1,8 @@
-use super::{
+use crate::{
+    common::*,
     conv_nd::{Conv1DInit, ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn, ConvParam},
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
-use crate::{activation::Activation, common::*, tensor::TensorExt};
 
 #[derive(Debug, Clone)]
 pub struct ConvBnInit<Param: ConvParam> {

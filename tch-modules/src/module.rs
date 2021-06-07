@@ -1,29 +1,33 @@
-use super::input::Input;
-use crate::common::*;
-use tch_goodies::module as goodies_mod;
+use crate::{
+    common::*, concat_2d::Concat2D, conv_bn_2d::ConvBn2D, dark_csp_2d::DarkCsp2D,
+    darknet_route::DarknetRoute, darknet_shortcut::DarknetShortcut, deconv_bn_2d::DeconvBn2D,
+    detect_2d::Detect2D, input::Input, max_pool::MaxPool, merge_detect_2d::MergeDetect2D,
+    spp_csp_2d::SppCsp2D, sum_2d::Sum2D, up_sample_2d::UpSample2D,
+};
 
 pub use module::*;
 pub use module_input::*;
 
 mod module {
+
     use super::*;
 
     #[derive(AsRefStr, Derivative)]
     #[derivative(Debug)]
     pub enum Module {
         Input(Input),
-        ConvBn2D(goodies_mod::ConvBn2D),
-        DeconvBn2D(goodies_mod::DeconvBn2D),
-        UpSample2D(goodies_mod::UpSample2D),
-        Sum2D(goodies_mod::Sum2D),
-        Concat2D(goodies_mod::Concat2D),
-        DarkCsp2D(goodies_mod::DarkCsp2D),
-        SppCsp2D(goodies_mod::SppCsp2D),
-        Detect2D(goodies_mod::Detect2D),
-        DarknetRoute(goodies_mod::DarknetRoute),
-        DarknetShortcut(goodies_mod::DarknetShortcut),
-        MaxPool(goodies_mod::MaxPool),
-        MergeDetect2D(goodies_mod::MergeDetect2D),
+        ConvBn2D(ConvBn2D),
+        DeconvBn2D(DeconvBn2D),
+        UpSample2D(UpSample2D),
+        Sum2D(Sum2D),
+        Concat2D(Concat2D),
+        DarkCsp2D(DarkCsp2D),
+        SppCsp2D(SppCsp2D),
+        Detect2D(Detect2D),
+        DarknetRoute(DarknetRoute),
+        DarknetShortcut(DarknetShortcut),
+        MaxPool(MaxPool),
+        MergeDetect2D(MergeDetect2D),
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -33,20 +37,20 @@ mod module {
         ),
     }
 
-    impl From<goodies_mod::DarknetRoute> for Module {
-        fn from(v: goodies_mod::DarknetRoute) -> Self {
+    impl From<DarknetRoute> for Module {
+        fn from(v: DarknetRoute) -> Self {
             Self::DarknetRoute(v)
         }
     }
 
-    impl From<goodies_mod::DarknetShortcut> for Module {
-        fn from(v: goodies_mod::DarknetShortcut) -> Self {
+    impl From<DarknetShortcut> for Module {
+        fn from(v: DarknetShortcut) -> Self {
             Self::DarknetShortcut(v)
         }
     }
 
-    impl From<goodies_mod::MaxPool> for Module {
-        fn from(v: goodies_mod::MaxPool) -> Self {
+    impl From<MaxPool> for Module {
+        fn from(v: MaxPool) -> Self {
             Self::MaxPool(v)
         }
     }
@@ -63,56 +67,56 @@ mod module {
         }
     }
 
-    impl From<goodies_mod::MergeDetect2D> for Module {
-        fn from(v: goodies_mod::MergeDetect2D) -> Self {
+    impl From<MergeDetect2D> for Module {
+        fn from(v: MergeDetect2D) -> Self {
             Self::MergeDetect2D(v)
         }
     }
 
-    impl From<goodies_mod::Detect2D> for Module {
-        fn from(v: goodies_mod::Detect2D) -> Self {
+    impl From<Detect2D> for Module {
+        fn from(v: Detect2D) -> Self {
             Self::Detect2D(v)
         }
     }
 
-    impl From<goodies_mod::SppCsp2D> for Module {
-        fn from(v: goodies_mod::SppCsp2D) -> Self {
+    impl From<SppCsp2D> for Module {
+        fn from(v: SppCsp2D) -> Self {
             Self::SppCsp2D(v)
         }
     }
 
-    impl From<goodies_mod::DarkCsp2D> for Module {
-        fn from(v: goodies_mod::DarkCsp2D) -> Self {
+    impl From<DarkCsp2D> for Module {
+        fn from(v: DarkCsp2D) -> Self {
             Self::DarkCsp2D(v)
         }
     }
 
-    impl From<goodies_mod::Concat2D> for Module {
-        fn from(v: goodies_mod::Concat2D) -> Self {
+    impl From<Concat2D> for Module {
+        fn from(v: Concat2D) -> Self {
             Self::Concat2D(v)
         }
     }
 
-    impl From<goodies_mod::Sum2D> for Module {
-        fn from(v: goodies_mod::Sum2D) -> Self {
+    impl From<Sum2D> for Module {
+        fn from(v: Sum2D) -> Self {
             Self::Sum2D(v)
         }
     }
 
-    impl From<goodies_mod::UpSample2D> for Module {
-        fn from(v: goodies_mod::UpSample2D) -> Self {
+    impl From<UpSample2D> for Module {
+        fn from(v: UpSample2D) -> Self {
             Self::UpSample2D(v)
         }
     }
 
-    impl From<goodies_mod::DeconvBn2D> for Module {
-        fn from(v: goodies_mod::DeconvBn2D) -> Self {
+    impl From<DeconvBn2D> for Module {
+        fn from(v: DeconvBn2D) -> Self {
             Self::DeconvBn2D(v)
         }
     }
 
-    impl From<goodies_mod::ConvBn2D> for Module {
-        fn from(v: goodies_mod::ConvBn2D) -> Self {
+    impl From<ConvBn2D> for Module {
+        fn from(v: ConvBn2D) -> Self {
             Self::ConvBn2D(v)
         }
     }
