@@ -4,7 +4,7 @@ use crate::{
 };
 
 #[derive(Debug, TensorLike, Getters)]
-pub struct ObjectDetectionTensor {
+pub struct DenseDetectionSamples {
     /// The box parameters in CyCxHW format.
     #[get = "pub"]
     pub(crate) cycxhw: CyCxHWTensor,
@@ -17,13 +17,13 @@ pub struct ObjectDetectionTensor {
 }
 
 #[derive(Debug, TensorLike)]
-pub struct ObjectDetectionTensorUnchecked {
+pub struct DenseDetectionSamplesUnchecked {
     pub cycxhw: CyCxHWTensorUnchecked,
     pub obj_logit: Tensor,
     pub class_logit: Tensor,
 }
 
-impl ObjectDetectionTensor {
+impl DenseDetectionSamples {
     pub fn num_samples(&self) -> i64 {
         self.class_logit.size2().unwrap().0
     }
@@ -69,11 +69,11 @@ impl ObjectDetectionTensor {
     }
 }
 
-impl TryFrom<ObjectDetectionTensorUnchecked> for ObjectDetectionTensor {
+impl TryFrom<DenseDetectionSamplesUnchecked> for DenseDetectionSamples {
     type Error = Error;
 
-    fn try_from(from: ObjectDetectionTensorUnchecked) -> Result<Self, Self::Error> {
-        let ObjectDetectionTensorUnchecked {
+    fn try_from(from: DenseDetectionSamplesUnchecked) -> Result<Self, Self::Error> {
+        let DenseDetectionSamplesUnchecked {
             cycxhw,
             obj_logit,
             class_logit,
@@ -98,9 +98,9 @@ impl TryFrom<ObjectDetectionTensorUnchecked> for ObjectDetectionTensor {
     }
 }
 
-impl From<ObjectDetectionTensor> for ObjectDetectionTensorUnchecked {
-    fn from(from: ObjectDetectionTensor) -> Self {
-        let ObjectDetectionTensor {
+impl From<DenseDetectionSamples> for DenseDetectionSamplesUnchecked {
+    fn from(from: DenseDetectionSamples) -> Self {
+        let DenseDetectionSamples {
             cycxhw,
             obj_logit,
             class_logit,

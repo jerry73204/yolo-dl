@@ -1,5 +1,5 @@
 use crate::common::*;
-use tch_goodies::detection::{MergedDenseDetection, MergedDenseDetectionUnchecked};
+use tch_goodies::detection::MergedDenseDetection;
 
 // it prevents OOM on CUDA.
 const MAX_DETS: usize = 65536;
@@ -70,7 +70,11 @@ impl NonMaxSuppression {
             let confidence_threshold = confidence_threshold.raw();
             let num_classes = prediction.num_classes();
 
-            let MergedDenseDetectionUnchecked { cy, cx, h, w, .. } = &**prediction;
+            // let MergedDenseDetectionUnchecked { cy, cx, h, w, .. } = &**prediction;
+            let cy_ratio = prediction.cy_ratio();
+            let cx_ratio = prediction.cx_ratio();
+            let h_ratio = prediction.h_ratio();
+            let w_ratio = prediction.w_ratio();
             let obj_prob = prediction.obj_prob();
             let confidence = prediction.confidence();
 
@@ -79,10 +83,10 @@ impl NonMaxSuppression {
                 // compute confidence score
 
                 // compute tlbr bbox
-                let t = cy - h / 2.0;
-                let b = cy + h / 2.0;
-                let l = cx - w / 2.0;
-                let r = cx + w / 2.0;
+                let t_ratio = &cy_ratio - &h_ratio / 2.0;
+                let b_ratio = &cy_ratio + &h_ratio / 2.0;
+                let l_ratio = &cx_ratio - &w_ratio / 2.0;
+                let r_ratio = &cx_ratio + &w_ratio / 2.0;
 
                 // filter by objectness and confidence (= obj * class)
                 let obj_mask = obj_prob.ge(confidence_threshold);
@@ -93,10 +97,10 @@ impl NonMaxSuppression {
                 let classes = indexes.select(1, 1);
                 let instances = indexes.select(1, 2);
 
-                let new_t = t.index(&[Some(&batches), None, Some(&instances)]);
-                let new_l = l.index(&[Some(&batches), None, Some(&instances)]);
-                let new_b = b.index(&[Some(&batches), None, Some(&instances)]);
-                let new_r = r.index(&[Some(&batches), None, Some(&instances)]);
+                let new_t = t_ratio.index(&[Some(&batches), None, Some(&instances)]);
+                let new_l = l_ratio.index(&[Some(&batches), None, Some(&instances)]);
+                let new_b = b_ratio.index(&[Some(&batches), None, Some(&instances)]);
+                let new_r = r_ratio.index(&[Some(&batches), None, Some(&instances)]);
                 let new_conf = confidence
                     .index(&[Some(&batches), Some(&classes), Some(&instances)])
                     .view([-1, 1]);

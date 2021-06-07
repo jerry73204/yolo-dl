@@ -284,7 +284,7 @@ impl CyCxHWMatcher {
 #[derive(Debug, TensorLike)]
 pub struct MatchingOutput {
     pub pred_indexes: FlatIndexTensor,
-    pub pred: ObjectDetectionTensor,
+    pub pred: DenseDetectionSamples,
     pub target: LabelTensor,
 }
 
@@ -311,7 +311,7 @@ impl MatchingOutput {
 
         Self {
             pred_indexes: FlatIndexTensor::cat_mini_batches(pred_indexes_vec),
-            pred: ObjectDetectionTensor::cat(pred_vec),
+            pred: DenseDetectionSamples::cat(pred_vec),
             target: LabelTensor::cat(target_vec),
         }
     }

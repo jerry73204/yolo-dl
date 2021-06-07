@@ -10,7 +10,7 @@ pub struct DenseDetectionTensor {
 
 impl DenseDetectionTensor {
     pub fn batch_size(&self) -> usize {
-        let (batch_size, _, _, _, _) = self.cy.size5().unwrap();
+        let (batch_size, _, _, _, _) = self.cy_pixel.size5().unwrap();
         batch_size as usize
     }
 
@@ -20,18 +20,34 @@ impl DenseDetectionTensor {
     }
 
     pub fn num_anchors(&self) -> usize {
-        let (_, _, num_anchors, _, _) = self.cy.size5().unwrap();
+        let (_, _, num_anchors, _, _) = self.cy_pixel.size5().unwrap();
         num_anchors as usize
     }
 
     pub fn height(&self) -> usize {
-        let (_, _, _, height, _) = self.cy.size5().unwrap();
+        let (_, _, _, height, _) = self.cy_pixel.size5().unwrap();
         height as usize
     }
 
     pub fn width(&self) -> usize {
-        let (_, _, _, _, width) = self.cy.size5().unwrap();
+        let (_, _, _, _, width) = self.cy_pixel.size5().unwrap();
         width as usize
+    }
+
+    pub fn cy_ratio(&self) -> Tensor {
+        &self.inner.cy_pixel / self.height() as f64
+    }
+
+    pub fn cx_ratio(&self) -> Tensor {
+        &self.inner.cx_pixel / self.width() as f64
+    }
+
+    pub fn h_ratio(&self) -> Tensor {
+        &self.inner.h_pixel / self.height() as f64
+    }
+
+    pub fn w_ratio(&self) -> Tensor {
+        &self.inner.w_pixel / self.width() as f64
     }
 
     pub fn obj_prob(&self) -> Tensor {
@@ -90,10 +106,10 @@ impl DenseDetectionTensor {
                 let batch_size = tensor.batch_size();
                 let num_classes = tensor.num_classes();
                 let DenseDetectionTensorUnchecked {
-                    cy,
-                    cx,
-                    h,
-                    w,
+                    cy_pixel,
+                    cx_pixel,
+                    h_pixel,
+                    w_pixel,
                     obj_logit,
                     class_logit,
                     anchors,
@@ -102,10 +118,10 @@ impl DenseDetectionTensor {
                     batch_size,
                     num_classes,
                     anchors,
-                    cy,
-                    cx,
-                    h,
-                    w,
+                    cy_pixel,
+                    cx_pixel,
+                    h_pixel,
+                    w_pixel,
                     obj_logit,
                     class_logit,
                 )
@@ -118,19 +134,19 @@ impl DenseDetectionTensor {
 
         let anchors = anchors_set.into_iter().next().unwrap();
 
-        let cy = Tensor::cat(&cy_vec, index);
-        let cx = Tensor::cat(&cx_vec, index);
-        let h = Tensor::cat(&h_vec, index);
-        let w = Tensor::cat(&w_vec, index);
+        let cy_pixel = Tensor::cat(&cy_vec, index);
+        let cx_pixel = Tensor::cat(&cx_vec, index);
+        let h_pixel = Tensor::cat(&h_vec, index);
+        let w_pixel = Tensor::cat(&w_vec, index);
         let obj_logit = Tensor::cat(&obj_vec, index);
         let class_logit = Tensor::cat(&class_vec, index);
 
         Ok(Self {
             inner: DenseDetectionTensorUnchecked {
-                cy,
-                cx,
-                h,
-                w,
+                cy_pixel,
+                cx_pixel,
+                h_pixel,
+                w_pixel,
                 obj_logit,
                 class_logit,
                 anchors: anchors.to_owned(),
@@ -141,14 +157,14 @@ impl DenseDetectionTensor {
 
 #[derive(Debug, TensorLike)]
 pub struct DenseDetectionTensorUnchecked {
-    /// The bounding box center y position in ratio unit. It has 1 entry.
-    pub cy: Tensor,
-    /// The bounding box center x position in ratio unit. It has 1 entry.
-    pub cx: Tensor,
-    /// The bounding box height in ratio unit. It has 1 entry.
-    pub h: Tensor,
-    /// The bounding box width in ratio unit. It has 1 entry.
-    pub w: Tensor,
+    /// The bounding box center y position in grid unit. It has 1 entry.
+    pub cy_pixel: Tensor,
+    /// The bounding box center x position in grid unit. It has 1 entry.
+    pub cx_pixel: Tensor,
+    /// The bounding box height in grid unit. It has 1 entry.
+    pub h_pixel: Tensor,
+    /// The bounding box width in grid unit. It has 1 entry.
+    pub w_pixel: Tensor,
     /// The likelihood score an object in the position. It has 1 entry.
     pub obj_logit: Tensor,
     /// The scores the object is of that class. It number of entries is the number of classes.
@@ -182,20 +198,20 @@ impl TryFrom<DenseDetectionTensorUnchecked> for DenseDetectionTensor {
 
     fn try_from(from: DenseDetectionTensorUnchecked) -> Result<Self, Self::Error> {
         let DenseDetectionTensorUnchecked {
-            cy,
-            cx,
-            h,
-            w,
+            cy_pixel,
+            cx_pixel,
+            h_pixel,
+            w_pixel,
             obj_logit,
             class_logit,
             anchors,
         } = &from;
 
         let (batch_size, _num_classes, num_anchors, height, width) = class_logit.size5()?;
-        ensure!(cy.size5()? == (batch_size, 1, num_anchors, height, width),);
-        ensure!(cx.size5()? == (batch_size, 1, num_anchors, height, width),);
-        ensure!(h.size5()? == (batch_size, 1, num_anchors, height, width),);
-        ensure!(w.size5()? == (batch_size, 1, num_anchors, height, width),);
+        ensure!(cy_pixel.size5()? == (batch_size, 1, num_anchors, height, width),);
+        ensure!(cx_pixel.size5()? == (batch_size, 1, num_anchors, height, width),);
+        ensure!(h_pixel.size5()? == (batch_size, 1, num_anchors, height, width),);
+        ensure!(w_pixel.size5()? == (batch_size, 1, num_anchors, height, width),);
         ensure!(obj_logit.size5()? == (batch_size, 1, num_anchors, height, width),);
         ensure!(anchors.len() == num_anchors as usize);
 

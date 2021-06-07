@@ -126,10 +126,10 @@ mod logging_worker {
                 tch::no_grad(|| -> Result<_> {
                     // log statistics
                     let debug_stat = if enable_debug_stat {
-                        let cy_mean = f32::from(output.cy.mean(Kind::Float));
-                        let cx_mean = f32::from(output.cx.mean(Kind::Float));
-                        let h_mean = f32::from(output.h.mean(Kind::Float));
-                        let w_mean = f32::from(output.w.mean(Kind::Float));
+                        let cy_mean = f32::from(output.cy_ratio().mean(Kind::Float));
+                        let cx_mean = f32::from(output.cx_ratio().mean(Kind::Float));
+                        let h_mean = f32::from(output.h_ratio().mean(Kind::Float));
+                        let w_mean = f32::from(output.w_ratio().mean(Kind::Float));
                         timing.add_event("compute_statistics");
                         Some((cy_mean, cx_mean, h_mean, w_mean))
                     } else {
