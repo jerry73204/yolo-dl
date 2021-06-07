@@ -82,6 +82,16 @@ impl CyCxHWMatcher {
                     ..
                 } = *layer;
 
+                // change anchor sizes from grid to ratio unit
+                let anchors: Vec<_> = anchors
+                    .iter()
+                    .map(|grid_size: &GridSize<R64>| {
+                        let ratio_h = grid_size.h() / feature_size.h() as f64;
+                        let ratio_w = grid_size.w() / feature_size.w() as f64;
+                        RatioSize::new(ratio_h, ratio_w).unwrap()
+                    })
+                    .collect();
+
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes: Vec<_> = {
                     let target_bbox_grid: GridCyCxHW<R64> = target_bbox
@@ -152,8 +162,7 @@ impl CyCxHWMatcher {
 
                 // pair up anchors and neighbor grid indexes
                 anchors
-                    .iter()
-                    .cloned()
+                    .into_iter()
                     .enumerate()
                     .filter_map(move |(anchor_index, anchor_size)| {
                         // filter by anchor sizes
