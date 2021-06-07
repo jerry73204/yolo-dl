@@ -188,14 +188,16 @@ mod logging_worker {
                             .iter()
                             .zip_eq(output.info.iter())
                             .map(|(feature_map, meta)| {
+                                let feature_h = meta.feature_size.h();
+                                let feature_w = meta.feature_size.w();
                                 let num_anchors = meta.anchors.len() as i64;
                                 feature_map
-                                    .obj_logit
-                                    .copy()
-                                    .resize_(&[batch_size, 1, num_anchors, image_h, image_w])
-                                    .view([batch_size, num_anchors, image_h, image_w])
+                                    .obj_prob()
+                                    .to_device(Device::Cpu)
+                                    .view([batch_size, num_anchors, feature_h, feature_w])
+                                    .resize2d_exact(image_h, image_w)
                             })
-                            .collect();
+                            .try_collect()?;
 
                         // concatenate at "anchor" dimension, and find the max over that dimension
                         let (objectness_image, _argmax) =
