@@ -1,17 +1,26 @@
 use crate::common::*;
 
 #[derive(Debug)]
-pub struct Sum2D;
+pub struct Sum2D {
+    _private: [u8; 0],
+}
 
 impl Sum2D {
-    pub fn forward<T>(&self, tensors: &[T]) -> Result<Tensor>
-    where
-        T: Borrow<Tensor>,
-    {
-        tensors.iter().try_for_each(|tensor| -> Result<_> {
-            tensor.borrow().size4()?;
-            Ok(())
-        })?;
+    pub fn new() -> Self {
+        Self { _private: [] }
+    }
+
+    pub fn forward(
+        &self,
+        tensors: impl IntoIterator<Item = impl Borrow<Tensor>>,
+    ) -> Result<Tensor> {
+        let tensors: Vec<_> = tensors
+            .into_iter()
+            .map(|tensor| -> Result<_> {
+                tensor.borrow().size4()?;
+                Ok(tensor)
+            })
+            .try_collect()?;
         let mut iter = tensors.iter();
         let first = iter
             .next()

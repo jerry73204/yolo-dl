@@ -226,8 +226,8 @@ impl YoloModel {
                         .build(module_path)
                         .into()
                     }
-                    config::Module::Sum2D(_) => modules::Module::Sum2D(modules::Sum2D),
-                    config::Module::Concat2D(_) => modules::Module::Concat2D(modules::Concat2D),
+                    config::Module::Sum2D(_) => modules::Sum2D::new().into(),
+                    config::Module::Concat2D(_) => modules::Concat2D::new().into(),
                     config::Module::Detect2D(config::Detect2D {
                         classes,
                         ref anchors,
@@ -278,12 +278,14 @@ impl YoloModel {
         let output_key = {
             let mut iter = layers
                 .iter()
-                .filter_map(|(&key, layer)| match layer.module {
-                    modules::Module::MergeDetect2D(_) => Some(key),
-                    _ => None,
-                });
-            let output_key = iter.next().ok_or_else(|| format_err!("TODO"))?;
-            ensure!(iter.next() == None, "TODO");
+                .filter_map(|(&key, layer)| layer.module.is_merge_detect_2d().then(|| key));
+            let output_key = iter
+                .next()
+                .ok_or_else(|| format_err!("no MergeDetect2D layer found"))?;
+            ensure!(
+                iter.next() == None,
+                "the model has multiple MergeDetect2D layers"
+            );
             output_key
         };
 

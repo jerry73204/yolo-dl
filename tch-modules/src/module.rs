@@ -9,7 +9,6 @@ pub use module::*;
 pub use module_input::*;
 
 mod module {
-
     use super::*;
 
     #[derive(AsRefStr, Derivative)]
@@ -35,6 +34,19 @@ mod module {
             #[derivative(Debug = "ignore")]
             Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
         ),
+    }
+
+    impl Module {
+        pub fn is_merge_detect_2d(&self) -> bool {
+            matches!(self, Self::MergeDetect2D(_))
+        }
+
+        pub fn as_merge_detect_2d(&self) -> Option<&MergeDetect2D> {
+            match self {
+                Self::MergeDetect2D(module) => Some(module),
+                _ => None,
+            }
+        }
     }
 
     impl From<DarknetRoute> for Module {
@@ -149,10 +161,10 @@ mod module {
                     .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)?
                     .into(),
                 Self::Sum2D(module) => module
-                    .forward(&input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .forward(input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?)?
                     .into(),
                 Self::Concat2D(module) => module
-                    .forward(&input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?)?
+                    .forward(input.indexed_tensor().ok_or_else(|| format_err!("TODO"))?)?
                     .into(),
                 Self::DarkCsp2D(module) => module
                     .forward_t(input.tensor().ok_or_else(|| format_err!("TODO"))?, train)
