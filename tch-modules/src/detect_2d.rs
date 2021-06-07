@@ -33,7 +33,7 @@ pub struct Detect2D {
     num_classes: usize,
     anchors: Vec<RatioSize<R64>>,
     device: Device,
-    cache: Option<(GridSize<i64>, Cache)>,
+    cache: Option<Cache>,
 }
 
 impl Detect2D {
@@ -59,6 +59,7 @@ impl Detect2D {
             x_offsets,
             anchor_heights,
             anchor_widths,
+            ..
         } = self.cache(tensor)?.shallow_clone();
 
         // compute outputs
@@ -164,7 +165,7 @@ impl Detect2D {
 
             let is_hit = cache
                 .as_ref()
-                .map(|(size, _cache)| size == &expect_size)
+                .map(|cache| cache.feature_size == expect_size)
                 .unwrap_or(false);
 
             if !is_hit {
@@ -196,16 +197,17 @@ impl Detect2D {
                 };
 
                 let new_cache = Cache {
+                    feature_size: expect_size,
                     y_offsets,
                     x_offsets,
                     anchor_heights,
                     anchor_widths,
                 };
 
-                *cache = Some((expect_size, new_cache));
+                *cache = Some(new_cache);
             }
 
-            let cache = cache.as_ref().map(|(_size, cache)| cache).unwrap();
+            let cache = cache.as_ref().unwrap();
             Ok(cache)
         })
     }
@@ -213,6 +215,7 @@ impl Detect2D {
 
 #[derive(Debug)]
 struct Cache {
+    feature_size: GridSize<i64>,
     y_offsets: Tensor,
     x_offsets: Tensor,
     anchor_heights: Tensor,
