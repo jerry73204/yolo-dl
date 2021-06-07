@@ -64,24 +64,11 @@ impl DenseDetectionTensor {
     }
 
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
-        Self::cat(tensors, 0)
-    }
-
-    pub fn cat_height(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
-        Self::cat(tensors, 3)
-    }
-
-    pub fn cat_width(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
-        Self::cat(tensors, 4)
-    }
-
-    pub(crate) fn cat(
-        tensors: impl IntoIterator<Item = impl Borrow<Self>>,
-        index: i64,
-    ) -> Result<Self> {
         let (
             batch_size_set,
             num_classes_set,
+            feature_h_set,
+            feature_w_set,
             anchors_set,
             cy_vec,
             cx_vec,
@@ -90,6 +77,8 @@ impl DenseDetectionTensor {
             obj_vec,
             class_vec,
         ): (
+            HashSet<_>,
+            HashSet<_>,
             HashSet<_>,
             HashSet<_>,
             HashSet<_>,
@@ -105,6 +94,9 @@ impl DenseDetectionTensor {
                 let tensor = tensor.borrow().shallow_clone();
                 let batch_size = tensor.batch_size();
                 let num_classes = tensor.num_classes();
+                let feature_h = tensor.height();
+                let feature_w = tensor.width();
+
                 let DenseDetectionTensorUnchecked {
                     cy_pixel,
                     cx_pixel,
@@ -117,6 +109,8 @@ impl DenseDetectionTensor {
                 (
                     batch_size,
                     num_classes,
+                    feature_h,
+                    feature_w,
                     anchors,
                     cy_pixel,
                     cx_pixel,
@@ -131,15 +125,16 @@ impl DenseDetectionTensor {
         ensure!(batch_size_set.len() == 1);
         ensure!(num_classes_set.len() == 1);
         ensure!(anchors_set.len() == 1);
+        ensure!(feature_h_set.len() == 1);
+        ensure!(feature_w_set.len() == 1);
 
+        let cy_pixel = Tensor::cat(&cy_vec, 0);
+        let cx_pixel = Tensor::cat(&cx_vec, 0);
+        let h_pixel = Tensor::cat(&h_vec, 0);
+        let w_pixel = Tensor::cat(&w_vec, 0);
+        let obj_logit = Tensor::cat(&obj_vec, 0);
+        let class_logit = Tensor::cat(&class_vec, 0);
         let anchors = anchors_set.into_iter().next().unwrap();
-
-        let cy_pixel = Tensor::cat(&cy_vec, index);
-        let cx_pixel = Tensor::cat(&cx_vec, index);
-        let h_pixel = Tensor::cat(&h_vec, index);
-        let w_pixel = Tensor::cat(&w_vec, index);
-        let obj_logit = Tensor::cat(&obj_vec, index);
-        let class_logit = Tensor::cat(&class_vec, index);
 
         Ok(Self {
             inner: DenseDetectionTensorUnchecked {
@@ -149,7 +144,179 @@ impl DenseDetectionTensor {
                 w_pixel,
                 obj_logit,
                 class_logit,
-                anchors: anchors.to_owned(),
+                anchors,
+            },
+        })
+    }
+
+    pub fn cat_height(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+        let (
+            batch_size_set,
+            num_classes_set,
+            feature_w_set,
+            anchors_set,
+            cy_vec,
+            cx_vec,
+            h_vec,
+            w_vec,
+            obj_vec,
+            class_vec,
+        ): (
+            HashSet<_>,
+            HashSet<_>,
+            HashSet<_>,
+            HashSet<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+        ) = tensors
+            .into_iter()
+            .scan(0, |offset_y, tensor| {
+                let tensor = tensor.borrow().shallow_clone();
+                let batch_size = tensor.batch_size();
+                let num_classes = tensor.num_classes();
+                let feature_h = tensor.height();
+                let feature_w = tensor.width();
+
+                let DenseDetectionTensorUnchecked {
+                    cy_pixel,
+                    cx_pixel,
+                    h_pixel,
+                    w_pixel,
+                    obj_logit,
+                    class_logit,
+                    anchors,
+                } = tensor.into();
+
+                let cy_pixel = cy_pixel + *offset_y as f64;
+                *offset_y += feature_h;
+
+                Some((
+                    batch_size,
+                    num_classes,
+                    feature_w,
+                    anchors,
+                    cy_pixel,
+                    cx_pixel,
+                    h_pixel,
+                    w_pixel,
+                    obj_logit,
+                    class_logit,
+                ))
+            })
+            .unzip_n();
+
+        ensure!(batch_size_set.len() == 1);
+        ensure!(num_classes_set.len() == 1);
+        ensure!(anchors_set.len() == 1);
+        ensure!(feature_w_set.len() == 1);
+
+        let cy_pixel = Tensor::cat(&cy_vec, 3);
+        let cx_pixel = Tensor::cat(&cx_vec, 3);
+        let h_pixel = Tensor::cat(&h_vec, 3);
+        let w_pixel = Tensor::cat(&w_vec, 3);
+        let obj_logit = Tensor::cat(&obj_vec, 3);
+        let class_logit = Tensor::cat(&class_vec, 3);
+        let anchors = anchors_set.into_iter().next().unwrap();
+
+        Ok(Self {
+            inner: DenseDetectionTensorUnchecked {
+                cy_pixel,
+                cx_pixel,
+                h_pixel,
+                w_pixel,
+                obj_logit,
+                class_logit,
+                anchors,
+            },
+        })
+    }
+
+    pub fn cat_width(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+        let (
+            batch_size_set,
+            num_classes_set,
+            feature_h_set,
+            anchors_set,
+            cy_vec,
+            cx_vec,
+            h_vec,
+            w_vec,
+            obj_vec,
+            class_vec,
+        ): (
+            HashSet<_>,
+            HashSet<_>,
+            HashSet<_>,
+            HashSet<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+            Vec<_>,
+        ) = tensors
+            .into_iter()
+            .scan(0, |offset_x, tensor| {
+                let tensor = tensor.borrow().shallow_clone();
+                let batch_size = tensor.batch_size();
+                let num_classes = tensor.num_classes();
+                let feature_h = tensor.height();
+                let feature_w = tensor.width();
+
+                let DenseDetectionTensorUnchecked {
+                    cy_pixel,
+                    cx_pixel,
+                    h_pixel,
+                    w_pixel,
+                    obj_logit,
+                    class_logit,
+                    anchors,
+                } = tensor.into();
+
+                let cx_pixel = cx_pixel + *offset_x as f64;
+                *offset_x += feature_w;
+
+                Some((
+                    batch_size,
+                    num_classes,
+                    feature_h,
+                    anchors,
+                    cy_pixel,
+                    cx_pixel,
+                    h_pixel,
+                    w_pixel,
+                    obj_logit,
+                    class_logit,
+                ))
+            })
+            .unzip_n();
+
+        ensure!(batch_size_set.len() == 1);
+        ensure!(num_classes_set.len() == 1);
+        ensure!(anchors_set.len() == 1);
+        ensure!(feature_h_set.len() == 1);
+
+        let cy_pixel = Tensor::cat(&cy_vec, 4);
+        let cx_pixel = Tensor::cat(&cx_vec, 4);
+        let h_pixel = Tensor::cat(&h_vec, 4);
+        let w_pixel = Tensor::cat(&w_vec, 4);
+        let obj_logit = Tensor::cat(&obj_vec, 4);
+        let class_logit = Tensor::cat(&class_vec, 4);
+        let anchors = anchors_set.into_iter().next().unwrap();
+
+        Ok(Self {
+            inner: DenseDetectionTensorUnchecked {
+                cy_pixel,
+                cx_pixel,
+                h_pixel,
+                w_pixel,
+                obj_logit,
+                class_logit,
+                anchors,
             },
         })
     }

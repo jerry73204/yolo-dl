@@ -37,3 +37,4 @@ unzip_n::unzip_n!(pub 5);
 unzip_n::unzip_n!(pub 7);
 unzip_n::unzip_n!(pub 9);
 unzip_n::unzip_n!(pub 10);
+unzip_n::unzip_n!(pub 11);

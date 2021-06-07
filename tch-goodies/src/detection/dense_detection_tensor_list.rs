@@ -32,20 +32,8 @@ impl DenseDetectionTensorList {
     }
 
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
-        Self::cat(tensors, 0)
-    }
-
-    pub fn cat_height(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
-        Self::cat(tensors, 3)
-    }
-
-    pub fn cat_width(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
-        Self::cat(tensors, 4)
-    }
-
-    fn cat(lists: impl IntoIterator<Item = impl Borrow<Self>>, index: i64) -> Result<Self> {
         // list index -> layer index -> tensor
-        let tensors_vec: Vec<Vec<_>> = lists
+        let tensors_vec: Vec<Vec<_>> = tensors
             .into_iter()
             .map(|list| list.borrow().tensors.shallow_clone())
             .collect();
@@ -56,7 +44,49 @@ impl DenseDetectionTensorList {
         // concatenate each layer of tensors
         let tensors: Vec<_> = tensors_vec
             .into_iter()
-            .map(|layer| DenseDetectionTensor::cat(layer, index))
+            .map(DenseDetectionTensor::cat_batch)
+            .try_collect()?;
+
+        Ok(Self {
+            inner: DenseDetectionTensorListUnchecked { tensors },
+        })
+    }
+
+    pub fn cat_height(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+        // list index -> layer index -> tensor
+        let tensors_vec: Vec<Vec<_>> = tensors
+            .into_iter()
+            .map(|list| list.borrow().tensors.shallow_clone())
+            .collect();
+
+        // layer index -> list index -> tensor
+        let tensors_vec = tensors_vec.transpose().unwrap();
+
+        // concatenate each layer of tensors
+        let tensors: Vec<_> = tensors_vec
+            .into_iter()
+            .map(DenseDetectionTensor::cat_height)
+            .try_collect()?;
+
+        Ok(Self {
+            inner: DenseDetectionTensorListUnchecked { tensors },
+        })
+    }
+
+    pub fn cat_width(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
+        // list index -> layer index -> tensor
+        let tensors_vec: Vec<Vec<_>> = tensors
+            .into_iter()
+            .map(|list| list.borrow().tensors.shallow_clone())
+            .collect();
+
+        // layer index -> list index -> tensor
+        let tensors_vec = tensors_vec.transpose().unwrap();
+
+        // concatenate each layer of tensors
+        let tensors: Vec<_> = tensors_vec
+            .into_iter()
+            .map(DenseDetectionTensor::cat_width)
             .try_collect()?;
 
         Ok(Self {
