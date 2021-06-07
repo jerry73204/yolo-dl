@@ -19,7 +19,7 @@ itertools = "0.10.0"
 petgraph = "0.5.1"
 take_mut = "0.2.2"
 unzip-n = "0.1.2"
-strum = { version = "0.20.0", features = ["derive"] }
+strum = { version = "0.21.0", features = ["derive"] }
 dot = { version = "0.1.4", optional = true }
 getset = "0.1.1"
 prettytable-rs = "0.8.0"

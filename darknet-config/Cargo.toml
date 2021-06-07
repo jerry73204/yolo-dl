@@ -18,9 +18,9 @@ petgraph = "0.5.1"
 indexmap = { version = "1.6.2", features = ["serde"] }
 byteorder = "1.4.3"
 derivative = "2.2.0"
-ndarray = "0.15.2"
+ndarray = "0.15.3"
 unzip-n = "0.1.2"
-strum = { version = "0.20.0", features = ["derive"] }
+strum = { version = "0.21.0", features = ["derive"] }
 image = "0.23.14"
 maplit = "1.0.2"
 tch-tensor-like = { version = "0.3.0", features = ["derive"] }

@@ -15,7 +15,7 @@ image = "0.23.14"
 itertools = "0.10.0"
 log = "0.4.14"
 mona = "0.1.0"
-ndarray = "0.15.2"
+ndarray = "0.15.3"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 num-traits = "0.2.14"
 serde = { version = "1.0.126", features = ["derive"] }
@@ -24,5 +24,5 @@ tch-tensor-like = { version = "0.3.0", features = ["derive"] }
 unzip-n = "0.1.2"
 model-graph = { version = "0.1.0", path = "../model-graph" }
 tch-goodies = { version = "0.1.0", path = "../tch-goodies" }
-strum = "0.20.0"
+strum = "0.21.0"
 derivative = "2.2.0"
