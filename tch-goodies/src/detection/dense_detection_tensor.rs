@@ -15,7 +15,7 @@ impl DenseDetectionTensor {
     }
 
     pub fn num_classes(&self) -> usize {
-        let (_, num_classes, _, _, _) = self.class.size5().unwrap();
+        let (_, num_classes, _, _, _) = self.class_logit.size5().unwrap();
         num_classes as usize
     }
 
@@ -32,6 +32,19 @@ impl DenseDetectionTensor {
     pub fn width(&self) -> usize {
         let (_, _, _, _, width) = self.cy.size5().unwrap();
         width as usize
+    }
+
+    pub fn obj_prob(&self) -> Tensor {
+        self.inner.obj_logit.sigmoid()
+    }
+
+    pub fn class_prob(&self) -> Tensor {
+        self.inner.class_logit.sigmoid()
+    }
+
+    /// Compute confidence, objectness score times classification score.
+    pub fn confidence(&self) -> Tensor {
+        self.obj_prob() * self.class_prob()
     }
 
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
@@ -81,11 +94,21 @@ impl DenseDetectionTensor {
                     cx,
                     h,
                     w,
-                    obj,
-                    class,
+                    obj_logit,
+                    class_logit,
                     anchors,
                 } = tensor.into();
-                (batch_size, num_classes, anchors, cy, cx, h, w, obj, class)
+                (
+                    batch_size,
+                    num_classes,
+                    anchors,
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj_logit,
+                    class_logit,
+                )
             })
             .unzip_n();
 
@@ -99,8 +122,8 @@ impl DenseDetectionTensor {
         let cx = Tensor::cat(&cx_vec, index);
         let h = Tensor::cat(&h_vec, index);
         let w = Tensor::cat(&w_vec, index);
-        let obj = Tensor::cat(&obj_vec, index);
-        let class = Tensor::cat(&class_vec, index);
+        let obj_logit = Tensor::cat(&obj_vec, index);
+        let class_logit = Tensor::cat(&class_vec, index);
 
         Ok(Self {
             inner: DenseDetectionTensorUnchecked {
@@ -108,8 +131,8 @@ impl DenseDetectionTensor {
                 cx,
                 h,
                 w,
-                obj,
-                class,
+                obj_logit,
+                class_logit,
                 anchors: anchors.to_owned(),
             },
         })
@@ -127,9 +150,9 @@ pub struct DenseDetectionTensorUnchecked {
     /// The bounding box width in ratio unit. It has 1 entry.
     pub w: Tensor,
     /// The likelihood score an object in the position. It has 1 entry.
-    pub obj: Tensor,
+    pub obj_logit: Tensor,
     /// The scores the object is of that class. It number of entries is the number of classes.
-    pub class: Tensor,
+    pub class_logit: Tensor,
     #[tensor_like(clone)]
     pub anchors: Vec<RatioSize<R64>>,
 }
@@ -163,17 +186,17 @@ impl TryFrom<DenseDetectionTensorUnchecked> for DenseDetectionTensor {
             cx,
             h,
             w,
-            obj,
-            class,
+            obj_logit,
+            class_logit,
             anchors,
         } = &from;
 
-        let (batch_size, _num_classes, num_anchors, height, width) = class.size5()?;
+        let (batch_size, _num_classes, num_anchors, height, width) = class_logit.size5()?;
         ensure!(cy.size5()? == (batch_size, 1, num_anchors, height, width),);
         ensure!(cx.size5()? == (batch_size, 1, num_anchors, height, width),);
         ensure!(h.size5()? == (batch_size, 1, num_anchors, height, width),);
         ensure!(w.size5()? == (batch_size, 1, num_anchors, height, width),);
-        ensure!(obj.size5()? == (batch_size, 1, num_anchors, height, width),);
+        ensure!(obj_logit.size5()? == (batch_size, 1, num_anchors, height, width),);
         ensure!(anchors.len() == num_anchors as usize);
 
         Ok(Self { inner: from })

@@ -46,8 +46,8 @@ impl MergedDenseDetection {
                     cx,
                     h,
                     w,
-                    obj,
-                    class,
+                    obj_logit,
+                    class_logit,
                     ..
                 } = &**detection;
                 let batch_size = detection.batch_size() as i64;
@@ -60,8 +60,8 @@ impl MergedDenseDetection {
                 let cx_flat = cx.view([batch_size, 1, -1]);
                 let h_flat = h.view([batch_size, 1, -1]);
                 let w_flat = w.view([batch_size, 1, -1]);
-                let obj_flat = obj.view([batch_size, 1, -1]);
-                let class_flat = class.view([batch_size, num_classes as i64, -1]);
+                let obj_flat = obj_logit.view([batch_size, 1, -1]);
+                let class_flat = class_logit.view([batch_size, num_classes as i64, -1]);
 
                 // save feature anchors and shapes
                 let info = {
@@ -86,8 +86,8 @@ impl MergedDenseDetection {
         let cx = Tensor::cat(&cx_vec, 2);
         let h = Tensor::cat(&h_vec, 2);
         let w = Tensor::cat(&w_vec, 2);
-        let obj = Tensor::cat(&obj_vec, 2);
-        let class = Tensor::cat(&class_vec, 2);
+        let obj_logit = Tensor::cat(&obj_vec, 2);
+        let class_logit = Tensor::cat(&class_vec, 2);
 
         let output = Self {
             inner: MergedDenseDetectionUnchecked {
@@ -95,8 +95,8 @@ impl MergedDenseDetection {
                 cx,
                 h,
                 w,
-                obj,
-                class,
+                obj_logit,
+                class_logit,
                 info,
             },
         };
@@ -109,8 +109,8 @@ impl MergedDenseDetection {
                     && feature_map.cx == detection.cx
                     && feature_map.h == detection.h
                     && feature_map.w == detection.w
-                    && feature_map.obj == detection.obj
-                    && feature_map.class == detection.class
+                    && feature_map.obj_logit == detection.obj_logit
+                    && feature_map.class_logit == detection.class_logit
             })
         });
 
@@ -134,8 +134,21 @@ impl MergedDenseDetection {
     }
 
     pub fn num_classes(&self) -> i64 {
-        let (_batch_size, num_classes, _instances) = self.class.size3().unwrap();
+        let (_batch_size, num_classes, _instances) = self.class_logit.size3().unwrap();
         num_classes
+    }
+
+    /// Compute confidence, objectness score times classification score.
+    pub fn confidence(&self) -> Tensor {
+        self.obj_prob() * self.class_prob()
+    }
+
+    pub fn obj_prob(&self) -> Tensor {
+        self.inner.obj_logit.sigmoid()
+    }
+
+    pub fn class_prob(&self) -> Tensor {
+        self.inner.class_logit.sigmoid()
     }
 
     pub fn cat(outputs: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
@@ -173,13 +186,23 @@ impl MergedDenseDetection {
                             cx,
                             h,
                             w,
-                            obj,
-                            class,
+                            obj_logit,
+                            class_logit,
                             ..
                         },
                 } = output.shallow_clone();
 
-                (batch_size, num_classes, info, cy, cx, h, w, obj, class)
+                (
+                    batch_size,
+                    num_classes,
+                    info,
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    obj_logit,
+                    class_logit,
+                )
             })
             .unzip_n();
 
@@ -200,8 +223,8 @@ impl MergedDenseDetection {
         let cx = Tensor::cat(&cx_vec, 0);
         let h = Tensor::cat(&h_vec, 0);
         let w = Tensor::cat(&w_vec, 0);
-        let obj = Tensor::cat(&obj_vec, 0);
-        let class = Tensor::cat(&class_vec, 0);
+        let obj_logit = Tensor::cat(&obj_vec, 0);
+        let class_logit = Tensor::cat(&class_vec, 0);
 
         let flat_index_size: i64 = info
             .iter()
@@ -233,11 +256,11 @@ impl MergedDenseDetection {
             "invalid width shape"
         );
         ensure!(
-            obj.size3()? == (batch_size, 1, flat_index_size),
+            obj_logit.size3()? == (batch_size, 1, flat_index_size),
             "invalid objectness shape"
         );
         ensure!(
-            class.size3()? == (batch_size, num_classes as i64, flat_index_size),
+            class_logit.size3()? == (batch_size, num_classes as i64, flat_index_size),
             "invalid classification shape"
         );
 
@@ -247,8 +270,8 @@ impl MergedDenseDetection {
                 cx,
                 h,
                 w,
-                obj,
-                class,
+                obj_logit,
+                class_logit,
                 info,
             },
         })
@@ -262,8 +285,8 @@ impl MergedDenseDetection {
                     cx,
                     h,
                     w,
-                    class,
-                    obj,
+                    class_logit,
+                    obj_logit,
                     ..
                 },
         } = self;
@@ -276,8 +299,8 @@ impl MergedDenseDetection {
                 h: h.index(&[Some(batches), None, Some(flats)]),
                 w: w.index(&[Some(batches), None, Some(flats)]),
             },
-            obj: obj.index(&[Some(batches), None, Some(flats)]),
-            class: class.index(&[Some(batches), None, Some(flats)]),
+            obj_logit: obj_logit.index(&[Some(batches), None, Some(flats)]),
+            class_logit: class_logit.index(&[Some(batches), None, Some(flats)]),
         }
         .try_into()
         .unwrap()
@@ -450,9 +473,9 @@ pub struct MergedDenseDetectionUnchecked {
     /// Tensor of bbox widths with shape `[batch, 1, flat]`.
     pub w: Tensor,
     /// Tensor of bbox objectness score with shape `[batch, 1, flat]`.
-    pub obj: Tensor,
+    pub obj_logit: Tensor,
     /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, flat]`.
-    pub class: Tensor,
+    pub class_logit: Tensor,
     /// Saves the shape of exported feature maps.
     pub info: Vec<DetectionInfo>,
 }

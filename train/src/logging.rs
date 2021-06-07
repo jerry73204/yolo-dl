@@ -190,7 +190,7 @@ mod logging_worker {
                             .map(|(feature_map, meta)| {
                                 let num_anchors = meta.anchors.len() as i64;
                                 feature_map
-                                    .obj
+                                    .obj_logit
                                     .copy()
                                     .resize_(&[batch_size, 1, num_anchors, image_h, image_w])
                                     .view([batch_size, num_anchors, image_h, image_w])

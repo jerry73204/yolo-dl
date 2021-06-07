@@ -59,20 +59,23 @@ impl From<MergedDenseDetection> for DenseDetectionTensorList {
                     feature_h,
                     feature_w,
                 ]);
-                let obj_map = from.obj.i((.., .., flat_index_range.clone())).view([
+                let obj_map = from.obj_logit.i((.., .., flat_index_range.clone())).view([
                     batch_size,
                     1,
                     num_anchors,
                     feature_h,
                     feature_w,
                 ]);
-                let class_map = from.class.i((.., .., flat_index_range.clone())).view([
-                    batch_size,
-                    num_classes as i64,
-                    num_anchors,
-                    feature_h,
-                    feature_w,
-                ]);
+                let class_map = from
+                    .class_logit
+                    .i((.., .., flat_index_range.clone()))
+                    .view([
+                        batch_size,
+                        num_classes as i64,
+                        num_anchors,
+                        feature_h,
+                        feature_w,
+                    ]);
 
                 DenseDetectionTensor {
                     inner: DenseDetectionTensorUnchecked {
@@ -80,8 +83,8 @@ impl From<MergedDenseDetection> for DenseDetectionTensorList {
                         cx: cx_map,
                         h: h_map,
                         w: w_map,
-                        obj: obj_map,
-                        class: class_map,
+                        obj_logit: obj_map,
+                        class_logit: class_map,
                         anchors: anchors.clone(),
                     },
                 }

@@ -327,7 +327,7 @@ mod yolo_loss {
             // smooth bce values
             let pos = 1.0 - 0.5 * self.smooth_classification_coef;
             let neg = 1.0 - pos;
-            let pred_class = matchings.pred.class();
+            let pred_class = matchings.pred.class_logit();
             let (num_instances, num_classes) = pred_class.size2().unwrap();
             let device = pred_class.device();
 
@@ -385,7 +385,7 @@ mod yolo_loss {
                 .map(|scores| scores.borrow().size2().unwrap() == (num_targets as i64, 1))
                 .unwrap_or(true));
 
-            let pred_objectness = &prediction.obj;
+            let pred_objectness = &prediction.obj_logit;
             let target_objectness = tch::no_grad(|| {
                 let target_objectness = {
                     let target_scores = {

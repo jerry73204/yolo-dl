@@ -70,22 +70,13 @@ impl NonMaxSuppression {
             let confidence_threshold = confidence_threshold.raw();
             let num_classes = prediction.num_classes();
 
-            let MergedDenseDetectionUnchecked {
-                cy,
-                cx,
-                h,
-                w,
-                class: class_logit,
-                obj: obj_logit,
-                ..
-            } = &**prediction;
+            let MergedDenseDetectionUnchecked { cy, cx, h, w, .. } = &**prediction;
+            let obj_prob = prediction.obj_prob();
+            let confidence = prediction.confidence();
 
             // select bboxes which confidence is above threshold
             let (batches, classes, instances, bbox, conf) = {
                 // compute confidence score
-                let obj = obj_logit.sigmoid();
-                let class = class_logit.sigmoid();
-                let conf = &obj * &class;
 
                 // compute tlbr bbox
                 let t = cy - h / 2.0;
@@ -94,8 +85,8 @@ impl NonMaxSuppression {
                 let r = cx + w / 2.0;
 
                 // filter by objectness and confidence (= obj * class)
-                let obj_mask = obj.ge(confidence_threshold);
-                let conf_mask = conf.ge(confidence_threshold);
+                let obj_mask = obj_prob.ge(confidence_threshold);
+                let conf_mask = confidence.ge(confidence_threshold);
                 let mask = obj_mask.logical_and(&conf_mask);
                 let indexes = mask.nonzero();
                 let batches = indexes.select(1, 0);
@@ -106,7 +97,7 @@ impl NonMaxSuppression {
                 let new_l = l.index(&[Some(&batches), None, Some(&instances)]);
                 let new_b = b.index(&[Some(&batches), None, Some(&instances)]);
                 let new_r = r.index(&[Some(&batches), None, Some(&instances)]);
-                let new_conf = conf
+                let new_conf = confidence
                     .index(&[Some(&batches), Some(&classes), Some(&instances)])
                     .view([-1, 1]);
 

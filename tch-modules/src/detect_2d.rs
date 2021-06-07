@@ -125,18 +125,18 @@ impl Detect2D {
             * anchor_widths.view([1, 1, num_anchors, 1, 1]);
 
         // objectness
-        let obj = outputs.i((.., 4..5, .., .., ..));
+        let obj_logit = outputs.i((.., 4..5, .., .., ..));
 
         // sparse classification
-        let class = outputs.i((.., 5.., .., .., ..));
+        let class_logit = outputs.i((.., 5.., .., .., ..));
 
         Ok(DenseDetectionTensorUnchecked {
             cy,
             cx,
             h,
             w,
-            obj,
-            class,
+            obj_logit,
+            class_logit,
             anchors,
         }
         .try_into()
