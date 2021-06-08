@@ -63,6 +63,43 @@ impl DenseDetectionTensor {
         self.obj_prob() * self.class_prob()
     }
 
+    pub fn index_select_batch(&self, index: &Tensor) -> Result<Self> {
+        ensure!(index.dim() == 1 && index.kind() == Kind::Int64);
+
+        let batch_size = self.batch_size();
+        let ok: bool = index.lt(batch_size as i64).all().into();
+        ensure!(ok, "batch index exceeds batch size {}", batch_size);
+
+        let DenseDetectionTensorUnchecked {
+            cy_pixel,
+            cx_pixel,
+            h_pixel,
+            w_pixel,
+            obj_logit,
+            class_logit,
+            anchors,
+        } = &self.inner;
+
+        let cy_pixel = cy_pixel.index_select(0, index);
+        let cx_pixel = cx_pixel.index_select(0, index);
+        let h_pixel = h_pixel.index_select(0, index);
+        let w_pixel = w_pixel.index_select(0, index);
+        let obj_logit = obj_logit.index_select(0, index);
+        let class_logit = class_logit.index_select(0, index);
+
+        Ok(Self {
+            inner: DenseDetectionTensorUnchecked {
+                cy_pixel,
+                cx_pixel,
+                h_pixel,
+                w_pixel,
+                obj_logit,
+                class_logit,
+                anchors: anchors.to_owned(),
+            },
+        })
+    }
+
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
         let (
             batch_size_set,
