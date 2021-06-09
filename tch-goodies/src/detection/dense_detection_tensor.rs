@@ -243,12 +243,12 @@ impl DenseDetectionTensor {
             .collect();
         let h_vec: Vec<_> = h_vec.into_iter().map(|h| h / num_tensors as f64).collect();
 
-        let cy = Tensor::cat(&cy_vec, 0);
-        let cx = Tensor::cat(&cx_vec, 0);
-        let h = Tensor::cat(&h_vec, 0);
-        let w = Tensor::cat(&w_vec, 0);
-        let obj_logit = Tensor::cat(&obj_vec, 0);
-        let class_logit = Tensor::cat(&class_vec, 0);
+        let cy = Tensor::cat(&cy_vec, 3);
+        let cx = Tensor::cat(&cx_vec, 3);
+        let h = Tensor::cat(&h_vec, 3);
+        let w = Tensor::cat(&w_vec, 3);
+        let obj_logit = Tensor::cat(&obj_vec, 3);
+        let class_logit = Tensor::cat(&class_vec, 3);
         let anchors: Vec<_> = anchors_set
             .into_iter()
             .next()
@@ -343,12 +343,12 @@ impl DenseDetectionTensor {
             .collect();
         let w_vec: Vec<_> = w_vec.into_iter().map(|w| w / num_tensors as f64).collect();
 
-        let cy = Tensor::cat(&cy_vec, 0);
-        let cx = Tensor::cat(&cx_vec, 0);
-        let h = Tensor::cat(&h_vec, 0);
-        let w = Tensor::cat(&w_vec, 0);
-        let obj_logit = Tensor::cat(&obj_vec, 0);
-        let class_logit = Tensor::cat(&class_vec, 0);
+        let cy = Tensor::cat(&cy_vec, 4);
+        let cx = Tensor::cat(&cx_vec, 4);
+        let h = Tensor::cat(&h_vec, 4);
+        let w = Tensor::cat(&w_vec, 4);
+        let obj_logit = Tensor::cat(&obj_vec, 4);
+        let class_logit = Tensor::cat(&class_vec, 4);
         let anchors: Vec<_> = anchors_set
             .into_iter()
             .next()
