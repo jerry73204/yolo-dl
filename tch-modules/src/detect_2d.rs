@@ -44,14 +44,7 @@ impl Detect2D {
             ..
         } = *self;
         let (batch_size, channels, feature_h, feature_w) = tensor.size4()?;
-        let anchors: Vec<_> = anchors
-            .iter()
-            .map(|ratio_size| {
-                let grid_h = ratio_size.h() * feature_h as f64;
-                let grid_w = ratio_size.w() * feature_w as f64;
-                GridSize::new(grid_h, grid_w).unwrap()
-            })
-            .collect();
+        let anchors = anchors.to_owned();
 
         // load cached data
         let Cache {

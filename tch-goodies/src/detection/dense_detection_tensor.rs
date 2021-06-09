@@ -1,4 +1,4 @@
-use crate::{common::*, size::GridSize};
+use crate::{common::*, size::RatioSize};
 
 /// Represents the output feature map of a layer.
 ///
@@ -194,7 +194,7 @@ pub struct DenseDetectionTensorUnchecked {
     /// The scores the object is of that class. It number of entries is the number of classes.
     pub class_logit: Tensor,
     #[tensor_like(clone)]
-    pub anchors: Vec<GridSize<R64>>,
+    pub anchors: Vec<RatioSize<R64>>,
 }
 
 impl Deref for DenseDetectionTensor {

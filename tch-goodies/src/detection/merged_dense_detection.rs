@@ -3,7 +3,11 @@ use super::{
     FlatIndexTensor, InstanceIndex, InstanceIndexTensor, ObjectDetectionTensor,
     ObjectDetectionTensorUnchecked,
 };
-use crate::{common::*, compound_tensor::CyCxHWTensorUnchecked, size::GridSize};
+use crate::{
+    common::*,
+    compound_tensor::CyCxHWTensorUnchecked,
+    size::{GridSize, RatioSize},
+};
 
 #[derive(Debug, TensorLike)]
 pub struct MergedDenseDetection {
@@ -497,7 +501,7 @@ pub struct DetectionInfo {
     pub feature_size: GridSize<i64>,
     /// Anchros (height, width) in grid units
     #[tensor_like(clone)]
-    pub anchors: Vec<GridSize<R64>>,
+    pub anchors: Vec<RatioSize<R64>>,
     #[tensor_like(clone)]
     pub flat_index_range: Range<i64>,
 }
