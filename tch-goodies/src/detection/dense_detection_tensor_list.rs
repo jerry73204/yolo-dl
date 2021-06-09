@@ -44,6 +44,18 @@ impl DenseDetectionTensorList {
         })
     }
 
+    pub fn slice_ratio(&self, y_range: Range<f64>, x_range: Range<f64>) -> Result<Self> {
+        let tensors: Vec<_> = self
+            .inner
+            .tensors
+            .iter()
+            .map(|tensor| tensor.slice_ratio(y_range.clone(), x_range.clone()))
+            .try_collect()?;
+        Ok(Self {
+            inner: DenseDetectionTensorListUnchecked { tensors },
+        })
+    }
+
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
         // list index -> layer index -> tensor
         let tensors_vec: Vec<Vec<_>> = tensors
