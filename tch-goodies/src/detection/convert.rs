@@ -31,28 +31,28 @@ impl From<MergedDenseDetection> for DenseDetectionTensorList {
                 let num_anchors = anchors.len() as i64;
                 let [feature_h, feature_w] = feature_size.hw_params();
 
-                let cy_map = from.cy_pixel.i((.., .., flat_index_range.clone())).view([
+                let cy_map = from.cy.i((.., .., flat_index_range.clone())).view([
                     batch_size,
                     1,
                     num_anchors,
                     feature_h,
                     feature_w,
                 ]);
-                let cx_map = from.cx_pixel.i((.., .., flat_index_range.clone())).view([
+                let cx_map = from.cx.i((.., .., flat_index_range.clone())).view([
                     batch_size,
                     1,
                     num_anchors,
                     feature_h,
                     feature_w,
                 ]);
-                let h_map = from.h_pixel.i((.., .., flat_index_range.clone())).view([
+                let h_map = from.h.i((.., .., flat_index_range.clone())).view([
                     batch_size,
                     1,
                     num_anchors,
                     feature_h,
                     feature_w,
                 ]);
-                let w_map = from.w_pixel.i((.., .., flat_index_range.clone())).view([
+                let w_map = from.w.i((.., .., flat_index_range.clone())).view([
                     batch_size,
                     1,
                     num_anchors,
@@ -79,10 +79,10 @@ impl From<MergedDenseDetection> for DenseDetectionTensorList {
 
                 DenseDetectionTensor {
                     inner: DenseDetectionTensorUnchecked {
-                        cy_pixel: cy_map,
-                        cx_pixel: cx_map,
-                        h_pixel: h_map,
-                        w_pixel: w_map,
+                        cy: cy_map,
+                        cx: cx_map,
+                        h: h_map,
+                        w: w_map,
                         obj_logit: obj_map,
                         class_logit: class_map,
                         anchors: anchors.clone(),

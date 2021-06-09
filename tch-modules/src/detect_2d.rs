@@ -71,9 +71,9 @@ impl Detect2D {
         let outputs = tensor.view([batch_size, num_entries, num_anchors, feature_h, feature_w]);
 
         // positions in grid units
-        let cy_pixel = outputs.i((.., 0..1, .., .., ..)).sigmoid() * 2.0 - 0.5
+        let cy = (outputs.i((.., 0..1, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_h as f64
             + y_offsets.view([1, 1, 1, feature_h, 1]);
-        let cx_pixel = outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5
+        let cx = (outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_w as f64
             + x_offsets.view([1, 1, 1, 1, feature_w]);
 
         debug_assert!({
@@ -87,7 +87,8 @@ impl Detect2D {
                 array
                     .indexed_iter()
                     .for_each(|((batch, entry, anchor, row, col), val)| {
-                        expect_cy[(batch, entry, anchor, row, col)] = val * 2.0 - 0.5 + row as f32;
+                        expect_cy[(batch, entry, anchor, row, col)] =
+                            (val * 2.0 - 0.5 + row as f32) / feature_h as f32;
                     });
                 expect_cy
             };
@@ -101,13 +102,14 @@ impl Detect2D {
                 array
                     .indexed_iter()
                     .for_each(|((batch, entry, anchor, row, col), val)| {
-                        expect_cx[(batch, entry, anchor, row, col)] = val * 2.0 - 0.5 + col as f32;
+                        expect_cx[(batch, entry, anchor, row, col)] =
+                            (val * 2.0 - 0.5 + col as f32) / feature_w as f32;
                     });
                 expect_cx
             };
 
-            let cy: Array5<f32> = (&cy_pixel).try_into_cv().unwrap();
-            let cx: Array5<f32> = (&cx_pixel).try_into_cv().unwrap();
+            let cy: Array5<f32> = (&cy).try_into_cv().unwrap();
+            let cx: Array5<f32> = (&cx).try_into_cv().unwrap();
 
             cy.indexed_iter()
                 .all(|(index, &actual)| abs_diff_eq!(actual, expect_cy[index]))
@@ -117,13 +119,13 @@ impl Detect2D {
         });
 
         // bbox sizes in grid units
-        let h_pixel = outputs
+        let h = outputs
             .i((.., 2..3, .., .., ..))
             .sigmoid()
             .mul(2.0)
             .pow(2.0)
             * anchor_heights.view([1, 1, num_anchors, 1, 1]);
-        let w_pixel = outputs
+        let w = outputs
             .i((.., 3..4, .., .., ..))
             .sigmoid()
             .mul(2.0)
@@ -137,10 +139,10 @@ impl Detect2D {
         let class_logit = outputs.i((.., 5.., .., .., ..));
 
         Ok(DenseDetectionTensorUnchecked {
-            cy_pixel,
-            cx_pixel,
-            h_pixel,
-            w_pixel,
+            cy,
+            cx,
+            h,
+            w,
             obj_logit,
             class_logit,
             anchors,
@@ -167,20 +169,20 @@ impl Detect2D {
                 .unwrap_or(false);
 
             if !is_hit {
-                let y_offsets =
-                    Tensor::arange(feature_h, (Kind::Float, device)).set_requires_grad(false);
-                let x_offsets =
-                    Tensor::arange(feature_w, (Kind::Float, device)).set_requires_grad(false);
+                let y_offsets = (Tensor::arange(feature_h, (Kind::Float, device))
+                    / feature_h as f64)
+                    .set_requires_grad(false);
+                let x_offsets = (Tensor::arange(feature_w, (Kind::Float, device))
+                    / feature_w as f64)
+                    .set_requires_grad(false);
 
                 let (anchor_heights, anchor_widths) = {
                     let (anchor_h_vec, anchor_w_vec) = anchors
                         .iter()
-                        .map(|ratio_size: &RatioSize<R64>| {
-                            // let [h, w] = anchor_size.cast::<f32>().unwrap().hw_params();
-                            // (h, w)
-                            let grid_h = ratio_size.h().raw() * expect_size.h() as f64;
-                            let grid_w = ratio_size.w().raw() * expect_size.w() as f64;
-                            (grid_h as f32, grid_w as f32)
+                        .cloned()
+                        .map(|anchor_size| {
+                            let [h, w] = anchor_size.cast::<f32>().unwrap().hw_params();
+                            (h, w)
                         })
                         .unzip_n_vec();
 

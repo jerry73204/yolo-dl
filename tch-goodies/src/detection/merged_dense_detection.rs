@@ -1,7 +1,7 @@
 use super::{
-    DenseDetectionSamples, DenseDetectionSamplesUnchecked, DenseDetectionTensor,
-    DenseDetectionTensorList, DenseDetectionTensorUnchecked, FlatIndex, FlatIndexTensor,
-    InstanceIndex, InstanceIndexTensor,
+    DenseDetectionTensor, DenseDetectionTensorList, DenseDetectionTensorUnchecked, FlatIndex,
+    FlatIndexTensor, InstanceIndex, InstanceIndexTensor, ObjectDetectionTensor,
+    ObjectDetectionTensorUnchecked,
 };
 use crate::{common::*, compound_tensor::CyCxHWTensorUnchecked, size::GridSize};
 
@@ -38,10 +38,10 @@ impl MergedDenseDetection {
 
                 let DenseDetectionTensorUnchecked {
                     anchors,
-                    cy_pixel,
-                    cx_pixel,
-                    h_pixel,
-                    w_pixel,
+                    cy,
+                    cx,
+                    h,
+                    w,
                     obj_logit,
                     class_logit,
                     ..
@@ -52,10 +52,10 @@ impl MergedDenseDetection {
                 let num_anchors = detection.num_anchors();
 
                 // flatten tensors
-                let cy_flat = cy_pixel.view([batch_size, 1, -1]);
-                let cx_flat = cx_pixel.view([batch_size, 1, -1]);
-                let h_flat = h_pixel.view([batch_size, 1, -1]);
-                let w_flat = w_pixel.view([batch_size, 1, -1]);
+                let cy_flat = cy.view([batch_size, 1, -1]);
+                let cx_flat = cx.view([batch_size, 1, -1]);
+                let h_flat = h.view([batch_size, 1, -1]);
+                let w_flat = w.view([batch_size, 1, -1]);
                 let obj_flat = obj_logit.view([batch_size, 1, -1]);
                 let class_flat = class_logit.view([batch_size, num_classes as i64, -1]);
 
@@ -78,19 +78,19 @@ impl MergedDenseDetection {
             })
             .unzip_n_vec();
 
-        let cy_pixel = Tensor::cat(&cy_vec, 2);
-        let cx_pixel = Tensor::cat(&cx_vec, 2);
-        let h_pixel = Tensor::cat(&h_vec, 2);
-        let w_pixel = Tensor::cat(&w_vec, 2);
+        let cy = Tensor::cat(&cy_vec, 2);
+        let cx = Tensor::cat(&cx_vec, 2);
+        let h = Tensor::cat(&h_vec, 2);
+        let w = Tensor::cat(&w_vec, 2);
         let obj_logit = Tensor::cat(&obj_vec, 2);
         let class_logit = Tensor::cat(&class_vec, 2);
 
         let output = Self {
             inner: MergedDenseDetectionUnchecked {
-                cy_pixel,
-                cx_pixel,
-                h_pixel,
-                w_pixel,
+                cy,
+                cx,
+                h,
+                w,
                 obj_logit,
                 class_logit,
                 info,
@@ -101,10 +101,10 @@ impl MergedDenseDetection {
             let feature_maps = output.to_tensor_list();
             izip!(&feature_maps.tensors, tensors).all(|(feature_map, detection)| {
                 let detection = detection.borrow();
-                feature_map.cy_pixel == detection.cy_pixel
-                    && feature_map.cx_pixel == detection.cx_pixel
-                    && feature_map.h_pixel == detection.h_pixel
-                    && feature_map.w_pixel == detection.w_pixel
+                feature_map.cy == detection.cy
+                    && feature_map.cx == detection.cx
+                    && feature_map.h == detection.h
+                    && feature_map.w == detection.w
                     && feature_map.obj_logit == detection.obj_logit
                     && feature_map.class_logit == detection.class_logit
             })
@@ -115,17 +115,17 @@ impl MergedDenseDetection {
 
     /// Gets the device of belonging tensors.
     pub fn device(&self) -> Device {
-        self.cy_pixel.device()
+        self.cy.device()
     }
 
     /// Gets the batch size of belonging tensors.
     pub fn batch_size(&self) -> i64 {
-        let (batch_size, _entries, _instances) = self.cy_pixel.size3().unwrap();
+        let (batch_size, _entries, _instances) = self.cy.size3().unwrap();
         batch_size
     }
 
     pub fn num_instances(&self) -> i64 {
-        let (_batch_size, _entries, instances) = self.cy_pixel.size3().unwrap();
+        let (_batch_size, _entries, instances) = self.cy.size3().unwrap();
         instances
     }
 
@@ -137,58 +137,6 @@ impl MergedDenseDetection {
     /// Compute confidence, objectness score times classification score.
     pub fn confidence(&self) -> Tensor {
         self.obj_prob() * self.class_prob()
-    }
-
-    pub fn cy_ratio(&self) -> Tensor {
-        let tensors: Vec<_> = self
-            .info
-            .iter()
-            .map(|info| {
-                let feature_h = info.feature_size.h();
-                let range = info.flat_index_range.clone();
-                self.inner.cy_pixel.i((.., .., range)) / feature_h as f64
-            })
-            .collect();
-        Tensor::cat(&tensors, 2)
-    }
-
-    pub fn cx_ratio(&self) -> Tensor {
-        let tensors: Vec<_> = self
-            .info
-            .iter()
-            .map(|info| {
-                let feature_w = info.feature_size.w();
-                let range = info.flat_index_range.clone();
-                self.inner.cx_pixel.i((.., .., range)) / feature_w as f64
-            })
-            .collect();
-        Tensor::cat(&tensors, 2)
-    }
-
-    pub fn h_ratio(&self) -> Tensor {
-        let tensors: Vec<_> = self
-            .info
-            .iter()
-            .map(|info| {
-                let feature_h = info.feature_size.h();
-                let range = info.flat_index_range.clone();
-                self.inner.h_pixel.i((.., .., range)) / feature_h as f64
-            })
-            .collect();
-        Tensor::cat(&tensors, 2)
-    }
-
-    pub fn w_ratio(&self) -> Tensor {
-        let tensors: Vec<_> = self
-            .info
-            .iter()
-            .map(|info| {
-                let feature_w = info.feature_size.w();
-                let range = info.flat_index_range.clone();
-                self.inner.w_pixel.i((.., .., range)) / feature_w as f64
-            })
-            .collect();
-        Tensor::cat(&tensors, 2)
     }
 
     pub fn obj_prob(&self) -> Tensor {
@@ -230,10 +178,10 @@ impl MergedDenseDetection {
                     inner:
                         MergedDenseDetectionUnchecked {
                             info,
-                            cy_pixel,
-                            cx_pixel,
-                            h_pixel,
-                            w_pixel,
+                            cy,
+                            cx,
+                            h,
+                            w,
                             obj_logit,
                             class_logit,
                             ..
@@ -244,10 +192,10 @@ impl MergedDenseDetection {
                     batch_size,
                     num_classes,
                     info,
-                    cy_pixel,
-                    cx_pixel,
-                    h_pixel,
-                    w_pixel,
+                    cy,
+                    cx,
+                    h,
+                    w,
                     obj_logit,
                     class_logit,
                 )
@@ -267,10 +215,10 @@ impl MergedDenseDetection {
             ensure!(info_set.len() == 1, "detection info must be equal");
             info_set.into_iter().next().unwrap()
         };
-        let cy_pixel = Tensor::cat(&cy_vec, 0);
-        let cx_pixel = Tensor::cat(&cx_vec, 0);
-        let h_pixel = Tensor::cat(&h_vec, 0);
-        let w_pixel = Tensor::cat(&w_vec, 0);
+        let cy = Tensor::cat(&cy_vec, 0);
+        let cx = Tensor::cat(&cx_vec, 0);
+        let h = Tensor::cat(&h_vec, 0);
+        let w = Tensor::cat(&w_vec, 0);
         let obj_logit = Tensor::cat(&obj_vec, 0);
         let class_logit = Tensor::cat(&class_vec, 0);
 
@@ -288,19 +236,19 @@ impl MergedDenseDetection {
             .sum();
 
         ensure!(
-            cy_pixel.size3()? == (batch_size, 1, flat_index_size),
+            cy.size3()? == (batch_size, 1, flat_index_size),
             "invalid cy shape"
         );
         ensure!(
-            cx_pixel.size3()? == (batch_size, 1, flat_index_size),
+            cx.size3()? == (batch_size, 1, flat_index_size),
             "invalid cx shape"
         );
         ensure!(
-            h_pixel.size3()? == (batch_size, 1, flat_index_size),
+            h.size3()? == (batch_size, 1, flat_index_size),
             "invalid height shape"
         );
         ensure!(
-            w_pixel.size3()? == (batch_size, 1, flat_index_size),
+            w.size3()? == (batch_size, 1, flat_index_size),
             "invalid width shape"
         );
         ensure!(
@@ -314,10 +262,10 @@ impl MergedDenseDetection {
 
         Ok(Self {
             inner: MergedDenseDetectionUnchecked {
-                cy_pixel,
-                cx_pixel,
-                h_pixel,
-                w_pixel,
+                cy,
+                cx,
+                h,
+                w,
                 obj_logit,
                 class_logit,
                 info,
@@ -325,22 +273,30 @@ impl MergedDenseDetection {
         })
     }
 
-    pub fn index_by_flats(&self, flat_indexes: &FlatIndexTensor) -> DenseDetectionSamples {
-        let cy_ratio = self.cy_ratio();
-        let cx_ratio = self.cx_ratio();
-        let h_ratio = self.h_ratio();
-        let w_ratio = self.w_ratio();
+    pub fn index_by_flats(&self, flat_indexes: &FlatIndexTensor) -> ObjectDetectionTensor {
+        let Self {
+            inner:
+                MergedDenseDetectionUnchecked {
+                    cy,
+                    cx,
+                    h,
+                    w,
+                    class_logit,
+                    obj_logit,
+                    ..
+                },
+        } = self;
         let FlatIndexTensor { batches, flats } = flat_indexes;
 
-        DenseDetectionSamplesUnchecked {
+        ObjectDetectionTensorUnchecked {
             cycxhw: CyCxHWTensorUnchecked {
-                cy: cy_ratio.index(&[Some(batches), None, Some(flats)]),
-                cx: cx_ratio.index(&[Some(batches), None, Some(flats)]),
-                h: h_ratio.index(&[Some(batches), None, Some(flats)]),
-                w: w_ratio.index(&[Some(batches), None, Some(flats)]),
+                cy: cy.index(&[Some(batches), None, Some(flats)]),
+                cx: cx.index(&[Some(batches), None, Some(flats)]),
+                h: h.index(&[Some(batches), None, Some(flats)]),
+                w: w.index(&[Some(batches), None, Some(flats)]),
             },
-            obj_logit: self.obj_logit.index(&[Some(batches), None, Some(flats)]),
-            class_logit: self.class_logit.index(&[Some(batches), None, Some(flats)]),
+            obj_logit: obj_logit.index(&[Some(batches), None, Some(flats)]),
+            class_logit: class_logit.index(&[Some(batches), None, Some(flats)]),
         }
         .try_into()
         .unwrap()
@@ -349,7 +305,7 @@ impl MergedDenseDetection {
     pub fn index_by_instances(
         &self,
         instance_indexes: &InstanceIndexTensor,
-    ) -> DenseDetectionSamples {
+    ) -> ObjectDetectionTensor {
         let flat_indexes = self.instances_to_flats(instance_indexes).unwrap();
         self.index_by_flats(&flat_indexes)
     }
@@ -505,13 +461,13 @@ impl MergedDenseDetection {
 #[derive(Debug, TensorLike)]
 pub struct MergedDenseDetectionUnchecked {
     /// Tensor of bbox center y coordinates with shape `[batch, 1, flat]`.
-    pub cy_pixel: Tensor,
+    pub cy: Tensor,
     /// Tensor of bbox center x coordinates with shape `[batch, 1, flat]`.
-    pub cx_pixel: Tensor,
+    pub cx: Tensor,
     /// Tensor of bbox heights with shape `[batch, 1, flat]`.
-    pub h_pixel: Tensor,
+    pub h: Tensor,
     /// Tensor of bbox widths with shape `[batch, 1, flat]`.
-    pub w_pixel: Tensor,
+    pub w: Tensor,
     /// Tensor of bbox objectness score with shape `[batch, 1, flat]`.
     pub obj_logit: Tensor,
     /// Tensor of confidence scores per class of bboxes with shape `[batch, num_classes, flat]`.
