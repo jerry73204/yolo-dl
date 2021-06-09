@@ -84,6 +84,59 @@ impl DenseDetectionTensor {
         })
     }
 
+    pub fn slice(&self, y_range: Range<i64>, x_range: Range<i64>) -> Self {
+        let (_, _, _, orig_h, orig_w) = self.inner.cy.size5().unwrap();
+        let new_h = y_range.end - y_range.start;
+        let new_w = x_range.end - x_range.start;
+
+        let DenseDetectionTensorUnchecked {
+            cy,
+            cx,
+            h,
+            w,
+            obj_logit,
+            class_logit,
+            anchors,
+        } = &self.inner;
+
+        // crop
+        let cy = cy.i((.., .., .., y_range.clone(), x_range.clone())).contiguous();
+        let cx = cx.i((.., .., .., y_range.clone(), x_range.clone())).contiguous();
+        let h = h.i((.., .., .., y_range.clone(), x_range.clone())).contiguous();
+        let w = w.i((.., .., .., y_range.clone(), x_range.clone())).contiguous();
+        let obj_logit = obj_logit.i((.., .., .., y_range.clone(), x_range.clone())).contiguous();
+        let class_logit = class_logit.i((.., .., .., y_range.clone(), x_range.clone())).contiguous();
+
+        // reposition
+        let cy = (cy * orig_h as f64 - y_range.start as f64) / new_h as f64;
+        let cx = (cx * orig_w as f64 - x_range.start as f64) / new_w as f64;
+        let h = h * orig_h as f64 / new_h as f64;
+        let w = w * orig_w as f64 / new_w as f64;
+
+        let anchors: Vec<_> = anchors
+            .iter()
+            .map(|size| {
+                RatioSize::new(
+                    size.h() * orig_h as f64 / new_h as f64,
+                    size.w() * orig_w as f64 / new_w as f64,
+                )
+                .unwrap()
+            })
+            .collect();
+
+        DenseDetectionTensorUnchecked {
+            cy,
+            cx,
+            h,
+            w,
+            obj_logit,
+            class_logit,
+            anchors,
+        }
+        .try_into()
+        .unwrap()
+    }
+
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
         let (
             batch_size_set,
