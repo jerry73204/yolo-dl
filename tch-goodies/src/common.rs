@@ -1,9 +1,9 @@
 pub use anyhow::{bail, ensure, format_err, Context, Error, Result};
 pub use approx::{abs_diff_eq, AbsDiffEq};
-pub use cv_convert::TryIntoCv;
+pub use cv_convert::{IntoCv, TryIntoCv};
 pub use getset::{CopyGetters, Getters};
 pub use image::{DynamicImage, GenericImageView, ImageBuffer, Pixel};
-pub use itertools::{izip, Itertools};
+pub use itertools::{iproduct, izip, Itertools};
 pub use log::warn;
 pub use maplit::hashset;
 pub use mona::prelude::*;

@@ -41,7 +41,7 @@ getset = "0.1.1"
 model-config = { version = "0.1", path = "../model-config" }
 petgraph = "0.5.1"
 derivative = "2.2.0"
-cv-convert = { version = "0.7.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.8.1", default-features = false, features = ["tch", "ndarray"] }
 rusty-perm = "0.2.0"
 ptree = { version = "0.3.2", optional = true }
 strum = { version = "0.21.0", features = ["derive"] }

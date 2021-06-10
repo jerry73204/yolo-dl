@@ -3,7 +3,7 @@ use crate::{common::*, size::RatioSize};
 /// Represents the output feature map of a layer.
 ///
 /// Every belonging tensor has shape `[batch, entry, anchor, height, width]`.
-#[derive(Debug, TensorLike, Getters)]
+#[derive(Debug, PartialEq, TensorLike, Getters)]
 pub struct DenseDetectionTensor {
     pub(super) inner: DenseDetectionTensorUnchecked,
 }
@@ -93,12 +93,17 @@ impl DenseDetectionTensor {
                 && y_range.end - y_range.start > 0.0
                 && x_range.end - x_range.start > 0.0
         );
-        let height = self.height();
-        let width = self.width();
-        let y_start = (y_range.start * height as f64) as i64;
-        let y_end = (y_range.end * height as f64) as i64;
-        let x_start = (x_range.start * width as f64) as i64;
-        let x_end = (x_range.end * width as f64) as i64;
+        let orig_h = self.height();
+        let orig_w = self.width();
+
+        let new_h = (orig_h as f64 * (y_range.end - y_range.start)).round() as i64;
+        let new_w = (orig_w as f64 * (x_range.end - x_range.start)).round() as i64;
+
+        let y_start = (y_range.start * orig_h as f64).round() as i64;
+        let y_end = y_start + new_h;
+
+        let x_start = (x_range.start * orig_w as f64).round() as i64;
+        let x_end = x_start + new_w;
         self.slice(y_start..y_end, x_start..x_end)
     }
 
@@ -464,7 +469,7 @@ impl DenseDetectionTensor {
     }
 }
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, PartialEq, TensorLike)]
 pub struct DenseDetectionTensorUnchecked {
     /// The bounding box center y position in ratio unit. It has 1 entry.
     pub cy: Tensor,

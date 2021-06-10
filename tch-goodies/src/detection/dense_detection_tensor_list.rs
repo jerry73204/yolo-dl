@@ -1,7 +1,7 @@
 use super::DenseDetectionTensor;
 use crate::common::*;
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, PartialEq, TensorLike)]
 pub struct DenseDetectionTensorList {
     pub(super) inner: DenseDetectionTensorListUnchecked,
 }
@@ -120,7 +120,7 @@ impl DenseDetectionTensorList {
     }
 }
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, PartialEq, TensorLike)]
 pub struct DenseDetectionTensorListUnchecked {
     pub tensors: Vec<DenseDetectionTensor>,
 }

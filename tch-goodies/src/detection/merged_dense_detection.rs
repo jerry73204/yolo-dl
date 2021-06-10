@@ -9,7 +9,7 @@ use crate::{
     size::{GridSize, RatioSize},
 };
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, PartialEq, TensorLike)]
 pub struct MergedDenseDetection {
     inner: MergedDenseDetectionUnchecked,
 }
@@ -462,7 +462,7 @@ impl MergedDenseDetection {
     }
 }
 
-#[derive(Debug, TensorLike)]
+#[derive(Debug, PartialEq, TensorLike)]
 pub struct MergedDenseDetectionUnchecked {
     /// Tensor of bbox center y coordinates with shape `[batch, 1, flat]`.
     pub cy: Tensor,
