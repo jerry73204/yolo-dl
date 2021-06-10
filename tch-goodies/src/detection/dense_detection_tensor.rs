@@ -532,3 +532,156 @@ impl TryFrom<DenseDetectionTensorUnchecked> for DenseDetectionTensor {
         Ok(Self { inner: from })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cat_test() -> Result<()> {
+        const NUM_ROUNDS: usize = 1;
+        const HEIGHT: usize = 20;
+        const WIDTH: usize = 32;
+        const NUM_CLASSES: usize = 80;
+
+        for _ in 0..NUM_ROUNDS {
+            let cy: tch::Tensor = {
+                let mut array = [[[[[0f32; WIDTH]; HEIGHT]; 1]; 1]; 1];
+                iproduct!(0..HEIGHT, 0..WIDTH).for_each(|(row, col)| {
+                    array[0][0][0][row][col] = row as f32 / HEIGHT as f32;
+                });
+                array.into_cv()
+            };
+
+            let cx: tch::Tensor = {
+                let mut array = [[[[[0f32; WIDTH]; HEIGHT]; 1]; 1]; 1];
+                iproduct!(0..HEIGHT, 0..WIDTH).for_each(|(row, col)| {
+                    array[0][0][0][row][col] = col as f32 / WIDTH as f32;
+                });
+                array.into_cv()
+            };
+
+            let h: tch::Tensor = {
+                let mut array = [[[[[0f32; WIDTH]; HEIGHT]; 1]; 1]; 1];
+                iproduct!(0..HEIGHT, 0..WIDTH).for_each(|(row, col)| {
+                    array[0][0][0][row][col] = 1.0;
+                });
+                array.into_cv()
+            };
+
+            let w: tch::Tensor = {
+                let mut array = [[[[[0f32; WIDTH]; HEIGHT]; 1]; 1]; 1];
+                iproduct!(0..HEIGHT, 0..WIDTH).for_each(|(row, col)| {
+                    array[0][0][0][row][col] = 1.0;
+                });
+                array.into_cv()
+            };
+
+            let obj_logit: tch::Tensor = {
+                let mut array = [[[[[0f32; WIDTH]; HEIGHT]; 1]; 1]; 1];
+                iproduct!(0..HEIGHT, 0..WIDTH).for_each(|(row, col)| {
+                    array[0][0][0][row][col] = 0.5;
+                });
+                array.into_cv()
+            };
+
+            let class_logit: tch::Tensor = {
+                let mut array = [[[[[0f32; WIDTH]; HEIGHT]; 1]; NUM_CLASSES]; 1];
+                iproduct!(0..HEIGHT, 0..WIDTH, 0..NUM_CLASSES).for_each(|(row, col, class)| {
+                    array[0][class][0][row][col] = 0.1;
+                });
+                array.into_cv()
+            };
+
+            let input: DenseDetectionTensor = DenseDetectionTensorUnchecked {
+                cy,
+                cx,
+                h,
+                w,
+                obj_logit,
+                class_logit,
+                anchors: vec![RatioSize::new(r64(1.0), r64(1.0)).unwrap()],
+            }
+            .try_into()?;
+
+            {
+                let output = DenseDetectionTensor::cat_batch([&input, &input])?;
+                ensure!(output.cy.size() == [2, 1, 1, HEIGHT as i64, WIDTH as i64]);
+            }
+
+            {
+                let output = DenseDetectionTensor::cat_height([&input, &input])?;
+                let cy: &[[[[[f32; WIDTH]; HEIGHT * 2]; 1]; 1]; 1] =
+                    (&output.cy).try_into_cv().unwrap();
+                let cx: &[[[[[f32; WIDTH]; HEIGHT * 2]; 1]; 1]; 1] =
+                    (&output.cx).try_into_cv().unwrap();
+                let h: &[[[[[f32; WIDTH]; HEIGHT * 2]; 1]; 1]; 1] =
+                    (&output.h).try_into_cv().unwrap();
+                let w: &[[[[[f32; WIDTH]; HEIGHT * 2]; 1]; 1]; 1] =
+                    (&output.w).try_into_cv().unwrap();
+
+                let ok = iproduct!(0..HEIGHT, 0..WIDTH).all(|(row, col)| {
+                    (cy[0][0][0][row][col] == row as f32 / HEIGHT as f32 / 2.0)
+                        && (cy[0][0][0][row + HEIGHT][col]
+                            == row as f32 / HEIGHT as f32 / 2.0 + 0.5)
+                        && (cx[0][0][0][row][col] == col as f32 / WIDTH as f32)
+                        && (cx[0][0][0][row + HEIGHT][col] == col as f32 / WIDTH as f32)
+                        && (h[0][0][0][row][col] == 0.5)
+                        && (h[0][0][0][row + HEIGHT][col] == 0.5)
+                        && (w[0][0][0][row][col] == 1.0)
+                        && (w[0][0][0][row + HEIGHT][col] == 1.0)
+                });
+                ensure!(ok);
+            }
+
+            {
+                let output = DenseDetectionTensor::cat_width([&input, &input])?;
+                let cy: &[[[[[f32; WIDTH * 2]; HEIGHT]; 1]; 1]; 1] =
+                    (&output.cy).try_into_cv().unwrap();
+                let cx: &[[[[[f32; WIDTH * 2]; HEIGHT]; 1]; 1]; 1] =
+                    (&output.cx).try_into_cv().unwrap();
+                let h: &[[[[[f32; WIDTH * 2]; HEIGHT]; 1]; 1]; 1] =
+                    (&output.h).try_into_cv().unwrap();
+                let w: &[[[[[f32; WIDTH * 2]; HEIGHT]; 1]; 1]; 1] =
+                    (&output.w).try_into_cv().unwrap();
+
+                let ok = iproduct!(0..HEIGHT, 0..WIDTH).all(|(row, col)| {
+                    (cy[0][0][0][row][col] == row as f32 / HEIGHT as f32)
+                        && (cy[0][0][0][row][col + WIDTH] == row as f32 / HEIGHT as f32)
+                        && (cx[0][0][0][row][col] == col as f32 / WIDTH as f32 / 2.0)
+                        && (cx[0][0][0][row][col + WIDTH] == col as f32 / WIDTH as f32 / 2.0 + 0.5)
+                        && (h[0][0][0][row][col] == 1.0)
+                        && (h[0][0][0][row][col + WIDTH] == 1.0)
+                        && (w[0][0][0][row][col] == 0.5)
+                        && (w[0][0][0][row][col + WIDTH] == 0.5)
+                });
+                ensure!(ok);
+            }
+
+            {
+                const NEW_HEIGHT: usize = HEIGHT / 5;
+                const NEW_WIDTH: usize = WIDTH / 2;
+
+                let output = input.slice_ratio(0.4..0.6, 0.5..1.0)?;
+                let cy: &[[[[[f32; NEW_WIDTH]; NEW_HEIGHT]; 1]; 1]; 1] =
+                    (&output.cy).try_into_cv().unwrap();
+                let cx: &[[[[[f32; NEW_WIDTH]; NEW_HEIGHT]; 1]; 1]; 1] =
+                    (&output.cx).try_into_cv().unwrap();
+                let h: &[[[[[f32; NEW_WIDTH]; NEW_HEIGHT]; 1]; 1]; 1] =
+                    (&output.h).try_into_cv().unwrap();
+                let w: &[[[[[f32; NEW_WIDTH]; NEW_HEIGHT]; 1]; 1]; 1] =
+                    (&output.w).try_into_cv().unwrap();
+
+                let ok = iproduct!(0..NEW_HEIGHT, 0..NEW_WIDTH).all(|(row, col)| {
+                    (cy[0][0][0][row][col] == row as f32 / NEW_HEIGHT as f32)
+                        && (cx[0][0][0][row][col] == col as f32 / NEW_WIDTH as f32)
+                        && (h[0][0][0][row][col] == 5.0)
+                        && (w[0][0][0][row][col] == 2.0)
+                });
+                ensure!(ok);
+            }
+        }
+
+        Ok(())
+    }
+}
