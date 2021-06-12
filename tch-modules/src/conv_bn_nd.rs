@@ -65,15 +65,10 @@ impl<Param: ConvParam> ConvBnInit<Param> {
             bn_first,
             activation,
         } = self;
-        let nd = conv.dim()?;
 
         Ok(ConvBn {
             conv: conv.build(path / "conv", in_dim, out_dim)?,
-            bn: bn.build(
-                path / "bn",
-                nd,
-                if bn_first { in_dim } else { out_dim } as i64,
-            ),
+            bn: bn.build(path / "bn", if bn_first { in_dim } else { out_dim } as i64),
             bn_first,
             activation,
         })

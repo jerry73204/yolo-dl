@@ -20,7 +20,6 @@ pub struct DarkBatchNorm {
     running_var: Tensor,
     ws: Option<Tensor>,
     bs: Option<Tensor>,
-    nd: usize,
     cudnn_enabled: bool,
     eps: f64,
     momentum: f64,
@@ -43,12 +42,7 @@ impl Default for DarkBatchNormInit {
 }
 
 impl DarkBatchNormInit {
-    pub fn build<'a>(
-        self,
-        path: impl Borrow<nn::Path<'a>>,
-        nd: usize,
-        out_dim: i64,
-    ) -> DarkBatchNorm {
+    pub fn build<'a>(self, path: impl Borrow<nn::Path<'a>>, out_dim: i64) -> DarkBatchNorm {
         let path = path.borrow();
         let Self {
             cudnn_enabled,
@@ -68,7 +62,6 @@ impl DarkBatchNormInit {
             running_var: path.ones_no_train("running_var", &[out_dim]),
             ws,
             bs,
-            nd,
             cudnn_enabled,
             eps: eps.raw(),
             momentum: momentum.raw(),
@@ -85,19 +78,11 @@ impl DarkBatchNorm {
             ref running_var,
             ref ws,
             ref bs,
-            nd,
             momentum,
             eps,
             cudnn_enabled,
             ..
         } = *self;
-
-        ensure!(
-            input.dim() == nd + 2,
-            "expected an input tensor with {} dims, got {:?}",
-            nd + 2,
-            input.dim()
-        );
 
         let output = Tensor::batch_norm(
             input,

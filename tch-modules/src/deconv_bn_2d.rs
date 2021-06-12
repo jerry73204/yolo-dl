@@ -70,7 +70,7 @@ impl DeconvBn2DInit {
                 ..Default::default()
             },
         );
-        let bn = batch_norm.map(|init| init.build(path / "bn", 2, out_c as i64));
+        let bn = batch_norm.map(|init| init.build(path / "bn", out_c as i64));
 
         DeconvBn2D {
             deconv,
