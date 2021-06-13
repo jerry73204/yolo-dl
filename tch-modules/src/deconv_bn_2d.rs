@@ -87,8 +87,8 @@ pub struct DeconvBn2D {
     activation: Activation,
 }
 
-impl DeconvBn2D {
-    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+impl nn::ModuleT for DeconvBn2D {
+    fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
         let Self {
             ref deconv,
             ref bn,
@@ -98,11 +98,13 @@ impl DeconvBn2D {
         let xs = xs.apply(deconv).activation(activation);
 
         match bn {
-            Some(bn) => bn.forward_t(&xs, train).unwrap(),
+            Some(bn) => bn.forward_t(&xs, train),
             None => xs,
         }
     }
+}
 
+impl DeconvBn2D {
     pub fn grad(&self) -> DeconvBn2DGrad {
         let Self {
             deconv: nn::ConvTranspose2D { ws, bs, .. },

@@ -83,8 +83,8 @@ pub struct ConvBn2D {
     activation: Activation,
 }
 
-impl ConvBn2D {
-    pub fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
+impl nn::ModuleT for ConvBn2D {
+    fn forward_t(&self, xs: &Tensor, train: bool) -> Tensor {
         let Self {
             ref conv,
             ref bn,
@@ -94,11 +94,13 @@ impl ConvBn2D {
         let xs = xs.apply(conv).activation(activation);
 
         match bn {
-            Some(bn) => bn.forward_t(&xs, train).unwrap(),
+            Some(bn) => bn.forward_t(&xs, train),
             None => xs,
         }
     }
+}
 
+impl ConvBn2D {
     pub fn grad(&self) -> ConvBn2DGrad {
         let Self {
             conv: nn::Conv2D { ws, bs, .. },
@@ -114,7 +116,9 @@ impl ConvBn2D {
             bn: bn.as_ref().map(|bn| bn.grad()),
         }
     }
+}
 
+impl ConvBn2D {
     pub fn clamp_bn_var(&mut self) {
         if let Some(bn) = &mut self.bn {
             bn.clamp_bn_var();

@@ -72,7 +72,7 @@ impl DarkBatchNormInit {
 }
 
 impl DarkBatchNorm {
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> Result<Tensor> {
+    pub fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
         let Self {
             ref running_mean,
             ref running_var,
@@ -124,7 +124,7 @@ impl DarkBatchNorm {
             }
         }
 
-        Ok(output)
+        output
     }
 
     pub fn clamp_bn_var(&mut self) {

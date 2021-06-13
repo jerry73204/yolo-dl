@@ -83,8 +83,8 @@ pub struct ConvBn {
     activation: Activation,
 }
 
-impl ConvBn {
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> Result<Tensor> {
+impl nn::ModuleT for ConvBn {
+    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
         let Self {
             ref conv,
             ref bn,
@@ -93,18 +93,20 @@ impl ConvBn {
         } = *self;
 
         let output = if bn_first {
-            let xs = bn.forward_t(input, train)?;
+            let xs = bn.forward_t(input, train);
             let xs = conv.forward(&xs);
             xs.activation(activation)
         } else {
             let xs = conv.forward(input);
             let xs = xs.activation(activation);
-            bn.forward_t(&xs, train)?
+            bn.forward_t(&xs, train)
         };
 
-        Ok(output)
+        output
     }
+}
 
+impl ConvBn {
     pub fn grad(&self) -> ConvBnGrad {
         let Self { conv, bn, .. } = self;
 

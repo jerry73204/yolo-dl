@@ -26,7 +26,11 @@ pub use std::{
     sync::Once,
 };
 pub use strum::AsRefStr;
-pub use tch::{kind::Element, nn, vision, Device, IndexOp, Kind, Tensor};
+pub use tch::{
+    kind::Element,
+    nn::{self, Module, ModuleT},
+    vision, Device, IndexOp, Kind, Tensor,
+};
 pub use tch_goodies::{
     Activation, DenseDetectionTensor, DenseDetectionTensorList, DenseDetectionTensorUnchecked,
     GridSize, RatioSize, TensorExt,
