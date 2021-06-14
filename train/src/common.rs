@@ -22,7 +22,6 @@ pub use par_stream::{ParStreamConfig, ParStreamExt, TryParStreamExt};
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use rand::{distributions::Distribution, prelude::*, rngs::StdRng, seq::SliceRandom};
 pub use regex::Regex;
-pub use semver::{Version, VersionReq};
 pub use serde::{
     de::{Error as DeserializeError, Visitor},
     ser::{Error as SerializeError, SerializeSeq},

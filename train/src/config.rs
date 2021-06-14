@@ -8,16 +8,12 @@ pub use model::*;
 pub use preprocessor::*;
 pub use training::*;
 
-/// The version of configuration format.
-///
-/// The version number follows the SemVer specification.
-pub static CONFIG_VERSION: Lazy<VersionReq> = Lazy::new(|| VersionReq::parse("0.1.0").unwrap());
+serde_semver::declare_version!(ConfigVersion, 0, 1, 0);
 
 /// The main training configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    #[serde(deserialize_with = "deserialize_version")]
-    pub version: Version,
+    pub version: ConfigVersion,
     pub model: ModelConfig,
     pub dataset: DatasetConfig,
     pub logging: LoggingConfig,
@@ -326,28 +322,6 @@ pub struct BenchmarkConfig {
 
 fn empty_hashset<T>() -> HashSet<T> {
     HashSet::new()
-}
-
-pub fn deserialize_version<'de, D>(deserializer: D) -> Result<Version, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let text = String::deserialize(deserializer)?;
-    let version = Version::parse(&text).map_err(|err| {
-        D::Error::custom(format!(
-            "failed to parse version number '{}': {:?}",
-            text, err
-        ))
-    })?;
-
-    if !CONFIG_VERSION.matches(&version) {
-        return Err(D::Error::custom(format!(
-            "incompatible version: get '{}', but it is incompatible with requirement '{}'",
-            version, &*CONFIG_VERSION,
-        )));
-    }
-
-    Ok(version)
 }
 
 mod serde_vec_device {
