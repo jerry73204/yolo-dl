@@ -17,12 +17,14 @@ use crate::{
 /// The entry of training program.
 pub async fn start(config: Arc<Config>) -> Result<()> {
     let start_time = Local::now();
-    let logging_dir = Arc::new(
-        config
+    let config = ArcRef::new(config);
+    let logging_dir: Arc<Path> = {
+        let dir = config
             .logging
             .dir
-            .join(format!("{}", start_time.format(utils::FILE_STRFTIME))),
-    );
+            .join(format!("{}", start_time.format(utils::FILE_STRFTIME)));
+        dir.into_boxed_path().into()
+    };
     let checkpoint_dir = Arc::new(logging_dir.join("checkpoints"));
 
     // create dirs and save config
@@ -31,7 +33,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
         tokio::fs::create_dir_all(&*checkpoint_dir).await?;
         let path = logging_dir.join("config.json5");
         let text = serde_json::to_string_pretty(&*config)?;
-        std::fs::write(&path, text)?;
+        tokio::fs::write(&path, text).await?;
     }
 
     // create channels
@@ -47,9 +49,13 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
     // load dataset
     info!("loading dataset");
-    let dataset = TrainingStream::new(config.clone(), logging_tx.clone()).await?;
-    let input_channels = dataset.input_channels();
-    let num_classes = dataset.classes().len();
+    let dataset = TrainingStream::new(
+        config.training.batch_size.get(),
+        config.clone().map(|config| &config.dataset),
+        config.clone().map(|config| &config.preprocessor),
+        Some(logging_tx.clone()),
+    )
+    .await?;
 
     // start logger
     let logging_future =
@@ -80,7 +86,6 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     let training_worker_future = {
         let config = config.clone();
         let logging_tx = logging_tx.clone();
-        let logging_dir = logging_dir.clone();
         let checkpoint_dir = checkpoint_dir.clone();
 
         tokio::task::spawn(async move {
@@ -89,10 +94,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                     tokio::task::spawn_blocking(move || {
                         train::single_gpu_training_worker(
                             config,
-                            logging_dir,
                             checkpoint_dir,
-                            input_channels,
-                            num_classes,
                             data_rx,
                             logging_tx,
                             device,
@@ -119,10 +121,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
                     train::multi_gpu_training_worker(
                         config,
-                        logging_dir,
                         checkpoint_dir,
-                        input_channels,
-                        num_classes,
                         data_rx,
                         logging_tx,
                         &workers,
@@ -143,10 +142,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
                     train::multi_gpu_training_worker(
                         config,
-                        logging_dir,
                         checkpoint_dir,
-                        input_channels,
-                        num_classes,
                         data_rx,
                         logging_tx,
                         &workers,

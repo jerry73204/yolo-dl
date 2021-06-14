@@ -13,11 +13,8 @@ use tch_goodies::MergedDenseDetection;
 
 /// Start the single-GPU training worker.
 pub fn single_gpu_training_worker(
-    config: Arc<Config>,
-    _logging_dir: Arc<PathBuf>,
+    config: ArcRef<Config>,
     checkpoint_dir: Arc<PathBuf>,
-    _input_channels: usize,
-    _num_classes: usize,
     mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     device: Device,

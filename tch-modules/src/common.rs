@@ -28,7 +28,7 @@ pub use std::{
 pub use strum::AsRefStr;
 pub use tch::{
     kind::Element,
-    nn::{self, Module, ModuleT},
+    nn::{self, Module as _, ModuleT as _},
     vision, Device, IndexOp, Kind, Tensor,
 };
 pub use tch_goodies::{

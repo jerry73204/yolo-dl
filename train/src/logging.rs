@@ -17,7 +17,7 @@ mod logging_worker {
     /// The data logging worker.
     #[derive(Debug)]
     pub struct LoggingWorker {
-        config: Arc<Config>,
+        config: ArcRef<Config>,
         debug_step: i64,
         event_writer: EventWriter<BufWriter<File>>,
         rate_counter: RateCounter,
@@ -27,14 +27,14 @@ mod logging_worker {
     impl LoggingWorker {
         /// Create a data logging worker.
         async fn new(
-            config: Arc<Config>,
-            logging_dir: Arc<PathBuf>,
+            config: ArcRef<Config>,
+            logging_dir: impl AsRef<Path>,
             rx: broadcast::Receiver<LoggingMessage>,
         ) -> Result<Self> {
             let debug_step = 0;
 
             // prepare dirs
-            let event_dir = logging_dir.join("events");
+            let event_dir = logging_dir.as_ref().join("events");
             let event_path_prefix = event_dir
                 .join("yolo-dl")
                 .into_os_string()
@@ -484,8 +484,8 @@ mod logging_worker {
     }
 
     pub async fn logging_worker(
-        config: Arc<Config>,
-        logging_dir: Arc<PathBuf>,
+        config: ArcRef<Config>,
+        logging_dir: impl AsRef<Path>,
         rx: broadcast::Receiver<LoggingMessage>,
     ) -> Result<impl Future<Output = Result<()>> + Send> {
         let worker = LoggingWorker::new(config, logging_dir, rx).await?;

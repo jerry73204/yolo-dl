@@ -1,48 +1,47 @@
 use crate::{
     common::*,
     config::{
-        CacheConfig, CleanseConfig, ColorJitterConfig, Config, DatasetConfig, DatasetKind,
-        MixUpConfig, PipelineConfig, PreprocessorConfig, RandomAffineConfig, TrainingConfig,
+        CacheConfig, CleanseConfig, ColorJitterConfig, DatasetConfig, DatasetKind, MixUpConfig,
+        PipelineConfig, PreprocessorConfig, RandomAffineConfig,
     },
     logging::LoggingMessage,
 };
 
-/// Asynchonous data stream for training.
-#[derive(Debug)]
+/// Asynchronous data stream for training.
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct TrainingStream {
-    config: Arc<Config>,
-    logging_tx: broadcast::Sender<LoggingMessage>,
-    dataset: Arc<Box<dyn RandomAccessDataset + Sync>>,
+    batch_size: usize,
+    #[derivative(Debug = "ignore")]
+    preprocessor_config: Box<dyn Send + Borrow<PreprocessorConfig>>,
+    logging_tx: Option<broadcast::Sender<LoggingMessage>>,
+    dataset: Arc<dyn RandomAccessDataset + Sync>,
 }
 
 impl TrainingStream {
-    #[instrument(skip(config, logging_tx))]
     pub async fn new(
-        config: Arc<Config>,
-        logging_tx: broadcast::Sender<LoggingMessage>,
+        batch_size: usize,
+        dataset_config: impl 'static + Send + Borrow<DatasetConfig>,
+        preprocessor_config: impl 'static + Send + Borrow<PreprocessorConfig>,
+        logging_tx: Option<broadcast::Sender<LoggingMessage>>,
     ) -> Result<Self> {
         let dataset = {
-            let Config {
-                dataset:
-                    DatasetConfig {
-                        ref kind,
-                        ref class_whitelist,
-                        ..
-                    },
-                preprocessor:
-                    PreprocessorConfig {
-                        pipeline: PipelineConfig { device, .. },
-                        ref cache,
-                        cleanse:
-                            CleanseConfig {
-                                out_of_bound_tolerance,
-                                min_bbox_size,
-                                ..
-                            },
+            let DatasetConfig {
+                kind,
+                class_whitelist,
+                ..
+            } = dataset_config.borrow();
+            let PreprocessorConfig {
+                pipeline: PipelineConfig { device, .. },
+                ref cache,
+                cleanse:
+                    CleanseConfig {
+                        out_of_bound_tolerance,
+                        min_bbox_size,
                         ..
                     },
                 ..
-            } = *config;
+            } = *preprocessor_config.borrow();
 
             match *kind {
                 DatasetKind::Coco {
@@ -192,9 +191,10 @@ impl TrainingStream {
         };
 
         Ok(Self {
-            config,
+            batch_size,
+            preprocessor_config: Box::new(preprocessor_config),
             logging_tx,
-            dataset: Arc::new(dataset),
+            dataset: dataset.into(),
         })
     }
 
@@ -203,7 +203,13 @@ impl TrainingStream {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         // parallel stream config
         let par_config: ParStreamConfig = {
-            match self.config.preprocessor.pipeline.worker_buf_size {
+            match self
+                .preprocessor_config
+                .deref()
+                .borrow()
+                .pipeline
+                .worker_buf_size
+            {
                 Some(buf_size) => (1.0, buf_size).into(),
                 None => (1.0, 2.0).into(),
             }
@@ -251,21 +257,17 @@ impl TrainingStream {
 
         // load samples and scale bboxes
         let stream = {
-            let Config {
-                preprocessor:
-                    PreprocessorConfig {
-                        mixup:
-                            MixUpConfig {
-                                mixup_prob,
-                                cutmix_prob,
-                                mosaic_prob,
-                                ..
-                            },
-                        cleanse: CleanseConfig { bbox_scaling, .. },
+            let PreprocessorConfig {
+                mixup:
+                    MixUpConfig {
+                        mixup_prob,
+                        cutmix_prob,
+                        mosaic_prob,
                         ..
                     },
+                cleanse: CleanseConfig { bbox_scaling, .. },
                 ..
-            } = *self.config;
+            } = *self.preprocessor_config.deref().borrow();
             let mixup_prob = mixup_prob.to_f64();
             let cutmix_prob = cutmix_prob.to_f64();
             let mosaic_prob = mosaic_prob.to_f64();
@@ -325,7 +327,7 @@ impl TrainingStream {
                     let data = MixData::new(mix_kind, image_bbox_vec).unwrap();
 
                     // send to logger
-                    {
+                    if let Some(logging_tx) = &logging_tx {
                         let msg = LoggingMessage::new_debug_labeled_images(
                             "sample-loading",
                             data.as_ref()
@@ -346,20 +348,16 @@ impl TrainingStream {
 
         // color jitter
         let stream = {
-            let Config {
-                preprocessor:
-                    PreprocessorConfig {
-                        color_jitter:
-                            ColorJitterConfig {
-                                color_jitter_prob,
-                                hue_shift,
-                                saturation_shift,
-                                value_shift,
-                            },
-                        ..
+            let PreprocessorConfig {
+                color_jitter:
+                    ColorJitterConfig {
+                        color_jitter_prob,
+                        hue_shift,
+                        saturation_shift,
+                        value_shift,
                     },
                 ..
-            } = *self.config;
+            } = *self.preprocessor_config.deref().borrow();
             let color_jitter = Arc::new(
                 ColorJitterInit {
                     hue_shift,
@@ -402,15 +400,16 @@ impl TrainingStream {
                     let output = MixData::new(mix_kind, pairs).unwrap();
 
                     // send to logger
-                    logging_tx
-                        .send(LoggingMessage::new_debug_labeled_images(
+                    if let Some(logging_tx) = &logging_tx {
+                        let msg = LoggingMessage::new_debug_labeled_images(
                             "color-jitter",
                             output
                                 .iter()
                                 .map(|(image, bboxes)| (image, bboxes))
                                 .collect_vec(),
-                        ))
-                        .unwrap();
+                        );
+                        let _result = logging_tx.send(msg);
+                    }
 
                     timing.add_event("color jitter");
                     Fallible::Ok((index, (step, epoch, output, timing)))
@@ -421,31 +420,27 @@ impl TrainingStream {
 
         // random affine
         let stream = {
-            let Config {
-                preprocessor:
-                    PreprocessorConfig {
-                        random_affine:
-                            RandomAffineConfig {
-                                affine_prob,
-                                rotate_prob,
-                                rotate_degrees,
-                                translation_prob,
-                                translation,
-                                scale_prob,
-                                scale,
-                                horizontal_flip_prob,
-                                vertical_flip_prob,
-                            },
-                        cleanse:
-                            CleanseConfig {
-                                min_bbox_size,
-                                min_bbox_cropping_ratio,
-                                ..
-                            },
+            let PreprocessorConfig {
+                random_affine:
+                    RandomAffineConfig {
+                        affine_prob,
+                        rotate_prob,
+                        rotate_degrees,
+                        translation_prob,
+                        translation,
+                        scale_prob,
+                        scale,
+                        horizontal_flip_prob,
+                        vertical_flip_prob,
+                    },
+                cleanse:
+                    CleanseConfig {
+                        min_bbox_size,
+                        min_bbox_cropping_ratio,
                         ..
                     },
                 ..
-            } = *self.config;
+            } = *self.preprocessor_config.deref().borrow();
             let random_affine = Arc::new(
                 RandomAffineInit {
                     rotate_prob,
@@ -495,15 +490,16 @@ impl TrainingStream {
                     let new_data = MixData::new(mix_kind, pairs).unwrap();
 
                     // send to logger
-                    logging_tx
-                        .send(LoggingMessage::new_debug_labeled_images(
+                    if let Some(logging_tx) = &logging_tx {
+                        let msg = LoggingMessage::new_debug_labeled_images(
                             "random-affine",
                             new_data
                                 .iter()
                                 .map(|(image, bboxes)| (image, bboxes))
                                 .collect_vec(),
-                        ))
-                        .unwrap();
+                        );
+                        let _result = logging_tx.send(msg);
+                    }
 
                     timing.add_event("random affine");
                     Fallible::Ok((index, (step, epoch, new_data, timing)))
@@ -514,27 +510,23 @@ impl TrainingStream {
 
         // mixup
         let stream = {
-            let Config {
-                preprocessor:
-                    PreprocessorConfig {
-                        mixup:
-                            MixUpConfig {
-                                mixup_prob,
-                                cutmix_prob,
-                                mosaic_prob,
-                                mosaic_margin,
-                                ..
-                            },
-                        cleanse:
-                            CleanseConfig {
-                                min_bbox_size,
-                                min_bbox_cropping_ratio,
-                                ..
-                            },
+            let PreprocessorConfig {
+                mixup:
+                    MixUpConfig {
+                        mixup_prob,
+                        cutmix_prob,
+                        mosaic_prob,
+                        mosaic_margin,
+                        ..
+                    },
+                cleanse:
+                    CleanseConfig {
+                        min_bbox_size,
+                        min_bbox_cropping_ratio,
                         ..
                     },
                 ..
-            } = *self.config;
+            } = *self.preprocessor_config.deref().borrow();
             let mixup_prob = mixup_prob.to_f64();
             let cutmix_prob = cutmix_prob.to_f64();
             let mosaic_prob = mosaic_prob.to_f64();
@@ -583,23 +575,20 @@ impl TrainingStream {
                     let mixed_bboxes: Vec<_> = mixed_bboxes
                         .into_iter()
                         .filter_map(|bbox| {
-                            if bbox.h() >= min_bbox_size.to_r64()
-                                && bbox.w() >= min_bbox_size.to_r64()
-                            {
-                                Some(bbox)
-                            } else {
-                                None
-                            }
+                            let ok = bbox.h() >= min_bbox_size.to_r64()
+                                && bbox.w() >= min_bbox_size.to_r64();
+                            ok.then(|| bbox)
                         })
                         .collect();
 
                     // send to logger
-                    logging_tx
-                        .send(LoggingMessage::new_debug_labeled_images(
+                    if let Some(logging_tx) = &logging_tx {
+                        let msg = LoggingMessage::new_debug_labeled_images(
                             "mosaic-processor",
                             vec![(&mixed_image, &mixed_bboxes)],
-                        ))
-                        .unwrap();
+                        );
+                        let _result = logging_tx.send(msg);
+                    }
 
                     timing.add_event("mosaic processor");
                     Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
@@ -621,7 +610,13 @@ impl TrainingStream {
 
         // optionally reorder records
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
-            if self.config.preprocessor.pipeline.unordered_records {
+            if self
+                .preprocessor_config
+                .deref()
+                .borrow()
+                .pipeline
+                .unordered_records
+            {
                 Box::pin(stream.map_ok(|(_index, args)| args))
             } else {
                 Box::pin(stream.try_reorder_enumerated())
@@ -630,13 +625,8 @@ impl TrainingStream {
 
         // group into chunks
         let stream = {
-            let Config {
-                training: TrainingConfig { batch_size, .. },
-                ..
-            } = *self.config;
-
             stream
-                .chunks(batch_size.get())
+                .chunks(self.batch_size)
                 .wrapping_enumerate()
                 .par_map_unordered(par_config.clone(), |(index, results)| {
                     move || {
@@ -648,56 +638,28 @@ impl TrainingStream {
 
         // convert to batched type
         let stream = stream.try_par_map_unordered(par_config.clone(), |(index, mut chunk)| {
-            // summerizable type
-            struct State {
-                pub step: usize,
-                pub epoch: usize,
-                pub bboxes_vec: Vec<Vec<RatioLabel>>,
-                pub image_vec: Vec<Tensor>,
-                pub timing_vec: Vec<Timing>,
-            }
-
-            impl Sum<(usize, usize, Vec<RatioLabel>, Tensor, Timing)> for State {
-                fn sum<I>(iter: I) -> Self
-                where
-                    I: Iterator<Item = (usize, usize, Vec<RatioLabel>, Tensor, Timing)>,
-                {
-                    let (min_step, min_epoch, bboxes_vec, image_vec, timing_vec): (
-                        MinCollector<_>,
-                        MinCollector<_>,
-                        Vec<_>,
-                        Vec<_>,
-                        Vec<_>,
-                    ) = iter.unzip_n();
-
-                    Self {
-                        step: min_step.unwrap(),
-                        epoch: min_epoch.unwrap(),
-                        bboxes_vec,
-                        image_vec,
-                        timing_vec,
-                    }
-                }
-            }
-
             move || {
                 chunk.iter_mut().for_each(|args| {
                     let (_step, _epoch, _bboxes, _image, timing) = args;
                     timing.add_event("in channel");
                 });
 
-                let State {
-                    step,
-                    epoch,
-                    bboxes_vec,
-                    image_vec,
-                    timing_vec,
-                } = chunk.into_iter().sum();
-
+                let (min_step, min_epoch, bboxes_vec, image_vec, timing_vec): (
+                    MinCollector<_>,
+                    MinCollector<_>,
+                    Vec<_>,
+                    Vec<_>,
+                    Vec<_>,
+                ) = chunk.into_iter().unzip_n();
+                let min_step = min_step.get().unwrap();
+                let min_epoch = min_epoch.get().unwrap();
                 let image_batch = Tensor::cat(&image_vec, 0);
                 let timing = Timing::merge("batching", timing_vec).unwrap();
 
-                Fallible::Ok((index, (step, epoch, bboxes_vec, image_batch, timing)))
+                Fallible::Ok((
+                    index,
+                    (min_step, min_epoch, bboxes_vec, image_batch, timing),
+                ))
             }
         });
 
@@ -723,7 +685,13 @@ impl TrainingStream {
 
         // optionally reorder back
         let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
-            if self.config.preprocessor.pipeline.unordered_batches {
+            if self
+                .preprocessor_config
+                .deref()
+                .borrow()
+                .pipeline
+                .unordered_batches
+            {
                 Box::pin(stream.map_ok(|(_index, args)| args))
             } else {
                 Box::pin(stream.try_reorder_enumerated())

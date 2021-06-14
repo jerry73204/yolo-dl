@@ -41,11 +41,8 @@ struct WorkerOutput {
 
 /// Start the multi-GPU training worker.
 pub async fn multi_gpu_training_worker(
-    config: Arc<Config>,
-    _logging_dir: Arc<PathBuf>,
+    config: ArcRef<Config>,
     checkpoint_dir: Arc<PathBuf>,
-    _input_channels: usize,
-    _num_classes: usize,
     mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     workers: &[(Device, usize)],
@@ -361,7 +358,7 @@ pub async fn multi_gpu_training_worker(
 }
 
 async fn initialize_worker_contexts(
-    config: Arc<Config>,
+    config: ArcRef<Config>,
     workers: &[(Device, usize)],
 ) -> Result<(Vec<WorkerContext>, usize)> {
     const DUMMY_LR: f64 = 1.0;
@@ -530,7 +527,7 @@ async fn sync_weights(worker_contexts: Vec<WorkerContext>) -> Result<Vec<WorkerC
 }
 
 async fn forward_step(
-    config: Arc<Config>,
+    config: ArcRef<Config>,
     worker_contexts: Vec<WorkerContext>,
     image: Tensor,
     bboxes: &[Vec<RatioLabel>],

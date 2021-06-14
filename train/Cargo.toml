@@ -49,6 +49,7 @@ once_cell = "1.7.2"
 tracing-opentelemetry = "0.13.0"
 opentelemetry-jaeger = "0.13.0"
 collected = "0.1.2"
+derivative = "2.2.0"
 
 [features]
 profiling = ["yolo-dl/profiling"]
