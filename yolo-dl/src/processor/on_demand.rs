@@ -34,16 +34,12 @@ impl OnDemandLoader {
     }
 
     /// Load image and boxes.
-    pub async fn load<P, B>(
+    pub async fn load(
         &self,
-        image_path: P,
+        image_path: impl AsRef<async_std::path::Path>,
         orig_size: &PixelSize<usize>,
-        bboxes: &[B],
-    ) -> Result<(Tensor, Vec<RatioLabel>)>
-    where
-        P: AsRef<async_std::path::Path>,
-        B: Borrow<PixelLabel>,
-    {
+        bboxes: impl IntoIterator<Item = impl Borrow<PixelLabel>>,
+    ) -> Result<(Tensor, Vec<RatioLabel>)> {
         let Self {
             image_size,
             image_channels,
@@ -123,32 +119,31 @@ impl OnDemandLoader {
         timing.add_event("pad");
 
         // compute new bboxes
+        let transform = {
+            let src = PixelTLBR::from_tlbr(0.0, 0.0, orig_h as f64, orig_w as f64).unwrap();
+            let tgt = PixelTLBR::from_tlhw(
+                top_pad as f64,
+                left_pad as f64,
+                cache_h as f64,
+                cache_w as f64,
+            )
+            .unwrap();
+            RectTransform::from_rects(&src, &tgt).cast::<R64>().unwrap()
+        };
+
         let output_bboxes: Vec<_> = {
             let image_size = R64::new(image_size as f64);
             bboxes
-                .iter()
+                .into_iter()
                 .map(|orig_label| -> Result<_> {
-                    let PixelLabel {
-                        cycxhw: ref orig_bbox,
-                        class,
-                    } = *orig_label.borrow();
-
-                    let resized_bbox = {
-                        let resized_cy = orig_bbox.cy() * resize_ratio + top_pad as f64;
-                        let resized_cx = orig_bbox.cx() * resize_ratio + left_pad as f64;
-                        let resized_h = orig_bbox.h() * resize_ratio;
-                        let resized_w = orig_bbox.w() * resize_ratio;
-                        let resized_bbox = PixelCyCxHW::<R64>::from_cycxhw(
-                            resized_cy, resized_cx, resized_h, resized_w,
-                        )?;
-                        resized_bbox
+                    let orig_label = orig_label.borrow();
+                    let resized_bbox = (&transform * &orig_label.cycxhw)
+                        .to_ratio_cycxhw(&PixelSize::from_hw(image_size, image_size)?);
+                    let new_label = RatioLabel {
+                        cycxhw: resized_bbox,
+                        class: orig_label.class,
                     };
-
-                    Ok(RatioLabel {
-                        cycxhw: resized_bbox
-                            .to_ratio_cycxhw(&PixelSize::from_hw(image_size, image_size)?),
-                        class,
-                    })
+                    Ok(new_label)
                 })
                 .try_collect()?
         };

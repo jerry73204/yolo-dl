@@ -8,9 +8,163 @@ use crate::{
 
 pub use cycxhw::*;
 pub use rect::*;
+pub use rect_transform::*;
 pub use tlbr::*;
 
 const EPSILON: f64 = 1e-16;
+
+mod rect_transform {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct RectTransform<T, U>
+    where
+        U: Unit,
+    {
+        sy: T,
+        sx: T,
+        ty: T,
+        tx: T,
+        _phantom: PhantomData<U>,
+    }
+
+    pub type PixelRectTransform<T> = RectTransform<T, PixelUnit>;
+    pub type RatioRectTransform<T> = RectTransform<T, RatioUnit>;
+    pub type GridRectTransform<T> = RectTransform<T, GridUnit>;
+
+    impl<T, U> RectTransform<T, U>
+    where
+        U: Unit,
+    {
+        pub fn from_params(scale_y: T, scale_x: T, translate_y: T, translate_x: T) -> Self {
+            Self {
+                sy: scale_y,
+                sx: scale_x,
+                ty: translate_y,
+                tx: translate_x,
+                _phantom: PhantomData,
+            }
+        }
+
+        pub fn from_rects(
+            src: &impl Rect<Type = T, Unit = U>,
+            tgt: &impl Rect<Type = T, Unit = U>,
+        ) -> Self
+        where
+            T: Num + Copy,
+        {
+            let sy = tgt.h() / src.h();
+            let sx = tgt.w() / src.w();
+            let ty = tgt.t() - src.t() * sy;
+            let tx = tgt.l() - src.l() * sx;
+
+            Self {
+                sy,
+                sx,
+                ty,
+                tx,
+                _phantom: PhantomData,
+            }
+        }
+
+        pub fn inverse(&self) -> Self
+        where
+            T: Float,
+        {
+            let sy = T::one() / self.sy;
+            let sx = T::one() / self.sx;
+            let ty = -self.ty / self.sy;
+            let tx = -self.tx / self.sx;
+
+            Self {
+                sy,
+                sx,
+                ty,
+                tx,
+                _phantom: PhantomData,
+            }
+        }
+
+        pub fn cast<V>(&self) -> Option<RectTransform<V, U>>
+        where
+            T: Copy + ToPrimitive,
+            V: NumCast,
+        {
+            Some(RectTransform {
+                sy: V::from(self.sy)?,
+                sx: V::from(self.sx)?,
+                ty: V::from(self.ty)?,
+                tx: V::from(self.tx)?,
+                _phantom: PhantomData,
+            })
+        }
+    }
+
+    impl<T, U> Mul<&TLBR<T, U>> for &RectTransform<T, U>
+    where
+        T: Num + Copy,
+        U: Unit,
+    {
+        type Output = TLBR<T, U>;
+
+        fn mul(self, rhs: &TLBR<T, U>) -> Self::Output {
+            TLBR {
+                t: rhs.t * self.sy + self.ty,
+                l: rhs.l * self.sx + self.tx,
+                b: rhs.b * self.sy + self.ty,
+                r: rhs.r * self.sx + self.tx,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<T, U> Mul<&CyCxHW<T, U>> for &RectTransform<T, U>
+    where
+        T: Num + Copy,
+        U: Unit,
+    {
+        type Output = CyCxHW<T, U>;
+
+        fn mul(self, rhs: &CyCxHW<T, U>) -> Self::Output {
+            CyCxHW {
+                cy: rhs.cy * self.sy + self.ty,
+                cx: rhs.cx * self.sx + self.tx,
+                h: rhs.h * self.sy,
+                w: rhs.w * self.sx,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<T, U> Mul<&RectTransform<T, U>> for &RectTransform<T, U>
+    where
+        T: Num + Copy,
+        U: Unit,
+    {
+        type Output = RectTransform<T, U>;
+
+        fn mul(self, rhs: &RectTransform<T, U>) -> Self::Output {
+            RectTransform {
+                sy: self.sy * rhs.sy,
+                sx: self.sx * rhs.sx,
+                ty: self.sy * rhs.ty + self.ty,
+                tx: self.sx * rhs.tx + self.tx,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn rect_transform_inverse() {
+            let orig = PixelRectTransform::from_params(2.0, 2.0, 1.0, 1.0);
+            assert_eq!(orig.inverse().inverse(), orig);
+        }
+    }
+}
 
 mod rect {
     use super::*;
@@ -61,7 +215,7 @@ mod tlbr {
         pub(super) l: T,
         pub(super) b: T,
         pub(super) r: T,
-        _phantom: PhantomData<U>,
+        pub(super) _phantom: PhantomData<U>,
     }
 
     pub type RatioTLBR<T> = TLBR<T, RatioUnit>;
@@ -328,7 +482,7 @@ mod cycxhw {
         pub(super) cx: T,
         pub(super) h: T,
         pub(super) w: T,
-        _phantom: PhantomData<U>,
+        pub(super) _phantom: PhantomData<U>,
     }
 
     pub type RatioCyCxHW<T> = CyCxHW<T, RatioUnit>;
