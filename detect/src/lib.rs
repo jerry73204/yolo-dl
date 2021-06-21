@@ -116,25 +116,25 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                     let inference = inferences.batch_select(minibatch_index);
                     let pred_bboxes: Vec<RatioCyCxHW<R64>> = inference.bbox.try_into()?;
 
-                    let (_c, image_h, image_w) = image.size3().unwrap();
+                    let image_size: PixelSize<R64> = {
+                        let (_c, image_h, image_w) = image.size3().unwrap();
+                        PixelSize::from_hw(image_h, image_w)
+                            .unwrap()
+                            .cast()
+                            .unwrap()
+                    };
 
                     let mut canvas: Mat =
                         TensorAsImage::new(image, ShapeConvention::Chw)?.try_into_cv()?;
 
                     // plot target boxes
                     target_bboxes.iter().try_for_each(|bbox| -> Result<_> {
-                        let cycxhw: PixelCyCxHW<_> =
-                            bbox.cycxhw.scale_to_unit(image_h as f64, image_w as f64)?;
-                        let [cy, cx, h, w] = cycxhw.cycxhw_params();
+                        let rect: PixelCyCxHW<i32> =
+                            bbox.cycxhw.to_pixel_cycxhw(&image_size).cast().unwrap();
 
                         imgproc::rectangle(
                             &mut canvas,
-                            Rect {
-                                x: (cx - w / 2.0) as i32,
-                                y: (cy - h / 2.0) as i32,
-                                width: w as i32,
-                                height: h as i32,
-                            }, // rect
+                            rect.into(),
                             Scalar::new(255.0, 255.0, 0.0, 0.0), // color
                             1,                                   // thickness
                             imgproc::LINE_8,                     // line_type
@@ -146,18 +146,12 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
                     // plot predicted boxes
                     pred_bboxes.iter().try_for_each(|cycxhw| -> Result<_> {
-                        let cycxhw: PixelCyCxHW<_> =
-                            cycxhw.scale_to_unit(image_h as f64, image_w as f64)?;
-                        let [cy, cx, h, w] = cycxhw.cycxhw_params();
+                        let rect: PixelCyCxHW<i32> =
+                            cycxhw.to_pixel_cycxhw(&image_size).cast().unwrap();
 
                         imgproc::rectangle(
                             &mut canvas,
-                            Rect {
-                                x: (cx - w / 2.0) as i32,
-                                y: (cy - h / 2.0) as i32,
-                                width: w as i32,
-                                height: h as i32,
-                            }, // rect
+                            rect.into(),
                             Scalar::new(0.0, 255.0, 255.0, 0.0), // color
                             1,                                   // thickness
                             imgproc::LINE_8,                     // line_type

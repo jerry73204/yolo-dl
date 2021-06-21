@@ -5,10 +5,7 @@ use crate::{
 use num_traits::NumCast;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike)]
-pub struct HW<T>
-where
-    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
-{
+pub struct HW<T> {
     pub h: T,
     pub w: T,
 }
@@ -17,7 +14,6 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TensorLike)]
 pub struct Size<T, U>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
     U: Unit,
 {
     inner: HW<T>,
@@ -27,20 +23,26 @@ where
 
 impl<T, U> Size<T, U>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
     U: Unit,
 {
-    pub fn from_hw(h: T, w: T) -> Result<Self> {
+    pub fn from_hw(h: T, w: T) -> Result<Self>
+    where
+        T: Num + PartialOrd,
+    {
         HW { h, w }.try_into()
     }
 
-    pub fn hw(&self) -> [T; 2] {
+    pub fn hw(&self) -> [T; 2]
+    where
+        T: Copy,
+    {
         [self.h, self.w]
     }
 
     pub fn cast<S>(&self) -> Option<Size<S, U>>
     where
-        S: NumCast + Zero + PartialOrd + Copy + ToPrimitive + Mul<S, Output = S>,
+        T: Copy + ToPrimitive,
+        S: Num + NumCast,
     {
         let h = <S as NumCast>::from(self.h)?;
         let w = <S as NumCast>::from(self.w)?;
@@ -50,7 +52,10 @@ where
         })
     }
 
-    pub fn area(&self) -> T {
+    pub fn area(&self) -> T
+    where
+        T: Num + Copy,
+    {
         let Self {
             inner: HW { h, w }, ..
         } = *self;
@@ -60,7 +65,7 @@ where
 
 impl<T, U> TryFrom<HW<T>> for Size<T, U>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
+    T: Num + PartialOrd,
     U: Unit,
 {
     type Error = Error;
@@ -81,7 +86,6 @@ where
 
 impl<T, U> From<Size<T, U>> for HW<T>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
     U: Unit,
 {
     fn from(from: Size<T, U>) -> Self {
@@ -91,7 +95,6 @@ where
 
 impl<T, U> Deref for Size<T, U>
 where
-    T: Zero + PartialOrd + Copy + ToPrimitive + Mul<T, Output = T>,
     U: Unit,
 {
     type Target = HW<T>;

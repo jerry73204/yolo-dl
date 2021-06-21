@@ -9,7 +9,7 @@ pub use maplit::hashset;
 pub use mona::prelude::*;
 pub use ndarray::Array5;
 pub use noisy_float::prelude::*;
-pub use num_traits::{FromPrimitive, Num, NumOps, One, ToPrimitive, Zero};
+pub use num_traits::{FromPrimitive, Num, NumCast, NumOps, One, ToPrimitive, Zero};
 pub use serde::{
     de::Error as _, ser::Error as _, Deserialize, Deserializer, Serialize, Serializer,
 };

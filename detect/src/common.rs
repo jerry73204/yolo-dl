@@ -28,7 +28,9 @@ pub use std::{
     sync::Arc,
 };
 pub use tch::{nn, Device, IndexOp, Tensor};
-pub use tch_goodies::{PixelCyCxHW, PixelLabel, Ratio, RatioCyCxHW, RatioLabel};
+pub use tch_goodies::{
+    PixelCyCxHW, PixelLabel, PixelSize, Ratio, RatioCyCxHW, RatioLabel, Rect as _,
+};
 pub use tch_tensor_like::TensorLike;
 pub use yolo_dl::{
     dataset::{

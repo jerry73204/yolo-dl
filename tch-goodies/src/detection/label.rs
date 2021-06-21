@@ -1,5 +1,5 @@
 use crate::{
-    bbox::{CyCxHW, TLBR},
+    bbox::{CyCxHW, Rect, TLBR},
     common::*,
     size::Size,
     unit::{GridUnit, PixelUnit, RatioUnit, Unit},

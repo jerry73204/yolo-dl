@@ -1,5 +1,10 @@
 use super::{area::AreaTensor, cycxhw::CyCxHWTensor, size::SizeTensor};
-use crate::{bbox::CyCxHW, common::*, unit::Unit, utils::IntoTchElement};
+use crate::{
+    bbox::{CyCxHW, Rect},
+    common::*,
+    unit::Unit,
+    utils::IntoTchElement,
+};
 
 /// Checked tensor of batched box parameters in TLBR format.
 #[derive(Debug, TensorLike, Getters)]
