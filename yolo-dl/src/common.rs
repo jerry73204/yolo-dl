@@ -28,8 +28,8 @@ pub use rand::{prelude::*, rngs::StdRng};
 pub use regex::Regex;
 pub use rusty_perm::{prelude::*, PermD};
 pub use serde::{
-    de::{Error as DeserializeError, Visitor},
-    ser::{Error as SerializeError, SerializeSeq},
+    de::{Error as _, Visitor},
+    ser::{Error as _, SerializeSeq},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 pub use slice_of_array::{SliceFlatExt, SliceNestExt};

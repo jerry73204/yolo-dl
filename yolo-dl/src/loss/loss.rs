@@ -18,21 +18,22 @@ pub use yolo_loss_output::*;
 mod yolo_loss_init {
     use super::*;
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct YoloLossInit {
         pub objectness_pos_weight: Option<R64>,
+        #[serde(with = "tch_serde::serde_reduction")]
         pub reduction: Reduction,
-        pub focal_loss_gamma: Option<f64>,
-        pub match_grid_method: Option<MatchGrid>,
-        pub box_metric: Option<BoxMetric>,
-        pub smooth_classification_coef: Option<f64>,
-        pub smooth_objectness_coef: Option<f64>,
-        pub anchor_scale_thresh: Option<f64>,
-        pub iou_loss_weight: Option<f64>,
-        pub objectness_loss_kind: Option<ObjectnessLossKind>,
-        pub classification_loss_kind: Option<ClassificationLossKind>,
-        pub objectness_loss_weight: Option<f64>,
-        pub classification_loss_weight: Option<f64>,
+        pub focal_loss_gamma: R64,
+        pub match_grid_method: MatchGrid,
+        pub box_metric: BoxMetric,
+        pub smooth_classification_coef: R64,
+        pub smooth_objectness_coef: R64,
+        pub anchor_scale_thresh: R64,
+        pub iou_loss_weight: R64,
+        pub objectness_loss_kind: ObjectnessLossKind,
+        pub classification_loss_kind: ClassificationLossKind,
+        pub objectness_loss_weight: R64,
+        pub classification_loss_weight: R64,
     }
 
     impl YoloLossInit {
@@ -54,13 +55,12 @@ mod yolo_loss_init {
             } = self;
             let path = path.borrow();
 
-            let focal_loss_gamma = focal_loss_gamma.unwrap_or(0.0);
-            let box_metric = box_metric.unwrap_or(BoxMetric::DIoU);
-            let smooth_classification_coef = smooth_classification_coef.unwrap_or(0.01);
-            let smooth_objectness_coef = smooth_objectness_coef.unwrap_or(0.0);
-            let iou_loss_weight = iou_loss_weight.unwrap_or(0.05);
-            let objectness_loss_weight = objectness_loss_weight.unwrap_or(1.0);
-            let classification_loss_weight = classification_loss_weight.unwrap_or(0.58);
+            let focal_loss_gamma = focal_loss_gamma.raw();
+            let smooth_objectness_coef = smooth_objectness_coef.raw();
+            let iou_loss_weight = iou_loss_weight.raw();
+            let objectness_loss_weight = objectness_loss_weight.raw();
+            let classification_loss_weight = classification_loss_weight.raw();
+            let smooth_classification_coef = smooth_classification_coef.raw();
 
             ensure!(
                 focal_loss_gamma >= 0.0,
@@ -87,7 +87,7 @@ mod yolo_loss_init {
                 "classification_loss_weight must be non-negative"
             );
 
-            let class_loss = match classification_loss_kind.unwrap_or(ClassificationLossKind::Bce) {
+            let class_loss = match classification_loss_kind {
                 ClassificationLossKind::Bce => ClassificationLoss::Bce(
                     BceWithLogitsLossInit {
                         ..BceWithLogitsLossInit::default(reduction)
@@ -116,7 +116,7 @@ mod yolo_loss_init {
                 }
             };
 
-            let obj_loss = match objectness_loss_kind.unwrap_or(ObjectnessLossKind::Bce) {
+            let obj_loss = match objectness_loss_kind {
                 ObjectnessLossKind::Bce => ObjectnessLoss::Bce(
                     BceWithLogitsLossInit {
                         pos_weight: objectness_pos_weight
@@ -146,16 +146,11 @@ mod yolo_loss_init {
                 ObjectnessLossKind::L2 => ObjectnessLoss::L2(L2Loss::new(reduction)),
             };
 
-            let bbox_matcher = {
-                let mut init = CyCxHWMatcherInit::default();
-                if let Some(match_grid_method) = match_grid_method {
-                    init.match_grid_method = match_grid_method;
-                }
-                if let Some(anchor_scale_thresh) = anchor_scale_thresh {
-                    init.anchor_scale_thresh = anchor_scale_thresh;
-                }
-                init.build()?
-            };
+            let bbox_matcher = CyCxHWMatcherInit {
+                match_grid_method,
+                anchor_scale_thresh,
+            }
+            .build()?;
 
             Ok(YoloLoss {
                 reduction,
@@ -174,32 +169,34 @@ mod yolo_loss_init {
 
     impl Default for YoloLossInit {
         fn default() -> Self {
+            let matcher_init = CyCxHWMatcherInit::default();
+
             Self {
                 objectness_pos_weight: None,
                 reduction: Reduction::Mean,
-                focal_loss_gamma: None,
-                match_grid_method: None,
-                box_metric: None,
-                smooth_classification_coef: None,
-                smooth_objectness_coef: None,
-                anchor_scale_thresh: None,
-                iou_loss_weight: None,
-                objectness_loss_kind: None,
-                classification_loss_kind: None,
-                objectness_loss_weight: None,
-                classification_loss_weight: None,
+                focal_loss_gamma: r64(0.0),
+                match_grid_method: matcher_init.match_grid_method,
+                box_metric: BoxMetric::DIoU,
+                smooth_classification_coef: r64(0.01),
+                smooth_objectness_coef: r64(0.0),
+                anchor_scale_thresh: matcher_init.anchor_scale_thresh,
+                iou_loss_weight: r64(0.05),
+                objectness_loss_kind: ObjectnessLossKind::Bce,
+                classification_loss_kind: ClassificationLossKind::Bce,
+                objectness_loss_weight: r64(1.0),
+                classification_loss_weight: r64(0.58),
             }
         }
     }
 
-    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum ObjectnessLossKind {
         Bce,
         Focal,
         L2,
     }
 
-    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub enum ClassificationLossKind {
         Bce,
         Focal,

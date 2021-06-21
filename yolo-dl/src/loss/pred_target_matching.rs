@@ -4,17 +4,17 @@ use tch_goodies::detection::{
     DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergedDenseDetection,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CyCxHWMatcherInit {
     pub match_grid_method: MatchGrid,
-    pub anchor_scale_thresh: f64,
+    pub anchor_scale_thresh: R64,
 }
 
 impl Default for CyCxHWMatcherInit {
     fn default() -> Self {
         Self {
             match_grid_method: MatchGrid::Rect4,
-            anchor_scale_thresh: 4.0,
+            anchor_scale_thresh: r64(4.0),
         }
     }
 }
@@ -26,16 +26,12 @@ impl CyCxHWMatcherInit {
             anchor_scale_thresh,
         } = self;
         ensure!(
-            anchor_scale_thresh.is_finite(),
-            "anchor_scale_thresh must be a finite number"
-        );
-        ensure!(
             anchor_scale_thresh >= 1.0,
             "anchor_scale_thresh must be greater than or equal to 1"
         );
         Ok(CyCxHWMatcher {
             match_grid_method,
-            anchor_scale_thresh,
+            anchor_scale_thresh: anchor_scale_thresh.raw(),
         })
     }
 }
