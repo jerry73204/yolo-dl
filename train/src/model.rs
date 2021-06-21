@@ -1,9 +1,6 @@
 //! The model adaptor.
 
-use crate::{
-    common::*,
-    config::{DarknetModelConfig, ModelConfig, NewslabV1ModelConfig},
-};
+use crate::{common::*, config};
 use model_graph as graph;
 
 /// The generic model adaptor.
@@ -27,12 +24,12 @@ pub struct NewslabV1Model {
 
 impl Model {
     /// Builds a model adaptor from a configuration file.
-    pub fn new<'a>(path: impl Borrow<nn::Path<'a>>, config: &ModelConfig) -> Result<Self> {
+    pub fn new<'a>(path: impl Borrow<nn::Path<'a>>, config: &config::Model) -> Result<Self> {
         match config {
-            ModelConfig::Darknet(DarknetModelConfig { .. }) => {
+            config::Model::Darknet(config::DarknetModel { .. }) => {
                 todo!();
             }
-            ModelConfig::NewslabV1(NewslabV1ModelConfig { cfg_file }) => {
+            config::Model::NewslabV1(config::NewslabV1Model { cfg_file }) => {
                 let graph = graph::Graph::load_newslab_v1_json(cfg_file)?;
                 let model = YoloModel::from_graph(path, &graph)?;
 

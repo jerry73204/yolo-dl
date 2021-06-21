@@ -8,14 +8,10 @@ pub mod train;
 pub mod training_stream;
 pub mod utils;
 
-use crate::{
-    common::*,
-    config::{Config, DeviceConfig, WorkerConfig},
-    training_stream::TrainingStream,
-};
+use crate::{common::*, training_stream::TrainingStream};
 
 /// The entry of training program.
-pub async fn start(config: Arc<Config>) -> Result<()> {
+pub async fn start(config: Arc<config::Config>) -> Result<()> {
     let start_time = Local::now();
     let config = ArcRef::new(config);
     let logging_dir: Arc<Path> = {
@@ -40,9 +36,9 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     let (logging_tx, logging_rx) = broadcast::channel(2);
     let (data_tx, data_rx) = {
         let channel_size = match &config.training.device_config {
-            DeviceConfig::SingleDevice { .. } => 2,
-            DeviceConfig::MultiDevice { devices, .. } => devices.len() * 2,
-            DeviceConfig::NonUniformMultiDevice { devices, .. } => devices.len() * 2,
+            config::DeviceConfig::SingleDevice { .. } => 2,
+            config::DeviceConfig::MultiDevice { devices, .. } => devices.len() * 2,
+            config::DeviceConfig::NonUniformMultiDevice { devices, .. } => devices.len() * 2,
         };
         tokio::sync::mpsc::channel(channel_size)
     };
@@ -90,7 +86,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
         tokio::task::spawn(async move {
             match config.training.device_config {
-                DeviceConfig::SingleDevice { device } => {
+                config::DeviceConfig::SingleDevice { device } => {
                     tokio::task::spawn_blocking(move || {
                         train::single_gpu_training_worker(
                             config,
@@ -102,7 +98,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                     })
                     .await??;
                 }
-                DeviceConfig::MultiDevice { ref devices } => {
+                config::DeviceConfig::MultiDevice { ref devices } => {
                     let batch_size = config.training.batch_size.get();
                     let minibatch_size = {
                         let num_devices = devices.len();
@@ -128,11 +124,11 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                     )
                     .await?;
                 }
-                DeviceConfig::NonUniformMultiDevice { ref devices } => {
+                config::DeviceConfig::NonUniformMultiDevice { ref devices } => {
                     let workers: Vec<_> = devices
                         .iter()
                         .map(|conf| {
-                            let WorkerConfig {
+                            let config::Worker {
                                 minibatch_size,
                                 device,
                             } = *conf;

@@ -2,7 +2,7 @@
 
 use crate::{
     common::*,
-    config::{Config, LoggingConfig},
+    config,
     utils::{CowTensor, RateCounter},
 };
 use async_std::{fs::File, io::BufWriter};
@@ -17,7 +17,7 @@ mod logging_worker {
     /// The data logging worker.
     #[derive(Debug)]
     pub struct LoggingWorker {
-        config: ArcRef<Config>,
+        config: ArcRef<config::Config>,
         debug_step: i64,
         event_writer: EventWriter<BufWriter<File>>,
         rate_counter: RateCounter,
@@ -27,7 +27,7 @@ mod logging_worker {
     impl LoggingWorker {
         /// Create a data logging worker.
         async fn new(
-            config: ArcRef<Config>,
+            config: ArcRef<config::Config>,
             logging_dir: impl AsRef<Path>,
             rx: broadcast::Receiver<LoggingMessage>,
         ) -> Result<Self> {
@@ -90,9 +90,9 @@ mod logging_worker {
         async fn log_training_output(&mut self, tag: &str, msg: TrainingOutputLog) -> Result<()> {
             let mut timing = Timing::new("log_training_output");
 
-            let Config {
+            let config::Config {
                 logging:
-                    LoggingConfig {
+                    config::Logging {
                         enable_images,
                         enable_debug_stat,
                         ..
@@ -398,9 +398,9 @@ mod logging_worker {
         }
 
         async fn log_debug_images(&mut self, tag: &str, msg: DebugImageLog) -> Result<()> {
-            let Config {
+            let config::Config {
                 logging:
-                    LoggingConfig {
+                    config::Logging {
                         enable_images,
                         enable_debug_stat,
                         ..
@@ -426,9 +426,9 @@ mod logging_worker {
             tag: &str,
             msg: DebugLabeledImageLog,
         ) -> Result<()> {
-            let Config {
+            let config::Config {
                 logging:
-                    LoggingConfig {
+                    config::Logging {
                         enable_images,
                         enable_debug_stat,
                         ..
@@ -484,7 +484,7 @@ mod logging_worker {
     }
 
     pub async fn logging_worker(
-        config: ArcRef<Config>,
+        config: ArcRef<config::Config>,
         logging_dir: impl AsRef<Path>,
         rx: broadcast::Receiver<LoggingMessage>,
     ) -> Result<impl Future<Output = Result<()>> + Send> {

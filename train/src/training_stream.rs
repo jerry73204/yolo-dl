@@ -1,11 +1,4 @@
-use crate::{
-    common::*,
-    config::{
-        CacheConfig, CleanseConfig, ColorJitterConfig, DatasetConfig, DatasetKind, MixUpConfig,
-        PipelineConfig, PreprocessorConfig, RandomAffineConfig,
-    },
-    logging::LoggingMessage,
-};
+use crate::{common::*, config, logging::LoggingMessage};
 
 /// Asynchronous data stream for training.
 #[derive(Derivative)]
@@ -13,7 +6,7 @@ use crate::{
 pub struct TrainingStream {
     batch_size: usize,
     #[derivative(Debug = "ignore")]
-    preprocessor_config: Box<dyn Send + Borrow<PreprocessorConfig>>,
+    preprocessor_config: Box<dyn Send + Borrow<config::Preprocessor>>,
     logging_tx: Option<broadcast::Sender<LoggingMessage>>,
     dataset: Arc<dyn RandomAccessDataset + Sync>,
 }
@@ -21,21 +14,21 @@ pub struct TrainingStream {
 impl TrainingStream {
     pub async fn new(
         batch_size: usize,
-        dataset_config: impl 'static + Send + Borrow<DatasetConfig>,
-        preprocessor_config: impl 'static + Send + Borrow<PreprocessorConfig>,
+        dataset_config: impl 'static + Send + Borrow<config::Dataset>,
+        preprocessor_config: impl 'static + Send + Borrow<config::Preprocessor>,
         logging_tx: Option<broadcast::Sender<LoggingMessage>>,
     ) -> Result<Self> {
         let dataset = {
-            let DatasetConfig {
+            let config::Dataset {
                 kind,
                 class_whitelist,
                 ..
             } = dataset_config.borrow();
-            let PreprocessorConfig {
-                pipeline: PipelineConfig { device, .. },
+            let config::Preprocessor {
+                pipeline: config::Pipeline { device, .. },
                 ref cache,
                 cleanse:
-                    CleanseConfig {
+                    config::Cleanse {
                         out_of_bound_tolerance,
                         min_bbox_size,
                         ..
@@ -44,7 +37,7 @@ impl TrainingStream {
             } = *preprocessor_config.borrow();
 
             match *kind {
-                DatasetKind::Coco {
+                config::DatasetKind::Coco {
                     ref dataset_dir,
                     ref classes_file,
                     ref dataset_name,
@@ -62,18 +55,18 @@ impl TrainingStream {
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
 
                     let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
-                        CacheConfig::NoCache => {
+                        config::Cache::NoCache => {
                             let dataset =
                                 OnDemandDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::FileCache { cache_dir } => {
+                        config::Cache::FileCache { cache_dir } => {
                             let dataset =
                                 FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
                                     .await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::MemoryCache => {
+                        config::Cache::MemoryCache => {
                             let dataset =
                                 MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
@@ -82,7 +75,7 @@ impl TrainingStream {
 
                     dataset
                 }
-                DatasetKind::Voc {
+                config::DatasetKind::Voc {
                     ref dataset_dir,
                     ref classes_file,
                     image_size,
@@ -94,18 +87,18 @@ impl TrainingStream {
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
-                        CacheConfig::NoCache => {
+                        config::Cache::NoCache => {
                             let dataset =
                                 OnDemandDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::FileCache { cache_dir } => {
+                        config::Cache::FileCache { cache_dir } => {
                             let dataset =
                                 FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
                                     .await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::MemoryCache => {
+                        config::Cache::MemoryCache => {
                             let dataset =
                                 MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
@@ -113,7 +106,7 @@ impl TrainingStream {
                     };
                     dataset
                 }
-                DatasetKind::Iii {
+                config::DatasetKind::Iii {
                     ref dataset_dir,
                     ref classes_file,
                     ref blacklist_files,
@@ -130,18 +123,18 @@ impl TrainingStream {
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
-                        CacheConfig::NoCache => {
+                        config::Cache::NoCache => {
                             let dataset =
                                 OnDemandDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::FileCache { cache_dir } => {
+                        config::Cache::FileCache { cache_dir } => {
                             let dataset =
                                 FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
                                     .await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::MemoryCache => {
+                        config::Cache::MemoryCache => {
                             let dataset =
                                 MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
@@ -149,7 +142,7 @@ impl TrainingStream {
                     };
                     dataset
                 }
-                DatasetKind::Csv {
+                config::DatasetKind::Csv {
                     ref image_dir,
                     ref label_file,
                     ref classes_file,
@@ -168,18 +161,18 @@ impl TrainingStream {
                     let dataset =
                         SanitizedDataset::new(dataset, out_of_bound_tolerance, min_bbox_size)?;
                     let dataset: Box<dyn RandomAccessDataset + Sync> = match cache {
-                        CacheConfig::NoCache => {
+                        config::Cache::NoCache => {
                             let dataset =
                                 OnDemandDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::FileCache { cache_dir } => {
+                        config::Cache::FileCache { cache_dir } => {
                             let dataset =
                                 FileCacheDataset::new(dataset, cache_dir, image_size.get(), device)
                                     .await?;
                             Box::new(dataset)
                         }
-                        CacheConfig::MemoryCache => {
+                        config::Cache::MemoryCache => {
                             let dataset =
                                 MemoryCacheDataset::new(dataset, image_size.get(), device).await?;
                             Box::new(dataset)
@@ -257,15 +250,15 @@ impl TrainingStream {
 
         // load samples and scale bboxes
         let stream = {
-            let PreprocessorConfig {
+            let config::Preprocessor {
                 mixup:
-                    MixUpConfig {
+                    config::MixUp {
                         mixup_prob,
                         cutmix_prob,
                         mosaic_prob,
                         ..
                     },
-                cleanse: CleanseConfig { bbox_scaling, .. },
+                cleanse: config::Cleanse { bbox_scaling, .. },
                 ..
             } = *self.preprocessor_config.deref().borrow();
             let mixup_prob = mixup_prob.to_f64();
@@ -348,24 +341,9 @@ impl TrainingStream {
 
         // color jitter
         let stream = {
-            let PreprocessorConfig {
-                color_jitter:
-                    ColorJitterConfig {
-                        color_jitter_prob,
-                        hue_shift,
-                        saturation_shift,
-                        value_shift,
-                    },
-                ..
-            } = *self.preprocessor_config.deref().borrow();
-            let color_jitter = Arc::new(
-                ColorJitterInit {
-                    hue_shift,
-                    saturation_shift,
-                    value_shift,
-                }
-                .build(),
-            );
+            let color_jitter_config = &self.preprocessor_config.deref().borrow().color_jitter;
+            let color_jitter_prob = color_jitter_config.color_jitter_prob;
+            let color_jitter = Arc::new(color_jitter_config.color_jitter_init().build());
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
 
@@ -420,9 +398,9 @@ impl TrainingStream {
 
         // random affine
         let stream = {
-            let PreprocessorConfig {
+            let config::Preprocessor {
                 random_affine:
-                    RandomAffineConfig {
+                    config::RandomAffine {
                         affine_prob,
                         rotate_prob,
                         rotate_degrees,
@@ -434,7 +412,7 @@ impl TrainingStream {
                         vertical_flip_prob,
                     },
                 cleanse:
-                    CleanseConfig {
+                    config::Cleanse {
                         min_bbox_size,
                         min_bbox_cropping_ratio,
                         ..
@@ -510,9 +488,9 @@ impl TrainingStream {
 
         // mixup
         let stream = {
-            let PreprocessorConfig {
+            let config::Preprocessor {
                 mixup:
-                    MixUpConfig {
+                    config::MixUp {
                         mixup_prob,
                         cutmix_prob,
                         mosaic_prob,
@@ -520,7 +498,7 @@ impl TrainingStream {
                         ..
                     },
                 cleanse:
-                    CleanseConfig {
+                    config::Cleanse {
                         min_bbox_size,
                         min_bbox_cropping_ratio,
                         ..

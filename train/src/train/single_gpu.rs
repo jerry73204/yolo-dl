@@ -1,9 +1,6 @@
 use crate::{
     common::*,
-    config::{
-        BenchmarkConfig, Config, LoadCheckpoint, LoggingConfig, LossConfig, OptimizerConfig,
-        TrainingConfig,
-    },
+    config,
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
     training_stream::TrainingRecord,
@@ -13,7 +10,7 @@ use tch_goodies::MergedDenseDetection;
 
 /// Start the single-GPU training worker.
 pub fn single_gpu_training_worker(
-    config: ArcRef<Config>,
+    config: ArcRef<config::Config>,
     checkpoint_dir: Arc<PathBuf>,
     mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
@@ -21,30 +18,19 @@ pub fn single_gpu_training_worker(
 ) -> Result<()> {
     info!("use single device {:?}", device);
 
-    let Config {
+    let config::Config {
         model: ref model_config,
         training:
-            TrainingConfig {
+            config::Training {
                 override_initial_step,
                 optimizer:
-                    OptimizerConfig {
+                    config::Optimizer {
                         ref lr_schedule, ..
-                    },
-                loss:
-                    LossConfig {
-                        box_metric,
-                        match_grid_method,
-                        iou_loss_weight,
-                        objectness_positive_weight,
-                        objectness_loss_fn,
-                        classification_loss_fn,
-                        objectness_loss_weight,
-                        classification_loss_weight,
                     },
                 ..
             },
         benchmark:
-            BenchmarkConfig {
+            config::Benchmark {
                 nms_iou_thresh,
                 nms_conf_thresh,
                 ..
@@ -61,26 +47,18 @@ pub fn single_gpu_training_worker(
     let root = vs.root();
 
     let mut model = Model::new(&root, model_config)?;
-    let yolo_loss = YoloLossInit {
-        reduction: Reduction::Mean,
-        match_grid_method: Some(match_grid_method),
-        box_metric: Some(box_metric),
-        iou_loss_weight: iou_loss_weight.map(|val| val.raw()),
-        objectness_loss_kind: Some(objectness_loss_fn),
-        classification_loss_kind: Some(classification_loss_fn),
-        objectness_pos_weight: objectness_positive_weight,
-        objectness_loss_weight: objectness_loss_weight.map(|val| val.raw()),
-        classification_loss_weight: classification_loss_weight.map(|val| val.raw()),
-        ..Default::default()
-    }
-    .build(&root / "loss")?;
+    let yolo_loss = config
+        .training
+        .loss
+        .yolo_loss_init()
+        .build(&root / "loss")?;
     let yolo_inference = YoloInferenceInit {
         nms_iou_thresh,
         nms_conf_thresh,
     }
     .build()?;
     let yolo_benchmark = {
-        let BenchmarkConfig {
+        let config::Benchmark {
             nms_iou_thresh,
             nms_conf_thresh,
             ..
@@ -94,9 +72,9 @@ pub fn single_gpu_training_worker(
 
     let mut training_step_tensor = root.zeros_no_train("training_step", &[]);
     let mut optimizer = {
-        let TrainingConfig {
+        let config::Training {
             optimizer:
-                OptimizerConfig {
+                config::Optimizer {
                     momentum,
                     weight_decay,
                     ..
@@ -132,7 +110,7 @@ pub fn single_gpu_training_worker(
                 init_step
             }
             None => match &config.training.load_checkpoint {
-                LoadCheckpoint::Disabled => 0,
+                config::LoadCheckpoint::Disabled => 0,
                 _ => f32::from(&training_step_tensor) as usize + 1,
             },
         }
@@ -190,7 +168,7 @@ pub fn single_gpu_training_worker(
 
             // run inference
             let inference = {
-                let LoggingConfig {
+                let config::Logging {
                     enable_inference,
                     enable_benchmark,
                     ..

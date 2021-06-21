@@ -2,10 +2,7 @@ use tch_goodies::MergedDenseDetection;
 
 use crate::{
     common::*,
-    config::{
-        BenchmarkConfig, Config, LoadCheckpoint, LoggingConfig, LossConfig, OptimizerConfig,
-        TrainingConfig,
-    },
+    config,
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
     training_stream::TrainingRecord,
@@ -41,7 +38,7 @@ struct WorkerOutput {
 
 /// Start the multi-GPU training worker.
 pub async fn multi_gpu_training_worker(
-    config: ArcRef<Config>,
+    config: ArcRef<config::Config>,
     checkpoint_dir: Arc<PathBuf>,
     mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
@@ -56,7 +53,7 @@ pub async fn multi_gpu_training_worker(
     );
 
     let yolo_inference = {
-        let BenchmarkConfig {
+        let config::Benchmark {
             nms_iou_thresh,
             nms_conf_thresh,
             ..
@@ -69,7 +66,7 @@ pub async fn multi_gpu_training_worker(
         Arc::new(yolo_inference)
     };
     let yolo_benchmark = {
-        let BenchmarkConfig {
+        let config::Benchmark {
             nms_iou_thresh,
             nms_conf_thresh,
             ..
@@ -92,12 +89,12 @@ pub async fn multi_gpu_training_worker(
 
     // training loop
     {
-        let Config {
+        let config::Config {
             training:
-                TrainingConfig {
+                config::Training {
                     save_checkpoint_steps,
                     optimizer:
-                        OptimizerConfig {
+                        config::Optimizer {
                             ref lr_schedule,
                             clip_grad,
                             ..
@@ -241,7 +238,7 @@ pub async fn multi_gpu_training_worker(
 
                     // run inference
                     let inference = {
-                        let LoggingConfig {
+                        let config::Logging {
                             enable_inference,
                             enable_benchmark,
                             ..
@@ -358,7 +355,7 @@ pub async fn multi_gpu_training_worker(
 }
 
 async fn initialize_worker_contexts(
-    config: ArcRef<Config>,
+    config: ArcRef<config::Config>,
     workers: &[(Device, usize)],
 ) -> Result<(Vec<WorkerContext>, usize)> {
     const DUMMY_LR: f64 = 1.0;
@@ -377,20 +374,9 @@ async fn initialize_worker_contexts(
                 let config = config.clone();
 
                 move || {
-                    let TrainingConfig {
-                        loss:
-                            LossConfig {
-                                match_grid_method,
-                                box_metric,
-                                iou_loss_weight,
-                                objectness_loss_fn,
-                                classification_loss_fn,
-                                objectness_positive_weight,
-                                objectness_loss_weight,
-                                classification_loss_weight,
-                            },
+                    let config::Training {
                         optimizer:
-                            OptimizerConfig {
+                            config::Optimizer {
                                 momentum,
                                 weight_decay,
                                 ..
@@ -403,19 +389,11 @@ async fn initialize_worker_contexts(
                     let root = vs.root();
 
                     let model = Model::new(&root, &model_config)?;
-                    let yolo_loss = YoloLossInit {
-                        reduction: Reduction::Mean,
-                        match_grid_method: Some(match_grid_method),
-                        box_metric: Some(box_metric),
-                        iou_loss_weight: iou_loss_weight.map(R64::raw),
-                        objectness_loss_kind: Some(objectness_loss_fn),
-                        classification_loss_kind: Some(classification_loss_fn),
-                        objectness_pos_weight: objectness_positive_weight,
-                        objectness_loss_weight: objectness_loss_weight.map(R64::raw),
-                        classification_loss_weight: classification_loss_weight.map(R64::raw),
-                        ..Default::default()
-                    }
-                    .build(&root / "loss")?;
+                    let yolo_loss = config
+                        .training
+                        .loss
+                        .yolo_loss_init()
+                        .build(&root / "loss")?;
 
                     let training_step = root.zeros_no_train("training_step", &[]);
 
@@ -470,9 +448,9 @@ async fn initialize_worker_contexts(
 
     // load initial training step
     let init_training_step = {
-        let Config {
+        let config::Config {
             training:
-                TrainingConfig {
+                config::Training {
                     override_initial_step,
                     ..
                 },
@@ -486,7 +464,7 @@ async fn initialize_worker_contexts(
                 init_step
             }
             None => match &config.training.load_checkpoint {
-                LoadCheckpoint::Disabled => 0,
+                config::LoadCheckpoint::Disabled => 0,
                 _ => f32::from(&*training_step_tensor) as usize + 1,
             },
         }
@@ -527,13 +505,13 @@ async fn sync_weights(worker_contexts: Vec<WorkerContext>) -> Result<Vec<WorkerC
 }
 
 async fn forward_step(
-    config: ArcRef<Config>,
+    config: ArcRef<config::Config>,
     worker_contexts: Vec<WorkerContext>,
     image: Tensor,
     bboxes: &[Vec<RatioLabel>],
 ) -> Result<(Vec<WorkerContext>, Vec<WorkerOutput>)> {
-    let Config {
-        training: TrainingConfig { batch_size, .. },
+    let config::Config {
+        training: config::Training { batch_size, .. },
         ..
     } = *config;
     let batch_size = batch_size.get();
@@ -651,15 +629,15 @@ async fn forward_step(
 }
 
 fn backward_step(
-    config: &Config,
+    config: &config::Config,
     master_device: Device,
     worker_contexts: &mut [WorkerContext],
     outputs: &[WorkerOutput],
     clip_grad: Option<f64>,
 ) -> Result<()> {
     tch::no_grad(|| {
-        let Config {
-            training: TrainingConfig { batch_size, .. },
+        let config::Config {
+            training: config::Training { batch_size, .. },
             ..
         } = *config;
         let batch_size = batch_size.get();

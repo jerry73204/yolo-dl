@@ -14,12 +14,12 @@ serde_semver::declare_version!(ConfigVersion, 0, 1, 0);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub version: ConfigVersion,
-    pub model: ModelConfig,
-    pub dataset: DatasetConfig,
-    pub logging: LoggingConfig,
-    pub preprocessor: PreprocessorConfig,
-    pub training: TrainingConfig,
-    pub benchmark: BenchmarkConfig,
+    pub model: Model,
+    pub dataset: Dataset,
+    pub logging: Logging,
+    pub preprocessor: Preprocessor,
+    pub training: Training,
+    pub benchmark: Benchmark,
 }
 
 impl Config {
@@ -39,20 +39,20 @@ mod model {
     /// The model configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "kind")]
-    pub enum ModelConfig {
-        Darknet(DarknetModelConfig),
-        NewslabV1(NewslabV1ModelConfig),
+    pub enum Model {
+        Darknet(DarknetModel),
+        NewslabV1(NewslabV1Model),
     }
 
     /// The Darknet variant model configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct DarknetModelConfig {
+    pub struct DarknetModel {
         pub cfg_file: PathBuf,
     }
 
     /// The NEWSLAB variant model configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct NewslabV1ModelConfig {
+    pub struct NewslabV1Model {
         pub cfg_file: PathBuf,
     }
 }
@@ -62,7 +62,7 @@ mod dataset {
 
     /// Dataset options.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct DatasetConfig {
+    pub struct Dataset {
         /// Optional list of whitelisted classes.
         pub class_whitelist: Option<HashSet<String>>,
         /// The dataset configuration.
@@ -110,17 +110,17 @@ mod preprocessor {
 
     /// Data preprocessing options.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct PreprocessorConfig {
-        pub pipeline: PipelineConfig,
-        pub cache: CacheConfig,
-        pub mixup: MixUpConfig,
-        pub random_affine: RandomAffineConfig,
-        pub color_jitter: ColorJitterConfig,
-        pub cleanse: CleanseConfig,
+    pub struct Preprocessor {
+        pub pipeline: Pipeline,
+        pub cache: Cache,
+        pub mixup: MixUp,
+        pub random_affine: RandomAffine,
+        pub color_jitter: ColorJitter,
+        pub cleanse: Cleanse,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct PipelineConfig {
+    pub struct Pipeline {
         /// If set, process image records without ordering.
         pub unordered_records: bool,
         /// If set, produce training batches without ordering.
@@ -134,7 +134,7 @@ mod preprocessor {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "method")]
-    pub enum CacheConfig {
+    pub enum Cache {
         NoCache,
         FileCache {
             /// The diretory to save the data cache. SSD-backed filesystem and tmpfs are suggested.
@@ -144,7 +144,7 @@ mod preprocessor {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct MixUpConfig {
+    pub struct MixUp {
         /// The probability to apply Mix-Up.
         pub mixup_prob: Ratio,
         /// The probability to apply Cut-Mix.
@@ -158,7 +158,7 @@ mod preprocessor {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct RandomAffineConfig {
+    pub struct RandomAffine {
         /// The probability to apply random affine transformation.
         pub affine_prob: Ratio,
         /// The probability to apply random rotation.
@@ -182,15 +182,32 @@ mod preprocessor {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct ColorJitterConfig {
+    pub struct ColorJitter {
         pub color_jitter_prob: Ratio,
         pub hue_shift: Option<R64>,
         pub saturation_shift: Option<R64>,
         pub value_shift: Option<R64>,
     }
 
+    impl ColorJitter {
+        pub fn color_jitter_init(&self) -> ColorJitterInit {
+            let Self {
+                hue_shift,
+                saturation_shift,
+                value_shift,
+                ..
+            } = *self;
+
+            ColorJitterInit {
+                hue_shift,
+                saturation_shift,
+                value_shift,
+            }
+        }
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct CleanseConfig {
+    pub struct Cleanse {
         /// The scaling factor of bounding box size.
         pub bbox_scaling: R64,
         /// The factor that tolerates out-of-image boundary bounding boxes.
@@ -207,7 +224,7 @@ mod training {
 
     /// The training options.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct TrainingConfig {
+    pub struct Training {
         /// The batch size.
         pub batch_size: NonZeroUsize,
         /// If enabled, it overrides the initial training step.
@@ -218,9 +235,9 @@ mod training {
         pub load_checkpoint: LoadCheckpoint,
         /// Training device options.
         pub device_config: DeviceConfig,
-        pub optimizer: OptimizerConfig,
+        pub optimizer: Optimizer,
         /// The loss function options.
-        pub loss: LossConfig,
+        pub loss: Loss,
     }
 
     /// Training device options.
@@ -238,11 +255,11 @@ mod training {
             devices: Vec<Device>,
         },
         /// Use multiple device with mini-batch size set for each device.
-        NonUniformMultiDevice { devices: Vec<WorkerConfig> },
+        NonUniformMultiDevice { devices: Vec<Worker> },
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct WorkerConfig {
+    pub struct Worker {
         #[serde(with = "tch_serde::serde_device")]
         pub device: Device,
         pub minibatch_size: NonZeroUsize,
@@ -272,7 +289,7 @@ mod training {
 
     /// The loss function configuration.
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct LossConfig {
+    pub struct Loss {
         /// The choice of objectness loss function.
         pub objectness_loss_fn: ObjectnessLossKind,
         /// The choice of classification loss function.
@@ -291,8 +308,47 @@ mod training {
         pub classification_loss_weight: Option<R64>,
     }
 
+    impl Loss {
+        pub fn yolo_loss_init(&self) -> YoloLossInit {
+            let Self {
+                box_metric,
+                match_grid_method,
+                iou_loss_weight,
+                objectness_positive_weight,
+                objectness_loss_fn,
+                classification_loss_fn,
+                objectness_loss_weight,
+                classification_loss_weight,
+            } = *self;
+
+            let mut init = YoloLossInit {
+                reduction: Reduction::Mean,
+                match_grid_method,
+                box_metric,
+                objectness_loss_kind: objectness_loss_fn,
+                classification_loss_kind: classification_loss_fn,
+                objectness_pos_weight: objectness_positive_weight,
+                ..Default::default()
+            };
+
+            if let Some(iou_loss_weight) = iou_loss_weight {
+                init.iou_loss_weight = iou_loss_weight;
+            }
+
+            if let Some(objectness_loss_weight) = objectness_loss_weight {
+                init.objectness_loss_weight = objectness_loss_weight;
+            }
+
+            if let Some(classification_loss_weight) = classification_loss_weight {
+                init.classification_loss_weight = classification_loss_weight;
+            }
+
+            init
+        }
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct OptimizerConfig {
+    pub struct Optimizer {
         /// Learning rate scheduling strategy.
         pub lr_schedule: LearningRateSchedule,
         /// The momentum parameter for optimizer.
@@ -306,7 +362,7 @@ mod training {
 
 /// Data logging options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoggingConfig {
+pub struct Logging {
     pub dir: PathBuf,
     pub enable_images: bool,
     pub enable_debug_stat: bool,
@@ -315,7 +371,7 @@ pub struct LoggingConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BenchmarkConfig {
+pub struct Benchmark {
     pub nms_iou_thresh: R64,
     pub nms_conf_thresh: R64,
 }
