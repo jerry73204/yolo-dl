@@ -72,7 +72,7 @@ impl MergedDenseDetection {
                     // compute base flat index
 
                     DetectionInfo {
-                        feature_size: GridSize::new(feature_h, feature_w).unwrap(),
+                        feature_size: GridSize::from_hw(feature_h, feature_w).unwrap(),
                         anchors: anchors.to_owned(),
                         flat_index_range: begin_flat_index..end_flat_index,
                     }
@@ -234,8 +234,7 @@ impl MergedDenseDetection {
                     ref anchors,
                     ..
                 } = *meta;
-                let [h, w] = feature_size.hw_params();
-                h * w * anchors.len() as i64
+                feature_size.h * feature_size.w * anchors.len() as i64
             })
             .sum();
 
@@ -339,9 +338,9 @@ impl MergedDenseDetection {
             .find(|(_layer_index, meta)| flat_index < meta.flat_index_range.end)?;
 
         let remainder = flat_index - flat_index_range.start;
-        let grid_col = remainder % feature_size.w();
-        let grid_row = remainder / feature_size.w() % feature_size.h();
-        let anchor_index = remainder / feature_size.w() / feature_size.h();
+        let grid_col = remainder % feature_size.w;
+        let grid_row = remainder / feature_size.w % feature_size.h;
+        let anchor_index = remainder / feature_size.w / feature_size.h;
 
         if anchor_index >= anchors.len() as i64 {
             return None;
@@ -373,7 +372,7 @@ impl MergedDenseDetection {
 
         let flat_index = flat_index_range.start
             + grid_col
-            + feature_size.w() * (grid_row + feature_size.h() * anchor_index);
+            + feature_size.w * (grid_row + feature_size.h * anchor_index);
 
         Some(FlatIndex {
             batch_index,

@@ -57,7 +57,7 @@ impl VocDataset {
 
                         let size = {
                             let voc_dataset::Size { width, height, .. } = annotation.size;
-                            PixelSize::new(height, width).unwrap()
+                            PixelSize::from_hw(height, width).unwrap()
                         };
 
                         let bboxes: Vec<_> = annotation

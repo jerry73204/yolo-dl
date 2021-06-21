@@ -156,12 +156,12 @@ impl DenseDetectionTensor {
         let h = h * orig_h as f64 / new_h as f64;
         let w = w * orig_w as f64 / new_w as f64;
 
-        let anchors: Vec<_> = anchors
+        let anchors: Vec<RatioSize<_>> = anchors
             .iter()
             .map(|size| {
-                RatioSize::new(
-                    size.h() * orig_h as f64 / new_h as f64,
-                    size.w() * orig_w as f64 / new_w as f64,
+                RatioSize::from_hw(
+                    size.h * orig_h as f64 / new_h as f64,
+                    size.w * orig_w as f64 / new_w as f64,
                 )
                 .unwrap()
             })
@@ -352,7 +352,7 @@ impl DenseDetectionTensor {
             .next()
             .unwrap()
             .into_iter()
-            .map(|size| RatioSize::new(size.h() / num_tensors as f64, size.w()).unwrap())
+            .map(|size| RatioSize::from_hw(size.h / num_tensors as f64, size.w).unwrap())
             .collect();
 
         Ok(Self {
@@ -447,12 +447,12 @@ impl DenseDetectionTensor {
         let w = Tensor::cat(&w_vec, 4);
         let obj_logit = Tensor::cat(&obj_vec, 4);
         let class_logit = Tensor::cat(&class_vec, 4);
-        let anchors: Vec<_> = anchors_set
+        let anchors: Vec<RatioSize<_>> = anchors_set
             .into_iter()
             .next()
             .unwrap()
             .into_iter()
-            .map(|size| RatioSize::new(size.h(), size.w() / num_tensors as f64).unwrap())
+            .map(|size| RatioSize::from_hw(size.h, size.w / num_tensors as f64).unwrap())
             .collect();
 
         Ok(Self {
@@ -600,7 +600,7 @@ mod tests {
                 w,
                 obj_logit,
                 class_logit,
-                anchors: vec![RatioSize::new(r64(1.0), r64(1.0)).unwrap()],
+                anchors: vec![RatioSize::from_hw(r64(1.0), r64(1.0)).unwrap()],
             }
             .try_into()?;
 

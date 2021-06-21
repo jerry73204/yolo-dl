@@ -237,7 +237,8 @@ impl YoloModel {
                             .iter()
                             .map(|size| -> Result<_> {
                                 let config::Size { h, w } = *size;
-                                let size = RatioSize::new(h.try_into()?, w.try_into()?).unwrap();
+                                let size =
+                                    RatioSize::from_hw(h.try_into()?, w.try_into()?).unwrap();
                                 Ok(size)
                             })
                             .try_collect()?;

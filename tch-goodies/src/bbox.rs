@@ -2,7 +2,7 @@
 
 use crate::{
     common::*,
-    size::Size,
+    size::{GridSize, PixelSize, Size},
     unit::{GridUnit, PixelUnit, RatioUnit, Unit, Unitless},
 };
 use num_traits::NumCast;
@@ -63,7 +63,7 @@ mod tlbr {
             let Self { t, l, b, r, .. } = *self;
             let h = b - t;
             let w = r - l;
-            Size::new(h, w).unwrap()
+            Size::from_hw(h, w).unwrap()
         }
 
         pub fn to_cycxhw(&self) -> CyCxHW<T, U> {
@@ -311,7 +311,7 @@ mod cycxhw {
 
         pub fn size(&self) -> Size<T, U> {
             let Self { h, w, .. } = *self;
-            Size::new(h, w).unwrap()
+            Size::from_hw(h, w).unwrap()
         }
 
         pub fn area(&self) -> T {
@@ -336,31 +336,31 @@ mod cycxhw {
             })
         }
 
-        pub fn scale_to_unit<S, V>(&self, h_scale: S, w_scale: S) -> Result<CyCxHW<S, V>>
-        where
-            S: Float,
-            V: Unit,
-        {
-            let zero = S::zero();
-            ensure!(
-                h_scale >= zero && w_scale >= zero,
-                "height and width must be non-negative"
-            );
+        // pub fn scale_to_unit<S, V>(&self, h_scale: S, w_scale: S) -> Result<CyCxHW<S, V>>
+        // where
+        //     S: Float,
+        //     V: Unit,
+        // {
+        //     let zero = S::zero();
+        //     ensure!(
+        //         h_scale >= zero && w_scale >= zero,
+        //         "height and width must be non-negative"
+        //     );
 
-            let Self { cy, cx, h, w, .. } = *self;
-            let cy = <S as NumCast>::from(cy).unwrap() * h_scale;
-            let cx = <S as NumCast>::from(cx).unwrap() * w_scale;
-            let h = <S as NumCast>::from(h).unwrap() * h_scale;
-            let w = <S as NumCast>::from(w).unwrap() * w_scale;
+        //     let Self { cy, cx, h, w, .. } = *self;
+        //     let cy = <S as NumCast>::from(cy).unwrap() * h_scale;
+        //     let cx = <S as NumCast>::from(cx).unwrap() * w_scale;
+        //     let h = <S as NumCast>::from(h).unwrap() * h_scale;
+        //     let w = <S as NumCast>::from(w).unwrap() * w_scale;
 
-            Ok(CyCxHW {
-                cy,
-                cx,
-                h,
-                w,
-                _phantom: PhantomData,
-            })
-        }
+        //     Ok(CyCxHW {
+        //         cy,
+        //         cx,
+        //         h,
+        //         w,
+        //         _phantom: PhantomData,
+        //     })
+        // }
 
         pub fn scale_size(&self, scale: T) -> Result<Self> {
             let Self { cy, cx, h, w, .. } = *self;
@@ -385,6 +385,61 @@ mod cycxhw {
 
         pub fn hausdorff_distance_to(&self, other: &Self) -> T {
             self.to_tlbr().hausdorff_distance_to(&other.to_tlbr())
+        }
+    }
+
+    impl<T> PixelCyCxHW<T>
+    where
+        T: Float,
+    {
+        pub fn to_ratio_cycxhw(&self, size: &PixelSize<T>) -> RatioCyCxHW<T> {
+            let cy = self.cy / size.h;
+            let cx = self.cx / size.w;
+            let h = self.h / size.h;
+            let w = self.w / size.w;
+
+            CyCxHW {
+                cy,
+                cx,
+                h,
+                w,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<T> RatioCyCxHW<T>
+    where
+        T: Float,
+    {
+        pub fn to_pixel_cycxhw(&self, size: &PixelSize<T>) -> PixelCyCxHW<T> {
+            let cy = self.cy * size.h;
+            let cx = self.cx * size.w;
+            let h = self.h * size.h;
+            let w = self.w * size.w;
+
+            CyCxHW {
+                cy,
+                cx,
+                h,
+                w,
+                _phantom: PhantomData,
+            }
+        }
+
+        pub fn to_grid_cycxhw(&self, size: &GridSize<T>) -> GridCyCxHW<T> {
+            let cy = self.cy * size.h;
+            let cx = self.cx * size.w;
+            let h = self.h * size.h;
+            let w = self.w * size.w;
+
+            CyCxHW {
+                cy,
+                cx,
+                h,
+                w,
+                _phantom: PhantomData,
+            }
         }
     }
 
@@ -426,7 +481,7 @@ mod cycxhw {
         U: Unit,
     {
         fn as_ref(&self) -> &CyCxHW<T, U> {
-            &self
+            self
         }
     }
 }

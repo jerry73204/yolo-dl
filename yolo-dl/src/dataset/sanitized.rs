@@ -35,12 +35,12 @@ where
                 } = *record.as_ref();
 
                 ensure!(
-                    size.h() > 0 && size.w() > 0,
+                    size.h > 0 && size.w > 0,
                     "image height and width must be positive"
                 );
 
-                let range_h = (-out_of_bound_tolerance)..(out_of_bound_tolerance + size.h() as f64);
-                let range_w = (-out_of_bound_tolerance)..(out_of_bound_tolerance + size.w() as f64);
+                let range_h = (-out_of_bound_tolerance)..(out_of_bound_tolerance + size.h as f64);
+                let range_w = (-out_of_bound_tolerance)..(out_of_bound_tolerance + size.w as f64);
 
                 let bboxes: Vec<_> = orig_bboxes
                     .iter()
@@ -60,24 +60,24 @@ where
                         );
 
                         // crop out out of bound parts
-                        let sanitized_t = clamp(tlbr.t(), r64(0.0), r64(size.h() as f64));
-                        let sanitized_b = clamp(tlbr.b(), r64(0.0), r64(size.h() as f64));
-                        let sanitized_l = clamp(tlbr.l(), r64(0.0), r64(size.w() as f64));
-                        let sanitized_r = clamp(tlbr.r(), r64(0.0), r64(size.w() as f64));
+                        let sanitized_t = clamp(tlbr.t(), r64(0.0), r64(size.h as f64));
+                        let sanitized_b = clamp(tlbr.b(), r64(0.0), r64(size.h as f64));
+                        let sanitized_l = clamp(tlbr.l(), r64(0.0), r64(size.w as f64));
+                        let sanitized_r = clamp(tlbr.r(), r64(0.0), r64(size.w as f64));
 
                         debug_assert!(
-                            (0.0..=(size.h() as f64)).contains(&sanitized_t.raw())
-                                && (0.0..=(size.h() as f64)).contains(&sanitized_b.raw())
-                                && (0.0..=(size.w() as f64)).contains(&sanitized_l.raw())
-                                && (0.0..=(size.w() as f64)).contains(&sanitized_r.raw())
+                            (0.0..=(size.h as f64)).contains(&sanitized_t.raw())
+                                && (0.0..=(size.h as f64)).contains(&sanitized_b.raw())
+                                && (0.0..=(size.w as f64)).contains(&sanitized_l.raw())
+                                && (0.0..=(size.w as f64)).contains(&sanitized_r.raw())
                         );
 
                         // kick of small bboxes
                         let sanitized_h = sanitized_b - sanitized_t;
                         let sanitized_w = sanitized_r - sanitized_l;
 
-                        if sanitized_h / size.h() as f64 <= min_bbox_size
-                            || sanitized_w / size.w() as f64 <= min_bbox_size
+                        if sanitized_h / size.h as f64 <= min_bbox_size
+                            || sanitized_w / size.w as f64 <= min_bbox_size
                         {
                             return Ok(None);
                         }
@@ -97,7 +97,8 @@ where
                         Ok(Some(sanitized_bbox))
                     })
                     .filter_map(|result| result.transpose())
-                    .try_collect()?;
+                    .try_collect()
+                    .with_context(|| format!("fail to open file '{}'", path.display()))?;
 
                 filtered_bbox_count += orig_bboxes.len() - bboxes.len();
 

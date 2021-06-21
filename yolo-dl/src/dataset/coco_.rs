@@ -133,7 +133,7 @@ impl CocoDataset {
 
                 Ok(Arc::new(FileRecord {
                     path: dataset.image_dir.join(&image.file_name),
-                    size: PixelSize::new(image.height, image.width).unwrap(),
+                    size: PixelSize::from_hw(image.height, image.width).unwrap(),
                     bboxes,
                 }))
             })

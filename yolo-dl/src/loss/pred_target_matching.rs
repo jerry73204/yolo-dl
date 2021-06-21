@@ -57,7 +57,7 @@ impl CyCxHWMatcher {
             // filter out small bboxes
             .flat_map(|(batch_index, bboxes)| {
                 bboxes.iter().filter_map(move |bbox| {
-                    let [h, w] = bbox.size().cast::<f64>().unwrap().hw_params();
+                    let [h, w] = bbox.size().cast::<f64>().unwrap().hw();
                     if abs_diff_eq!(h, 0.0) || abs_diff_eq!(w, 0.0) {
                         warn!("Ignore zero-sized bounding box {:?}.", bbox);
                         return None;
@@ -82,8 +82,7 @@ impl CyCxHWMatcher {
                 let neighbor_grid_indexes: Vec<_> = {
                     let target_bbox_grid: GridCyCxHW<R64> = target_bbox
                         .cycxhw
-                        .scale_to_unit(r64(feature_size.h() as f64), r64(feature_size.w() as f64))
-                        .unwrap();
+                        .to_grid_cycxhw(&feature_size.cast().unwrap());
                     let target_cy = target_bbox_grid.cy();
                     let target_cx = target_bbox_grid.cx();
                     debug_assert!(target_cy >= 0.0 && target_cx >= 0.0);
@@ -110,10 +109,10 @@ impl CyCxHWMatcher {
                             let left = (target_cx_fract < snap_thresh && target_col >= 1)
                                 .then(|| (target_row, target_col - 1));
                             let bottom = (target_cy_fract > (1.0 - snap_thresh)
-                                && target_row <= feature_size.h() - 2)
+                                && target_row <= feature_size.h - 2)
                                 .then(|| (target_row + 1, target_col));
                             let right = (target_cx_fract > (1.0 - snap_thresh)
-                                && target_col <= feature_size.w() - 2)
+                                && target_col <= feature_size.w - 2)
                                 .then(|| (target_row, target_col + 1));
 
                             orig_iter
@@ -127,10 +126,7 @@ impl CyCxHWMatcher {
                 };
 
                 debug_assert!(neighbor_grid_indexes.iter().cloned().all(|(row, col)| {
-                    row >= 0
-                        && row <= feature_size.h() - 1
-                        && col >= 0
-                        && col <= feature_size.w() - 1
+                    row >= 0 && row <= feature_size.h - 1 && col >= 0 && col <= feature_size.w - 1
                 }));
 
                 (
@@ -144,7 +140,7 @@ impl CyCxHWMatcher {
             // pair each target bbox with each anchor
             .flat_map(|args| {
                 let (batch_index, layer_index, target_bbox, neighbor_grid_indexes, anchors) = args;
-                let [target_h, target_w] = target_bbox.size().cast::<f64>().unwrap().hw_params();
+                let [target_h, target_w] = target_bbox.size().cast::<f64>().unwrap().hw();
 
                 // pair up anchors and neighbor grid indexes
                 anchors
@@ -153,7 +149,7 @@ impl CyCxHWMatcher {
                     .enumerate()
                     .filter_map(move |(anchor_index, anchor_size)| {
                         // filter by anchor sizes
-                        let [anchor_h, anchor_w] = anchor_size.cast::<f64>().unwrap().hw_params();
+                        let [anchor_h, anchor_w] = anchor_size.cast::<f64>().unwrap().hw();
 
                         // convert ratio to float to avoid range checking
                         let is_size_bounded = target_h / anchor_h <= self.anchor_scale_thresh
@@ -177,11 +173,7 @@ impl CyCxHWMatcher {
                             let feature_size = &prediction.info[layer_index].feature_size;
                             let target_bbox_grid: GridCyCxHW<R64> = target_bbox
                                 .cycxhw
-                                .scale_to_unit(
-                                    r64(feature_size.h() as f64),
-                                    r64(feature_size.w() as f64),
-                                )
-                                .unwrap();
+                                .to_grid_cycxhw(&feature_size.cast().unwrap());
                             let target_cy = target_bbox_grid.cy();
                             let target_cx = target_bbox_grid.cx();
 
@@ -207,8 +199,8 @@ impl CyCxHWMatcher {
                         hash_map::Entry::Occupied(mut entry) => {
                             let orig_bbox = entry.get_mut();
                             let feature_size = &prediction.info[layer_index as usize].feature_size;
-                            let pred_cy = (grid_row as f64 + 0.5) / feature_size.h() as f64;
-                            let pred_cx = (grid_col as f64 + 0.5) / feature_size.w() as f64;
+                            let pred_cy = (grid_row as f64 + 0.5) / feature_size.h as f64;
+                            let pred_cx = (grid_col as f64 + 0.5) / feature_size.w as f64;
 
                             let dist_orig = {
                                 (orig_bbox.cy() - pred_cy).powi(2)
@@ -242,8 +234,9 @@ impl CyCxHWMatcher {
             let feature_size = &prediction.info[layer_index as usize].feature_size;
             let target_bbox_grid: GridCyCxHW<f64> = target_bbox
                 .cycxhw
-                .scale_to_unit(feature_size.h() as f64, feature_size.w() as f64)
-                .unwrap();
+                .cast::<f64>()
+                .unwrap()
+                .to_grid_cycxhw(&feature_size.cast().unwrap());
             let target_cy = target_bbox_grid.cy();
             let target_cx = target_bbox_grid.cx();
 

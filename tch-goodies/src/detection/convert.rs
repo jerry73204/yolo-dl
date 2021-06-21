@@ -29,7 +29,8 @@ impl From<MergedDenseDetection> for DenseDetectionTensorList {
                     ..
                 } = *meta;
                 let num_anchors = anchors.len() as i64;
-                let [feature_h, feature_w] = feature_size.hw_params();
+                let feature_h = feature_size.h;
+                let feature_w = feature_size.w;
 
                 let cy_map = from.cy.i((.., .., flat_index_range.clone())).view([
                     batch_size,

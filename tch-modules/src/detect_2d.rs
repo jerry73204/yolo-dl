@@ -154,7 +154,7 @@ impl Detect2D {
             } = *self;
 
             let (_b, _c, feature_h, feature_w) = tensor.size4()?;
-            let expect_size = GridSize::new(feature_h, feature_w).unwrap();
+            let expect_size = GridSize::from_hw(feature_h, feature_w).unwrap();
 
             let is_hit = cache
                 .as_ref()
@@ -174,8 +174,8 @@ impl Detect2D {
                         .iter()
                         .cloned()
                         .map(|anchor_size| {
-                            let [h, w] = anchor_size.cast::<f32>().unwrap().hw_params();
-                            (h, w)
+                            let anchor_size = anchor_size.cast::<f32>().unwrap();
+                            (anchor_size.h, anchor_size.w)
                         })
                         .unzip_n_vec();
 

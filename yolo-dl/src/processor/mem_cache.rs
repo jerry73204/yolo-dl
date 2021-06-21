@@ -73,7 +73,7 @@ impl MemoryCache {
             ref cache,
         } = *self;
         let image_path = image_path.as_ref();
-        let [orig_h, orig_w] = orig_size.hw_params();
+        let [orig_h, orig_w] = orig_size.hw();
 
         ensure!(
             image_channels == 3,
@@ -189,7 +189,7 @@ impl MemoryCache {
 
                     Ok(RatioLabel {
                         cycxhw: resized_bbox
-                            .scale_to_unit(image_size.recip(), image_size.recip())?,
+                            .to_ratio_cycxhw(&PixelSize::from_hw(image_size, image_size)?),
                         class,
                     })
                 })

@@ -80,7 +80,7 @@ impl CsvDataset {
                                 height: img_h,
                                 width: img_w,
                             } = imagesize::size(&*image_file)?;
-                            PixelSize::new(img_h, img_w)?
+                            PixelSize::from_hw(img_h, img_w)?
                         };
 
                         let bboxes = records

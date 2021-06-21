@@ -188,8 +188,8 @@ mod logging_worker {
                             .iter()
                             .zip_eq(output.info.iter())
                             .map(|(feature_map, meta)| {
-                                let feature_h = meta.feature_size.h();
-                                let feature_w = meta.feature_size.w();
+                                let feature_h = meta.feature_size.h;
+                                let feature_w = meta.feature_size.w;
                                 let num_anchors = meta.anchors.len() as i64;
                                 feature_map
                                     .obj_prob()
