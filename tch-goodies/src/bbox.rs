@@ -133,6 +133,64 @@ mod rect_transform {
         }
     }
 
+    impl<T> PixelRectTransform<T> {
+        pub fn to_ratio(&self, size: &PixelSize<T>) -> RatioRectTransform<T>
+        where
+            T: Num + Copy,
+        {
+            RatioRectTransform {
+                sy: self.sy,
+                sx: self.sx,
+                ty: self.ty / size.h,
+                tx: self.tx / size.w,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<T> GridRectTransform<T> {
+        pub fn to_ratio(&self, size: &GridSize<T>) -> RatioRectTransform<T>
+        where
+            T: Num + Copy,
+        {
+            RatioRectTransform {
+                sy: self.sy,
+                sx: self.sx,
+                ty: self.ty / size.h,
+                tx: self.tx / size.w,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<T> RatioRectTransform<T> {
+        pub fn to_pixel(&self, size: &PixelSize<T>) -> PixelRectTransform<T>
+        where
+            T: Num + Copy,
+        {
+            PixelRectTransform {
+                sy: self.sy,
+                sx: self.sx,
+                ty: self.ty * size.h,
+                tx: self.tx * size.w,
+                _phantom: PhantomData,
+            }
+        }
+
+        pub fn to_grid(&self, size: &GridSize<T>) -> GridRectTransform<T>
+        where
+            T: Num + Copy,
+        {
+            GridRectTransform {
+                sy: self.sy,
+                sx: self.sx,
+                ty: self.ty * size.h,
+                tx: self.tx * size.w,
+                _phantom: PhantomData,
+            }
+        }
+    }
+
     impl<T, U> Mul<&TLBR<T, U>> for &RectTransform<T, U>
     where
         T: Num + Copy,
