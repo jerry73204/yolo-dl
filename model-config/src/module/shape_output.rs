@@ -70,6 +70,12 @@ impl<const SIZE: usize> From<[usize; SIZE]> for ShapeOutput {
     }
 }
 
+impl<const SIZE: usize> From<[Dim; SIZE]> for ShapeOutput {
+    fn from(from: [Dim; SIZE]) -> Self {
+        Self::Shape(Shape::from(from))
+    }
+}
+
 impl Display for ShapeOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

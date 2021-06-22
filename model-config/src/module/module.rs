@@ -25,6 +25,7 @@ pub enum Module {
     DarknetShortcut(DarknetShortcut),
     MaxPool(MaxPool),
     Linear(Linear),
+    DynamicPad2d(DynamicPad2D),
 }
 
 impl From<Linear> for Module {
@@ -135,6 +136,7 @@ impl ModuleEx for Module {
             Module::DarknetShortcut(layer) => layer.name(),
             Module::MaxPool(layer) => layer.name(),
             Module::Linear(layer) => layer.name(),
+            Module::DynamicPad2d(layer) => layer.name(),
         }
     }
 
@@ -155,6 +157,7 @@ impl ModuleEx for Module {
             Module::DarknetShortcut(layer) => layer.input_paths(),
             Module::MaxPool(layer) => layer.input_paths(),
             Module::Linear(layer) => layer.input_paths(),
+            Module::DynamicPad2d(layer) => layer.input_paths(),
         }
     }
 
@@ -175,6 +178,7 @@ impl ModuleEx for Module {
             Module::DarknetShortcut(layer) => layer.output_shape(input_shape),
             Module::MaxPool(layer) => layer.output_shape(input_shape),
             Module::Linear(layer) => layer.output_shape(input_shape),
+            Module::DynamicPad2d(layer) => layer.output_shape(input_shape),
         }
     }
 }

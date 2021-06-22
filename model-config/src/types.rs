@@ -408,6 +408,12 @@ mod shape {
         (T10, t10)
     );
 
+    impl<const SIZE: usize> From<[Dim; SIZE]> for Shape {
+        fn from(from: [Dim; SIZE]) -> Self {
+            Self(from.into())
+        }
+    }
+
     impl<const SIZE: usize> From<[usize; SIZE]> for Shape {
         fn from(from: [usize; SIZE]) -> Self {
             let slice: &[_] = from.as_ref();
