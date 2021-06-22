@@ -9,6 +9,8 @@ pub use module::*;
 pub use module_input::*;
 
 mod module {
+    use crate::DynamicPad;
+
     use super::*;
 
     #[derive(AsRefStr, Derivative)]
@@ -27,6 +29,7 @@ mod module {
         DarknetShortcut(DarknetShortcut),
         MaxPool(MaxPool),
         MergeDetect2D(MergeDetect2D),
+        DynamicPad2D(DynamicPad<2>),
         FnSingle(
             #[derivative(Debug = "ignore")] Box<dyn 'static + Fn(&Tensor, bool) -> Tensor + Send>,
         ),
@@ -34,6 +37,12 @@ mod module {
             #[derivative(Debug = "ignore")]
             Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
         ),
+    }
+
+    impl From<DynamicPad<2>> for Module {
+        fn from(v: DynamicPad<2>) -> Self {
+            Self::DynamicPad2D(v)
+        }
     }
 
     impl Module {
@@ -190,6 +199,9 @@ mod module {
                     train,
                 )
                 .into(),
+                Module::DynamicPad2D(module) => module
+                    .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)
+                    .into(),
                 Module::DarknetRoute(_) => {
                     todo!();
                 }
@@ -220,7 +232,8 @@ mod module {
                 | Self::FnIndexed(_)
                 | Module::DarknetRoute(_)
                 | Module::DarknetShortcut(_)
-                | Module::MaxPool(_) => {}
+                | Module::MaxPool(_)
+                | Module::DynamicPad2D(_) => {}
             }
         }
 
@@ -240,7 +253,8 @@ mod module {
                 | Self::FnIndexed(_)
                 | Module::DarknetRoute(_)
                 | Module::DarknetShortcut(_)
-                | Module::MaxPool(_) => {}
+                | Module::MaxPool(_)
+                | Module::DynamicPad2D(_) => {}
             }
         }
     }

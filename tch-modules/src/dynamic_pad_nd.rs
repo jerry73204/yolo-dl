@@ -2,9 +2,9 @@ use crate::common::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PaddingKind {
-    Reflect,
-    Replicate,
     Zero,
+    Replication,
+    Reflection,
 }
 
 #[derive(Debug)]
@@ -16,8 +16,8 @@ pub struct DynamicPad<const N: usize> {
 impl<const N: usize> DynamicPad<N> {
     pub fn new(kind: PaddingKind, padding: &[usize]) -> Result<Self> {
         match (kind, N) {
-            (PaddingKind::Replicate, 1 | 2 | 3)
-            | (PaddingKind::Reflect | PaddingKind::Zero, 1 | 2) => {}
+            (PaddingKind::Replication, 1 | 2 | 3)
+            | (PaddingKind::Reflection | PaddingKind::Zero, 1 | 2) => {}
             _ => bail!("{} dimensional {:?} padding is not supported", N, kind),
         }
 
@@ -45,11 +45,11 @@ impl<const N: usize> nn::Module for DynamicPad<N> {
                 [l, r, t, b] => xs.zero_pad2d(l, r, t, b),
                 _ => unreachable!(),
             },
-            (1, PaddingKind::Reflect) => xs.reflection_pad1d(&self.padding),
-            (2, PaddingKind::Reflect) => xs.reflection_pad2d(&self.padding),
-            (1, PaddingKind::Replicate) => xs.replication_pad1d(&self.padding),
-            (2, PaddingKind::Replicate) => xs.replication_pad2d(&self.padding),
-            (3, PaddingKind::Replicate) => xs.replication_pad3d(&self.padding),
+            (1, PaddingKind::Reflection) => xs.reflection_pad1d(&self.padding),
+            (2, PaddingKind::Reflection) => xs.reflection_pad2d(&self.padding),
+            (1, PaddingKind::Replication) => xs.replication_pad1d(&self.padding),
+            (2, PaddingKind::Replication) => xs.replication_pad2d(&self.padding),
+            (3, PaddingKind::Replication) => xs.replication_pad3d(&self.padding),
             _ => unreachable!(),
         }
     }
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn dynamic_pad_test() {
-        let pad = DynamicPad::<2>::new(PaddingKind::Reflect, &[1, 2, 3, 4]).unwrap();
+        let pad = DynamicPad::<2>::new(PaddingKind::Reflection, &[1, 2, 3, 4]).unwrap();
         let input = Tensor::randn(&[4, 3, 8, 8], tch::kind::FLOAT_CPU);
         let output = pad.forward(&input);
         assert_eq!(output.size(), [4, 3, 15, 11]);

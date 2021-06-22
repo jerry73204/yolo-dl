@@ -251,6 +251,21 @@ impl YoloModel {
                         .into()
                     }
                     config::Module::MergeDetect2D(_) => modules::MergeDetect2D::new().into(),
+                    config::Module::DynamicPad2D(config::DynamicPad2D {
+                        r#type,
+                        l,
+                        r,
+                        t,
+                        b,
+                        ..
+                    }) => {
+                        let kind = match r#type {
+                            config::PaddingKind::Zero => modules::PaddingKind::Zero,
+                            config::PaddingKind::Replication => modules::PaddingKind::Replication,
+                            config::PaddingKind::Reflection => modules::PaddingKind::Reflection,
+                        };
+                        modules::DynamicPad::<2>::new(kind, &[l, r, t, b])?.into()
+                    }
                     config::Module::DarknetRoute(_) => {
                         todo!();
                     }
