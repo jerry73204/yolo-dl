@@ -17,6 +17,7 @@ mod module {
     #[derivative(Debug)]
     pub enum Module {
         Input(Input),
+        Conv2D(nn::Conv2D),
         ConvBn2D(ConvBn2D),
         DeconvBn2D(DeconvBn2D),
         UpSample2D(UpSample2D),
@@ -37,6 +38,12 @@ mod module {
             #[derivative(Debug = "ignore")]
             Box<dyn 'static + Fn(&[&Tensor], bool) -> Tensor + Send>,
         ),
+    }
+
+    impl From<nn::Conv2D> for Module {
+        fn from(v: nn::Conv2D) -> Self {
+            Self::Conv2D(v)
+        }
     }
 
     impl From<DynamicPad<2>> for Module {
@@ -202,6 +209,9 @@ mod module {
                 Module::DynamicPad2D(module) => module
                     .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)
                     .into(),
+                Module::Conv2D(module) => module
+                    .forward(input.tensor().ok_or_else(|| format_err!("TODO"))?)
+                    .into(),
                 Module::DarknetRoute(_) => {
                     todo!();
                 }
@@ -233,7 +243,8 @@ mod module {
                 | Module::DarknetRoute(_)
                 | Module::DarknetShortcut(_)
                 | Module::MaxPool(_)
-                | Module::DynamicPad2D(_) => {}
+                | Module::DynamicPad2D(_)
+                | Module::Conv2D(_) => {}
             }
         }
 
@@ -254,7 +265,8 @@ mod module {
                 | Module::DarknetRoute(_)
                 | Module::DarknetShortcut(_)
                 | Module::MaxPool(_)
-                | Module::DynamicPad2D(_) => {}
+                | Module::DynamicPad2D(_)
+                | Module::Conv2D(_) => {}
             }
         }
     }

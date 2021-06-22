@@ -26,6 +26,13 @@ pub enum Module {
     MaxPool(MaxPool),
     Linear(Linear),
     DynamicPad2D(DynamicPad2D),
+    Conv2D(Conv2D),
+}
+
+impl From<Conv2D> for Module {
+    fn from(v: Conv2D) -> Self {
+        Self::Conv2D(v)
+    }
 }
 
 impl From<Linear> for Module {
@@ -137,6 +144,7 @@ impl ModuleEx for Module {
             Module::MaxPool(layer) => layer.name(),
             Module::Linear(layer) => layer.name(),
             Module::DynamicPad2D(layer) => layer.name(),
+            Module::Conv2D(layer) => layer.name(),
         }
     }
 
@@ -158,6 +166,7 @@ impl ModuleEx for Module {
             Module::MaxPool(layer) => layer.input_paths(),
             Module::Linear(layer) => layer.input_paths(),
             Module::DynamicPad2D(layer) => layer.input_paths(),
+            Module::Conv2D(layer) => layer.input_paths(),
         }
     }
 
@@ -179,6 +188,7 @@ impl ModuleEx for Module {
             Module::MaxPool(layer) => layer.output_shape(input_shape),
             Module::Linear(layer) => layer.output_shape(input_shape),
             Module::DynamicPad2D(layer) => layer.output_shape(input_shape),
+            Module::Conv2D(layer) => layer.output_shape(input_shape),
         }
     }
 }

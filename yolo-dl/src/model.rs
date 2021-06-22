@@ -37,6 +37,41 @@ impl YoloModel {
                 let module_path = path / format!("module_{}", key);
 
                 let module: modules::Module = match *config {
+                    config::Module::Conv2D(config::Conv2D {
+                        c: out_c,
+                        k,
+                        s,
+                        p,
+                        d,
+                        g,
+                        bias,
+                        ..
+                    }) => {
+                        let src_key = input_keys.single().unwrap();
+                        let [_b, in_c, _h, _w] = orig_nodes[&src_key]
+                            .output_shape
+                            .tensor()
+                            .unwrap()
+                            .size4()
+                            .unwrap();
+                        let in_c = in_c.size().unwrap();
+
+                        nn::conv2d(
+                            module_path,
+                            in_c as i64,
+                            out_c as i64,
+                            k as i64,
+                            nn::ConvConfig {
+                                stride: s as i64,
+                                padding: p as i64,
+                                dilation: d as i64,
+                                groups: g as i64,
+                                bias,
+                                ..Default::default()
+                            },
+                        )
+                        .into()
+                    }
                     config::Module::Input(config::Input { ref shape, .. }) => {
                         modules::Input::new(shape).into()
                     }
