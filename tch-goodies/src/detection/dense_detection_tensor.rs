@@ -182,6 +182,19 @@ impl DenseDetectionTensor {
         Ok(output)
     }
 
+    pub fn to_tensor(&self) -> Tensor {
+        let DenseDetectionTensorUnchecked {
+            cy,
+            cx,
+            h,
+            w,
+            obj_logit,
+            class_logit,
+            ..
+        } = &self.inner;
+        Tensor::cat(&[cy, cx, h, w, obj_logit, class_logit], 1)
+    }
+
     pub fn cat_batch(tensors: impl IntoIterator<Item = impl Borrow<Self>>) -> Result<Self> {
         let (
             batch_size_set,
