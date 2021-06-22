@@ -67,6 +67,39 @@ mod rect_transform {
             }
         }
 
+        pub fn from_resizing_exact(src_size: &Size<T, U>, tgt_size: &Size<T, U>) -> Self
+        where
+            T: Num + Copy + PartialOrd,
+        {
+            let src = TLBR::from_tlhw(T::zero(), T::zero(), src_size.h, src_size.w).unwrap();
+            let tgt = TLBR::from_tlhw(T::zero(), T::zero(), tgt_size.h, tgt_size.w).unwrap();
+            Self::from_rects(&src, &tgt)
+        }
+
+        pub fn from_resizing_letterbox(src_size: &Size<T, U>, tgt_size: &Size<T, U>) -> Self
+        where
+            T: Num + Copy + PartialOrd,
+        {
+            let (new_h, new_w) = if tgt_size.h * src_size.w <= tgt_size.w * src_size.h {
+                let new_h = tgt_size.h;
+                let new_w = src_size.w * tgt_size.h / src_size.h;
+                (new_h, new_w)
+            } else {
+                let new_h = src_size.h * tgt_size.w / src_size.w;
+                let new_w = tgt_size.w;
+                (new_h, new_w)
+            };
+
+            let two = T::one() + T::one();
+            let off_y = (tgt_size.h - new_h) / two;
+            let off_x = (tgt_size.w - new_w) / two;
+
+            let src = TLBR::from_tlhw(T::zero(), T::zero(), src_size.h, src_size.w).unwrap();
+            let tgt = TLBR::from_tlhw(off_y, off_x, new_h, new_w).unwrap();
+
+            Self::from_rects(&src, &tgt)
+        }
+
         pub fn inverse(&self) -> Self
         where
             T: Float,
@@ -162,6 +195,26 @@ mod rect_transform {
         fn rect_transform_inverse() {
             let orig = PixelRectTransform::from_params(2.0, 2.0, 1.0, 1.0);
             assert_eq!(orig.inverse().inverse(), orig);
+        }
+
+        #[test]
+        fn rect_resize_exact() {
+            let transform = PixelRectTransform::from_resizing_exact(
+                &PixelSize::from_hw(80.0, 80.0).unwrap(),
+                &PixelSize::from_hw(20.0, 40.0).unwrap(),
+            );
+            let expect = PixelRectTransform::from_params(0.25, 0.5, 0.0, 0.0);
+            assert_eq!(transform, expect);
+        }
+
+        #[test]
+        fn rect_resize_letterbox() {
+            let transform = PixelRectTransform::from_resizing_letterbox(
+                &PixelSize::from_hw(80.0, 80.0).unwrap(),
+                &PixelSize::from_hw(20.0, 40.0).unwrap(),
+            );
+            let expect = PixelRectTransform::from_params(0.25, 0.25, 0.0, 10.0);
+            assert_eq!(transform, expect);
         }
     }
 }
