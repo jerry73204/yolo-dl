@@ -122,9 +122,9 @@ impl CocoDataset {
                         }
 
                         let [l, t, w, h] = ann.bbox;
-                        let bbox = PixelCyCxHW::from_tlhw(t, l, h, w)?;
-                        Ok(Some(PixelLabel {
-                            cycxhw: bbox,
+                        let rect = PixelCyCxHW::from_tlhw(t, l, h, w)?;
+                        Ok(Some(PixelRectLabel {
+                            rect,
                             class: class_index,
                         }))
                     })

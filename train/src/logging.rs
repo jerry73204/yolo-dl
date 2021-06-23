@@ -452,7 +452,7 @@ mod logging_worker {
 
                             for labeled_bbox in bboxes {
                                 let [cy, cx, h, w] =
-                                    labeled_bbox.cycxhw.cast::<f64>().unwrap().cycxhw_params();
+                                    labeled_bbox.rect.cast::<f64>().unwrap().cycxhw();
 
                                 let top = cy - h / 2.0;
                                 let left = cx - w / 2.0;
@@ -537,7 +537,7 @@ mod logging_message {
             S: Into<Cow<'static, str>>,
             I: IntoIterator<Item = (T, IB)>,
             IB: IntoIterator<Item = B>,
-            B: Borrow<RatioLabel>,
+            B: Borrow<RatioRectLabel<R64>>,
             T: Into<CowTensor<'a>>,
         {
             let (images, bboxes) = tuples
@@ -610,7 +610,7 @@ mod logging_message {
     pub struct DebugLabeledImageLog {
         pub images: Vec<Tensor>,
         #[tensor_like(clone)]
-        pub bboxes: Vec<Vec<RatioLabel>>,
+        pub bboxes: Vec<Vec<RatioRectLabel<R64>>>,
     }
 
     impl Clone for DebugLabeledImageLog {

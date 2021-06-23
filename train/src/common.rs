@@ -59,8 +59,8 @@ pub use tch::{
 };
 pub use tch_goodies::{
     detection::{DenseDetectionTensorList, DetectionInfo, FlatIndex, InstanceIndex},
-    CyCxHW, GridCyCxHW, GridLabel, GridSize, PixelCyCxHW, PixelLabel, PixelSize, PixelTLBR, Ratio,
-    RatioCyCxHW, RatioLabel, TLBRTensor, TensorExt, TLBR,
+    CyCxHW, GridCyCxHW, GridRectLabel, GridSize, PixelCyCxHW, PixelRectLabel, PixelSize, PixelTLBR,
+    Ratio, RatioCyCxHW, RatioRectLabel, Rect as _, TLBRTensor, TensorExt, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tfrecord::{EventWriter, EventWriterInit};

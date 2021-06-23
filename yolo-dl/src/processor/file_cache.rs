@@ -51,8 +51,8 @@ impl FileCache {
         &self,
         image_path: impl AsRef<async_std::path::Path>,
         orig_size: &PixelSize<usize>,
-        bboxes: impl IntoIterator<Item = impl Borrow<PixelLabel>>,
-    ) -> Result<(Tensor, Vec<RatioLabel>)> {
+        bboxes: impl IntoIterator<Item = impl Borrow<PixelRectLabel<R64>>>,
+    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)> {
         use async_std::{fs::File, io::BufWriter};
 
         let Self {
@@ -200,7 +200,9 @@ impl FileCache {
                 cache_w as f64,
             )
             .unwrap();
-            RectTransform::from_rects(&src, &tgt).cast::<R64>().unwrap()
+            PixelRectTransform::from_rects(&src, &tgt)
+                .cast::<R64>()
+                .unwrap()
         };
 
         let output_bboxes: Vec<_> = {
@@ -209,10 +211,10 @@ impl FileCache {
                 .into_iter()
                 .map(|orig_label| -> Result<_> {
                     let orig_label = orig_label.borrow();
-                    let resized_bbox = (&transform * &orig_label.cycxhw)
+                    let resized_bbox = (&transform * &orig_label.rect)
                         .to_ratio_cycxhw(&PixelSize::from_hw(image_size, image_size)?);
-                    let new_label = RatioLabel {
-                        cycxhw: resized_bbox,
+                    let new_label = RatioRectLabel {
+                        rect: resized_bbox,
                         class: orig_label.class,
                     };
                     Ok(new_label)

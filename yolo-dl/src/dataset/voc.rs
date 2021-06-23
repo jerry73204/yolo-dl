@@ -79,8 +79,8 @@ impl VocDataset {
                                     xmax,
                                     ymax,
                                 } = obj.bndbox;
-                                let bbox = PixelLabel {
-                                    cycxhw: PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax).unwrap(),
+                                let bbox = PixelRectLabel {
+                                    rect: PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax).unwrap(),
                                     class: class_index,
                                 };
                                 Ok(bbox)

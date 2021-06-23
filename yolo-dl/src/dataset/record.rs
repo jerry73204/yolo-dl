@@ -6,7 +6,7 @@ pub struct FileRecord {
     pub path: PathBuf,
     pub size: PixelSize<usize>,
     /// Bounding box in pixel units.
-    pub bboxes: Vec<PixelLabel>,
+    pub bboxes: Vec<PixelRectLabel<R64>>,
 }
 
 /// The record with image pixels and boxes.
@@ -14,5 +14,5 @@ pub struct FileRecord {
 pub struct DataRecord {
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<RatioLabel>,
+    pub bboxes: Vec<RatioRectLabel<R64>>,
 }

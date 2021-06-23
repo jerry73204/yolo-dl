@@ -23,7 +23,7 @@ impl YoloModel {
     /// Build a model from a computation graph.
     pub fn from_graph<'p>(
         path: impl Borrow<nn::Path<'p>>,
-        orig_graph: &'_ graph::Graph,
+        orig_graph: &graph::Graph,
     ) -> Result<Self> {
         let path = path.borrow();
         let orig_nodes = orig_graph.nodes();

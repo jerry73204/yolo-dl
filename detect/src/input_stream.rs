@@ -8,7 +8,7 @@ pub struct InputRecord {
     pub indexes: Vec<usize>,
     pub images: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<RatioLabel>>,
+    pub bboxes: Vec<Vec<RatioRectLabel<R64>>>,
 }
 
 #[derive(Debug)]

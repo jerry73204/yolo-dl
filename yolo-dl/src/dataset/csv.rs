@@ -95,8 +95,8 @@ impl CsvDataset {
                             })
                             .map(|(record, class_index)| -> Result<_> {
                                 let CsvSample { cy, cx, h, w, .. } = *record;
-                                let label = PixelLabel {
-                                    cycxhw: PixelCyCxHW::from_cycxhw(cy, cx, h, w)?,
+                                let label = PixelRectLabel {
+                                    rect: PixelCyCxHW::from_cycxhw(cy, cx, h, w)?,
                                     class: class_index,
                                 };
                                 Ok(label)

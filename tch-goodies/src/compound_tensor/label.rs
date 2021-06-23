@@ -1,5 +1,8 @@
 use super::cycxhw::{CyCxHWTensor, CyCxHWTensorUnchecked};
-use crate::{common::*, detection::Label, unit::Unit};
+use crate::{
+    bbox::{Rect, RectLabel},
+    common::*,
+};
 use num_traits::NumCast;
 
 #[derive(Debug, TensorLike, Getters)]
@@ -64,16 +67,16 @@ impl From<LabelTensor> for LabelTensorUnchecked {
     }
 }
 
-impl<T, U> FromIterator<Label<T, U>> for LabelTensor
+impl<R> FromIterator<RectLabel<R>> for LabelTensor
 where
-    T: Float,
-    U: Unit,
+    R: Rect,
+    R::Type: ToPrimitive,
 {
-    fn from_iter<I: IntoIterator<Item = Label<T, U>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = RectLabel<R>>>(iter: I) -> Self {
         let (cy, cx, h, w, class) = iter
             .into_iter()
             .map(|label| {
-                let [cy, cx, h, w] = label.cycxhw.cycxhw_params();
+                let [cy, cx, h, w] = label.cycxhw();
                 let class = label.class;
                 (
                     <f32 as NumCast>::from(cy).unwrap(),
@@ -99,16 +102,16 @@ where
     }
 }
 
-impl<'a, T, U> FromIterator<&'a Label<T, U>> for LabelTensor
+impl<'a, R> FromIterator<&'a RectLabel<R>> for LabelTensor
 where
-    T: Float,
-    U: Unit,
+    R: Rect,
+    R::Type: ToPrimitive,
 {
-    fn from_iter<I: IntoIterator<Item = &'a Label<T, U>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = &'a RectLabel<R>>>(iter: I) -> Self {
         let (cy_vec, cx_vec, h_vec, w_vec, class_vec) = iter
             .into_iter()
             .map(|label| {
-                let [cy, cx, h, w] = label.cycxhw.cycxhw_params();
+                let [cy, cx, h, w] = label.cycxhw();
                 let class = label.class;
                 (
                     <f32 as NumCast>::from(cy).unwrap(),

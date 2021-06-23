@@ -29,7 +29,7 @@ pub use std::{
 };
 pub use tch::{nn, Device, IndexOp, Tensor};
 pub use tch_goodies::{
-    PixelCyCxHW, PixelLabel, PixelSize, Ratio, RatioCyCxHW, RatioLabel, Rect as _,
+    PixelCyCxHW, PixelRectLabel, PixelSize, Ratio, RatioCyCxHW, RatioRectLabel, Rect as _,
 };
 pub use tch_tensor_like::TensorLike;
 pub use yolo_dl::{

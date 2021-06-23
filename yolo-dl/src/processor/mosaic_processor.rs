@@ -58,10 +58,10 @@ impl MosaicProcessor {
     pub fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
-    ) -> Result<(Tensor, Vec<RatioLabel>)>
+    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)>
     where
         PairIntoIter: IntoIterator<Item = (Tensor, CyCxHWIntoIter)>,
-        CyCxHWIntoIter: IntoIterator<Item = RatioLabel>,
+        CyCxHWIntoIter: IntoIterator<Item = RatioRectLabel<R64>>,
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         tch::no_grad(|| {
@@ -210,10 +210,10 @@ impl ParallelMosaicProcessor {
     pub async fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
-    ) -> Result<(Tensor, Vec<RatioLabel>)>
+    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)>
     where
         PairIntoIter: IntoIterator<Item = (Tensor, CyCxHWIntoIter)>,
-        CyCxHWIntoIter: 'static + IntoIterator<Item = RatioLabel> + Send,
+        CyCxHWIntoIter: 'static + IntoIterator<Item = RatioRectLabel<R64>> + Send,
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         let pairs: Vec<_> = input.into_iter().collect();
@@ -298,11 +298,11 @@ impl ParallelMosaicProcessor {
 
 fn crop_image_bboxes(
     image: &Tensor,
-    bboxes: impl IntoIterator<Item = RatioLabel>,
+    bboxes: impl IntoIterator<Item = RatioRectLabel<R64>>,
     tlbr: [f64; 4],
     min_bbox_size: Option<f64>,
     min_bbox_cropping_ratio: Option<f64>,
-) -> Result<(Tensor, Vec<RatioLabel>)> {
+) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)> {
     tch::no_grad(|| {
         let [margin_t, margin_b, margin_l, margin_r] = tlbr;
 
@@ -313,7 +313,7 @@ fn crop_image_bboxes(
         let cropped_bboxes = bboxes
             .into_iter()
             .filter_map(|bbox| {
-                let roi = CyCxHW::from_tlbr(margin_t, margin_l, margin_b, margin_r)
+                let roi = RatioCyCxHW::from_tlbr(margin_t, margin_l, margin_b, margin_r)
                     .unwrap()
                     .cast::<R64>()
                     .unwrap();
@@ -333,7 +333,10 @@ fn crop_image_bboxes(
                     })
                     .unwrap_or(true);
 
-                (check1 && check2).then(|| cropped)
+                (check1 && check2).then(|| RatioRectLabel {
+                    rect: cropped.into(),
+                    class: bbox.class,
+                })
             })
             .collect_vec();
 

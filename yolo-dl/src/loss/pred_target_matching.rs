@@ -47,11 +47,11 @@ impl CyCxHWMatcher {
     pub fn match_bboxes(
         &self,
         prediction: &MergedDenseDetection,
-        target: &[Vec<RatioLabel>],
+        target: &[Vec<RatioRectLabel<R64>>],
     ) -> MatchingOutput {
         let snap_thresh = 0.5;
 
-        let target_bboxes: HashMap<InstanceIndex, Arc<RatioLabel>> = target
+        let target_bboxes: HashMap<InstanceIndex, Arc<RatioRectLabel<R64>>> = target
             .iter()
             .enumerate()
             // filter out small bboxes
@@ -81,7 +81,7 @@ impl CyCxHWMatcher {
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes: Vec<_> = {
                     let target_bbox_grid: GridCyCxHW<R64> = target_bbox
-                        .cycxhw
+                        .rect
                         .to_grid_cycxhw(&feature_size.cast().unwrap());
                     let target_cy = target_bbox_grid.cy();
                     let target_cx = target_bbox_grid.cx();
@@ -172,7 +172,7 @@ impl CyCxHWMatcher {
                         debug_assert!({
                             let feature_size = &prediction.info[layer_index].feature_size;
                             let target_bbox_grid: GridCyCxHW<R64> = target_bbox
-                                .cycxhw
+                                .rect
                                 .to_grid_cycxhw(&feature_size.cast().unwrap());
                             let target_cy = target_bbox_grid.cy();
                             let target_cx = target_bbox_grid.cx();
@@ -233,7 +233,7 @@ impl CyCxHWMatcher {
             } = *instance_index;
             let feature_size = &prediction.info[layer_index as usize].feature_size;
             let target_bbox_grid: GridCyCxHW<f64> = target_bbox
-                .cycxhw
+                .rect
                 .cast::<f64>()
                 .unwrap()
                 .to_grid_cycxhw(&feature_size.cast().unwrap());

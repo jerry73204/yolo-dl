@@ -176,8 +176,8 @@ impl IiiDataset {
                                     }
                                 };
 
-                                let labeled_bbox = PixelLabel {
-                                    cycxhw: bbox,
+                                let labeled_bbox = PixelRectLabel {
+                                    rect: bbox,
                                     class: class_index,
                                 };
                                 Some(labeled_bbox)

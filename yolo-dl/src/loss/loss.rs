@@ -226,7 +226,7 @@ mod yolo_loss {
         pub fn forward(
             &self,
             prediction: &MergedDenseDetection,
-            target: &[Vec<RatioLabel>],
+            target: &[Vec<RatioRectLabel<R64>>],
         ) -> (YoloLossOutput, YoloLossAuxiliary) {
             let mut timing = Timing::new("loss function");
 

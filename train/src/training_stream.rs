@@ -304,8 +304,8 @@ impl TrainingStream {
                                     // scale bboxes
                                     let bboxes: Vec<_> = bboxes
                                         .into_iter()
-                                        .map(|bbox| RatioLabel {
-                                            cycxhw: bbox.cycxhw.scale_size(bbox_scaling).unwrap(),
+                                        .map(|bbox| RatioRectLabel {
+                                            rect: bbox.rect.scale_size(bbox_scaling).unwrap(),
                                             class: bbox.class,
                                         })
                                         .collect();
@@ -695,7 +695,7 @@ pub struct TrainingRecord {
     pub step: usize,
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<RatioLabel>>,
+    pub bboxes: Vec<Vec<RatioRectLabel<R64>>>,
     #[tensor_like(clone)]
     pub timing: Timing,
 }
@@ -721,14 +721,14 @@ impl MixKind {
 
 #[derive(Debug)]
 enum MixData {
-    None([(Tensor, Vec<RatioLabel>); 1]),
-    MixUp([(Tensor, Vec<RatioLabel>); 2]),
-    CutMix([(Tensor, Vec<RatioLabel>); 2]),
-    Mosaic([(Tensor, Vec<RatioLabel>); 4]),
+    None([(Tensor, Vec<RatioRectLabel<R64>>); 1]),
+    MixUp([(Tensor, Vec<RatioRectLabel<R64>>); 2]),
+    CutMix([(Tensor, Vec<RatioRectLabel<R64>>); 2]),
+    Mosaic([(Tensor, Vec<RatioRectLabel<R64>>); 4]),
 }
 
 impl MixData {
-    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<RatioLabel>)>) -> Result<Self> {
+    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<RatioRectLabel<R64>>)>) -> Result<Self> {
         let data = (|| {
             let data = match kind {
                 MixKind::None => Self::None(pairs.try_into()?),
@@ -757,7 +757,7 @@ impl MixData {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<RatioLabel>)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<RatioRectLabel<R64>>)> {
         match self {
             Self::None(array) => array.iter(),
             Self::MixUp(array) => array.iter(),
@@ -766,13 +766,13 @@ impl MixData {
         }
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<RatioLabel>)> {
+    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<RatioRectLabel<R64>>)> {
         Vec::from(self).into_iter()
     }
 }
 
-impl AsRef<[(Tensor, Vec<RatioLabel>)]> for MixData {
-    fn as_ref(&self) -> &[(Tensor, Vec<RatioLabel>)] {
+impl AsRef<[(Tensor, Vec<RatioRectLabel<R64>>)]> for MixData {
+    fn as_ref(&self) -> &[(Tensor, Vec<RatioRectLabel<R64>>)] {
         match self {
             Self::None(array) => array.as_ref(),
             Self::MixUp(array) => array.as_ref(),
@@ -782,7 +782,7 @@ impl AsRef<[(Tensor, Vec<RatioLabel>)]> for MixData {
     }
 }
 
-impl From<MixData> for Vec<(Tensor, Vec<RatioLabel>)> {
+impl From<MixData> for Vec<(Tensor, Vec<RatioRectLabel<R64>>)> {
     fn from(data: MixData) -> Self {
         match data {
             MixData::None(array) => array.into(),

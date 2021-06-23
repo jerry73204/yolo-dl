@@ -130,7 +130,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                     // plot target boxes
                     target_bboxes.iter().try_for_each(|bbox| -> Result<_> {
                         let rect: PixelCyCxHW<i32> =
-                            bbox.cycxhw.to_pixel_cycxhw(&image_size).cast().unwrap();
+                            bbox.rect.to_pixel_cycxhw(&image_size).cast().unwrap();
 
                         imgproc::rectangle(
                             &mut canvas,

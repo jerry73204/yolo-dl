@@ -8,6 +8,7 @@ use crate::{
 
 pub use cycxhw::*;
 pub use rect::*;
+pub use rect_label::*;
 pub use rect_transform::*;
 pub use tlbr::*;
 
@@ -297,6 +298,38 @@ mod rect {
         fn h(&self) -> Self::Type;
         fn w(&self) -> Self::Type;
 
+        fn cycxhw(&self) -> [Self::Type; 4] {
+            [self.cy(), self.cx(), self.h(), self.w()]
+        }
+
+        fn tlbr(&self) -> [Self::Type; 4] {
+            [self.t(), self.l(), self.b(), self.r()]
+        }
+
+        fn tlhw(&self) -> [Self::Type; 4] {
+            [self.t(), self.l(), self.h(), self.w()]
+        }
+
+        fn to_cycxhw(&self) -> CyCxHW<Self::Type, Self::Unit> {
+            CyCxHW {
+                cy: self.cy(),
+                cx: self.cx(),
+                h: self.h(),
+                w: self.w(),
+                _phantom: PhantomData,
+            }
+        }
+
+        fn to_tlbr(&self) -> TLBR<Self::Type, Self::Unit> {
+            TLBR {
+                t: self.t(),
+                l: self.l(),
+                b: self.b(),
+                r: self.r(),
+                _phantom: PhantomData,
+            }
+        }
+
         fn area(&self) -> Self::Type
         where
             Self::Type: Num,
@@ -309,6 +342,97 @@ mod rect {
             Self::Type: Num + PartialOrd,
         {
             Size::from_hw(self.h(), self.w()).unwrap()
+        }
+
+        /// Compute intersection area in TLBR format.
+        fn closure_with<R>(&self, other: &R) -> TLBR<Self::Type, Self::Unit>
+        where
+            Self::Type: Float,
+            R: Rect<Type = Self::Type, Unit = Self::Unit>,
+        {
+            let t = self.t().min(other.t());
+            let l = self.l().min(other.l());
+            let b = self.b().max(other.b());
+            let r = self.r().max(other.r());
+            TLBR::from_tlbr(t, l, b, r).unwrap()
+        }
+
+        fn intersect_with<R>(&self, other: &R) -> Option<TLBR<Self::Type, Self::Unit>>
+        where
+            Self::Type: Float,
+            R: Rect<Type = Self::Type, Unit = Self::Unit>,
+        {
+            let zero = Self::Type::zero();
+
+            let t = self.t().max(other.t());
+            let l = self.l().max(other.l());
+            let b = self.b().min(other.b());
+            let r = self.r().min(other.r());
+
+            let h = b - t;
+            let w = r - l;
+
+            if h <= zero || w <= zero {
+                return None;
+            }
+
+            Some(TLBR::from_tlbr(t, l, b, r).unwrap())
+        }
+
+        fn intersection_area_with<R>(&self, other: &R) -> Self::Type
+        where
+            Self::Type: Float,
+            R: Rect<Type = Self::Type, Unit = Self::Unit>,
+        {
+            self.intersect_with(other)
+                .map(|rect| rect.area())
+                .unwrap_or_else(Self::Type::zero)
+        }
+
+        fn iou_with<R>(&self, other: &R) -> Self::Type
+        where
+            Self::Type: Float,
+            R: Rect<Type = Self::Type, Unit = Self::Unit>,
+        {
+            let inter_area = self.intersection_area_with(other);
+            let union_area = self.area() + other.area() - inter_area
+                + <Self::Type as NumCast>::from(EPSILON).unwrap();
+            inter_area / union_area
+        }
+
+        fn hausdorff_distance_to<R>(&self, other: &R) -> Self::Type
+        where
+            Self::Type: Float,
+            R: Rect<Type = Self::Type, Unit = Self::Unit>,
+        {
+            let zero = Self::Type::zero();
+            let [tl, ll, bl, rl] = self.tlbr();
+            let [tr, lr, br, rr] = other.tlbr();
+
+            let dt = tr - tl;
+            let dl = lr - ll;
+            let db = bl - br;
+            let dr = rl - rr;
+
+            let dt_l = dt.max(zero);
+            let dl_l = dl.max(zero);
+            let db_l = db.max(zero);
+            let dr_l = dr.max(zero);
+
+            let dt_r = (-dt).max(zero);
+            let dl_r = (-dl).max(zero);
+            let db_r = (-db).max(zero);
+            let dr_r = (-dr).max(zero);
+
+            (dt_l.powi(2) + dl_l.powi(2))
+                .max(dt_l.powi(2) + dr_l.powi(2))
+                .max(db_l.powi(2) + dl_l.powi(2))
+                .max(db_l.powi(2) + dr_l.powi(2))
+                .max(dt_r.powi(2) + dl_r.powi(2))
+                .max(dt_r.powi(2) + dr_r.powi(2))
+                .max(db_r.powi(2) + dl_r.powi(2))
+                .max(db_r.powi(2) + dr_r.powi(2))
+                .sqrt()
         }
     }
 }
@@ -338,6 +462,28 @@ mod tlbr {
     where
         U: Unit,
     {
+        pub fn from_cycxhw(cy: T, cx: T, h: T, w: T) -> Result<Self>
+        where
+            T: Num + Copy + PartialOrd,
+        {
+            let zero = T::zero();
+            ensure!(h >= zero && w >= zero, "h and w must be non-negative");
+
+            let two = T::one() + T::one();
+            let t = cy - h / two;
+            let b = cy + h / two;
+            let l = cx - w / two;
+            let r = cx + w / two;
+
+            Ok(Self {
+                t,
+                l,
+                b,
+                r,
+                _phantom: PhantomData,
+            })
+        }
+
         pub fn from_tlbr(t: T, l: T, b: T, r: T) -> Result<Self>
         where
             T: PartialOrd,
@@ -360,131 +506,6 @@ mod tlbr {
             let b = t + h;
             let r = l + w;
             Self::from_tlbr(t, l, b, r)
-        }
-
-        pub fn tlbr_params(&self) -> [T; 4]
-        where
-            T: Copy,
-        {
-            [self.t, self.l, self.b, self.r]
-        }
-
-        pub fn to_cycxhw(&self) -> CyCxHW<T, U>
-        where
-            T: Num + Copy,
-        {
-            self.into()
-        }
-
-        /// Compute intersection area in TLBR format.
-        pub fn intersect_with(&self, other: &Self) -> Option<Self>
-        where
-            T: Float,
-        {
-            let zero = T::zero();
-
-            let t = self.t().max(other.t());
-            let l = self.l().max(other.l());
-            let b = self.b().min(other.b());
-            let r = self.r().min(other.r());
-
-            let h = b - t;
-            let w = r - l;
-
-            if h <= zero || w <= zero {
-                return None;
-            }
-
-            Some(Self {
-                t,
-                l,
-                b,
-                r,
-                _phantom: PhantomData,
-            })
-        }
-
-        pub fn intersect_area_with(&self, other: &Self) -> T
-        where
-            T: Float,
-        {
-            self.intersect_with(other)
-                .map(|size| size.area())
-                .unwrap_or_else(T::zero)
-        }
-
-        /// Compute intersection area in TLBR format.
-        pub fn closure_with(&self, other: &Self) -> Self
-        where
-            T: Float,
-        {
-            let t = self.t().min(other.t());
-            let l = self.l().min(other.l());
-            let b = self.b().max(other.b());
-            let r = self.r().max(other.r());
-
-            Self {
-                t,
-                l,
-                b,
-                r,
-                _phantom: PhantomData,
-            }
-        }
-
-        pub fn iou_with(&self, other: &Self) -> T
-        where
-            T: Float,
-        {
-            let inter_area = self.intersect_area_with(other);
-            let union_area = self.area() + other.area() - inter_area + T::from(EPSILON).unwrap();
-            inter_area / union_area
-        }
-
-        pub fn hausdorff_distance_to(&self, other: &Self) -> T
-        where
-            T: Float,
-        {
-            let zero = T::zero();
-            let Self {
-                t: tl,
-                l: ll,
-                b: bl,
-                r: rl,
-                ..
-            } = *self;
-            let Self {
-                t: tr,
-                l: lr,
-                b: br,
-                r: rr,
-                ..
-            } = *other;
-
-            let dt = tr - tl;
-            let dl = lr - ll;
-            let db = bl - br;
-            let dr = rl - rr;
-
-            let dt_l = dt.max(zero);
-            let dl_l = dl.max(zero);
-            let db_l = db.max(zero);
-            let dr_l = dr.max(zero);
-
-            let dt_r = (-dt).max(zero);
-            let dl_r = (-dl).max(zero);
-            let db_r = (-db).max(zero);
-            let dr_r = (-dr).max(zero);
-
-            (dt_l.powi(2) + dl_l.powi(2))
-                .max(dt_l.powi(2) + dr_l.powi(2))
-                .max(db_l.powi(2) + dl_l.powi(2))
-                .max(db_l.powi(2) + dr_l.powi(2))
-                .max(dt_r.powi(2) + dl_r.powi(2))
-                .max(dt_r.powi(2) + dr_r.powi(2))
-                .max(db_r.powi(2) + dl_r.powi(2))
-                .max(db_r.powi(2) + dr_r.powi(2))
-                .sqrt()
         }
 
         pub fn cast<V>(&self) -> Option<TLBR<V, U>>
@@ -671,20 +692,6 @@ mod cycxhw {
             })
         }
 
-        pub fn cycxhw_params(&self) -> [T; 4]
-        where
-            T: Copy,
-        {
-            [self.cy, self.cx, self.h, self.w]
-        }
-
-        pub fn to_tlbr(&self) -> TLBR<T, U>
-        where
-            T: Num + Copy,
-        {
-            self.into()
-        }
-
         pub fn cast<V>(&self) -> Option<CyCxHW<V, U>>
         where
             T: Copy + ToPrimitive,
@@ -717,20 +724,6 @@ mod cycxhw {
                 w,
                 _phantom: PhantomData,
             })
-        }
-
-        pub fn iou_with(&self, other: &Self) -> T
-        where
-            T: Float,
-        {
-            self.to_tlbr().iou_with(&other.to_tlbr())
-        }
-
-        pub fn hausdorff_distance_to(&self, other: &Self) -> T
-        where
-            T: Float,
-        {
-            self.to_tlbr().hausdorff_distance_to(&other.to_tlbr())
         }
     }
 
@@ -875,6 +868,65 @@ mod cycxhw {
     {
         fn as_ref(&self) -> &CyCxHW<T, U> {
             self
+        }
+    }
+}
+
+mod rect_label {
+    use super::*;
+
+    /// Generic bounding box with an extra class ID.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct RectLabel<R>
+    where
+        R: Rect,
+    {
+        pub rect: R,
+        pub class: usize,
+    }
+
+    pub type RatioRectLabel<T> = RectLabel<RatioCyCxHW<T>>;
+    pub type PixelRectLabel<T> = RectLabel<PixelCyCxHW<T>>;
+    pub type GridRectLabel<T> = RectLabel<GridCyCxHW<T>>;
+
+    impl<R> Rect for RectLabel<R>
+    where
+        R: Rect,
+    {
+        type Type = R::Type;
+
+        type Unit = R::Unit;
+
+        fn t(&self) -> Self::Type {
+            self.rect.t()
+        }
+
+        fn l(&self) -> Self::Type {
+            self.rect.l()
+        }
+
+        fn b(&self) -> Self::Type {
+            self.rect.b()
+        }
+
+        fn r(&self) -> Self::Type {
+            self.rect.r()
+        }
+
+        fn cy(&self) -> Self::Type {
+            self.rect.cy()
+        }
+
+        fn cx(&self) -> Self::Type {
+            self.rect.cx()
+        }
+
+        fn h(&self) -> Self::Type {
+            self.rect.h()
+        }
+
+        fn w(&self) -> Self::Type {
+            self.rect.w()
         }
     }
 }

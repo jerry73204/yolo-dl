@@ -1,5 +1,10 @@
 use super::{area::AreaTensor, size::SizeTensor, tlbr::TLBRTensor};
-use crate::{bbox::CyCxHW, common::*, unit::Unit, utils::EPSILON};
+use crate::{
+    bbox::{CyCxHW, Rect},
+    common::*,
+    unit::Unit,
+    utils::EPSILON,
+};
 use num_traits::NumCast;
 
 /// Checked tensor of batched box parameters in CyCxHW format.
@@ -224,7 +229,7 @@ where
         let (cy, cx, h, w) = iter
             .into_iter()
             .map(|cycxhw| {
-                let [cy, cx, h, w] = cycxhw.cycxhw_params();
+                let [cy, cx, h, w] = cycxhw.cycxhw();
                 (
                     <f32 as NumCast>::from(cy).unwrap(),
                     <f32 as NumCast>::from(cx).unwrap(),
@@ -254,7 +259,7 @@ where
         let (cy, cx, h, w) = iter
             .into_iter()
             .map(|cycxhw| {
-                let [cy, cx, h, w] = cycxhw.cycxhw_params();
+                let [cy, cx, h, w] = cycxhw.cycxhw();
                 (
                     <f32 as NumCast>::from(cy).unwrap(),
                     <f32 as NumCast>::from(cx).unwrap(),

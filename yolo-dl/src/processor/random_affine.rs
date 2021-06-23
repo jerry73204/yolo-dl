@@ -151,8 +151,8 @@ impl RandomAffine {
     pub fn forward(
         &self,
         orig_image: &Tensor,
-        orig_bboxes: &[RatioLabel],
-    ) -> Result<(Tensor, Vec<RatioLabel>)> {
+        orig_bboxes: &[RatioRectLabel<R64>],
+    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)> {
         tch::no_grad(|| {
             let device = orig_image.device();
             let (channels, height, width) = orig_image.size3()?;
@@ -327,7 +327,10 @@ impl RandomAffine {
                 let (orig_corners_vec, class_vec) = orig_bboxes
                     .iter()
                     .map(|label| {
-                        let RatioLabel { ref cycxhw, class } = *label;
+                        let RatioRectLabel {
+                            rect: ref cycxhw,
+                            class,
+                        } = *label;
                         let tlbr: TLBR<_, _> = cycxhw.cast::<f32>().unwrap().into();
                         let orig_t = tlbr.t();
                         let orig_l = tlbr.l();
@@ -428,8 +431,8 @@ impl RandomAffine {
                                 .cast::<R64>()
                                 .unwrap();
 
-                        let new_label = RatioLabel {
-                            cycxhw: new_bbox,
+                        let new_label = RatioRectLabel {
+                            rect: new_bbox,
                             class,
                         };
 
