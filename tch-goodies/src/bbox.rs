@@ -135,7 +135,7 @@ mod rect_transform {
     }
 
     impl<T> PixelRectTransform<T> {
-        pub fn to_ratio(&self, size: &PixelSize<T>) -> RatioRectTransform<T>
+        pub fn to_ratio_transform(&self, size: &PixelSize<T>) -> RatioRectTransform<T>
         where
             T: Num + Copy,
         {
@@ -150,7 +150,7 @@ mod rect_transform {
     }
 
     impl<T> GridRectTransform<T> {
-        pub fn to_ratio(&self, size: &GridSize<T>) -> RatioRectTransform<T>
+        pub fn to_ratio_transform(&self, size: &GridSize<T>) -> RatioRectTransform<T>
         where
             T: Num + Copy,
         {
@@ -165,7 +165,7 @@ mod rect_transform {
     }
 
     impl<T> RatioRectTransform<T> {
-        pub fn to_pixel(&self, size: &PixelSize<T>) -> PixelRectTransform<T>
+        pub fn to_pixel_transform(&self, size: &PixelSize<T>) -> PixelRectTransform<T>
         where
             T: Num + Copy,
         {
@@ -224,6 +224,48 @@ mod rect_transform {
                 h: rhs.h * self.sy,
                 w: rhs.w * self.sx,
                 _phantom: PhantomData,
+            }
+        }
+    }
+
+    impl<T> Mul<&PixelRectLabel<T>> for &PixelRectTransform<T>
+    where
+        T: Num + Copy,
+    {
+        type Output = PixelRectLabel<T>;
+
+        fn mul(self, rhs: &PixelRectLabel<T>) -> Self::Output {
+            RectLabel {
+                rect: self * &rhs.rect,
+                class: rhs.class,
+            }
+        }
+    }
+
+    impl<T> Mul<&GridRectLabel<T>> for &GridRectTransform<T>
+    where
+        T: Num + Copy,
+    {
+        type Output = GridRectLabel<T>;
+
+        fn mul(self, rhs: &GridRectLabel<T>) -> Self::Output {
+            RectLabel {
+                rect: self * &rhs.rect,
+                class: rhs.class,
+            }
+        }
+    }
+
+    impl<T> Mul<&RatioRectLabel<T>> for &RatioRectTransform<T>
+    where
+        T: Num + Copy,
+    {
+        type Output = RatioRectLabel<T>;
+
+        fn mul(self, rhs: &RatioRectLabel<T>) -> Self::Output {
+            RectLabel {
+                rect: self * &rhs.rect,
+                class: rhs.class,
             }
         }
     }
@@ -927,6 +969,30 @@ mod rect_label {
 
         fn w(&self) -> Self::Type {
             self.rect.w()
+        }
+    }
+
+    impl<T> PixelRectLabel<T>
+    where
+        T: Copy + Num,
+    {
+        pub fn to_ratio_label(&self, size: &PixelSize<T>) -> RatioRectLabel<T> {
+            RatioRectLabel {
+                rect: self.rect.to_ratio_cycxhw(size),
+                class: self.class,
+            }
+        }
+    }
+
+    impl<T> RatioRectLabel<T>
+    where
+        T: Copy + Num,
+    {
+        pub fn to_pixel_label(&self, size: &PixelSize<T>) -> PixelRectLabel<T> {
+            PixelRectLabel {
+                rect: self.rect.to_pixel_cycxhw(size),
+                class: self.class,
+            }
         }
     }
 }

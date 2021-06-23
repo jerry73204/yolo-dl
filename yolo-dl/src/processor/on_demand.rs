@@ -139,12 +139,8 @@ impl OnDemandLoader {
                 .into_iter()
                 .map(|orig_label| -> Result<_> {
                     let orig_label = orig_label.borrow();
-                    let resized_bbox = (&transform * &orig_label.rect)
-                        .to_ratio_cycxhw(&PixelSize::from_hw(image_size, image_size)?);
-                    let new_label = RatioRectLabel {
-                        rect: resized_bbox,
-                        class: orig_label.class,
-                    };
+                    let new_label = (&transform * orig_label)
+                        .to_ratio_label(&PixelSize::from_hw(image_size, image_size)?);
                     Ok(new_label)
                 })
                 .try_collect()?
