@@ -43,13 +43,7 @@ impl Model {
             Self::Darknet(DarknetModel {}) => {
                 todo!();
             }
-            Self::NewslabV1(NewslabV1Model { model }) => {
-                let output = model
-                    .forward_t(input, train)?
-                    .merge_detect_2d()
-                    .ok_or_else(|| format_err!("TODO"))?;
-                Ok(output)
-            }
+            Self::NewslabV1(NewslabV1Model { model }) => model.forward_t(input, train),
         }
     }
 

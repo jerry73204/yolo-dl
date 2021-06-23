@@ -62,10 +62,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
                         tokio::task::spawn_blocking(move || -> Result<_> {
                             let record = record?;
                             let images = record.images.to_device(device);
-                            let output = model
-                                .forward_t(&images, false)?
-                                .merge_detect_2d()
-                                .ok_or_else(|| format_err!("invalid model output type"))?;
+                            let output = model.forward_t(&images, false)?;
                             let output = MergedDenseDetection::try_from(output)?;
                             let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
                             Ok((model, yolo_inference, record, inferences))

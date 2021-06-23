@@ -1,15 +1,15 @@
 use crate::{
     common::*, concat_2d::Concat2D, conv_bn_2d::ConvBn2D, dark_csp_2d::DarkCsp2D,
     darknet_route::DarknetRoute, darknet_shortcut::DarknetShortcut, deconv_bn_2d::DeconvBn2D,
-    detect_2d::Detect2D, input::Input, max_pool::MaxPool, merge_detect_2d::MergeDetect2D,
-    spp_csp_2d::SppCsp2D, sum_2d::Sum2D, up_sample_2d::UpSample2D,
+    detect_2d::Detect2D, dynamic_pad_nd::DynamicPad, input::Input, max_pool::MaxPool,
+    merge_detect_2d::MergeDetect2D, spp_csp_2d::SppCsp2D, sum_2d::Sum2D, up_sample_2d::UpSample2D,
 };
 
 pub use module::*;
 pub use module_input::*;
+pub use module_output::*;
 
 mod module {
-    use crate::DynamicPad;
 
     use super::*;
 
@@ -450,6 +450,10 @@ mod module_input {
             Ok(Self::Indexed(kinds))
         }
     }
+}
+
+mod module_output {
+    use super::*;
 
     #[derive(Debug, TensorLike)]
     pub enum ModuleOutput {

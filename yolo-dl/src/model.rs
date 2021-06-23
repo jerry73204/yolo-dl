@@ -11,7 +11,7 @@ pub struct YoloModel {
 }
 
 impl YoloModel {
-    pub fn open_newslab_v1<'p>(
+    pub fn load_newslab_v1_json<'p>(
         path: impl Borrow<nn::Path<'p>>,
         cfg_file: impl AsRef<Path>,
     ) -> Result<Self> {
@@ -188,7 +188,7 @@ impl YoloModel {
                             config::UpSample2DConfig::ByScale { scale } => {
                                 modules::UpSample2D::new(scale.raw())?.into()
                             }
-                            config::UpSample2DConfig::ByStride { stride, reverse } => {
+                            config::UpSample2DConfig::ByStride { .. } => {
                                 todo!();
                             }
                         }
@@ -344,7 +344,11 @@ impl YoloModel {
     }
 
     /// Run forward pass.
-    pub fn forward_t(&mut self, input: &Tensor, train: bool) -> Result<modules::ModuleOutput> {
+    pub fn forward_t(
+        &mut self,
+        input: &Tensor,
+        train: bool,
+    ) -> Result<tch_goodies::DenseDetectionTensorList> {
         let Self {
             ref mut layers,
             output_key,
@@ -384,7 +388,11 @@ impl YoloModel {
         debug_assert!(input.is_none());
 
         // extract output
-        let output = module_outputs.remove(&output_key).unwrap();
+        let output = module_outputs
+            .remove(&output_key)
+            .unwrap()
+            .merge_detect_2d()
+            .unwrap();
 
         Ok(output)
     }
