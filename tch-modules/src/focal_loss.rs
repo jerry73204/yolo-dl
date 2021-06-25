@@ -110,7 +110,8 @@ impl FocalLoss {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loss::bce_with_logit_loss::BceWithLogitsLossInit;
+    use crate::bce_with_logits_loss::BceWithLogitsLossInit;
+    use rand::prelude::*;
 
     #[test]
     fn focal_loss() -> Result<()> {

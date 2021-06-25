@@ -56,6 +56,7 @@ impl CrossEntropyLoss {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::prelude::*;
 
     #[test]
     fn cross_entropy_loss() -> Result<()> {

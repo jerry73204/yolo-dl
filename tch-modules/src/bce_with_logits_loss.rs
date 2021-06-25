@@ -86,6 +86,7 @@ impl BceWithLogitsLoss {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::prelude::*;
 
     #[test]
     fn bce_loss() -> Result<()> {

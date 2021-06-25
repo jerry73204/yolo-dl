@@ -1,15 +1,14 @@
 //! Defines loss for training.
 
 use super::{
-    bce_with_logit_loss::{BceWithLogitsLoss, BceWithLogitsLossInit},
-    cross_entropy::CrossEntropyLoss,
-    focal_loss::{FocalLoss, FocalLossInit},
-    l2_loss::L2Loss,
     misc::{BoxMetric, MatchGrid},
     pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
 use crate::{common::*, profiling::Timing};
 use tch_goodies::detection::{FlatIndex, FlatIndexTensor, MergedDenseDetection};
+use tch_modules::{
+    BceWithLogitsLoss, BceWithLogitsLossInit, CrossEntropyLoss, FocalLoss, FocalLossInit, L2Loss,
+};
 
 pub use yolo_loss::*;
 pub use yolo_loss_init::*;

@@ -28,8 +28,8 @@ pub use std::{
 pub use strum::AsRefStr;
 pub use tch::{
     kind::Element,
-    nn::{self, Module as _, ModuleT as _},
-    vision, Device, IndexOp, Kind, Tensor,
+    nn::{self, Module as _, ModuleT as _, OptimizerConfig as _},
+    vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
 pub use tch_goodies::{
     Activation, DenseDetectionTensor, DenseDetectionTensorList, DenseDetectionTensorUnchecked,
