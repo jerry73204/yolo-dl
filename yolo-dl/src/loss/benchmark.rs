@@ -45,12 +45,12 @@ impl YoloBenchmark {
             let matched_mask = matchings.pred.obj_prob().ge(confidence_threshold);
 
             let all_count = all_mask.numel() as i64;
-            let all_pos = i64::from(all_mask.count_nonzero(&[0, 1, 2]));
+            let all_pos = i64::from(all_mask.count_nonzero_dim_intlist(&[0, 1, 2]));
             let all_neg = all_count - all_pos;
             debug_assert!(all_count > 0);
 
             let matched_count = matched_mask.numel() as i64;
-            let matched_pos = i64::from(matched_mask.count_nonzero(&[0, 1]));
+            let matched_pos = i64::from(matched_mask.count_nonzero_dim_intlist(&[0, 1]));
             let matched_neg = matched_count - matched_pos;
 
             // let unmatched_pos = all_pos - matched_pos;
@@ -80,10 +80,10 @@ impl YoloBenchmark {
         let class_accuracy = {
             if !matchings.pred.class_logit().is_empty() {
                 let conf_mask = matchings.pred.confidence().ge(confidence_threshold);
-                let (_, pred_class) = matchings.pred.class_logit().max2(1, true);
-                let class_mask = matchings.target.class().eq1(&pred_class);
-                let mask = conf_mask.any1(1, true).logical_and(&class_mask);
-                let accuracy = i64::from(mask.count_nonzero(&[0])) as f64 / mask.numel() as f64;
+                let (_, pred_class) = matchings.pred.class_logit().max_dim(1, true);
+                let class_mask = matchings.target.class().eq_tensor(&pred_class);
+                let mask = conf_mask.any_dim(1, true).logical_and(&class_mask);
+                let accuracy = i64::from(mask.count_nonzero(0)) as f64 / mask.numel() as f64;
                 debug_assert!((0f64..=1f64).contains(&accuracy));
                 accuracy
             } else {

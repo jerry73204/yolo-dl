@@ -97,10 +97,10 @@ impl TLBRTensor {
             r: rhs_r,
         } = other;
 
-        let max_t = lhs_t.max1(rhs_t);
-        let max_l = lhs_l.max1(rhs_l);
-        let min_b = lhs_b.min1(rhs_b);
-        let min_r = lhs_r.min1(rhs_r);
+        let max_t = lhs_t.max_other(rhs_t);
+        let max_l = lhs_l.max_other(rhs_l);
+        let min_b = lhs_b.min_other(rhs_b);
+        let min_r = lhs_r.min_other(rhs_r);
 
         let inner_h = (min_b - max_t).clamp_min(0.0);
         let inner_w = (min_r - max_l).clamp_min(0.0);
@@ -125,10 +125,10 @@ impl TLBRTensor {
             r: rhs_r,
         } = other;
 
-        let min_t = lhs_t.min1(rhs_t);
-        let min_l = lhs_l.min1(rhs_l);
-        let max_b = lhs_b.max1(rhs_b);
-        let max_r = lhs_r.max1(rhs_r);
+        let min_t = lhs_t.min_other(rhs_t);
+        let min_l = lhs_l.min_other(rhs_l);
+        let max_b = lhs_b.max_other(rhs_b);
+        let max_r = lhs_r.max_other(rhs_r);
 
         Self {
             t: min_t,
@@ -169,13 +169,13 @@ impl TLBRTensor {
         let dr_r = (-&dr).clamp_min(0.0);
 
         (dt_l.pow(2.0) + dl_l.pow(2.0))
-            .max1(&(dt_l.pow(2.0) + dr_l.pow(2.0)))
-            .max1(&(db_l.pow(2.0) + dl_l.pow(2.0)))
-            .max1(&(db_l.pow(2.0) + dr_l.pow(2.0)))
-            .max1(&(dt_r.pow(2.0) + dl_r.pow(2.0)))
-            .max1(&(dt_r.pow(2.0) + dr_r.pow(2.0)))
-            .max1(&(db_r.pow(2.0) + dl_r.pow(2.0)))
-            .max1(&(db_r.pow(2.0) + dr_r.pow(2.0)))
+            .max_other(&(dt_l.pow(2.0) + dr_l.pow(2.0)))
+            .max_other(&(db_l.pow(2.0) + dl_l.pow(2.0)))
+            .max_other(&(db_l.pow(2.0) + dr_l.pow(2.0)))
+            .max_other(&(dt_r.pow(2.0) + dl_r.pow(2.0)))
+            .max_other(&(dt_r.pow(2.0) + dr_r.pow(2.0)))
+            .max_other(&(db_r.pow(2.0) + dl_r.pow(2.0)))
+            .max_other(&(db_r.pow(2.0) + dr_r.pow(2.0)))
             .sqrt()
     }
 }

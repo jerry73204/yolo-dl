@@ -7,9 +7,9 @@ edition = "2018"
 [dependencies]
 serde = { version = "1.0.126", features = ["derive"] }
 serde_ini = "0.2.0"
-anyhow = "1.0.40"
+anyhow = "1.0.41"
 noisy_float = { version = "0.2.0", features = ["serde"] }
-itertools = "0.10.0"
+itertools = "0.10.1"
 binread = "2.1.1"
 owning_ref = "0.4.1"
 log = "0.4.14"
@@ -23,7 +23,7 @@ unzip-n = "0.1.2"
 strum = { version = "0.21.0", features = ["derive"] }
 image = "0.23.14"
 maplit = "1.0.2"
-tch-tensor-like = { version = "0.3.0", features = ["derive"] }
+tch-tensor-like = { version = "0.4.0", features = ["derive"] }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 dot = { version = "0.1.4", optional = true }
 pretty_env_logger = "0.4.0"

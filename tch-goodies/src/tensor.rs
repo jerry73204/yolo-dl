@@ -74,12 +74,14 @@ mod tensor_ext {
         {
             let weighted_pairs: Vec<_> = pairs
                 .into_iter()
-                .map(|(tensor, weight)| Fallible::Ok((tensor.borrow().f_mul1(weight)?, weight)))
+                .map(|(tensor, weight)| {
+                    Fallible::Ok((tensor.borrow().f_mul_scalar(weight)?, weight))
+                })
                 .try_collect()?;
             let (tensors, weights) = weighted_pairs.into_iter().unzip_n_vec();
             let sum_tensors = Self::f_sum_tensors(tensors)?;
             let sum_weights: f64 = weights.iter().cloned().sum();
-            let mean_tensors = sum_tensors.f_div1(sum_weights)?;
+            let mean_tensors = sum_tensors.f_div_scalar(sum_weights)?;
             Ok(mean_tensors)
         }
 
@@ -554,8 +556,8 @@ mod tensor_ext {
                     "invalid batch index"
                 );
                 ensure!(
-                    bool::from(t.le1(b).all())
-                        && bool::from(l.le1(r).all())
+                    bool::from(t.le_tensor(b).all())
+                        && bool::from(l.le_tensor(r).all())
                         && bool::from(t.ge(0).all())
                         && bool::from(t.lt(height).all())
                         && bool::from(l.ge(0).all())
@@ -624,7 +626,7 @@ mod tensor_ext {
                     "invalid batch index"
                 );
                 ensure!(
-                    bool::from(t.le1(b).all()) && bool::from(l.le1(r).all()),
+                    bool::from(t.le_tensor(b).all()) && bool::from(l.le_tensor(r).all()),
                     "invalid tlbr parameters"
                 );
                 let num_samples = batches.size1()?;
@@ -1020,12 +1022,12 @@ mod tensor_ext {
             let green = rgb.select(channel_index, 1);
             let blue = rgb.select(channel_index, 2);
 
-            let (max, argmax) = rgb.max2(channel_index, false);
-            let (min, _argmin) = rgb.min2(channel_index, false);
+            let (max, argmax) = rgb.max_dim(channel_index, false);
+            let (min, _argmin) = rgb.min_dim(channel_index, false);
             let diff = &max - &min;
 
             let value = max;
-            let saturation = (&diff / &value).where1(&value.gt(eps), &value.zeros_like());
+            let saturation = (&diff / &value).where_self(&value.gt(eps), &value.zeros_like());
 
             let case1 = value.zeros_like();
             let case2 = (&green - &blue) / &diff;
@@ -1033,9 +1035,9 @@ mod tensor_ext {
             let case4 = (&red - &green) / &diff + 4.0;
 
             let hue = {
-                let hue = case1.where1(
+                let hue = case1.where_self(
                     &diff.le(eps),
-                    &case2.where1(&argmax.eq(0), &case3.where1(&argmax.eq(1), &case4)),
+                    &case2.where_self(&argmax.eq(0), &case3.where_self(&argmax.eq(1), &case4)),
                 );
                 (hue + 6.0).fmod(6.0) / 6.0
             };
@@ -1069,7 +1071,7 @@ mod tensor_ext {
 
             let func = |n: i64| {
                 let k = (&hue * 6.0 + n as f64).fmod(6.0);
-                &value * (1.0 - &saturation * k.min1(&(-&k + 4.0)).clamp(0.0, 1.0))
+                &value * (1.0 - &saturation * k.min_other(&(-&k + 4.0)).clamp(0.0, 1.0))
             };
 
             let red = func(5);
@@ -1306,7 +1308,7 @@ mod tests {
         let output = input.multi_softmax(&[1, 2, 4], Kind::Float);
         assert_eq!(input.size(), output.size());
 
-        let sum = output.sum1(&[1, 2, 4], false, Kind::Float);
+        let sum = output.sum_dim_intlist(&[1, 2, 4], false, Kind::Float);
 
         assert!(bool::from(
             (&sum - Tensor::from(1f32).view([1, 1, 1, 1]).expand_as(&sum))

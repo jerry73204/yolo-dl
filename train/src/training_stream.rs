@@ -623,14 +623,14 @@ impl TrainingStream {
                 });
 
                 let (min_step, min_epoch, bboxes_vec, image_vec, timing_vec): (
-                    MinCollector<_>,
-                    MinCollector<_>,
+                    MinVal<_>,
+                    MinVal<_>,
                     Vec<_>,
                     Vec<_>,
                     Vec<_>,
                 ) = chunk.into_iter().unzip_n();
-                let min_step = min_step.get().unwrap();
-                let min_epoch = min_epoch.get().unwrap();
+                let min_step = min_step.unwrap();
+                let min_epoch = min_epoch.unwrap();
                 let image_batch = Tensor::cat(&image_vec, 0);
                 let timing = Timing::merge("batching", timing_vec).unwrap();
 

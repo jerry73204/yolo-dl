@@ -201,7 +201,7 @@ mod logging_worker {
 
                         // concatenate at "anchor" dimension, and find the max over that dimension
                         let (objectness_image, _argmax) =
-                            Tensor::cat(&objectness_maps, 1).max2(1, true);
+                            Tensor::cat(&objectness_maps, 1).max_dim(1, true);
                         debug_assert!(
                             objectness_image.size4().unwrap() == (batch_size, 1, image_h, image_w)
                         );

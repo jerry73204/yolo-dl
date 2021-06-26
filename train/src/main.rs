@@ -27,15 +27,15 @@ pub async fn main() -> Result<()> {
         filter
     };
 
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("train")
-        .install_simple()?;
-    let otel_layer = tracing_opentelemetry::OpenTelemetryLayer::new(tracer);
+    // let tracer = opentelemetry_jaeger::new_pipeline()
+    //     .with_service_name("train")
+    //     .install_simple()?;
+    // let otel_layer = tracing_opentelemetry::OpenTelemetryLayer::new(tracer);
 
     tracing_subscriber::registry()
         .with(filter_layer)
         .with(fmt_layer)
-        .with(otel_layer)
+        // .with(otel_layer)
         .init();
 
     // parse arguments

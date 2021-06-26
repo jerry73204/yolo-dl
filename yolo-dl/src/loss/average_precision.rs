@@ -764,8 +764,8 @@ mod tests {
         }
         let map = sum_ret / gt_cnt.len() as f64;
         assert!(abs_diff_eq!(
-            map,
-            (r64(0.9) + r64(0.1) + r64(0.19801980198019803)) / gt_cnt.len() as f64
+            map.raw(),
+            (0.9 + 0.1 + 0.19801980198019803) / gt_cnt.len() as f64
         ));
 
         Ok(())
@@ -828,7 +828,7 @@ mod tests {
 
         vec = vec.into_iter().rev().collect();
         let res = ap_cal_11.compute_by_prec_rec(&vec);
-        assert!(abs_diff_eq!(res, r64(0.5908181818181819)));
+        assert!(abs_diff_eq!(res.raw(), 0.5908181818181819));
         Ok(())
     }
 }

@@ -33,7 +33,7 @@ impl CrossEntropyLoss {
             target.shallow_clone()
         } else {
             debug_assert!(target.size2().unwrap() == (batch_size, num_classes));
-            let (_, sparse_target) = target.max2(1, false);
+            let (_, sparse_target) = target.max_dim(1, false);
             sparse_target.set_requires_grad(false)
         };
 
@@ -95,7 +95,13 @@ mod tests {
             optimizer.backward_step(&loss);
         }
 
-        let accuracy = i64::from(input.max2(1, false).1.eq1(&target).count_nonzero(&[0])) as f64
+        let accuracy = i64::from(
+            input
+                .max_dim(1, false)
+                .1
+                .eq_tensor(&target)
+                .count_nonzero(0),
+        ) as f64
             / n_batch as f64;
         ensure!(accuracy >= 0.99, "the loss does not coverage");
 

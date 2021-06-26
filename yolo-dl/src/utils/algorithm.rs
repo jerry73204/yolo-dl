@@ -49,7 +49,7 @@ pub fn interpolate_stepwise_values(
             (false, false) => match points_iter.next() {
                 Some(new_inter_x) => inter_x = new_inter_x,
                 None => {
-                    if abs_diff_eq!(inter_x, former.x()) {
+                    if abs_diff_eq!(inter_x.raw(), former.x().raw()) {
                         interpolated.push((former.x(), former.y()));
                     }
                     break;
@@ -71,7 +71,7 @@ pub fn interpolate_stepwise_values(
                 None => {
                     if latter.x() == 1.0 {
                         interpolated.push((latter.x(), latter.y()));
-                    } else if abs_diff_eq!(inter_x, latter.x()) {
+                    } else if abs_diff_eq!(inter_x.raw(), latter.x().raw()) {
                         interpolated.push((latter.x(), r64(0.0)));
                     }
                     break;

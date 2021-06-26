@@ -664,7 +664,7 @@ fn backward_step(
         };
         let mean_gradients = sum_gradients
             .into_iter()
-            .map(|mut grad| grad.g_div_1(batch_size as f64))
+            .map(|grad| grad.g_div_scalar(batch_size as f64))
             .collect_vec();
 
         // optimize

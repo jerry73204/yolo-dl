@@ -45,23 +45,23 @@ impl ColorJitter {
             let mut rng = StdRng::from_entropy();
 
             let hsv = rgb.rgb_to_hsv();
-            let mut hue = hsv.select(0, 0);
-            let mut saturation = hsv.select(0, 1);
-            let mut value = hsv.select(0, 2);
+            let hue = hsv.select(0, 0);
+            let saturation = hsv.select(0, 1);
+            let value = hsv.select(0, 2);
 
             if let Some(max_shift) = self.max_hue_shift {
                 let shift = rng.gen_range((-max_shift)..max_shift);
-                let _ = hue.g_add_1(shift + 1.0).fmod_(1.0);
+                let _ = hue.g_add_scalar(shift + 1.0).fmod_(1.0);
             }
 
             if let Some(max_shift) = self.max_saturation_shift {
                 let shift = rng.gen_range((-max_shift)..max_shift);
-                let _ = saturation.g_add_1(shift).clamp_(0.0, 1.0);
+                let _ = saturation.g_add_scalar(shift).clamp_(0.0, 1.0);
             }
 
             if let Some(max_shift) = self.max_value_shift {
                 let shift = rng.gen_range((-max_shift)..max_shift);
-                let _ = value.g_add_1(shift).clamp_(0.0, 1.0);
+                let _ = value.g_add_scalar(shift).clamp_(0.0, 1.0);
             }
 
             let new_rgb = hsv.hsv_to_rgb();

@@ -84,7 +84,7 @@ impl OnDemandLoader {
                         .resize2d_exact(cache_h as i64, cache_w as i64)?
                         .to_device(device)
                         .to_kind(Kind::Float)
-                        .g_div1(255.0)
+                        .g_div_scalar(255.0)
                         .set_requires_grad(false);
                     timing.add_event("load & resize");
 

@@ -18,15 +18,12 @@ impl FileCache {
     /// * `image_size` - The outcome image size in pixels.
     /// * `image_channels` - The expected number of image channels.
     /// * `device` - The outcome image device. It defaults to CPU if set to `None`.
-    pub async fn new<P>(
-        cache_dir: P,
+    pub async fn new(
+        cache_dir: impl AsRef<async_std::path::Path>,
         image_size: usize,
         image_channels: usize,
         device: impl Into<Option<Device>>,
-    ) -> Result<Self>
-    where
-        P: AsRef<async_std::path::Path>,
-    {
+    ) -> Result<Self> {
         ensure!(image_size > 0, "image_size must be positive");
         ensure!(image_channels > 0, "image_channels must be positive");
 
@@ -145,7 +142,7 @@ impl FileCache {
                             .resize2d_exact(cache_h as i64, cache_w as i64)?
                             .to_device(device)
                             .to_kind(Kind::Float)
-                            .g_div1(255.0)
+                            .g_div_scalar(255.0)
                             .set_requires_grad(false);
                         timing.add_event("load & resize");
 

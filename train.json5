@@ -92,21 +92,21 @@
         "batch_size": 16,
         "device_config": {
             "type": "SingleDevice",
-            "device": "cuda(0)"
+            "device": "cuda:0"
         },
 
         // RTX 2080ti x4
         // "batch_size": 64,
         // "device_config": {
         //     "type": "MultiDevice",
-        //     "devices": ["cuda(0)", "cuda(1)", "cuda(2)", "cuda(3)"],
+        //     "devices": ["cuda:0", "cuda:1", "cuda:2", "cuda:3"],
         // },
 
         // RTX 3090
         // "batch_size": 32,
         // "device_config": {
         //     "type": "SingleDevice",
-        //     "device": "cuda(0)"
+        //     "device": "cuda:0"
         // },
 
         "optimizer": {
