@@ -92,46 +92,35 @@ impl CyCxHWMatcher {
                     let target_cy_fract = target_cy.fract();
                     let target_cx_fract = target_cx.fract();
 
-                    let orig_iter = {
-                        let ok = (0..feature_size.h).contains(&target_row)
-                            && (0..feature_size.w).contains(&target_col);
-                        ok.then(|| (target_row, target_col)).into_iter()
-                    };
+                    let orig_iter = iter::once((target_row, target_col));
 
-                    match self.match_grid_method {
+                    let iter: Box<dyn Iterator<Item = _>> = match self.match_grid_method {
                         MatchGrid::Rect2 => {
-                            let top = (target_cy_fract < snap_thresh && target_row >= 1)
+                            let top = (target_cy_fract < snap_thresh)
                                 .then(|| (target_row - 1, target_col));
-                            let left = (target_cx_fract < snap_thresh && target_col >= 1)
+                            let left = (target_cx_fract < snap_thresh)
                                 .then(|| (target_row, target_col - 1));
 
-                            orig_iter.chain(top).chain(left).collect()
+                            Box::new(orig_iter.chain(top).chain(left))
                         }
                         MatchGrid::Rect4 => {
-                            let top = (target_cy_fract < snap_thresh && target_row >= 1)
+                            let top = (target_cy_fract < snap_thresh)
                                 .then(|| (target_row - 1, target_col));
-                            let left = (target_cx_fract < snap_thresh && target_col >= 1)
+                            let left = (target_cx_fract < snap_thresh)
                                 .then(|| (target_row, target_col - 1));
-                            let bottom = (target_cy_fract > (1.0 - snap_thresh)
-                                && target_row <= feature_size.h - 2)
+                            let bottom = (target_cy_fract > 1.0 - snap_thresh)
                                 .then(|| (target_row + 1, target_col));
-                            let right = (target_cx_fract > (1.0 - snap_thresh)
-                                && target_col <= feature_size.w - 2)
+                            let right = (target_cx_fract > 1.0 - snap_thresh)
                                 .then(|| (target_row, target_col + 1));
 
-                            orig_iter
-                                .chain(top)
-                                .chain(left)
-                                .chain(bottom)
-                                .chain(right)
-                                .collect()
+                            Box::new(orig_iter.chain(top).chain(left).chain(bottom).chain(right))
                         }
-                    }
+                    };
+                    iter.filter(|(row, col)| {
+                        (0..feature_size.h).contains(row) && (0..feature_size.w).contains(col)
+                    })
+                    .collect()
                 };
-
-                debug_assert!(neighbor_grid_indexes.iter().all(|&(row, col)| {
-                    (0..feature_size.h).contains(&row) && (0..feature_size.w).contains(&col)
-                }));
 
                 (
                     batch_index,
