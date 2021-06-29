@@ -92,7 +92,11 @@ impl CyCxHWMatcher {
                     let target_cy_fract = target_cy.fract();
                     let target_cx_fract = target_cx.fract();
 
-                    let orig_iter = iter::once((target_row, target_col));
+                    let orig_iter = {
+                        let ok = (0..feature_size.h).contains(&target_row)
+                            && (0..feature_size.w).contains(&target_col);
+                        ok.then(|| (target_row, target_col)).into_iter()
+                    };
 
                     match self.match_grid_method {
                         MatchGrid::Rect2 => {
@@ -125,8 +129,8 @@ impl CyCxHWMatcher {
                     }
                 };
 
-                debug_assert!(neighbor_grid_indexes.iter().cloned().all(|(row, col)| {
-                    row >= 0 && row <= feature_size.h - 1 && col >= 0 && col <= feature_size.w - 1
+                debug_assert!(neighbor_grid_indexes.iter().all(|&(row, col)| {
+                    (0..feature_size.h).contains(&row) && (0..feature_size.w).contains(&col)
                 }));
 
                 (
