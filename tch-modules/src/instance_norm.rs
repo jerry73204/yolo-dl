@@ -84,8 +84,6 @@ impl nn::ModuleT for InstanceNorm {
             eps,
             cudnn_enabled,
             track_running_stats,
-            var_min,
-            var_max,
             ..
         } = *self;
 
