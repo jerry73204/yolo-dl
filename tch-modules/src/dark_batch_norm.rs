@@ -71,8 +71,8 @@ impl DarkBatchNormInit {
     }
 }
 
-impl DarkBatchNorm {
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+impl nn::ModuleT for DarkBatchNorm {
+    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
         let Self {
             ref running_mean,
             ref running_var,
@@ -81,8 +81,24 @@ impl DarkBatchNorm {
             momentum,
             eps,
             cudnn_enabled,
+            var_min,
+            var_max,
             ..
         } = *self;
+
+        // clamp running_var
+        match (var_min, var_max) {
+            (Some(min), Some(max)) => {
+                let _ = running_var.shallow_clone().clamp_(min, max);
+            }
+            (None, Some(max)) => {
+                let _ = running_var.shallow_clone().clamp_max_(max);
+            }
+            (Some(min), None) => {
+                let _ = running_var.shallow_clone().clamp_min_(min);
+            }
+            (None, None) => {}
+        }
 
         let output = Tensor::batch_norm(
             input,
@@ -126,7 +142,9 @@ impl DarkBatchNorm {
 
         output
     }
+}
 
+impl DarkBatchNorm {
     pub fn clamp_bn_var(&mut self) {
         tch::no_grad(|| {
             let Self {

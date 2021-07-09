@@ -73,8 +73,8 @@ pub struct InstanceNorm {
     var_max: Option<f64>,
 }
 
-impl InstanceNorm {
-    pub fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+impl nn::ModuleT for InstanceNorm {
+    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
         let Self {
             ref running_mean,
             ref running_var,
@@ -84,8 +84,24 @@ impl InstanceNorm {
             eps,
             cudnn_enabled,
             track_running_stats,
+            var_min,
+            var_max,
             ..
         } = *self;
+
+        // clamp running_var
+        match (var_min, var_max) {
+            (Some(min), Some(max)) => {
+                let _ = running_var.shallow_clone().clamp_(min, max);
+            }
+            (None, Some(max)) => {
+                let _ = running_var.shallow_clone().clamp_max_(max);
+            }
+            (Some(min), None) => {
+                let _ = running_var.shallow_clone().clamp_min_(min);
+            }
+            (None, None) => {}
+        }
 
         let output = Tensor::instance_norm(
             input,
@@ -130,7 +146,9 @@ impl InstanceNorm {
 
         output
     }
+}
 
+impl InstanceNorm {
     pub fn clamp_bn_var(&mut self) {
         tch::no_grad(|| {
             let Self {
