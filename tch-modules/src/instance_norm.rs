@@ -89,20 +89,6 @@ impl nn::ModuleT for InstanceNorm {
             ..
         } = *self;
 
-        // clamp running_var
-        match (var_min, var_max) {
-            (Some(min), Some(max)) => {
-                let _ = running_var.shallow_clone().clamp_(min, max);
-            }
-            (None, Some(max)) => {
-                let _ = running_var.shallow_clone().clamp_max_(max);
-            }
-            (Some(min), None) => {
-                let _ = running_var.shallow_clone().clamp_min_(min);
-            }
-            (None, None) => {}
-        }
-
         let output = Tensor::instance_norm(
             input,
             ws.as_ref(),
@@ -149,14 +135,15 @@ impl nn::ModuleT for InstanceNorm {
 }
 
 impl InstanceNorm {
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_bn_var(&self) {
         tch::no_grad(|| {
             let Self {
-                ref mut running_var,
+                ref running_var,
                 var_min,
                 var_max,
                 ..
             } = *self;
+            let mut running_var = running_var.shallow_clone();
 
             // clip running_var
             match (var_min, var_max) {
@@ -174,14 +161,16 @@ impl InstanceNorm {
         });
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize_bn(&self) {
         tch::no_grad(|| {
             let Self {
                 ws, running_var, ..
             } = self;
+            let ws = ws.shallow_clone();
+            let mut running_var = running_var.shallow_clone();
 
-            if let Some(ws) = ws {
-                ws.copy_(&(&*ws / &*running_var));
+            if let Some(mut ws) = ws {
+                ws.copy_(&(&ws / &running_var));
                 let _ = running_var.fill_(1.0);
             }
         });

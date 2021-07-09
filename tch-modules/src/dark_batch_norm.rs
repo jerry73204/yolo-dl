@@ -81,24 +81,8 @@ impl nn::ModuleT for DarkBatchNorm {
             momentum,
             eps,
             cudnn_enabled,
-            var_min,
-            var_max,
             ..
         } = *self;
-
-        // clamp running_var
-        match (var_min, var_max) {
-            (Some(min), Some(max)) => {
-                let _ = running_var.shallow_clone().clamp_(min, max);
-            }
-            (None, Some(max)) => {
-                let _ = running_var.shallow_clone().clamp_max_(max);
-            }
-            (Some(min), None) => {
-                let _ = running_var.shallow_clone().clamp_min_(min);
-            }
-            (None, None) => {}
-        }
 
         let output = Tensor::batch_norm(
             input,
@@ -145,14 +129,15 @@ impl nn::ModuleT for DarkBatchNorm {
 }
 
 impl DarkBatchNorm {
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_bn_var(&self) {
         tch::no_grad(|| {
             let Self {
-                ref mut running_var,
+                ref running_var,
                 var_min,
                 var_max,
                 ..
             } = *self;
+            let mut running_var = running_var.shallow_clone();
 
             // clip running_var
             match (var_min, var_max) {
@@ -170,14 +155,16 @@ impl DarkBatchNorm {
         });
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize_bn(&self) {
         tch::no_grad(|| {
             let Self {
                 ws, running_var, ..
             } = self;
+            let ws = ws.shallow_clone();
+            let mut running_var = running_var.shallow_clone();
 
-            if let Some(ws) = ws {
-                ws.copy_(&(&*ws / &*running_var));
+            if let Some(mut ws) = ws {
+                ws.copy_(&(&ws / &running_var));
                 let _ = running_var.fill_(1.0);
             }
         });
@@ -198,3 +185,81 @@ pub struct DarkBatchNormGrad {
     pub ws: Option<Tensor>,
     pub bs: Option<Tensor>,
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use tch::kind::FLOAT_CPU;
+
+//     #[test]
+//     fn batch_norm_clip_running_var() {
+//         let vs = nn::VarStore::new(Device::Cpu);
+//         let root = vs.root();
+
+//         let bn_init = DarkBatchNormInit {
+//             var_min: Some(1e-3),
+//             var_max: Some(1e3),
+//             ..Default::default()
+//         };
+
+//         let seq = nn::seq_t()
+//             .add(nn::conv2d(
+//                 &root / "conv1",
+//                 3,
+//                 8,
+//                 3,
+//                 nn::ConvConfig {
+//                     padding: 1,
+//                     stride: 2,
+//                     ..Default::default()
+//                 },
+//             ))
+//             .add_fn(|xs| xs.leaky_relu())
+//             .add(bn_init.clone().build(&root / "bn1", 8))
+//             .add_fn(|xs| xs.leaky_relu())
+//             .add(nn::conv2d(
+//                 &root / "conv2",
+//                 8,
+//                 8,
+//                 3,
+//                 nn::ConvConfig {
+//                     padding: 1,
+//                     stride: 2,
+//                     ..Default::default()
+//                 },
+//             ))
+//             .add(bn_init.clone().build(&root / "bn2", 8))
+//             .add(nn::conv2d(
+//                 &root / "conv3",
+//                 8,
+//                 1,
+//                 3,
+//                 nn::ConvConfig {
+//                     padding: 1,
+//                     stride: 2,
+//                     ..Default::default()
+//                 },
+//             ))
+//             .add(bn_init.build(&root / "bn3", 1))
+//             .add_fn(|xs| {
+//                 let bs = xs.size()[0];
+//                 xs.view([bs])
+//             });
+
+//         const BATCH_SIZE: i64 = 7;
+//         let mut opt = nn::adam(0.5, 0.999, 0.).build(&vs, 1e-3).unwrap();
+
+//         for _ in 0..100 {
+//             let input = Tensor::rand(&[BATCH_SIZE, 3, 8, 8], FLOAT_CPU);
+//             let output = seq.forward_t(&input, true);
+//             let target = Tensor::zeros(&[BATCH_SIZE], FLOAT_CPU);
+//             let loss = output.binary_cross_entropy_with_logits::<Tensor>(
+//                 &target,
+//                 None,
+//                 None,
+//                 Reduction::Mean,
+//             );
+//             opt.backward_step(&loss);
+//         }
+//     }
+// }
