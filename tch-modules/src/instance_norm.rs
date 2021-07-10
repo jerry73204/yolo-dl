@@ -51,8 +51,8 @@ impl Default for InstanceNormInit {
             momentum: r64(0.1),
             track_running_stats: false,
             cudnn_enabled: true,
-            ws_init: None,
-            bs_init: None,
+            ws_init: Some(nn::Init::Const(1.0)),
+            bs_init: Some(nn::Init::Const(0.0)),
             var_min: None,
             var_max: None,
         }
