@@ -133,7 +133,22 @@ impl nn::ModuleT for InstanceNorm {
 }
 
 impl InstanceNorm {
-    pub fn clamp_bn_var(&self) {
+    pub fn has_nan(&self) -> bool {
+        let Self {
+            ws,
+            bs,
+            running_mean,
+            running_var,
+            ..
+        } = self;
+
+        ws.as_ref().map(|ws| ws.has_nan()).unwrap_or(false)
+            || bs.as_ref().map(|bs| bs.has_nan()).unwrap_or(false)
+            || running_mean.has_nan()
+            || running_var.has_nan()
+    }
+
+    pub fn clamp_running_var(&self) {
         tch::no_grad(|| {
             let Self {
                 ref running_var,
@@ -159,7 +174,7 @@ impl InstanceNorm {
         });
     }
 
-    pub fn denormalize_bn(&self) {
+    pub fn denormalize(&self) {
         tch::no_grad(|| {
             let Self {
                 ws, running_var, ..
@@ -189,3 +204,30 @@ pub struct InstanceNormGrad {
     pub ws: Option<Tensor>,
     pub bs: Option<Tensor>,
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use tch::kind::FLOAT_CPU;
+
+//     #[test]
+//     fn instance_norm_nan_test() {
+//         const CHANNELS: i64 = 16;
+
+//         let vs = nn::VarStore::new(Device::Cpu);
+//         let root = vs.root();
+
+//         let norm = InstanceNormInit {
+//             var_min: Some(1e-3),
+//             ..Default::default()
+//         }
+//         .build(&root, CHANNELS);
+
+//         for _ in 0..100 {
+//             norm.clamp_running_var();
+//             let input = Tensor::zeros(&[8, CHANNELS, 1, 1], FLOAT_CPU);
+//             let output = norm.forward_t(&input, true);
+//             assert!(!norm.has_nan());
+//         }
+//     }
+// }

@@ -119,15 +119,15 @@ impl ConvBn2D {
 }
 
 impl ConvBn2D {
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_running_var(&mut self) {
         if let Some(bn) = &mut self.bn {
-            bn.clamp_bn_var();
+            bn.clamp_running_var();
         }
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize(&mut self) {
         if let Some(bn) = &mut self.bn {
-            bn.denormalize_bn();
+            bn.denormalize();
         }
     }
 }

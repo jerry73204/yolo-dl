@@ -141,7 +141,7 @@ impl DarkCsp2D {
         }
     }
 
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_running_var(&mut self) {
         let Self {
             skip_conv,
             merge_conv,
@@ -151,17 +151,17 @@ impl DarkCsp2D {
             ..
         } = self;
 
-        skip_conv.clamp_bn_var();
-        merge_conv.clamp_bn_var();
-        before_repeat_conv.clamp_bn_var();
-        after_repeat_conv.clamp_bn_var();
+        skip_conv.clamp_running_var();
+        merge_conv.clamp_running_var();
+        before_repeat_conv.clamp_running_var();
+        after_repeat_conv.clamp_running_var();
         repeat_convs.iter_mut().for_each(|(first, second)| {
-            first.clamp_bn_var();
-            second.clamp_bn_var();
+            first.clamp_running_var();
+            second.clamp_running_var();
         });
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize(&mut self) {
         let Self {
             skip_conv,
             merge_conv,
@@ -171,13 +171,13 @@ impl DarkCsp2D {
             ..
         } = self;
 
-        skip_conv.denormalize_bn();
-        merge_conv.denormalize_bn();
-        before_repeat_conv.denormalize_bn();
-        after_repeat_conv.denormalize_bn();
+        skip_conv.denormalize();
+        merge_conv.denormalize();
+        before_repeat_conv.denormalize();
+        after_repeat_conv.denormalize();
         repeat_convs.iter_mut().for_each(|(first, second)| {
-            first.denormalize_bn();
-            second.denormalize_bn();
+            first.denormalize();
+            second.denormalize();
         });
     }
 }

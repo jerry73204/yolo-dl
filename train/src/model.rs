@@ -47,24 +47,24 @@ impl Model {
         }
     }
 
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_running_var(&mut self) {
         match self {
             Self::Darknet(DarknetModel {}) => {
                 todo!();
             }
             Self::NewslabV1(NewslabV1Model { model }) => {
-                model.clamp_bn_var();
+                model.clamp_running_var();
             }
         }
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize(&mut self) {
         match self {
             Self::Darknet(DarknetModel {}) => {
                 todo!();
             }
             Self::NewslabV1(NewslabV1Model { model }) => {
-                model.denormalize_bn();
+                model.denormalize();
             }
         }
     }

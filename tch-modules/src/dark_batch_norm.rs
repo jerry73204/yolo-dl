@@ -129,7 +129,22 @@ impl nn::ModuleT for DarkBatchNorm {
 }
 
 impl DarkBatchNorm {
-    pub fn clamp_bn_var(&self) {
+    pub fn has_nan(&self) -> bool {
+        let Self {
+            ws,
+            bs,
+            running_mean,
+            running_var,
+            ..
+        } = self;
+
+        ws.as_ref().map(|ws| ws.has_nan()).unwrap_or(false)
+            || bs.as_ref().map(|bs| bs.has_nan()).unwrap_or(false)
+            || running_mean.has_nan()
+            || running_var.has_nan()
+    }
+
+    pub fn clamp_running_var(&self) {
         tch::no_grad(|| {
             let Self {
                 ref running_var,
@@ -155,7 +170,7 @@ impl DarkBatchNorm {
         });
     }
 
-    pub fn denormalize_bn(&self) {
+    pub fn denormalize(&self) {
         tch::no_grad(|| {
             let Self {
                 ws, running_var, ..
@@ -186,80 +201,101 @@ pub struct DarkBatchNormGrad {
     pub bs: Option<Tensor>,
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use tch::kind::FLOAT_CPU;
+#[cfg(test)]
+mod tests {
+    // use super::*;
+    // use tch::kind::FLOAT_CPU;
 
-//     #[test]
-//     fn batch_norm_clip_running_var() {
-//         let vs = nn::VarStore::new(Device::Cpu);
-//         let root = vs.root();
+    // #[test]
+    // fn batch_norm_clip_running_var() {
+    //     let vs = nn::VarStore::new(Device::Cpu);
+    //     let root = vs.root();
 
-//         let bn_init = DarkBatchNormInit {
-//             var_min: Some(1e-3),
-//             var_max: Some(1e3),
-//             ..Default::default()
-//         };
+    //     let bn_init = DarkBatchNormInit {
+    //         var_min: Some(1e-3),
+    //         var_max: Some(1e3),
+    //         ..Default::default()
+    //     };
 
-//         let seq = nn::seq_t()
-//             .add(nn::conv2d(
-//                 &root / "conv1",
-//                 3,
-//                 8,
-//                 3,
-//                 nn::ConvConfig {
-//                     padding: 1,
-//                     stride: 2,
-//                     ..Default::default()
-//                 },
-//             ))
-//             .add_fn(|xs| xs.leaky_relu())
-//             .add(bn_init.clone().build(&root / "bn1", 8))
-//             .add_fn(|xs| xs.leaky_relu())
-//             .add(nn::conv2d(
-//                 &root / "conv2",
-//                 8,
-//                 8,
-//                 3,
-//                 nn::ConvConfig {
-//                     padding: 1,
-//                     stride: 2,
-//                     ..Default::default()
-//                 },
-//             ))
-//             .add(bn_init.clone().build(&root / "bn2", 8))
-//             .add(nn::conv2d(
-//                 &root / "conv3",
-//                 8,
-//                 1,
-//                 3,
-//                 nn::ConvConfig {
-//                     padding: 1,
-//                     stride: 2,
-//                     ..Default::default()
-//                 },
-//             ))
-//             .add(bn_init.build(&root / "bn3", 1))
-//             .add_fn(|xs| {
-//                 let bs = xs.size()[0];
-//                 xs.view([bs])
-//             });
+    //     let seq = nn::seq_t()
+    //         .add(nn::conv2d(
+    //             &root / "conv1",
+    //             3,
+    //             8,
+    //             3,
+    //             nn::ConvConfig {
+    //                 padding: 1,
+    //                 stride: 2,
+    //                 ..Default::default()
+    //             },
+    //         ))
+    //         .add_fn(|xs| xs.leaky_relu())
+    //         .add(bn_init.clone().build(&root / "bn1", 8))
+    //         .add_fn(|xs| xs.leaky_relu())
+    //         .add(nn::conv2d(
+    //             &root / "conv2",
+    //             8,
+    //             8,
+    //             3,
+    //             nn::ConvConfig {
+    //                 padding: 1,
+    //                 stride: 2,
+    //                 ..Default::default()
+    //             },
+    //         ))
+    //         .add(bn_init.clone().build(&root / "bn2", 8))
+    //         .add(nn::conv2d(
+    //             &root / "conv3",
+    //             8,
+    //             1,
+    //             3,
+    //             nn::ConvConfig {
+    //                 padding: 1,
+    //                 stride: 2,
+    //                 ..Default::default()
+    //             },
+    //         ))
+    //         .add(bn_init.build(&root / "bn3", 1))
+    //         .add_fn(|xs| {
+    //             let bs = xs.size()[0];
+    //             xs.view([bs])
+    //         });
 
-//         const BATCH_SIZE: i64 = 7;
-//         let mut opt = nn::adam(0.5, 0.999, 0.).build(&vs, 1e-3).unwrap();
+    //     const BATCH_SIZE: i64 = 7;
+    //     let mut opt = nn::adam(0.5, 0.999, 0.).build(&vs, 1e-3).unwrap();
 
-//         for _ in 0..100 {
-//             let input = Tensor::rand(&[BATCH_SIZE, 3, 8, 8], FLOAT_CPU);
-//             let output = seq.forward_t(&input, true);
-//             let target = Tensor::zeros(&[BATCH_SIZE], FLOAT_CPU);
-//             let loss = output.binary_cross_entropy_with_logits::<Tensor>(
-//                 &target,
-//                 None,
-//                 None,
-//                 Reduction::Mean,
-//             );
-//             opt.backward_step(&loss);
-//         }
-//     }
-// }
+    //     for _ in 0..100 {
+    //         let input = Tensor::rand(&[BATCH_SIZE, 3, 8, 8], FLOAT_CPU);
+    //         let output = seq.forward_t(&input, true);
+    //         let target = Tensor::zeros(&[BATCH_SIZE], FLOAT_CPU);
+    //         let loss = output.binary_cross_entropy_with_logits::<Tensor>(
+    //             &target,
+    //             None,
+    //             None,
+    //             Reduction::Mean,
+    //         );
+    //         opt.backward_step(&loss);
+    //     }
+    // }
+
+    // #[test]
+    // fn batch_norm_nan_test() {
+    //     const CHANNELS: i64 = 16;
+
+    //     let vs = nn::VarStore::new(Device::Cpu);
+    //     let root = vs.root();
+
+    //     let norm = DarkBatchNormInit {
+    //         var_min: Some(1e-3),
+    //         ..Default::default()
+    //     }
+    //     .build(&root, CHANNELS);
+
+    //     for _ in 0..100 {
+    //         norm.clamp_running_var();
+    //         let input = Tensor::zeros(&[8, CHANNELS, 1, 1], FLOAT_CPU);
+    //         let output = norm.forward_t(&input, true);
+    //         assert!(!norm.has_nan());
+    //     }
+    // }
+}

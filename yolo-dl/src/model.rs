@@ -397,15 +397,15 @@ impl YoloModel {
         Ok(output)
     }
 
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_running_var(&mut self) {
         self.layers.values_mut().for_each(|layer| {
-            layer.module.clamp_bn_var();
+            layer.module.clamp_running_var();
         });
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize(&mut self) {
         self.layers.values_mut().for_each(|layer| {
-            layer.module.denormalize_bn();
+            layer.module.denormalize();
         });
     }
 }

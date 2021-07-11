@@ -226,12 +226,12 @@ mod module {
             Ok(output)
         }
 
-        pub fn clamp_bn_var(&mut self) {
+        pub fn clamp_running_var(&mut self) {
             match self {
-                Self::ConvBn2D(module) => module.clamp_bn_var(),
-                Self::DeconvBn2D(module) => module.clamp_bn_var(),
-                Self::DarkCsp2D(module) => module.clamp_bn_var(),
-                Self::SppCsp2D(module) => module.clamp_bn_var(),
+                Self::ConvBn2D(module) => module.clamp_running_var(),
+                Self::DeconvBn2D(module) => module.clamp_running_var(),
+                Self::DarkCsp2D(module) => module.clamp_running_var(),
+                Self::SppCsp2D(module) => module.clamp_running_var(),
                 Self::Input(_)
                 | Self::UpSample2D(_)
                 | Self::Sum2D(_)
@@ -248,12 +248,12 @@ mod module {
             }
         }
 
-        pub fn denormalize_bn(&mut self) {
+        pub fn denormalize(&mut self) {
             match self {
-                Self::ConvBn2D(module) => module.denormalize_bn(),
-                Self::DeconvBn2D(module) => module.denormalize_bn(),
-                Self::DarkCsp2D(module) => module.denormalize_bn(),
-                Self::SppCsp2D(module) => module.denormalize_bn(),
+                Self::ConvBn2D(module) => module.denormalize(),
+                Self::DeconvBn2D(module) => module.denormalize(),
+                Self::DarkCsp2D(module) => module.denormalize(),
+                Self::SppCsp2D(module) => module.denormalize(),
                 Self::Input(_)
                 | Self::UpSample2D(_)
                 | Self::Sum2D(_)

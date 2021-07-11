@@ -116,12 +116,12 @@ impl ConvBn {
         }
     }
 
-    pub fn clamp_bn_var(&mut self) {
-        self.bn.clamp_bn_var();
+    pub fn clamp_running_var(&mut self) {
+        self.bn.clamp_running_var();
     }
 
-    pub fn denormalize_bn(&mut self) {
-        self.bn.denormalize_bn();
+    pub fn denormalize(&mut self) {
+        self.bn.denormalize();
     }
 }
 

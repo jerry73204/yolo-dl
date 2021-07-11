@@ -693,7 +693,7 @@ fn backward_step(
             optimizer.step();
 
             // clamp batch norm
-            model.clamp_bn_var();
+            model.clamp_running_var();
         }
 
         Ok(())

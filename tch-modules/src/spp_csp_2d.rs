@@ -164,7 +164,7 @@ impl SppCsp2D {
         }
     }
 
-    pub fn clamp_bn_var(&mut self) {
+    pub fn clamp_running_var(&mut self) {
         let Self {
             first_conv,
             last_conv,
@@ -177,17 +177,17 @@ impl SppCsp2D {
             ..
         } = self;
 
-        first_conv.clamp_bn_var();
-        last_conv.clamp_bn_var();
-        skip_conv.clamp_bn_var();
-        spp_conv_1.clamp_bn_var();
-        spp_conv_2.clamp_bn_var();
-        spp_conv_3.clamp_bn_var();
-        spp_conv_4.clamp_bn_var();
-        spp_conv_5.clamp_bn_var();
+        first_conv.clamp_running_var();
+        last_conv.clamp_running_var();
+        skip_conv.clamp_running_var();
+        spp_conv_1.clamp_running_var();
+        spp_conv_2.clamp_running_var();
+        spp_conv_3.clamp_running_var();
+        spp_conv_4.clamp_running_var();
+        spp_conv_5.clamp_running_var();
     }
 
-    pub fn denormalize_bn(&mut self) {
+    pub fn denormalize(&mut self) {
         let Self {
             first_conv,
             last_conv,
@@ -200,14 +200,14 @@ impl SppCsp2D {
             ..
         } = self;
 
-        first_conv.denormalize_bn();
-        last_conv.denormalize_bn();
-        skip_conv.denormalize_bn();
-        spp_conv_1.denormalize_bn();
-        spp_conv_2.denormalize_bn();
-        spp_conv_3.denormalize_bn();
-        spp_conv_4.denormalize_bn();
-        spp_conv_5.denormalize_bn();
+        first_conv.denormalize();
+        last_conv.denormalize();
+        skip_conv.denormalize();
+        spp_conv_1.denormalize();
+        spp_conv_2.denormalize();
+        spp_conv_3.denormalize();
+        spp_conv_4.denormalize();
+        spp_conv_5.denormalize();
     }
 }
 

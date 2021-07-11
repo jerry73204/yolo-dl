@@ -164,7 +164,7 @@ pub fn single_gpu_training_worker(
             timing.add_event("backward");
 
             // clip batch norm
-            model.clamp_bn_var();
+            model.clamp_running_var();
 
             // run inference
             let inference = {
