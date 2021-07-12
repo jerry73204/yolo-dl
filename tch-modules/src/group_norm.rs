@@ -56,8 +56,8 @@ pub struct GroupNorm {
     num_groups: i64,
 }
 
-impl nn::ModuleT for GroupNorm {
-    fn forward_t(&self, input: &Tensor, train: bool) -> Tensor {
+impl nn::Module for GroupNorm {
+    fn forward(&self, input: &Tensor) -> Tensor {
         let Self {
             ref ws,
             ref bs,
