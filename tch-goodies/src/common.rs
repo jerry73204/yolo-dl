@@ -25,7 +25,11 @@ pub use std::{
     ops::{Add, Deref, Div, Mul, Neg, Range, RangeInclusive, Rem, Sub},
     sync::Once,
 };
-pub use tch::{kind::Element, nn, vision, Device, IndexOp, Kind, Tensor};
+pub use tch::{
+    kind::Element,
+    nn::{self, Module, ModuleT},
+    vision, Device, IndexOp, Kind, Tensor,
+};
 pub use tch_tensor_like::TensorLike;
 
 pub type Fallible<T> = Result<T, Error>;

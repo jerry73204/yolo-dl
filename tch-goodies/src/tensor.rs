@@ -16,6 +16,12 @@ mod tensor_ext {
 
         fn activation(&self, act: Activation) -> Tensor;
 
+        fn lrelu(&self) -> Tensor {
+            self.leaky_relu_ext(0.2)
+        }
+
+        fn leaky_relu_ext(&self, negative_slope: impl Into<Option<f64>>) -> Tensor;
+
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor>;
 
         fn multi_softmax(&self, dims: &[i64], kind: Kind) -> Tensor {
@@ -269,12 +275,6 @@ mod tensor_ext {
         /// Swish activation function.
         fn swish(&self) -> Tensor;
 
-        /// Hard-Swish activation function.
-        fn hard_swish(&self) -> Tensor;
-
-        /// Mish activation function.
-        fn mish(&self) -> Tensor;
-
         /// Hard-Mish activation function.
         fn hard_mish(&self) -> Tensor;
 
@@ -304,18 +304,7 @@ mod tensor_ext {
         }
 
         fn activation(&self, act: Activation) -> Tensor {
-            use Activation::*;
-
-            match act {
-                Linear => self.shallow_clone(),
-                Mish => self.mish(),
-                HardMish => self.hard_mish(),
-                Swish => self.swish(),
-                Relu => self.relu(),
-                Leaky => self.clamp_min(0.0) + self.clamp_max(0.0) * 0.1,
-                Logistic => self.sigmoid(),
-                _ => unimplemented!(),
-            }
+            act.forward(self)
         }
 
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor> {
@@ -980,14 +969,6 @@ mod tensor_ext {
             self * self.sigmoid()
         }
 
-        fn hard_swish(&self) -> Tensor {
-            self * (self + 3.0).clamp(0.0, 6.0) / 6.0
-        }
-
-        fn mish(&self) -> Tensor {
-            self * &self.softplus().tanh()
-        }
-
         fn hard_mish(&self) -> Tensor {
             let case1 = self.clamp(-2.0, 0.0);
             let case2 = self.clamp_min(0.0);
@@ -1080,6 +1061,10 @@ mod tensor_ext {
             let rgb = Tensor::stack(&[red, green, blue], channel_index);
 
             Ok(rgb)
+        }
+
+        fn leaky_relu_ext(&self, negative_slope: impl Into<Option<f64>>) -> Tensor {
+            self.maximum(&(self * negative_slope.into().unwrap_or(0.01)))
         }
     }
 }
