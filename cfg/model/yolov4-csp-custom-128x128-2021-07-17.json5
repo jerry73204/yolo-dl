@@ -15,8 +15,8 @@
                 "k": 3,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -27,8 +27,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -37,8 +37,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -48,8 +48,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -63,8 +63,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -74,8 +74,8 @@
                 "repeat": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
         ],
@@ -85,7 +85,7 @@
             {
                 "name": "input",
                 "kind": "Input",
-                "shape": ["_", 3, 256, 256],
+                "shape": ["_", 3, 128, 128],
             },
             // initial layers, no forks
             {
@@ -106,8 +106,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -117,8 +117,8 @@
                 "repeat": 8,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -131,8 +131,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -142,8 +142,8 @@
                 "repeat": 8,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -156,8 +156,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -167,8 +167,8 @@
                 "repeat": 4,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -184,8 +184,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -196,8 +196,8 @@
                 "shortcut": false,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -212,8 +212,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -224,8 +224,8 @@
                 "shortcut": false,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -238,8 +238,8 @@
                 "k": [1, 5, 9, 13],
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -254,8 +254,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -266,8 +266,8 @@
                 "shortcut": false,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -282,8 +282,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -294,8 +294,8 @@
                 "shortcut": false,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -307,7 +307,7 @@
                 "from": "up1_detect1",
                 "classes": 80,
                 // "anchors": [[12, 16], [19, 36], [40, 28]],
-                "anchors": [[0.0234375, 0.03125], [0.037109375, 0.0703125], [0.078125, 0.0546875]],
+                "anchors": [[0.09375, 0.125], [0.1484375, 0.28125], [0.3125, 0.21875]],
             },
 
             // [4, 2]
@@ -339,8 +339,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -353,45 +353,41 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
             // (2, 3) -> (2, 2)
             {
-                "kind": "ConvBn2D",
+                "name": "up3_up2",
+                "kind": "DeconvBn2D",
                 "from": "up3",
                 "c": 256,
-                "k": 1,
+                "k": 3,
+                "s": 2,
+                "op": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
-            },
-            {
-                "name": "up3_up2",
-                "kind": "UpSample2D",
-                "scale": 2.0,
             },
 
             // (2, 2) -> (2, 1)
             {
-                "kind": "ConvBn2D",
+                "name": "up2_up1",
+                "kind": "DeconvBn2D",
                 "from": "up2",
                 "c": 128,
-                "k": 1,
+                "k": 3,
+                "s": 2,
+                "op": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
-            },
-            {
-                "name": "up2_up1",
-                "kind": "UpSample2D",
-                "scale": 2.0,
             },
 
             // (2, 1) -> (3, 2)
@@ -404,8 +400,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -420,8 +416,8 @@
                 "s": 2,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -433,8 +429,8 @@
                 "k": 3,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -444,8 +440,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -458,8 +454,8 @@
                 "k": 3,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -469,8 +465,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 
@@ -482,8 +478,8 @@
                 "k": 3,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
             {
@@ -493,8 +489,8 @@
                 "k": 1,
                 "bn": {
                     "affine": true,
-                    "var_min": 0.001,
-                    "var_max": 1000,
+                    "var_min": 0.00001,
+                    "var_max": 100000,
                 },
             },
 

@@ -2,7 +2,8 @@
     "version": "0.1.0",
     "model": {
         "kind": "NewslabV1",
-        "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
+        // "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
+        "cfg_file": "cfg/model/yolov4-csp-custom-128x128-2021-07-17.json5",
     },
     "dataset": {
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
@@ -23,7 +24,7 @@
         // },
         "kind": {
             "type": "Iii",
-            "image_size": 256,
+            "image_size": 128,
             // "dataset_dir": "/home/aeon/dataset/iii-small",
             "dataset_dir": "/home/aeon/dataset/iii-volume-2",
             // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery2",
@@ -34,7 +35,7 @@
         },
     },
     "logging": {
-        "dir": "logs-coco",
+        "dir": "log-iii-128x128",
         "enable_images": false,
         "enable_debug_stat": false,
         "enable_inference": false,
@@ -89,10 +90,10 @@
         // "override_initial_step": 0,
 
         // RTX 2080ti
-        "batch_size": 16,
+        "batch_size": 110,
         "device_config": {
             "type": "SingleDevice",
-            "device": "cuda:0"
+            "device": "cuda:2"
         },
 
         // RTX 2080ti x4
@@ -141,10 +142,10 @@
         },
         "save_checkpoint_steps": 1000,
         "load_checkpoint": {
-            // "type": "Disabled",
+            "type": "Disabled",
             // "type": "FromRecent",
-            "type": "FromFile",
-            "file": "./logs-coco/2021-03-17-03-02-44.764+0800/checkpoints/2021-03-28-12-02-57.728+0800_4582000_04.74864.ckpt"
+            // "type": "FromFile",
+            // "file": "./logs-coco/2021-03-17-03-02-44.764+0800/checkpoints/2021-03-28-12-02-57.728+0800_4582000_04.74864.ckpt"
         },
     },
     "benchmark": {
