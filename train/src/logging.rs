@@ -60,25 +60,22 @@ mod logging_worker {
         /// Start the data logging worker.
         async fn start(mut self) -> Result<()> {
             loop {
-                let LoggingMessage { tag, kind } = match self.rx.recv().await {
+                let msg = match self.rx.recv().await {
                     Ok(msg) => msg,
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 };
-                self.rate_counter.add(1.0);
 
-                match kind {
-                    LoggingMessageKind::TrainingOutput(msg) => {
-                        self.log_training_output(&tag, msg).await?;
+                match msg {
+                    LoggingMessage::TrainingOutput(msg) => {
+                        self.log_training_output(msg).await?;
                     }
-                    LoggingMessageKind::DebugImages(msg) => {
-                        self.log_debug_images(&tag, msg).await?;
-                    }
-                    LoggingMessageKind::DebugImagesWithCyCxHWes(msg) => {
-                        self.log_debug_images_with_bboxes(&tag, msg).await?;
+                    LoggingMessage::DebugImages(msg) => {
+                        self.log_debug_images(msg).await?;
                     }
                 }
 
+                self.rate_counter.add(1.0);
                 if let Some(rate) = self.rate_counter.rate() {
                     info!("processed {:.2} events/s", rate);
                 }
@@ -87,7 +84,7 @@ mod logging_worker {
             Ok(())
         }
 
-        async fn log_training_output(&mut self, tag: &str, msg: TrainingOutputLog) -> Result<()> {
+        async fn log_training_output(&mut self, msg: TrainingOutputLog) -> Result<()> {
             let mut timing = Timing::new("log_training_output");
 
             let config::Config {
@@ -274,38 +271,26 @@ mod logging_worker {
 
             // log parameters
             self.event_writer
-                .write_scalar_async(
-                    format!("{}/params/learning_rate", tag),
-                    step,
-                    lr.raw() as f32,
-                )
+                .write_scalar_async(format!("params/learning_rate",), step, lr.raw() as f32)
                 .await?;
 
             // log losses
             self.event_writer
-                .write_scalar_async(
-                    format!("{}/loss/total_loss", tag),
-                    step,
-                    losses.total_loss.into(),
-                )
+                .write_scalar_async(format!("loss/total_loss",), step, losses.total_loss.into())
+                .await?;
+            self.event_writer
+                .write_scalar_async(format!("loss/iou_loss",), step, losses.iou_loss.into())
                 .await?;
             self.event_writer
                 .write_scalar_async(
-                    format!("{}/loss/iou_loss", tag),
-                    step,
-                    losses.iou_loss.into(),
-                )
-                .await?;
-            self.event_writer
-                .write_scalar_async(
-                    format!("{}/loss/classification_loss", tag),
+                    format!("loss/classification_loss",),
                     step,
                     losses.classification_loss.into(),
                 )
                 .await?;
             self.event_writer
                 .write_scalar_async(
-                    format!("{}/loss/objectness_loss", tag),
+                    format!("loss/objectness_loss",),
                     step,
                     losses.objectness_loss.into(),
                 )
@@ -314,16 +299,16 @@ mod logging_worker {
             // log debug statistics
             if let Some((cy_mean, cx_mean, h_mean, w_mean)) = debug_stat {
                 self.event_writer
-                    .write_scalar_async(format!("{}/stat/cy_mean", tag), step, cy_mean)
+                    .write_scalar_async(format!("stat/cy_mean",), step, cy_mean)
                     .await?;
                 self.event_writer
-                    .write_scalar_async(format!("{}/stat/cx_mean", tag), step, cx_mean)
+                    .write_scalar_async(format!("stat/cx_mean",), step, cx_mean)
                     .await?;
                 self.event_writer
-                    .write_scalar_async(format!("{}/stat/h_mean", tag), step, h_mean)
+                    .write_scalar_async(format!("stat/h_mean",), step, h_mean)
                     .await?;
                 self.event_writer
-                    .write_scalar_async(format!("{}/stat/w_mean", tag), step, w_mean)
+                    .write_scalar_async(format!("stat/w_mean",), step, w_mean)
                     .await?;
             }
 
@@ -338,28 +323,28 @@ mod logging_worker {
 
                 self.event_writer
                     .write_scalar_async(
-                        format!("{}/benchmark/objectness_accuracy", tag),
+                        format!("benchmark/objectness_accuracy",),
                         step,
                         obj_accuracy as f32,
                     )
                     .await?;
                 self.event_writer
                     .write_scalar_async(
-                        format!("{}/benchmark/objectness_precision", tag),
+                        format!("benchmark/objectness_precision",),
                         step,
                         obj_precision as f32,
                     )
                     .await?;
                 self.event_writer
                     .write_scalar_async(
-                        format!("{}/benchmark/objectness_recall", tag),
+                        format!("benchmark/objectness_recall",),
                         step,
                         obj_recall as f32,
                     )
                     .await?;
                 self.event_writer
                     .write_scalar_async(
-                        format!("{}/benchmark/classification_accuracy", tag),
+                        format!("benchmark/classification_accuracy",),
                         step,
                         class_accuracy as f32,
                     )
@@ -370,7 +355,7 @@ mod logging_worker {
             if let Some(weights) = weights {
                 for (name, weight) in weights {
                     self.event_writer
-                        .write_scalar_async(format!("{}/{}", tag, name), step, weight as f32)
+                        .write_scalar_async(format!("weights/{}", name), step, weight as f32)
                         .await?;
                 }
             }
@@ -378,7 +363,7 @@ mod logging_worker {
             if let Some(gradients) = gradients {
                 for (name, grad) in gradients {
                     self.event_writer
-                        .write_scalar_async(format!("{}/{}", tag, name), step, grad as f32)
+                        .write_scalar_async(format!("gradients/{}", name), step, grad as f32)
                         .await?;
                 }
             }
@@ -386,7 +371,7 @@ mod logging_worker {
             // write images
             if let Some(image) = training_bbox_image {
                 self.event_writer
-                    .write_image_list_async(format!("{}/image/training_bboxes", tag), step, image)
+                    .write_image_list_async(format!("training_bboxes",), step, image)
                     .await?;
 
                 timing.add_event("write events");
@@ -394,7 +379,7 @@ mod logging_worker {
 
             if let Some(image) = inference_bbox_image {
                 self.event_writer
-                    .write_image_list_async(format!("{}/image/inference_bboxes", tag), step, image)
+                    .write_image_list_async(format!("inference_bboxes",), step, image)
                     .await?;
 
                 timing.add_event("write events");
@@ -402,11 +387,7 @@ mod logging_worker {
 
             if let Some(objectness_image) = objectness_image {
                 self.event_writer
-                    .write_image_list_async(
-                        format!("{}/image/objectness", tag),
-                        step,
-                        objectness_image,
-                    )
+                    .write_image_list_async(format!("objectness",), step, objectness_image)
                     .await?;
 
                 timing.add_event("write events");
@@ -416,7 +397,7 @@ mod logging_worker {
             Ok(())
         }
 
-        async fn log_debug_images(&mut self, tag: &str, msg: DebugImageLog) -> Result<()> {
+        async fn log_debug_images(&mut self, msg: DebugImageLog) -> Result<()> {
             let config::Config {
                 logging:
                     config::Logging {
@@ -426,74 +407,59 @@ mod logging_worker {
                     },
                 ..
             } = *self.config;
-            let DebugImageLog { images } = msg;
-
-            if enable_debug_stat && enable_images {
-                for (index, image) in images.into_iter().enumerate() {
-                    self.event_writer
-                        .write_image_async(format!("{}/{}", tag, index), self.debug_step, image)
-                        .await?;
-                }
-                self.debug_step += 1;
-            }
-
-            Ok(())
-        }
-
-        async fn log_debug_images_with_bboxes(
-            &mut self,
-            tag: &str,
-            msg: DebugLabeledImageLog,
-        ) -> Result<()> {
-            let config::Config {
-                logging:
-                    config::Logging {
-                        enable_images,
-                        enable_debug_stat,
-                        ..
-                    },
-                ..
-            } = *self.config;
-            let DebugLabeledImageLog { images, bboxes } = msg;
+            let DebugImageLog {
+                name,
+                images,
+                bboxes,
+            } = msg;
 
             if enable_debug_stat && enable_images {
                 let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
 
-                let image_vec: Vec<_> = izip!(images, bboxes)
-                    .map(|(image, bboxes)| {
-                        tch::no_grad(|| {
-                            let (_c, height, width) = match image.size().as_slice() {
-                                &[_b, c, h, w] => (c, h, w),
-                                &[c, h, w] => (c, h, w),
-                                _ => bail!("invalid shape: expec three or four dims"),
-                            };
-                            let mut canvas = image.copy().to_device(Device::Cpu);
+                let image_vec: Vec<_> = if let Some(bboxes) = bboxes {
+                    ensure!(images.len() == bboxes.len());
+                    izip!(images, bboxes)
+                        .map(|(image, bboxes)| {
+                            tch::no_grad(|| {
+                                let (_c, height, width) = match image.size().as_slice() {
+                                    &[_b, c, h, w] => (c, h, w),
+                                    &[c, h, w] => (c, h, w),
+                                    _ => bail!("invalid shape: expec three or four dims"),
+                                };
+                                let mut canvas = image.copy().to_device(Device::Cpu);
 
-                            for labeled_bbox in bboxes {
-                                let [cy, cx, h, w] =
-                                    labeled_bbox.rect.cast::<f64>().unwrap().cycxhw();
+                                for labeled_bbox in bboxes {
+                                    let [cy, cx, h, w] =
+                                        labeled_bbox.rect.cast::<f64>().unwrap().cycxhw();
 
-                                let top = cy - h / 2.0;
-                                let left = cx - w / 2.0;
-                                let bottom = top + h;
-                                let right = left + w;
+                                    let top = cy - h / 2.0;
+                                    let left = cx - w / 2.0;
+                                    let bottom = top + h;
+                                    let right = left + w;
 
-                                let top = (top * height as f64) as i64;
-                                let left = (left * width as f64) as i64;
-                                let bottom = (bottom * height as f64) as i64;
-                                let right = (right * width as f64) as i64;
+                                    let top = (top * height as f64) as i64;
+                                    let left = (left * width as f64) as i64;
+                                    let bottom = (bottom * height as f64) as i64;
+                                    let right = (right * width as f64) as i64;
 
-                                let _ = canvas.draw_rect_(top, left, bottom, right, 1, &color);
-                            }
+                                    let _ = canvas.draw_rect_(top, left, bottom, right, 1, &color);
+                                }
 
-                            Ok(canvas)
+                                Ok(canvas)
+                            })
                         })
-                    })
-                    .try_collect()?;
+                        .try_collect()?
+                } else {
+                    images
+                        .into_iter()
+                        .map(|image| tch::no_grad(|| image.copy().to_device(Device::Cpu)))
+                        .collect()
+                };
+
                 let images = Tensor::stack(&image_vec, 0);
 
                 self.event_writer
-                    .write_image_list_async(tag, self.debug_step, images)
+                    .write_image_list_async(name, self.debug_step, images)
                     .await?;
 
                 self.debug_step += 1;
@@ -516,80 +482,60 @@ mod logging_message {
     use super::*;
 
     /// The message type that is accepted by the logging worker.
-    #[derive(Debug, TensorLike, Clone)]
-    pub struct LoggingMessage {
-        #[tensor_like(clone)]
-        pub tag: Cow<'static, str>,
-        pub kind: LoggingMessageKind,
+    #[derive(Debug, TensorLike)]
+    pub enum LoggingMessage {
+        TrainingOutput(TrainingOutputLog),
+        DebugImages(DebugImageLog),
     }
 
     impl LoggingMessage {
-        pub fn new_training_output<S>(tag: S, msg: TrainingOutputLog) -> Self
-        where
-            S: Into<Cow<'static, str>>,
-        {
-            Self {
-                tag: tag.into(),
-                kind: LoggingMessageKind::TrainingOutput(msg),
-            }
-        }
+        pub fn new_debug_images<'a, 'b>(
+            name: impl Into<Cow<'a, str>>,
+            images: impl IntoIterator<Item = impl Into<CowTensor<'b>>>,
+            bboxes: Option<
+                impl IntoIterator<Item = impl IntoIterator<Item = impl Borrow<RatioRectLabel<R64>>>>,
+            >,
+        ) -> Self {
+            let name = name.into().into_owned();
 
-        pub fn new_debug_images<'a, S, I, T>(tag: S, images: I) -> Self
-        where
-            S: Into<Cow<'static, str>>,
-            I: IntoIterator<Item = T>,
-            T: Into<CowTensor<'a>>,
-        {
-            Self {
-                tag: tag.into(),
-                kind: LoggingMessageKind::DebugImages(DebugImageLog {
-                    images: images
-                        .into_iter()
-                        .map(|tensor| tensor.into().into_owned())
-                        .collect_vec(),
-                }),
-            }
-        }
-
-        pub fn new_debug_labeled_images<'a, S, I, IB, B, T>(tag: S, tuples: I) -> Self
-        where
-            S: Into<Cow<'static, str>>,
-            I: IntoIterator<Item = (T, IB)>,
-            IB: IntoIterator<Item = B>,
-            B: Borrow<RatioRectLabel<R64>>,
-            T: Into<CowTensor<'a>>,
-        {
-            let (images, bboxes) = tuples
+            let images: Vec<_> = images
                 .into_iter()
-                .map(|(tensor, bboxes)| {
-                    (
-                        tensor.into().into_owned(),
+                .map(|image| image.into().into_owned())
+                .collect();
+
+            let bboxes: Option<Vec<_>> = bboxes.map(|bboxes| {
+                bboxes
+                    .into_iter()
+                    .map(|bboxes| {
                         bboxes
                             .into_iter()
                             .map(|bbox| bbox.borrow().to_owned())
-                            .collect_vec(),
-                    )
-                })
-                .unzip_n_vec();
+                            .collect_vec()
+                    })
+                    .collect()
+            });
 
-            Self {
-                tag: tag.into(),
-                kind: LoggingMessageKind::DebugImagesWithCyCxHWes(DebugLabeledImageLog {
-                    images,
-                    bboxes,
-                }),
-            }
+            Self::DebugImages(DebugImageLog {
+                name,
+                images,
+                bboxes,
+            })
         }
     }
 
-    #[derive(Debug, TensorLike)]
-    pub enum LoggingMessageKind {
-        TrainingOutput(TrainingOutputLog),
-        DebugImages(DebugImageLog),
-        DebugImagesWithCyCxHWes(DebugLabeledImageLog),
+    impl From<TrainingOutputLog> for LoggingMessage {
+        fn from(v: TrainingOutputLog) -> Self {
+            Self::TrainingOutput(v)
+        }
     }
 
-    impl Clone for LoggingMessageKind {
+    impl From<DebugImageLog> for LoggingMessage {
+        fn from(v: DebugImageLog) -> Self {
+            Self::DebugImages(v)
+        }
+    }
+
+    impl Clone for LoggingMessage {
         fn clone(&self) -> Self {
             self.shallow_clone()
         }
@@ -620,23 +566,14 @@ mod logging_message {
 
     #[derive(Debug, TensorLike)]
     pub struct DebugImageLog {
+        #[tensor_like(clone)]
+        pub name: String,
         pub images: Vec<Tensor>,
+        #[tensor_like(clone)]
+        pub bboxes: Option<Vec<Vec<RatioRectLabel<R64>>>>,
     }
 
     impl Clone for DebugImageLog {
-        fn clone(&self) -> Self {
-            self.shallow_clone()
-        }
-    }
-
-    #[derive(Debug, TensorLike)]
-    pub struct DebugLabeledImageLog {
-        pub images: Vec<Tensor>,
-        #[tensor_like(clone)]
-        pub bboxes: Vec<Vec<RatioRectLabel<R64>>>,
-    }
-
-    impl Clone for DebugLabeledImageLog {
         fn clone(&self) -> Self {
             self.shallow_clone()
         }

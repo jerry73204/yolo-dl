@@ -321,12 +321,16 @@ impl TrainingStream {
 
                     // send to logger
                     if let Some(logging_tx) = &logging_tx {
-                        let msg = LoggingMessage::new_debug_labeled_images(
+                        let (images, bboxes) = data
+                            .as_ref()
+                            .iter()
+                            .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
+                            .unzip_n_vec();
+
+                        let msg = LoggingMessage::new_debug_images(
                             "sample-loading",
-                            data.as_ref()
-                                .iter()
-                                .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
-                                .collect_vec(),
+                            images,
+                            Some(bboxes),
                         );
                         let _ = logging_tx.send(msg);
                     }
@@ -379,13 +383,13 @@ impl TrainingStream {
 
                     // send to logger
                     if let Some(logging_tx) = &logging_tx {
-                        let msg = LoggingMessage::new_debug_labeled_images(
-                            "color-jitter",
-                            output
-                                .iter()
-                                .map(|(image, bboxes)| (image, bboxes))
-                                .collect_vec(),
-                        );
+                        let (images, bboxes) = output
+                            .iter()
+                            .map(|(image, bboxes)| (image, bboxes))
+                            .unzip_n_vec();
+
+                        let msg =
+                            LoggingMessage::new_debug_images("color-jitter", images, Some(bboxes));
                         let _result = logging_tx.send(msg);
                     }
 
@@ -469,13 +473,13 @@ impl TrainingStream {
 
                     // send to logger
                     if let Some(logging_tx) = &logging_tx {
-                        let msg = LoggingMessage::new_debug_labeled_images(
-                            "random-affine",
-                            new_data
-                                .iter()
-                                .map(|(image, bboxes)| (image, bboxes))
-                                .collect_vec(),
-                        );
+                        let (images, bboxes) = new_data
+                            .iter()
+                            .map(|(image, bboxes)| (image, bboxes))
+                            .unzip_n_vec();
+
+                        let msg =
+                            LoggingMessage::new_debug_images("random-affine", images, Some(bboxes));
                         let _result = logging_tx.send(msg);
                     }
 
@@ -561,9 +565,10 @@ impl TrainingStream {
 
                     // send to logger
                     if let Some(logging_tx) = &logging_tx {
-                        let msg = LoggingMessage::new_debug_labeled_images(
+                        let msg = LoggingMessage::new_debug_images(
                             "mosaic-processor",
-                            vec![(&mixed_image, &mixed_bboxes)],
+                            vec![&mixed_image],
+                            Some(vec![&mixed_bboxes]),
                         );
                         let _result = logging_tx.send(msg);
                     }
