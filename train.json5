@@ -3,7 +3,7 @@
     "model": {
         "kind": "NewslabV1",
         // "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
-        "cfg_file": "cfg/model/yolov4-csp-custom-128x128-2021-07-17.json5",
+        "cfg_file": "cfg/model/yolov4-csp-custom-128x128-2021-07-13.json5",
     },
     "dataset": {
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
