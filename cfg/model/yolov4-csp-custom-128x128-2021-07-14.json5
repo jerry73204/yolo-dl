@@ -1,0 +1,355 @@
+{
+    "main_group": "YoloV4Csp",
+    "groups": {
+        // prefix of yolov4
+        "Prefix": [
+            {
+                "name": "input",
+                "kind": "Input",
+                "shape": ["_", 3, "_", "_"],
+            },
+            {
+                "from": "input",
+                "kind": "ConvBn2D",
+                "c": 32,
+                "k": 3,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "fork",
+                "kind": "ConvBn2D",
+                "c": 64,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 32,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "merge",
+                "kind": "ConvBn2D",
+                "c": 64,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "kind": "Sum2D",
+                "from": ["fork", "merge"]
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 128,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "output",
+                "kind": "DarkCsp2D",
+                "c": 128,
+                "repeat": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+        ],
+
+        // the yolov4-csp model
+        "YoloV4Csp": [
+            {
+                "name": "input",
+                "kind": "Input",
+                "shape": ["_", 3, 128, 128],
+            },
+            // initial layers, no forks
+            {
+                "name": "init",
+                "kind": "GroupRef",
+                "from": {
+                    "input": "input",
+                },
+                "group": "Prefix",
+            },
+
+            // (1, 1)
+            {
+                "kind": "ConvBn2D",
+                "from": "init.output",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "dark1",
+                "kind": "DarkCsp2D",
+                "c": 256,
+                "repeat": 8,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (1, 2)
+            {
+                "kind": "ConvBn2D",
+                "from": "dark1",
+                "c": 512,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "dark2",
+                "kind": "DarkCsp2D",
+                "c": 512,
+                "repeat": 8,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (1, 3)
+            {
+                "kind": "ConvBn2D",
+                "from": "dark2",
+                "c": 1024,
+                "k": 3,
+                "s": 2,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "dark3",
+                "kind": "DarkCsp2D",
+                "c": 1024,
+                "repeat": 4,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (2, 1)
+            {
+                "kind": "Concat2D",
+                "from": ["dark1_up1", "up2_up1"],
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 128,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up1",
+                "kind": "DarkCsp2D",
+                "c": 128,
+                "repeat": 2,
+                "shortcut": false,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 2)
+            {
+                "kind": "Concat2D",
+                "from": ["dark2_up2", "up3_up2"],
+            },
+            {
+                "kind": "ConvBn2D",
+                "c": 256,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up2",
+                "kind": "DarkCsp2D",
+                "c": 256,
+                "repeat": 2,
+                "shortcut": false,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 3)
+            {
+                "name": "up3",
+                "kind": "SppCsp2D",
+                "from": "dark3",
+                "c": 512,
+                "k": [1, 5, 9, 13],
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (4, 1)
+            {
+                "name": "detect1",
+                "kind": "Detect2D",
+                "from": "up1_detect1",
+                "classes": 80,
+                "anchors": [
+                    [0.1484375, 0.28125],
+                    [0.27734375, 0.21484375],
+                    [0.3125, 0.21875],
+                    [0.375, 0.474609375],
+                    [0.896484375, 0.783203125],
+                ],
+            },
+
+            // (1, 1) -> (2, 1)
+            {
+                "kind": "ConvBn2D",
+                "name": "dark1_up1",
+                "from": "dark1",
+                "c": 128,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (1, 2) -> (2, 2)
+            {
+                "kind": "ConvBn2D",
+                "name": "dark2_up2",
+                "from": "dark2",
+                "c": 256,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 3) -> (2, 2)
+            {
+                "name": "up3_up2",
+                "kind": "DeconvBn2D",
+                "from": "up3",
+                "c": 256,
+                "k": 3,
+                "s": 2,
+                "op": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // (2, 2) -> (2, 1)
+            {
+                "name": "up2_up1",
+                "kind": "DeconvBn2D",
+                "from": "up2",
+                "c": 128,
+                "k": 3,
+                "s": 2,
+                "op": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+
+            // (2, 1) -> (4, 1)
+            {
+                "kind": "ConvBn2D",
+                "from": "up1",
+                "c": 256,
+                "k": 3,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+            {
+                "name": "up1_detect1",
+                "kind": "ConvBn2D",
+                "c": 425,
+                "k": 1,
+                "bn": {
+                    "affine": true,
+                    "var_min": 0.001,
+                    "var_max": 1000,
+                },
+            },
+
+            // output
+            {
+                "name": "output",
+                "kind": "MergeDetect2D",
+                "from": ["detect1"],
+            },
+        ]
+    }
+}
