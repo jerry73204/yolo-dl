@@ -5,7 +5,7 @@ pub use derivative::Derivative;
 pub use getset::{CopyGetters, Getters};
 pub use image::{DynamicImage, GenericImageView, ImageBuffer, Pixel};
 pub use itertools::{izip, Itertools};
-pub use log::warn;
+pub use log::{info, warn};
 pub use mona::prelude::*;
 pub use ndarray::Array5;
 pub use noisy_float::prelude::*;

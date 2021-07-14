@@ -40,6 +40,7 @@
         "enable_debug_stat": false,
         "enable_inference": false,
         "enable_benchmark": false,
+        "enable_gradients": false,
     },
     "preprocessor": {
         "pipeline": {

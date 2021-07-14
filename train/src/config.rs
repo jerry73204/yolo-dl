@@ -368,6 +368,7 @@ pub struct Logging {
     pub enable_debug_stat: bool,
     pub enable_inference: bool,
     pub enable_benchmark: bool,
+    pub enable_gradients: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

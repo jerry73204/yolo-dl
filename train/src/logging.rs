@@ -108,6 +108,8 @@ mod logging_worker {
                 matchings,
                 inference,
                 benchmark,
+                weights,
+                gradients,
             } = msg;
 
             let step = step as i64;
@@ -364,6 +366,23 @@ mod logging_worker {
                     .await?;
             }
 
+            // log weights and gradients
+            if let Some(weights) = weights {
+                for (name, weight) in weights {
+                    self.event_writer
+                        .write_scalar_async(format!("{}/{}", tag, name), step, weight as f32)
+                        .await?;
+                }
+            }
+
+            if let Some(gradients) = gradients {
+                for (name, grad) in gradients {
+                    self.event_writer
+                        .write_scalar_async(format!("{}/{}", tag, name), step, grad as f32)
+                        .await?;
+                }
+            }
+
             // write images
             if let Some(image) = training_bbox_image {
                 self.event_writer
@@ -587,6 +606,10 @@ mod logging_message {
         pub matchings: MatchingOutput,
         pub inference: Option<YoloInferenceOutput>,
         pub benchmark: Option<YoloBenchmarkOutput>,
+        #[tensor_like(clone)]
+        pub weights: Option<Vec<(String, f64)>>,
+        #[tensor_like(clone)]
+        pub gradients: Option<Vec<(String, f64)>>,
     }
 
     impl Clone for TrainingOutputLog {
