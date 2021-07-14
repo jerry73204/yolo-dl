@@ -267,6 +267,30 @@ pub async fn multi_gpu_training_worker(
                 .await??
             };
 
+            // save weights and gradients
+            let (weights, gradients) = if config.logging.enable_gradients {
+                let mut vars: Vec<_> = worker_contexts[0].vs.variables().into_iter().collect();
+                vars.sort_by_cached_key(|(name, _var)| name.to_owned());
+                let weights: Vec<_> = vars
+                    .iter()
+                    .map(|(name, var)| {
+                        let max = f64::from(var.abs().max());
+                        (name.to_owned(), max)
+                    })
+                    .collect();
+                let grads: Vec<_> = vars
+                    .iter()
+                    .filter(|(_name, var)| var.requires_grad())
+                    .map(|(name, var)| {
+                        let max = f64::from(var.grad().abs().max());
+                        (name.to_owned(), max)
+                    })
+                    .collect();
+                (Some(weights), Some(grads))
+            } else {
+                (None, None)
+            };
+
             // send output to logger
             {
                 let losses = losses.shallow_clone();
@@ -282,6 +306,8 @@ pub async fn multi_gpu_training_worker(
                             matchings,
                             inference,
                             benchmark,
+                            weights,
+                            gradients,
                         },
                     ))
                     .map_err(|_err| format_err!("cannot send message to logger"))?;
