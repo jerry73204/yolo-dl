@@ -295,8 +295,7 @@ pub async fn multi_gpu_training_worker(
             {
                 let losses = losses.shallow_clone();
                 logging_tx
-                    .send(LoggingMessage::new_training_output(
-                        "training-output",
+                    .send(
                         TrainingOutputLog {
                             step: training_step,
                             lr: r64(lr_scheduler.lr()),
@@ -308,8 +307,9 @@ pub async fn multi_gpu_training_worker(
                             benchmark,
                             weights,
                             gradients,
-                        },
-                    ))
+                        }
+                        .into(),
+                    )
                     .map_err(|_err| format_err!("cannot send message to logger"))?;
             }
 
