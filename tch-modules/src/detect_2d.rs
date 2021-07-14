@@ -162,6 +162,18 @@ impl Detect2D {
                 .unwrap_or(false);
 
             if !is_hit {
+                // print anchor sizes in grid unit
+                for (index, ratio_size) in anchors.iter().enumerate() {
+                    let grid_h = ratio_size.h * feature_h as f64;
+                    let grid_w = ratio_size.w * feature_w as f64;
+                    info!("anchro sizes for Detect2D");
+                    info!("  - feature size\t{}x{}", feature_h, feature_w);
+                    info!(
+                        "  - anchor size {}\t{}x{} (ratio) => {}x{} (grid)",
+                        index, ratio_size.h, ratio_size.w, grid_h, grid_w
+                    );
+                }
+
                 let y_offsets = (Tensor::arange(feature_h, (Kind::Float, device))
                     / feature_h as f64)
                     .set_requires_grad(false);
