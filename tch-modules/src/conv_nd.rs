@@ -3,86 +3,19 @@ use crate::common::*;
 pub use conv_init::*;
 pub use conv_nd_::*;
 pub use conv_nd_grad::*;
-pub use conv_param::*;
-
-mod conv_param {
-    use super::*;
-
-    pub trait ConvParam
-    where
-        Self: Clone,
-    {
-        fn dim(&self) -> usize;
-        fn i64_iter(&self) -> Box<dyn Iterator<Item = i64>>;
-        fn usize_iter(&self) -> Box<dyn Iterator<Item = usize>>;
-    }
-
-    impl ConvParam for usize {
-        fn dim(&self) -> usize {
-            1
-        }
-
-        fn i64_iter(&self) -> Box<dyn Iterator<Item = i64>> {
-            Box::new(iter::once(*self as i64))
-        }
-
-        fn usize_iter(&self) -> Box<dyn Iterator<Item = usize>> {
-            Box::new(iter::once(*self))
-        }
-    }
-
-    impl<const DIM: usize> ConvParam for [usize; DIM] {
-        fn dim(&self) -> usize {
-            DIM
-        }
-
-        fn i64_iter(&self) -> Box<dyn Iterator<Item = i64>> {
-            Box::new(Vec::from(*self).into_iter().map(|val| val as i64))
-        }
-
-        fn usize_iter(&self) -> Box<dyn Iterator<Item = usize>> {
-            Box::new(Vec::from(*self).into_iter())
-        }
-    }
-
-    impl ConvParam for Vec<usize> {
-        fn dim(&self) -> usize {
-            self.len()
-        }
-
-        fn i64_iter(&self) -> Box<dyn Iterator<Item = i64>> {
-            Box::new(self.clone().into_iter().map(|val| val as i64))
-        }
-
-        fn usize_iter(&self) -> Box<dyn Iterator<Item = usize>> {
-            Box::new(self.clone().into_iter())
-        }
-    }
-
-    impl ConvParam for &[usize] {
-        fn dim(&self) -> usize {
-            self.len()
-        }
-
-        fn i64_iter(&self) -> Box<dyn Iterator<Item = i64>> {
-            Box::new(Vec::<usize>::from(*self).into_iter().map(|val| val as i64))
-        }
-
-        fn usize_iter(&self) -> Box<dyn Iterator<Item = usize>> {
-            Box::new(Vec::<usize>::from(*self).into_iter())
-        }
-    }
-}
 
 mod conv_init {
     use super::*;
 
     #[derive(Debug, Clone)]
-    pub struct ConvNDInit<Param: ConvParam> {
-        pub ksize: Param,
-        pub stride: Param,
-        pub padding: Param,
-        pub dilation: Param,
+    pub struct ConvNDInit<S>
+    where
+        S: AsRef<[usize]>,
+    {
+        pub ksize: S,
+        pub stride: S,
+        pub padding: S,
+        pub dilation: S,
         pub groups: usize,
         pub bias: bool,
         pub transposed: bool,
@@ -90,27 +23,11 @@ mod conv_init {
         pub bs_init: nn::Init,
     }
 
-    pub type Conv1DInit = ConvNDInit<usize>;
+    pub type Conv1DInit = ConvNDInit<[usize; 1]>;
     pub type Conv2DInit = ConvNDInit<[usize; 2]>;
     pub type Conv3DInit = ConvNDInit<[usize; 3]>;
     pub type Conv4DInit = ConvNDInit<[usize; 4]>;
     pub type ConvNDInitDyn = ConvNDInit<Vec<usize>>;
-
-    impl Conv1DInit {
-        pub fn new(ksize: usize) -> Self {
-            Self {
-                ksize,
-                stride: 1,
-                padding: ksize / 2,
-                dilation: 1,
-                groups: 1,
-                bias: true,
-                transposed: false,
-                ws_init: nn::Init::KaimingUniform,
-                bs_init: nn::Init::Const(0.0),
-            }
-        }
-    }
 
     impl<const DIM: usize> ConvNDInit<[usize; DIM]> {
         pub fn new(ksize: usize) -> Self {
@@ -144,7 +61,10 @@ mod conv_init {
         }
     }
 
-    impl<Param: ConvParam> ConvNDInit<Param> {
+    impl<S> ConvNDInit<S>
+    where
+        S: AsRef<[usize]>,
+    {
         pub fn into_dyn(self) -> ConvNDInitDyn {
             let Self {
                 ksize,
@@ -159,10 +79,10 @@ mod conv_init {
             } = self;
 
             ConvNDInitDyn {
-                ksize: ksize.usize_iter().collect(),
-                stride: stride.usize_iter().collect(),
-                padding: padding.usize_iter().collect(),
-                dilation: dilation.usize_iter().collect(),
+                ksize: ksize.as_ref().into(),
+                stride: stride.as_ref().into(),
+                padding: padding.as_ref().into(),
+                dilation: dilation.as_ref().into(),
                 groups,
                 bias,
                 transposed,
@@ -181,13 +101,13 @@ mod conv_init {
             } = self;
 
             ensure!(
-                ksize.dim() == stride.dim()
-                    && ksize.dim() == padding.dim()
-                    && ksize.dim() == dilation.dim(),
+                ksize.as_ref().len() == stride.as_ref().len()
+                    && ksize.as_ref().len() == padding.as_ref().len()
+                    && ksize.as_ref().len() == dilation.as_ref().len(),
                 "parameter dimension mismatch"
             );
 
-            Ok(ksize.dim())
+            Ok(ksize.as_ref().len())
         }
 
         pub fn build<'a>(
@@ -216,10 +136,10 @@ mod conv_init {
             let path = path.borrow();
             let in_dim = in_dim as i64;
             let out_dim = out_dim as i64;
-            let ksize: Vec<i64> = ksize.i64_iter().collect();
-            let stride: Vec<i64> = stride.i64_iter().collect();
-            let padding: Vec<i64> = padding.i64_iter().collect();
-            let dilation: Vec<i64> = dilation.i64_iter().collect();
+            let ksize: Vec<i64> = ksize.as_ref().iter().map(|&v| v as i64).collect();
+            let stride: Vec<i64> = stride.as_ref().iter().map(|&v| v as i64).collect();
+            let padding: Vec<i64> = padding.as_ref().iter().map(|&v| v as i64).collect();
+            let dilation: Vec<i64> = dilation.as_ref().iter().map(|&v| v as i64).collect();
             let groups = groups as i64;
 
             let bs = bias.then(|| path.var("bias", &[out_dim], bs_init));

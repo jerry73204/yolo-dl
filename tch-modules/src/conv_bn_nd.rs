@@ -1,33 +1,25 @@
 use crate::{
     common::*,
-    conv_nd::{Conv1DInit, ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn, ConvParam},
+    conv_nd::{ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn},
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
 
 #[derive(Debug, Clone)]
-pub struct ConvBnInit<Param: ConvParam> {
-    pub conv: ConvNDInit<Param>,
+pub struct ConvBnInit<S>
+where
+    S: AsRef<[usize]>,
+{
+    pub conv: ConvNDInit<S>,
     pub bn: DarkBatchNormInit,
     pub bn_first: bool,
     pub activation: Activation,
 }
 
-pub type ConvBnInit1D = ConvBnInit<usize>;
+pub type ConvBnInit1D = ConvBnInit<[usize; 1]>;
 pub type ConvBnInit2D = ConvBnInit<[usize; 2]>;
 pub type ConvBnInit3D = ConvBnInit<[usize; 3]>;
 pub type ConvBnInit4D = ConvBnInit<[usize; 4]>;
 pub type ConvBnInitDyn = ConvBnInit<Vec<usize>>;
-
-impl ConvBnInit1D {
-    pub fn new(ksize: usize) -> Self {
-        Self {
-            conv: Conv1DInit::new(ksize),
-            bn: Default::default(),
-            bn_first: true,
-            activation: Activation::Logistic,
-        }
-    }
-}
 
 impl<const DIM: usize> ConvBnInit<[usize; DIM]> {
     pub fn new(ksize: usize) -> Self {
@@ -51,7 +43,10 @@ impl ConvBnInitDyn {
     }
 }
 
-impl<Param: ConvParam> ConvBnInit<Param> {
+impl<S> ConvBnInit<S>
+where
+    S: AsRef<[usize]>,
+{
     pub fn build<'a>(
         self,
         path: impl Borrow<nn::Path<'a>>,
