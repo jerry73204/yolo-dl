@@ -7,13 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-cc = "1.0.68"
+cc = "1.0.69"
 envy = "0.4.2"
 pkg-config = "0.3.19"
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0.127", features = ["derive"] }
 
 [dependencies]
-libc = "0.2.97"
+libc = "0.2.98"
 static_assertions = "1.1.0"
 tch = "0.5.0"
 torch-sys = "0.5.0"

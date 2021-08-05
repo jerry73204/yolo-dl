@@ -9,28 +9,28 @@ edition = "2018"
 [dependencies]
 tch = "0.5.0"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0.127", features = ["derive"] }
 itertools = "0.10.1"
 tch-tensor-like = { version = "0.4.0", features = ["derive"] }
-anyhow = "1.0.41"
+anyhow = "1.0.42"
 approx = "0.5.0"
 unzip-n = "0.1.2"
-serde_json = "1.0.64"
+serde_json = "1.0.66"
 async-std = { version = "1.9.0", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", rev = "bfb5425f5ba238dac756a8d79e29e7a76c8120c5", features = ["async"] }
-argh = "0.1.4"
+argh = "0.1.5"
 par-stream = { version = "0.3.1", features = ["runtime_tokio"] }
-futures = "0.3.15"
+futures = "0.3.16"
 rand = "0.8.4"
 percent-encoding = "2.1.0"
-tokio = { version = "1.7.1", features = ["sync", "fs"] }
+tokio = { version = "1.9.0", features = ["sync", "fs"] }
 tfrecord = { version = "0.8.0", features = ["full"] }
 ndarray = "0.15.3"
 log = "0.4.14"
 chrono = "0.4.19"
 uuid = { version = "0.8.2", features = ["v4"] }
 regex = "1.5.4"
-indexmap = "1.6.2"
+indexmap = "1.7.0"
 num_cpus = "1.13.0"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 lazy_static = "1.4.0"
@@ -39,9 +39,9 @@ dashmap = "4.0.2"
 slice-of-array = "0.3.1"
 getset = "0.1.1"
 model-config = { version = "0.1", path = "../model-config" }
-petgraph = "0.5.1"
+petgraph = "0.6.0"
 derivative = "2.2.0"
-cv-convert = { version = "0.9.1", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.10.0", default-features = false, features = ["tch", "ndarray"] }
 rusty-perm = "0.2.0"
 ptree = { version = "0.3.2", optional = true }
 strum = { version = "0.21.0", features = ["derive"] }
@@ -49,7 +49,7 @@ tch-nms = { version = "0.1.0", path = "../tch-nms" }
 iii-formosa-dataset = "0.2.0"
 voc-dataset = "0.3.0"
 owning_ref = "0.4.1"
-imagesize = "0.8.8"
+imagesize = "0.9.0"
 csv = "1.1.6"
 glob = "0.3.0"
 serde-xml-rs = "0.4.1"

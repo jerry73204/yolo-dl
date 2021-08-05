@@ -5,17 +5,17 @@ authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-serde = { version = "1.0.126", features = ["derive"] }
+serde = { version = "1.0.127", features = ["derive"] }
 serde_ini = "0.2.0"
-anyhow = "1.0.41"
+anyhow = "1.0.42"
 noisy_float = { version = "0.2.0", features = ["serde"] }
 itertools = "0.10.1"
 binread = "2.1.1"
 owning_ref = "0.4.1"
 log = "0.4.14"
 serde_repr = "0.1.7"
-petgraph = "0.5.1"
-indexmap = { version = "1.6.2", features = ["serde"] }
+petgraph = "0.6.0"
+indexmap = { version = "1.7.0", features = ["serde"] }
 byteorder = "1.4.3"
 derivative = "2.2.0"
 ndarray = "0.15.3"
@@ -28,7 +28,7 @@ tch-goodies = { version = "0.1", path = "../tch-goodies" }
 dot = { version = "0.1.4", optional = true }
 pretty_env_logger = "0.4.0"
 prettytable-rs = "0.8.0"
-structopt = "0.3.21"
+structopt = "0.3.22"
 regex = "1.5.4"
 
 [dev-dependencies]
