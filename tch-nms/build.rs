@@ -62,10 +62,17 @@ fn main() {
             .flag("-gencode=arch=compute_52,code=sm_52")
             .flag("-gencode=arch=compute_60,code=sm_60")
             .flag("-gencode=arch=compute_61,code=sm_61")
+            .flag("-gencode=arch=compute_70,code=sm_70")
             .flag("-gencode=arch=compute_75,code=sm_75")
+            .flag("-gencode=arch=compute_75,code=compute_75");
+
+        #[cfg(feature = "cuda_amphere")]
+        build
             .flag("-gencode=arch=compute_80,code=sm_80")
             .flag("-gencode=arch=compute_86,code=sm_86")
-            .flag("-gencode=arch=compute_86,code=compute_86")
+            .flag("-gencode=arch=compute_86,code=compute_86");
+
+        build
             .flag("-Xlinker")
             .flag(&format!("-rpath,{}", libtorch.join("lib").display()))
             .flag("-DWITH_CUDA=1")
@@ -79,6 +86,7 @@ fn main() {
                     .join("api")
                     .join("include"),
             );
+
         python3_lib.include_paths.iter().for_each(|path| {
             build.include(path);
         });
