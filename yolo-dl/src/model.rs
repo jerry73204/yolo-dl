@@ -408,6 +408,10 @@ impl YoloModel {
             layer.module.denormalize();
         });
     }
+
+    pub fn layers(&self) -> &IndexMap<graph::NodeKey, Layer> {
+        &self.layers
+    }
 }
 
 #[derive(Debug)]
