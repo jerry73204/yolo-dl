@@ -2,7 +2,7 @@
     "version": "0.1.0",
     "model": {
         "kind": "NewslabV1",
-        "cfg_file": "cfg/model/yolov4-csp-custom-2021-03-11.json5",
+        "cfg_file": "cfg/model/yolov4-csp-custom-64x64-2021-08-21.json5",
     },
     "dataset": {
         // "class_whitelist": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
@@ -13,28 +13,28 @@
         //     "dataset_name": "train2017",
         //     "classes_file": "cfg/class/coco.class",
         // },
-        // "kind": {
-        //     "type": "Csv",
-        //     "image_size": 256,
-        //     "input_channels": 3,
-        //     "image_dir": "/home/jerry73204/csv_dataset/images",
-        //     "label_file": "/home/jerry73204/csv_dataset/label.csv",
-        //     "classes_file": "/home/jerry73204/csv_dataset/classes.txt",
-        // },
         "kind": {
-            "type": "Iii",
-            "image_size": 256,
-            // "dataset_dir": "/home/aeon/dataset/iii-small",
-            "dataset_dir": "/home/aeon/dataset/iii-volume-2",
-            // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery2",
-            // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/small",
-            // "dataset_dir": "/home/aeon/dataset/iii-volume-1",
-            // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery",
-            "classes_file": "cfg/class/iii.class",
+            "type": "Csv",
+            "image_size": 64,
+            "input_channels": 3,
+            "image_dir": "/home/aeon/dataset/pcd-gen_output/2021-08-21T02:33:07.045437478+08:00",
+            "label_file": "/home/aeon/dataset/pcd-gen_output/yolo_label.csv",
+            "classes_file": "/home/aeon/dataset/pcd-gen_output/class.txt",
         },
+        // "kind": {
+        //     "type": "Iii",
+        //     "image_size": 256,
+        //     // "dataset_dir": "/home/aeon/dataset/iii-small",
+        //     "dataset_dir": "/home/aeon/dataset/iii-volume-2",
+        //     // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery2",
+        //     // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/small",
+        //     // "dataset_dir": "/home/aeon/dataset/iii-volume-1",
+        //     // "dataset_dir": "/mnt/external1/wayside-dataset/資策會資料_vol_1/ntu_delivery",
+        //     "classes_file": "cfg/class/iii.class",
+        // },
     },
     "logging": {
-        "dir": "logs-coco",
+        "dir": "log-wayside-64x64-2021-08-21",
         "enable_images": false,
         "enable_debug_stat": false,
         "enable_inference": false,
@@ -59,7 +59,7 @@
         "mixup": {
             "mixup_prob": 0.0,
             "cutmix_prob": 0.0,
-            "mosaic_prob": 0.2,
+            "mosaic_prob": 0.0,
             "mosaic_margin": 0.45,
         },
         "random_affine": {
@@ -70,7 +70,7 @@
             "translation": 0.1,
             "scale_prob": 0.5,
             "scale": [0.9, 1.1],
-            "horizontal_flip_prob": 0.5,
+            "horizontal_flip_prob": 0.0,
             "vertical_flip_prob": 0.0,
         },
         "color_jitter": {
@@ -90,7 +90,7 @@
         // "override_initial_step": 0,
 
         // RTX 2080ti
-        "batch_size": 16,
+        "batch_size": 96,
         "device_config": {
             "type": "SingleDevice",
             "device": "cuda:0"
@@ -140,12 +140,12 @@
             "objectness_loss_weight": 1.0,
             "classification_loss_weight": 55.0,
         },
-        "save_checkpoint_steps": 1000,
+        // "save_checkpoint_steps": 1000,
         "load_checkpoint": {
-            // "type": "Disabled",
+            "type": "Disabled",
             // "type": "FromRecent",
-            "type": "FromFile",
-            "file": "./logs-coco/2021-03-17-03-02-44.764+0800/checkpoints/2021-03-28-12-02-57.728+0800_4582000_04.74864.ckpt"
+            // "type": "FromFile",
+            // "file": "./logs-coco/2021-03-17-03-02-44.764+0800/checkpoints/2021-03-28-12-02-57.728+0800_4582000_04.74864.ckpt"
         },
     },
     "benchmark": {

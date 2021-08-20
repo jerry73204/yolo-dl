@@ -15,8 +15,8 @@ members = [
 
 [profile.release]
 debug = true
-debug-assertions = true
-overflow-checks = true
+debug-assertions = false
+overflow-checks = false
 ## enabling 'lto' improves the performance but results in
 ## very long compilation time.
 lto = false
