@@ -416,7 +416,7 @@ impl YoloModel {
 
 #[derive(Debug)]
 pub struct Layer {
-    pub(crate) key: graph::NodeKey,
-    pub(crate) module: modules::Module,
-    pub(crate) input_keys: graph::InputKeys,
+    pub key: graph::NodeKey,
+    pub module: modules::Module,
+    pub input_keys: graph::InputKeys,
 }
