@@ -143,6 +143,20 @@ mod logging_worker {
                         let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
                         let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
+                        // draw target bboxes
+                        {
+                            let tlbr = TLBRTensor::from(matchings.target.cycxhw());
+                            let _ = canvas.batch_draw_ratio_rect_(
+                                &matchings.pred_indexes.batches,
+                                &tlbr.t().view([-1]),
+                                &tlbr.l().view([-1]),
+                                &tlbr.b().view([-1]),
+                                &tlbr.r().view([-1]),
+                                2,
+                                &target_color,
+                            );
+                        }
+
                         // draw predicted bboxes
                         {
                             let pred = output.index_by_flats(&matchings.pred_indexes);
@@ -155,20 +169,6 @@ mod logging_worker {
                                 &tlbr.r().view([-1]),
                                 1,
                                 &pred_color,
-                            );
-                        }
-
-                        // draw target bboxes
-                        {
-                            let tlbr = TLBRTensor::from(matchings.target.cycxhw());
-                            let _ = canvas.batch_draw_ratio_rect_(
-                                &matchings.pred_indexes.batches,
-                                &tlbr.t().view([-1]),
-                                &tlbr.l().view([-1]),
-                                &tlbr.b().view([-1]),
-                                &tlbr.r().view([-1]),
-                                2,
-                                &target_color,
                             );
                         }
 
@@ -220,6 +220,20 @@ mod logging_worker {
                             let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
                             let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
+                            // draw target bboxes
+                            {
+                                let tlbr = TLBRTensor::from(matchings.target.cycxhw());
+                                let _ = canvas.batch_draw_ratio_rect_(
+                                    &matchings.pred_indexes.batches,
+                                    &tlbr.t().view([-1]),
+                                    &tlbr.l().view([-1]),
+                                    &tlbr.b().view([-1]),
+                                    &tlbr.r().view([-1]),
+                                    1,
+                                    &target_color,
+                                );
+                            }
+
                             // draw predicted bboxes
                             {
                                 let YoloInferenceOutput { bbox, batches, .. } = inference;
@@ -233,20 +247,6 @@ mod logging_worker {
                                     &bbox.r().view([-1]),
                                     1,
                                     &pred_color,
-                                );
-                            }
-
-                            // draw target bboxes
-                            {
-                                let tlbr = TLBRTensor::from(matchings.target.cycxhw());
-                                let _ = canvas.batch_draw_ratio_rect_(
-                                    &matchings.pred_indexes.batches,
-                                    &tlbr.t().view([-1]),
-                                    &tlbr.l().view([-1]),
-                                    &tlbr.b().view([-1]),
-                                    &tlbr.r().view([-1]),
-                                    1,
-                                    &target_color,
                                 );
                             }
 
