@@ -136,16 +136,16 @@
             // "classification_loss_weight": 0.87,
 
             // for Hausdorff
-            "iou_loss_weight": 0.5,
+            "iou_loss_weight": 55.0,
             "objectness_loss_weight": 1.0,
-            "classification_loss_weight": 0.3,
+            "classification_loss_weight": 55.0,
         },
         "save_checkpoint_steps": 1000,
         "load_checkpoint": {
-            // "type": "Disabled",
+            "type": "Disabled",
             // "type": "FromRecent",
-            "type": "FromFile",
-            "file": "log-wayside-64x64-2021-08-21/2021-08-21-07-13-06.005+0800/checkpoints/2021-08-21-14-55-35.617+0800_087000_00.02586.ckpt"
+            // "type": "FromFile",
+            // "file": "log-wayside-64x64-2021-08-21/2021-08-21-07-13-06.005+0800/checkpoints/2021-08-21-14-55-35.617+0800_087000_00.02586.ckpt"
         },
     },
     "benchmark": {
