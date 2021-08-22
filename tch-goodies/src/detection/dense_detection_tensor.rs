@@ -65,7 +65,7 @@ impl DenseDetectionTensor {
         let x_offsets = Tensor::arange(width, (Kind::Float, self.device()))
             .div(width as f64)
             .set_requires_grad(false)
-            .view([1, 1, 1, width, 1]);
+            .view([1, 1, 1, 1, width]);
         &self.cx - x_offsets
     }
 
