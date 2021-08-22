@@ -9,6 +9,10 @@ pub struct DenseDetectionTensor {
 }
 
 impl DenseDetectionTensor {
+    pub fn device(&self) -> Device {
+        self.h.device()
+    }
+
     pub fn batch_size(&self) -> usize {
         let (batch_size, _, _, _, _) = self.cy.size5().unwrap();
         batch_size as usize
@@ -45,6 +49,24 @@ impl DenseDetectionTensor {
     /// Compute confidence, objectness score times classification score.
     pub fn confidence(&self) -> Tensor {
         self.obj_prob() * self.class_prob()
+    }
+
+    pub fn unbiased_cy(&self) -> Tensor {
+        let height = self.height() as i64;
+        let y_offsets = Tensor::arange(height, (Kind::Float, self.device()))
+            .div(height as f64)
+            .set_requires_grad(false)
+            .view([1, 1, 1, height, 1]);
+        &self.cy - y_offsets
+    }
+
+    pub fn unbiased_cx(&self) -> Tensor {
+        let width = self.width() as i64;
+        let x_offsets = Tensor::arange(width, (Kind::Float, self.device()))
+            .div(width as f64)
+            .set_requires_grad(false)
+            .view([1, 1, 1, width, 1]);
+        &self.cx - x_offsets
     }
 
     pub fn index_select_batch(&self, index: &Tensor) -> Result<Self> {
