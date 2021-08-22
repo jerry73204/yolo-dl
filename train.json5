@@ -35,11 +35,11 @@
     },
     "logging": {
         "dir": "log-wayside-64x64-2021-08-21",
-        "enable_images": false,
-        "enable_debug_stat": false,
-        "enable_inference": false,
-        "enable_benchmark": false,
-        "enable_gradients": false,
+        "enable_images": true,
+        "enable_debug_stat": true,
+        "enable_inference": true,
+        "enable_benchmark": true,
+        "enable_gradients": true,
     },
     "preprocessor": {
         "pipeline": {
@@ -140,12 +140,12 @@
             "objectness_loss_weight": 1.0,
             "classification_loss_weight": 55.0,
         },
-        "save_checkpoint_steps": 1000,
+        // "save_checkpoint_steps": 1000,
         "load_checkpoint": {
-            "type": "Disabled",
+            // "type": "Disabled",
             // "type": "FromRecent",
-            // "type": "FromFile",
-            // "file": "log-wayside-64x64-2021-08-21/2021-08-21-07-13-06.005+0800/checkpoints/2021-08-21-14-55-35.617+0800_087000_00.02586.ckpt"
+            "type": "FromFile",
+            "file": "log-wayside-64x64-2021-08-21/2021-08-21-20-34-41.732+0800/checkpoints/2021-08-22-12-41-00.823+0800_194000_02.21592.ckpt"
         },
     },
     "benchmark": {
