@@ -266,8 +266,7 @@ mod logging_worker {
                     ))
                 })
             })
-            .map(|result| Fallible::Ok(result??))
-            .await?;
+            .await??;
 
             // log parameters
             self.event_writer
@@ -472,9 +471,10 @@ mod logging_worker {
         config: ArcRef<config::Config>,
         logging_dir: impl AsRef<Path>,
         rx: broadcast::Receiver<LoggingMessage>,
-    ) -> Result<impl Future<Output = Result<()>> + Send> {
+    ) -> Result<()> {
         let worker = LoggingWorker::new(config, logging_dir, rx).await?;
-        Ok(tokio::task::spawn(worker.start()).map(|result| Fallible::Ok(result??)))
+        tokio::task::spawn(worker.start()).await??;
+        Ok(())
     }
 }
 

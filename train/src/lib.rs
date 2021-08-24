@@ -54,8 +54,7 @@ pub async fn start(config: Arc<config::Config>) -> Result<()> {
     .await?;
 
     // start logger
-    let logging_future =
-        logging::logging_worker(config.clone(), logging_dir.clone(), logging_rx).await?;
+    let logging_future = logging::logging_worker(config.clone(), logging_dir.clone(), logging_rx);
 
     // feeding worker
     let training_data_future = tokio::task::spawn(async move {
