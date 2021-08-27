@@ -125,6 +125,12 @@ pub struct DenseDetectionTensorListUnchecked {
     pub tensors: Vec<DenseDetectionTensor>,
 }
 
+impl DenseDetectionTensorListUnchecked {
+    pub fn build(self) -> Result<DenseDetectionTensorList> {
+        self.try_into()
+    }
+}
+
 impl Borrow<DenseDetectionTensorListUnchecked> for DenseDetectionTensorList {
     fn borrow(&self) -> &DenseDetectionTensorListUnchecked {
         &self.inner

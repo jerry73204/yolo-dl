@@ -522,6 +522,12 @@ pub struct DenseDetectionTensorUnchecked {
     pub anchors: Vec<RatioSize<R64>>,
 }
 
+impl DenseDetectionTensorUnchecked {
+    pub fn build(self) -> Result<DenseDetectionTensor> {
+        self.try_into()
+    }
+}
+
 impl Deref for DenseDetectionTensor {
     type Target = DenseDetectionTensorUnchecked;
 
