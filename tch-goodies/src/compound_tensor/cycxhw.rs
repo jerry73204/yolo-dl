@@ -149,6 +149,12 @@ impl CyCxHWTensor {
     }
 }
 
+impl CyCxHWTensorUnchecked {
+    pub fn build(self) -> Result<CyCxHWTensor> {
+        self.try_into()
+    }
+}
+
 impl TryFrom<CyCxHWTensorUnchecked> for CyCxHWTensor {
     type Error = Error;
 
