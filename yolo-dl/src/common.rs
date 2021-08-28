@@ -15,7 +15,7 @@ pub use futures::{
 };
 pub use getset::{CopyGetters, Getters};
 pub use indexmap::{IndexMap, IndexSet};
-pub use itertools::{iproduct, izip, Itertools};
+pub use itertools::{iproduct, izip, Itertools, chain};
 pub use lazy_static::lazy_static;
 pub use log::{error, info, warn};
 pub use ndarray::{Array, Array2, Array3, Array5, ArrayD};

@@ -83,43 +83,30 @@ impl CyCxHWMatcher {
                     let target_bbox_grid: GridCyCxHW<R64> = target_bbox
                         .rect
                         .to_grid_cycxhw(&feature_size.cast().unwrap());
-                    let target_cy = target_bbox_grid.cy();
-                    let target_cx = target_bbox_grid.cx();
-                    debug_assert!(target_cy >= 0.0 && target_cx >= 0.0);
+                    let cy = target_bbox_grid.cy();
+                    let cx = target_bbox_grid.cx();
+                    debug_assert!(cy >= 0.0 && cx >= 0.0);
 
-                    let target_row = target_cy.floor().raw() as i64;
-                    let target_col = target_cx.floor().raw() as i64;
-                    let target_cy_fract = target_cy.fract();
-                    let target_cx_fract = target_cx.fract();
+                    let row = cy.floor().raw() as i64;
+                    let col = cx.floor().raw() as i64;
+                    let cy_fract = cy.fract();
+                    let cx_fract = cx.fract();
 
-                    let orig_iter = iter::once((target_row, target_col));
+                    let pos_c = iter::once((row, col));
+                    let pos_t = (cy_fract < snap_thresh).then(|| (row - 1, col));
+                    let pos_l = (cx_fract < snap_thresh).then(|| (row, col - 1));
+                    let pos_b = (self.match_grid_method == MatchGrid::Rect4
+                        && cy_fract > 1.0 - snap_thresh)
+                        .then(|| (row + 1, col));
+                    let pos_r = (self.match_grid_method == MatchGrid::Rect4
+                        && cx_fract > 1.0 - snap_thresh)
+                        .then(|| (row, col + 1));
 
-                    let iter: Box<dyn Iterator<Item = _>> = match self.match_grid_method {
-                        MatchGrid::Rect2 => {
-                            let top = (target_cy_fract < snap_thresh)
-                                .then(|| (target_row - 1, target_col));
-                            let left = (target_cx_fract < snap_thresh)
-                                .then(|| (target_row, target_col - 1));
-
-                            Box::new(orig_iter.chain(top).chain(left))
-                        }
-                        MatchGrid::Rect4 => {
-                            let top = (target_cy_fract < snap_thresh)
-                                .then(|| (target_row - 1, target_col));
-                            let left = (target_cx_fract < snap_thresh)
-                                .then(|| (target_row, target_col - 1));
-                            let bottom = (target_cy_fract > 1.0 - snap_thresh)
-                                .then(|| (target_row + 1, target_col));
-                            let right = (target_cx_fract > 1.0 - snap_thresh)
-                                .then(|| (target_row, target_col + 1));
-
-                            Box::new(orig_iter.chain(top).chain(left).chain(bottom).chain(right))
-                        }
-                    };
-                    iter.filter(|(row, col)| {
-                        (0..feature_size.h).contains(row) && (0..feature_size.w).contains(col)
-                    })
-                    .collect()
+                    chain!(pos_c, pos_t, pos_l, pos_b, pos_r)
+                        .filter(|(row, col)| {
+                            (0..feature_size.h).contains(row) && (0..feature_size.w).contains(col)
+                        })
+                        .collect()
                 };
 
                 (
