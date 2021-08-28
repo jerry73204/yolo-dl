@@ -63,6 +63,13 @@ mod module {
                 _ => None,
             }
         }
+
+        pub fn as_detect_2d(&self) -> Option<&Detect2D> {
+            match self {
+                Self::Detect2D(module) => Some(module),
+                _ => None,
+            }
+        }
     }
 
     impl From<DarknetRoute> for Module {

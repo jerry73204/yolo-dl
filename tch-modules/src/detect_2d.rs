@@ -144,6 +144,10 @@ impl Detect2D {
         .unwrap())
     }
 
+    pub fn anchors(&self) -> &[RatioSize<R64>] {
+        &self.anchors
+    }
+
     fn cache(&mut self, tensor: &Tensor) -> Result<&Cache> {
         tch::no_grad(move || -> Result<_> {
             let Self {

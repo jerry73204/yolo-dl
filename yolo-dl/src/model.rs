@@ -412,6 +412,25 @@ impl YoloModel {
     pub fn layers(&self) -> &IndexMap<graph::NodeKey, Layer> {
         &self.layers
     }
+
+    pub fn anchors(&self) -> Vec<&[RatioSize<R64>]> {
+        let merge_detect_layer = self
+            .layers
+            .values()
+            .find(|layer| layer.module.is_merge_detect_2d())
+            .unwrap();
+        let anchors_vec: Vec<_> = merge_detect_layer
+            .input_keys
+            .iter()
+            .map(|key| {
+                let layer = &self.layers[&key];
+                let module = layer.module.as_detect_2d().unwrap();
+                module.anchors()
+            })
+            .collect();
+
+        anchors_vec
+    }
 }
 
 #[derive(Debug)]
