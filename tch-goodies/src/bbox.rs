@@ -972,6 +972,23 @@ mod rect_label {
         }
     }
 
+    impl<T, U> RectLabel<CyCxHW<T, U>>
+    where
+        T: Copy + Num,
+        U: Unit,
+    {
+        pub fn cast<V>(&self) -> Option<RectLabel<CyCxHW<V, U>>>
+        where
+            T: Copy + ToPrimitive,
+            V: Copy + Num + NumCast,
+        {
+            Some(RectLabel {
+                rect: self.rect.cast::<V>()?,
+                class: self.class,
+            })
+        }
+    }
+
     impl<T> PixelRectLabel<T>
     where
         T: Copy + Num,
