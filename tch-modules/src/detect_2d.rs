@@ -144,6 +144,10 @@ impl Detect2D {
         .unwrap())
     }
 
+    pub fn num_classes(&self) -> usize {
+        self.num_classes
+    }
+
     pub fn anchors(&self) -> &[RatioSize<R64>] {
         &self.anchors
     }

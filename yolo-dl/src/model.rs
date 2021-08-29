@@ -326,6 +326,17 @@ impl YoloModel {
             })
             .try_collect()?;
 
+        // make sure num_classes are equal in every Detect2D layer
+        {
+            let mut iter = layers
+                .values()
+                .filter_map(|layer| layer.module.as_detect_2d())
+                .map(|module| module.num_classes());
+            let expect = iter.next().unwrap();
+            let ok = iter.all(|num_classes| num_classes == expect);
+            ensure!(ok, "num_classes differs among Detect2D layers");
+        }
+
         let output_key = {
             let mut iter = layers
                 .iter()
@@ -414,22 +425,28 @@ impl YoloModel {
     }
 
     pub fn anchors(&self) -> Vec<&[RatioSize<R64>]> {
-        let merge_detect_layer = self
-            .layers
-            .values()
-            .find(|layer| layer.module.is_merge_detect_2d())
-            .unwrap();
-        let anchors_vec: Vec<_> = merge_detect_layer
+        self.detect_2d_layers()
+            .into_iter()
+            .map(|module| module.anchors())
+            .collect()
+    }
+
+    pub fn num_classes(&self) -> usize {
+        self.detect_2d_layers()[0].num_classes()
+    }
+
+    fn detect_2d_layers(&self) -> Vec<&modules::Detect2D> {
+        let detect_layers: Vec<_> = self
+            .merge_detect_2d_layer()
             .input_keys
             .iter()
-            .map(|key| {
-                let layer = &self.layers[&key];
-                let module = layer.module.as_detect_2d().unwrap();
-                module.anchors()
-            })
+            .map(|key| self.layers[&key].module.as_detect_2d().unwrap())
             .collect();
+        detect_layers
+    }
 
-        anchors_vec
+    fn merge_detect_2d_layer(&self) -> &Layer {
+        &self.layers[&self.output_key]
     }
 }
 
