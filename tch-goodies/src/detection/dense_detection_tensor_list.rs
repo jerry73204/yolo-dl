@@ -31,6 +31,10 @@ impl DenseDetectionTensorList {
         self.tensors[0].batch_size()
     }
 
+    pub fn device(&self) -> Device {
+        self.inner.tensors[0].device()
+    }
+
     pub fn index_select_batch(&self, index: &Tensor) -> Result<Self> {
         let tensors: Vec<_> = self
             .inner
