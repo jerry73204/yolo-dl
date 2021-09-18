@@ -12,6 +12,8 @@ mod tensor_ext {
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
     pub trait TensorExt {
+        fn is_all_finite(&self) -> bool;
+
         fn has_nan(&self) -> bool;
 
         fn activation(&self, act: Activation) -> Tensor;
@@ -299,6 +301,10 @@ mod tensor_ext {
     }
 
     impl TensorExt for Tensor {
+        fn is_all_finite(&self) -> bool {
+            bool::from(self.isfinite().all())
+        }
+
         fn has_nan(&self) -> bool {
             bool::from(self.isnan().any())
         }
