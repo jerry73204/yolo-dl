@@ -52,6 +52,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
             let mut yolo_inference = YoloInferenceInit {
                 nms_iou_thresh,
                 nms_conf_thresh,
+                suppress_by_class: false,
             }
             .build()
             .unwrap();

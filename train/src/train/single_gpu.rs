@@ -55,6 +55,7 @@ pub fn single_gpu_training_worker(
     let yolo_inference = YoloInferenceInit {
         nms_iou_thresh,
         nms_conf_thresh,
+        suppress_by_class: false,
     }
     .build()?;
     let yolo_benchmark = {

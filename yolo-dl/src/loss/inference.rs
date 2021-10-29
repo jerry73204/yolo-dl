@@ -6,6 +6,7 @@ use tch_goodies::detection::MergedDenseDetection;
 pub struct YoloInferenceInit {
     pub nms_iou_thresh: R64,
     pub nms_conf_thresh: R64,
+    pub suppress_by_class: bool,
 }
 
 impl YoloInferenceInit {
@@ -13,11 +14,13 @@ impl YoloInferenceInit {
         let Self {
             nms_iou_thresh,
             nms_conf_thresh,
+            suppress_by_class,
         } = self;
 
         let nms = NonMaxSuppressionInit {
             iou_threshold: nms_iou_thresh,
             confidence_threshold: nms_conf_thresh,
+            suppress_by_class,
         }
         .build()?;
 

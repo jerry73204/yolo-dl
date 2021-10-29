@@ -8,6 +8,7 @@ const MAX_DETS: usize = 65536;
 pub struct NonMaxSuppressionInit {
     pub iou_threshold: R64,
     pub confidence_threshold: R64,
+    pub suppress_by_class: bool,
 }
 
 impl Default for NonMaxSuppressionInit {
@@ -15,6 +16,7 @@ impl Default for NonMaxSuppressionInit {
         Self {
             iou_threshold: r64(0.6),
             confidence_threshold: r64(0.1),
+            suppress_by_class: false,
         }
     }
 }
@@ -24,6 +26,7 @@ impl NonMaxSuppressionInit {
         let Self {
             iou_threshold,
             confidence_threshold,
+            suppress_by_class,
         } = self;
 
         ensure!(iou_threshold >= 0.0, "iou_threshold must be non-negative");
@@ -35,6 +38,7 @@ impl NonMaxSuppressionInit {
         Ok(NonMaxSuppression {
             iou_threshold,
             confidence_threshold,
+            suppress_by_class,
         })
     }
 }
@@ -58,6 +62,7 @@ impl NmsOutput {
 pub struct NonMaxSuppression {
     iou_threshold: R64,
     confidence_threshold: R64,
+    pub suppress_by_class: bool,
 }
 
 impl NonMaxSuppression {
@@ -66,6 +71,7 @@ impl NonMaxSuppression {
             let Self {
                 iou_threshold,
                 confidence_threshold,
+                suppress_by_class,
             } = *self;
             let confidence_threshold = confidence_threshold.raw();
             let num_classes = prediction.num_classes();
@@ -117,7 +123,11 @@ impl NonMaxSuppression {
 
             let keep = if num_dets > 0 {
                 let ltrb = Tensor::cat(&[bbox.l(), bbox.t(), bbox.r(), bbox.b()], 1);
-                let group = &batches * num_classes as i64 + &classes;
+                let group = if suppress_by_class {
+                    &batches * num_classes as i64 + &classes
+                } else {
+                    batches.shallow_clone()
+                };
 
                 let keep_vec: Vec<_> = (0..num_dets)
                     .step_by(MAX_DETS)

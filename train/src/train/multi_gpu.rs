@@ -61,6 +61,7 @@ pub async fn multi_gpu_training_worker(
         let yolo_inference = YoloInferenceInit {
             nms_iou_thresh,
             nms_conf_thresh,
+            suppress_by_class: false,
         }
         .build()?;
         Arc::new(yolo_inference)
