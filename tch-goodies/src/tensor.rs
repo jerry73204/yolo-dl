@@ -978,7 +978,7 @@ mod tensor_ext {
         fn hard_mish(&self) -> Tensor {
             let case1 = self.clamp(-2.0, 0.0);
             let case2 = self.clamp_min(0.0);
-            (case1.pow(2.0) / 2.0 + &case1) + case2
+            (case1.pow(&2i64.into()) / 2.0 + &case1) + case2
         }
 
         // fn normalize_channels(&self) -> Tensor {

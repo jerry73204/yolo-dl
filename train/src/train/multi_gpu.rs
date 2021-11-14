@@ -15,7 +15,7 @@ struct WorkerContext {
     vs: nn::VarStore,
     model: Model,
     yolo_loss: YoloLoss,
-    optimizer: nn::Optimizer<nn::Adam>,
+    optimizer: nn::Optimizer,
     training_step: Tensor,
 }
 

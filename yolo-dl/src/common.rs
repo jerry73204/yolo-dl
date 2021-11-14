@@ -21,7 +21,7 @@ pub use log::{error, info, warn};
 pub use ndarray::{Array, Array2, Array3, Array5, ArrayD};
 pub use noisy_float::prelude::*;
 pub use owning_ref::ArcRef;
-pub use par_stream::{ParStreamExt, TryParStreamExt};
+pub use par_stream::prelude::*;
 pub use percent_encoding::NON_ALPHANUMERIC;
 pub use petgraph::graphmap::DiGraphMap;
 pub use rand::{prelude::*, rngs::StdRng};

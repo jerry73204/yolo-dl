@@ -195,18 +195,14 @@ impl TrainingStream {
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
         // parallel stream config
-        let par_config: ParStreamConfig = {
-            match self
-                .preprocessor_config
-                .deref()
-                .borrow()
-                .pipeline
-                .worker_buf_size
-            {
-                Some(buf_size) => (1.0, buf_size).into(),
-                None => (1.0, 2.0).into(),
-            }
-        };
+        let par_config: par_stream::ParStreamConfig = self
+            .preprocessor_config
+            .deref()
+            .borrow()
+            .pipeline
+            .worker_buf_size
+            .map(|buf_size| (1.0, buf_size).into())
+            .unwrap_or((1.0, 2.0).into());
 
         // repeating
         let stream = stream::repeat(()).enumerate();

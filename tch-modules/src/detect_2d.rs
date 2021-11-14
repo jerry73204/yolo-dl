@@ -116,13 +116,13 @@ impl Detect2D {
             .i((.., 2..3, .., .., ..))
             .sigmoid()
             .mul(2.0)
-            .pow(2.0)
+            .pow(&2i64.into())
             * anchor_heights.view([1, 1, num_anchors, 1, 1]);
         let w = outputs
             .i((.., 3..4, .., .., ..))
             .sigmoid()
             .mul(2.0)
-            .pow(2.0)
+            .pow(&2i64.into())
             * anchor_widths.view([1, 1, num_anchors, 1, 1]);
 
         // objectness

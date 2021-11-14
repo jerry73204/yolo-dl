@@ -94,9 +94,10 @@ impl CyCxHWTensor {
         let closure = TLBRTensor::from(self).closure_with(&TLBRTensor::from(other));
         let closure_size = closure.size();
 
-        let diagonal_square = closure_size.h().pow(2.0) + closure_size.w().pow(2.0) + EPSILON;
+        let diagonal_square =
+            closure_size.h().pow(&2i64.into()) + closure_size.w().pow(&2i64.into()) + EPSILON;
         let center_dist_square =
-            (self.cy() - other.cy()).pow(2.0) + (self.cx() - other.cx()).pow(2.0);
+            (self.cy() - other.cy()).pow(&2i64.into()) + (self.cx() - other.cx()).pow(&2i64.into());
 
         iou - center_dist_square / diagonal_square
     }
@@ -113,11 +114,12 @@ impl CyCxHWTensor {
         let pred_angle = self.h().atan2(&self.w());
         let target_angle = other.h().atan2(&other.w());
 
-        let diagonal_square = closure_size.h().pow(2.0) + closure_size.w().pow(2.0) + EPSILON;
+        let diagonal_square =
+            closure_size.h().pow(&2i64.into()) + closure_size.w().pow(&2i64.into()) + EPSILON;
         let center_dist_square =
-            (self.cy() - other.cy()).pow(2.0) + (self.cx() - other.cx()).pow(2.0);
+            (self.cy() - other.cy()).pow(&2i64.into()) + (self.cx() - other.cx()).pow(&2i64.into());
 
-        let shape_loss = (&pred_angle - &target_angle).pow(2.0) * 4.0 / PI.powi(2);
+        let shape_loss = (&pred_angle - &target_angle).pow(&2i64.into()) * 4.0 / PI.powi(2);
         let shape_loss_coef = tch::no_grad(|| &shape_loss / (1.0 - &iou + &shape_loss));
 
         iou - center_dist_square / diagonal_square + shape_loss_coef * shape_loss

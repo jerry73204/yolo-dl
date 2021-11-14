@@ -7,38 +7,38 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tch = "0.5.0"
+tch = "0.6.1"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.130", features = ["derive"] }
 itertools = "0.10.1"
-tch-tensor-like = { version = "0.4.0", features = ["derive"] }
-anyhow = "1.0.44"
+tch-tensor-like = { version = "0.5.0", features = ["derive"] }
+anyhow = "1.0.45"
 approx = "0.5.0"
 unzip-n = "0.1.2"
-serde_json = "1.0.68"
+serde_json = "1.0.70"
 async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
-json5 = "0.3.0"
-par-stream = { version = "0.4.0", features = ["runtime_tokio"] }
+json5 = "0.4.1"
+par-stream = { version = "0.6.0", features = ["runtime-tokio"] }
 futures = "0.3.17"
 rand = "0.8.4"
 percent-encoding = "2.1.0"
 image = "0.23.14"
-tokio = { version = "1.11.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
-tfrecord = { version = "0.9.0", features = ["full"] }
+tokio = { version = "1.13.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
+tfrecord = { version = "0.10.0", features = ["full"] }
 ndarray = "0.15.3"
-tch-serde = "0.6.0"
+tch-serde = "0.7.0"
 chrono = "0.4.19"
 uuid = { version = "0.8.2", features = ["v4"] }
 regex = "1.5.4"
 indexmap = "1.7.0"
 glob = "0.3.0"
 num_cpus = "1.13.0"
-serde-xml-rs = "0.5.0"
+serde-xml-rs = "0.5.1"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 yolo-dl = { version = "0.1", path = "../yolo-dl" }
-tracing = "0.1.27"
-tracing-subscriber = "0.2.23"
-structopt = "0.3.23"
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3.1", features = ["env-filter"] }
+structopt = "0.3.25"
 model-graph = { version = "0.1", path = "../model-graph" }
 darknet-config = { version = "0.1", path = "../darknet-config" }
 csv = "1.1.6"

@@ -168,14 +168,16 @@ impl TLBRTensor {
         let db_r = (-&db).clamp_min(0.0);
         let dr_r = (-&dr).clamp_min(0.0);
 
-        (dt_l.pow(2.0) + dl_l.pow(2.0))
-            .max_other(&(dt_l.pow(2.0) + dr_l.pow(2.0)))
-            .max_other(&(db_l.pow(2.0) + dl_l.pow(2.0)))
-            .max_other(&(db_l.pow(2.0) + dr_l.pow(2.0)))
-            .max_other(&(dt_r.pow(2.0) + dl_r.pow(2.0)))
-            .max_other(&(dt_r.pow(2.0) + dr_r.pow(2.0)))
-            .max_other(&(db_r.pow(2.0) + dl_r.pow(2.0)))
-            .max_other(&(db_r.pow(2.0) + dr_r.pow(2.0)))
+        let two = Tensor::from(2i64);
+
+        (dt_l.pow(&two) + dl_l.pow(&two))
+            .max_other(&(dt_l.pow(&two) + dr_l.pow(&two)))
+            .max_other(&(db_l.pow(&two) + dl_l.pow(&two)))
+            .max_other(&(db_l.pow(&two) + dr_l.pow(&two)))
+            .max_other(&(dt_r.pow(&two) + dl_r.pow(&two)))
+            .max_other(&(dt_r.pow(&two) + dr_r.pow(&two)))
+            .max_other(&(db_r.pow(&two) + dl_r.pow(&two)))
+            .max_other(&(db_r.pow(&two) + dr_r.pow(&two)))
             .sqrt()
     }
 }

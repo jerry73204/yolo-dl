@@ -95,7 +95,7 @@ impl FocalLoss {
         let input_prob = input.sigmoid();
         let p_t: Tensor = target * &input_prob + (1.0 - target) * (1.0 - &input_prob);
         let alpha_factor = target * alpha + (1.0 - target) * (1.0 - alpha);
-        let modulating_factor = (-&p_t + 1.0).pow(gamma);
+        let modulating_factor = (-&p_t + 1.0).pow(&gamma.into());
         let loss: Tensor = &orig_loss * &alpha_factor * &modulating_factor;
 
         match reduction {

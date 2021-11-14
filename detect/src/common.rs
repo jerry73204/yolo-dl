@@ -11,7 +11,7 @@ pub use opencv::{
     core::{Mat, Rect, Scalar, Vector},
     imgcodecs, imgproc,
 };
-pub use par_stream::{ParStreamExt, TryParStreamExt};
+pub use par_stream::prelude::*;
 pub use semver::{Version, VersionReq};
 pub use serde::{
     de::{Error as DeserializeError, Visitor},

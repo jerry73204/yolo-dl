@@ -36,48 +36,43 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     let input_stream = InputStream::new(config.clone()).await?;
 
     // scatter input to workers
-    let (scatter_fut, data_rx) = input_stream.stream()?.par_scatter(None);
+    let data_stream = input_stream.stream()?.scatter(None);
 
-    let inference_futs = {
-        workers.into_iter().map(|(vs, mut model)| {
-            let data_rx = data_rx.clone();
-            let config = config.clone();
-            let device = vs.device();
-            let output_tx = output_tx.clone();
-            let OutputConfig {
-                nms_iou_thresh,
-                nms_conf_thresh,
-                ..
-            } = config.output;
-            let mut yolo_inference = YoloInferenceInit {
-                nms_iou_thresh,
-                nms_conf_thresh,
-                suppress_by_class: false,
-            }
-            .build()
-            .unwrap();
+    let inference_futs = workers.into_iter().map(|(vs, model)| {
+        let data_stream = data_stream.clone();
+        let config = config.clone();
+        let device = vs.device();
+        let output_tx = output_tx.clone();
+        let OutputConfig {
+            nms_iou_thresh,
+            nms_conf_thresh,
+            ..
+        } = config.output;
+        let yolo_inference = YoloInferenceInit {
+            nms_iou_thresh,
+            nms_conf_thresh,
+            suppress_by_class: false,
+        }
+        .build()
+        .unwrap();
 
-            async move {
-                while let Ok(record) = data_rx.recv().await {
-                    let (model_, yolo_inference_, images, inferences) =
-                        tokio::task::spawn_blocking(move || -> Result<_> {
-                            let record = record?;
-                            let images = record.images.to_device(device);
-                            let output = model.forward_t(&images, false)?;
-                            let output = MergedDenseDetection::try_from(output)?;
-                            let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
-                            Ok((model, yolo_inference, record, inferences))
-                        })
-                        .await??;
-
-                    model = model_;
-                    yolo_inference = yolo_inference_;
-                    output_tx.send((images, inferences)).await.unwrap();
-                }
-                Ok(())
-            }
-        })
-    };
+        async move {
+            data_stream
+                .try_fold(
+                    (model, yolo_inference),
+                    |(mut model, yolo_inference), record| async {
+                        let images = record.images.to_device(device);
+                        let output = model.forward_t(&images, false)?;
+                        let output = MergedDenseDetection::try_from(output)?;
+                        let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
+                        output_tx.send((record, inferences)).await.unwrap();
+                        Ok((model, yolo_inference))
+                    },
+                )
+                .await?;
+            Ok(())
+        }
+    });
 
     let output_fut = {
         let output_dir = Arc::new(config.output.output_dir.clone());
@@ -170,7 +165,6 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     };
 
     futures::try_join!(
-        scatter_fut.map(|_| Fallible::Ok(())),
         futures::future::try_join_all(inference_futs),
         output_fut.map(|_| Fallible::Ok(())),
     )?;
