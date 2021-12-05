@@ -1,4 +1,5 @@
-use super::*;
+use super::Meta;
+use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(from = "RawMaxPool", into = "RawMaxPool")]
@@ -11,7 +12,7 @@ pub struct MaxPool {
     pub out_channels: usize,
     pub antialiasing: bool,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl MaxPool {
@@ -67,20 +68,20 @@ impl From<RawMaxPool> for MaxPool {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawMaxPool {
-    #[serde(default = "defaults::maxpool_stride")]
+    #[serde(default = "num_traits::one")]
     pub stride: usize,
     pub stride_x: Option<usize>,
     pub stride_y: Option<usize>,
     pub size: Option<usize>,
     pub padding: Option<usize>,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub maxpool_depth: bool,
-    #[serde(default = "defaults::out_channels")]
+    #[serde(default = "num_traits::one")]
     pub out_channels: usize,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub antialiasing: bool,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl From<MaxPool> for RawMaxPool {
@@ -97,7 +98,7 @@ impl From<MaxPool> for RawMaxPool {
         } = maxpool;
 
         Self {
-            stride: defaults::maxpool_stride(),
+            stride: num_traits::one(),
             stride_x: Some(stride_x),
             stride_y: Some(stride_y),
             size: Some(size),

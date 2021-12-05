@@ -1,4 +1,5 @@
-use super::*;
+use super::{Meta, Shape};
+use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawSoftmax")]
@@ -8,7 +9,7 @@ pub struct Softmax {
     pub tree: Option<(PathBuf, Tree)>,
     pub spatial: R64,
     pub noloss: bool,
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl Softmax {
@@ -37,10 +38,10 @@ impl TryFrom<RawSoftmax> for Softmax {
             .transpose()?;
 
         Ok(Self {
-            groups,
-            temperature,
+            groups: groups,
+            temperature: temperature,
             tree,
-            spatial,
+            spatial: spatial,
             noloss,
             common,
         })
@@ -49,17 +50,17 @@ impl TryFrom<RawSoftmax> for Softmax {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawSoftmax {
-    #[serde(default = "defaults::softmax_groups")]
+    #[serde(default = "utils::integer::<_, 1>")]
     pub groups: usize,
-    #[serde(default = "defaults::temperature")]
+    #[serde(default = "utils::ratio::<_, 1, 1>")]
     pub temperature: R64,
     pub tree_file: Option<PathBuf>,
-    #[serde(default = "defaults::spatial")]
+    #[serde(default = "utils::ratio::<_, 0, 1>")]
     pub spatial: R64,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub noloss: bool,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl TryFrom<Softmax> for RawSoftmax {
@@ -82,10 +83,10 @@ impl TryFrom<Softmax> for RawSoftmax {
             .transpose()?;
 
         Ok(Self {
-            groups,
-            temperature,
+            groups: groups.into(),
+            temperature: temperature.into(),
             tree_file,
-            spatial,
+            spatial: spatial.into(),
             noloss,
             common,
         })

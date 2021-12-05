@@ -1,13 +1,14 @@
-use super::*;
+use super::Meta;
+use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UpSample {
-    #[serde(default = "defaults::upsample_stride")]
+    #[serde(default = "utils::integer::<_, 2>")]
     pub stride: usize,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub reverse: bool,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl UpSample {

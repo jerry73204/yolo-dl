@@ -1,607 +1,242 @@
-use crate::{
-    common::*,
-    config::{self, WeightsType},
-    graph::{
-        BatchNormNode, ConnectedNode, ConvolutionalNode, GaussianYoloNode, Graph, InputNode,
-        MaxPoolNode, Node, NodeKey, RouteNode, ShortcutNode, UpSampleNode, YoloNode,
-    },
+use super::{
+    AvgPool, BatchNorm, Connected, Convolutional, Cost, Crop, Dropout, GaussianYolo, Layer,
+    MaxPool, Net, Route, Shortcut, Softmax, UnimplementedLayer, UpSample, Yolo,
 };
+use crate::common::*;
 
-pub use layer::*;
-pub use model::*;
-pub use weights::*;
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(try_from = "Items")]
+pub struct Darknet {
+    pub net: Net,
+    pub layers: Vec<Layer>,
+}
 
-mod model {
-    use super::*;
-
-    #[derive(Debug, Clone)]
-    pub struct DarknetModel {
-        pub graph: Graph,
-        pub layers: IndexMap<NodeKey, Layer>,
+impl Darknet {
+    pub fn load<P>(file: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        Self::from_str(&fs::read_to_string(file)?)
     }
 
-    impl DarknetModel {
-        pub fn new(graph: &Graph) -> Result<Self> {
-            // aggregate all computed features
-            let layers: IndexMap<_, _> = {
-                graph
-                    .layers
-                    .iter()
-                    .map(|(&layer_index, layer_node)| -> Result<_> {
-                        let layer = match layer_node {
-                            Node::Input(node) => Layer::Input(InputLayer::new(node)),
-                            Node::Connected(node) => Layer::Connected(ConnectedLayer::new(node)),
-                            Node::Convolutional(node) => Layer::Convolutional(
-                                ConvolutionalLayer::new(node, layer_index.index().unwrap())?,
-                            ),
-                            Node::Route(node) => Layer::Route(RouteLayer { node: node.clone() }),
-                            Node::Shortcut(node) => Layer::Shortcut(ShortcutLayer::new(node)),
-                            Node::MaxPool(node) => {
-                                Layer::MaxPool(MaxPoolLayer { node: node.clone() })
-                            }
-                            Node::UpSample(node) => {
-                                Layer::UpSample(UpSampleLayer { node: node.clone() })
-                            }
-                            Node::BatchNorm(node) => Layer::BatchNorm(BatchNormLayer::new(node)),
-                            Node::Dropout(_node) => unimplemented!(),
-                            Node::Softmax(_node) => unimplemented!(),
-                            Node::Yolo(node) => Layer::Yolo(YoloLayer { node: node.clone() }),
-                            Node::GaussianYolo(node) => {
-                                Layer::GaussianYolo(GaussianYoloLayer { node: node.clone() })
-                            }
+    pub fn to_string(&self) -> Result<String> {
+        Ok(serde_ini::to_string(self)?)
+    }
+}
+
+impl FromStr for Darknet {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        // remove comments and trailing whitespaces
+        let regex = RegexBuilder::new(r" *(#.*)?$")
+            .multi_line(true)
+            .build()
+            .unwrap();
+        let text = regex.replace_all(text, "");
+
+        // parse
+        Ok(serde_ini::from_str(&text)?)
+    }
+}
+
+impl TryFrom<Items> for Darknet {
+    type Error = anyhow::Error;
+
+    fn try_from(Items(items): Items) -> Result<Self, Self::Error> {
+        // ensure only the first item is "net" item
+        {
+            let mut iter = items.iter();
+            ensure!(
+                matches!(iter.next(), Some(Item::Net(_))),
+                "the first item must be [net]"
+            );
+            ensure!(
+                iter.all(|item| !matches!(item, Item::Net(_))),
+                "net item must be the first item"
+            );
+        };
+
+        let mut items_iter = items.into_iter();
+
+        // build net item
+        let net = items_iter
+            .next()
+            .unwrap()
+            .try_into_net()
+            .map_err(|_| anyhow!("the first section must be [net]"))?;
+
+        // build layers
+        let layers: Vec<_> = items_iter
+            .map(|item| item.try_into_layer_config())
+            .try_collect()?;
+
+        Ok(Self { net, layers })
+    }
+}
+
+impl Serialize for Darknet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Items::try_from(self.clone())
+            .map_err(|err| {
+                S::Error::custom(format!(
+                    "unable to serialize darknet configuration: {:?}",
+                    err
+                ))
+            })?
+            .serialize(serializer)
+    }
+}
+
+pub(crate) use item::*;
+mod item {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub(crate) enum Item {
+        #[serde(rename = "net")]
+        Net(Net),
+        #[serde(rename = "connected")]
+        Connected(Connected),
+        #[serde(rename = "convolutional")]
+        Convolutional(Convolutional),
+        #[serde(rename = "route")]
+        Route(Route),
+        #[serde(rename = "shortcut")]
+        Shortcut(Shortcut),
+        #[serde(rename = "maxpool")]
+        MaxPool(MaxPool),
+        #[serde(rename = "upsample")]
+        UpSample(UpSample),
+        #[serde(rename = "batchnorm")]
+        BatchNorm(BatchNorm),
+        #[serde(rename = "dropout")]
+        Dropout(Dropout),
+        #[serde(rename = "softmax")]
+        Softmax(Softmax),
+        #[serde(rename = "Gaussian_yolo")]
+        GaussianYolo(GaussianYolo),
+        #[serde(rename = "yolo")]
+        Yolo(Yolo),
+        #[serde(rename = "cost")]
+        Cost(Cost),
+        #[serde(rename = "crop")]
+        Crop(Crop),
+        #[serde(rename = "avgpool")]
+        AvgPool(AvgPool),
+        #[serde(rename = "local_avgpool")]
+        LocalAvgPool(UnimplementedLayer),
+        #[serde(rename = "crnn")]
+        Crnn(UnimplementedLayer),
+        #[serde(rename = "sam")]
+        Sam(UnimplementedLayer),
+        #[serde(rename = "scale_channels")]
+        ScaleChannels(UnimplementedLayer),
+        #[serde(rename = "gru")]
+        Gru(UnimplementedLayer),
+        #[serde(rename = "lstm")]
+        Lstm(UnimplementedLayer),
+        #[serde(rename = "rnn")]
+        Rnn(UnimplementedLayer),
+        #[serde(rename = "detection")]
+        Detection(UnimplementedLayer),
+        #[serde(rename = "region")]
+        Region(UnimplementedLayer),
+        #[serde(rename = "reorg")]
+        Reorg(UnimplementedLayer),
+        #[serde(rename = "contrastive")]
+        Contrastive(UnimplementedLayer),
+    }
+
+    impl Item {
+        pub fn try_into_net(self) -> Result<Net> {
+            let net = match self {
+                Self::Net(net) => net,
+                _ => bail!("not a net layer"),
+            };
+            Ok(net)
+        }
+
+        pub fn try_into_layer_config(self) -> Result<Layer> {
+            let layer = match self {
+                Self::Connected(layer) => Layer::Connected(layer),
+                Self::Convolutional(layer) => Layer::Convolutional(layer),
+                Self::Route(layer) => Layer::Route(layer),
+                Self::Shortcut(layer) => Layer::Shortcut(layer),
+                Self::MaxPool(layer) => Layer::MaxPool(layer),
+                Self::UpSample(layer) => Layer::UpSample(layer),
+                Self::BatchNorm(layer) => Layer::BatchNorm(layer),
+                Self::Dropout(layer) => Layer::Dropout(layer),
+                Self::Softmax(layer) => Layer::Softmax(layer),
+                Self::Cost(layer) => Layer::Cost(layer),
+                Self::Crop(layer) => Layer::Crop(layer),
+                Self::AvgPool(layer) => Layer::AvgPool(layer),
+                Self::GaussianYolo(layer) => Layer::GaussianYolo(layer.try_into()?),
+                Self::Yolo(layer) => Layer::Yolo(layer.try_into()?),
+                Self::Net(_layer) => {
+                    bail!("the 'net' layer must appear in the first section")
+                }
+                // unimplemented
+                Self::Crnn(layer)
+                | Self::Sam(layer)
+                | Self::ScaleChannels(layer)
+                | Self::LocalAvgPool(layer)
+                | Self::Contrastive(layer)
+                | Self::Detection(layer)
+                | Self::Region(layer)
+                | Self::Reorg(layer)
+                | Self::Rnn(layer)
+                | Self::Lstm(layer)
+                | Self::Gru(layer) => Layer::Unimplemented(layer),
+            };
+            Ok(layer)
+        }
+    }
+
+    impl TryFrom<Darknet> for Items {
+        type Error = Error;
+
+        fn try_from(config: Darknet) -> Result<Self, Self::Error> {
+            let Darknet {
+                net,
+                layers: orig_layers,
+            } = config;
+
+            let items: Vec<_> = {
+                chain!([Ok(Item::Net(net))], {
+                    orig_layers.into_iter().map(|layer| -> Result<_> {
+                        let item = match layer {
+                            Layer::Connected(layer) => Item::Connected(layer),
+                            Layer::Convolutional(layer) => Item::Convolutional(layer),
+                            Layer::Route(layer) => Item::Route(layer),
+                            Layer::Shortcut(layer) => Item::Shortcut(layer),
+                            Layer::MaxPool(layer) => Item::MaxPool(layer),
+                            Layer::UpSample(layer) => Item::UpSample(layer),
+                            Layer::BatchNorm(layer) => Item::BatchNorm(layer),
+                            Layer::Dropout(layer) => Item::Dropout(layer),
+                            Layer::Softmax(layer) => Item::Softmax(layer),
+                            Layer::Cost(layer) => Item::Cost(layer),
+                            Layer::Crop(layer) => Item::Crop(layer),
+                            Layer::AvgPool(layer) => Item::AvgPool(layer),
+                            Layer::Unimplemented(_layer) => bail!("unimplemented layer"),
+                            Layer::Yolo(layer) => Item::Yolo(layer),
+                            Layer::GaussianYolo(layer) => Item::GaussianYolo(layer),
                         };
 
-                        Ok((layer_index, layer))
+                        Ok(item)
                     })
-                    .try_collect()?
+                })
+                .try_collect()?
             };
 
-            Ok(Self {
-                graph: graph.clone(),
-                layers,
-            })
-        }
-
-        pub fn from_config_file<P>(config_file: P) -> Result<Self>
-        where
-            P: AsRef<Path>,
-        {
-            let config = config::Darknet::load(config_file)?;
-            let graph = Graph::from_config(&config)?;
-            Self::new(&graph)
-        }
-
-        pub fn from_config(config: &config::Darknet) -> Result<Self> {
-            let graph = Graph::from_config(config)?;
-            Self::new(&graph)
-        }
-
-        pub fn load_weights<P>(&mut self, weights_file: P) -> Result<()>
-        where
-            P: AsRef<Path>,
-        {
-            #[derive(Debug, Clone, PartialEq, Eq, Hash, BinRead)]
-            pub struct Version {
-                pub major: u32,
-                pub minor: u32,
-                pub revision: u32,
-            }
-
-            let mut reader = BufReader::new(File::open(weights_file)?);
-
-            // load weights file
-            let (seen, transpose, mut reader) = move || -> Result<_, binread::Error> {
-                let version: Version = reader.read_le()?;
-                let Version { major, minor, .. } = version;
-
-                let seen: usize = if major * 10 + minor >= 2 {
-                    let seen: u64 = reader.read_le()?;
-                    seen as usize
-                } else {
-                    let seen: u32 = reader.read_le()?;
-                    seen as usize
-                };
-                let transpose = (major > 1000) || (minor > 1000);
-
-                Ok((seen, transpose, reader))
-            }()
-            .map_err(|err| format_err!("failed to parse weight file: {:?}", err))?;
-
-            // update network parameters
-            self.graph.seen = seen;
-            self.graph.cur_iteration = self.graph.net.iteration(seen);
-
-            // load weights
-            {
-                // load weights except input layer
-                let num_layers = self.layers.len() - 1;
-
-                (0..num_layers)
-                    .map(NodeKey::Index)
-                    .try_for_each(|key| -> Result<_> {
-                        let layer = &mut self.layers[&key];
-                        layer.load_weights(&mut reader, transpose)?;
-                        Ok(())
-                    })?;
-
-                ensure!(
-                    matches!(reader.fill_buf()?, &[]),
-                    "the weights file is not totally consumed"
-                );
-            }
-
-            Ok(())
-        }
-    }
-}
-
-mod layer {
-    use super::*;
-
-    macro_rules! declare_darknet_layer {
-        ($name:ident, $node:ty, $weights:ty) => {
-            #[derive(Debug, Clone)]
-            pub struct $name {
-                pub node: $node,
-                pub weights: $weights,
-            }
-        };
-        ($name:ident, $node:ty) => {
-            #[derive(Debug, Clone)]
-            pub struct $name {
-                pub node: $node,
-            }
-        };
-    }
-
-    #[derive(Debug, Clone, AsRefStr)]
-    pub enum Layer {
-        Input(InputLayer),
-        Connected(ConnectedLayer),
-        Convolutional(ConvolutionalLayer),
-        Route(RouteLayer),
-        Shortcut(ShortcutLayer),
-        MaxPool(MaxPoolLayer),
-        UpSample(UpSampleLayer),
-        BatchNorm(BatchNormLayer),
-        Yolo(YoloLayer),
-        GaussianYolo(GaussianYoloLayer),
-    }
-
-    impl Layer {
-        pub fn load_weights(&mut self, reader: impl ReadBytesExt, transpose: bool) -> Result<()> {
-            match self {
-                Self::Input(_layer) => Ok(()),
-                Self::Connected(layer) => layer.load_weights(reader, transpose),
-                Self::Convolutional(layer) => layer.load_weights(reader),
-                Self::Route(_layer) => Ok(()),
-                Self::Shortcut(layer) => layer.load_weights(reader),
-                Self::MaxPool(_layer) => Ok(()),
-                Self::UpSample(_layer) => Ok(()),
-                Self::BatchNorm(layer) => layer.load_weights(reader),
-                Self::Yolo(_layer) => Ok(()),
-                Self::GaussianYolo(_layer) => Ok(()),
-            }
+            Ok(Items(items))
         }
     }
 
-    #[derive(Debug, Clone)]
-    pub struct InputLayer {
-        pub node: InputNode,
-    }
-
-    impl InputLayer {
-        pub fn new(node: &InputNode) -> Self {
-            Self {
-                node: node.to_owned(),
-            }
-        }
-    }
-
-    declare_darknet_layer!(ConnectedLayer, ConnectedNode, ConnectedWeights);
-    declare_darknet_layer!(ConvolutionalLayer, ConvolutionalNode, ConvolutionalWeights);
-    declare_darknet_layer!(BatchNormLayer, BatchNormNode, BatchNormWeights);
-    declare_darknet_layer!(ShortcutLayer, ShortcutNode, ShortcutWeights);
-    declare_darknet_layer!(RouteLayer, RouteNode);
-    declare_darknet_layer!(MaxPoolLayer, MaxPoolNode);
-    declare_darknet_layer!(UpSampleLayer, UpSampleNode);
-    declare_darknet_layer!(YoloLayer, YoloNode);
-    declare_darknet_layer!(GaussianYoloLayer, GaussianYoloNode);
-
-    impl ConnectedLayer {
-        pub fn new(node: &ConnectedNode) -> Self {
-            let ConnectedNode {
-                config:
-                    config::Connected {
-                        batch_normalize, ..
-                    },
-                input_shape,
-                output_shape,
-                ..
-            } = *node;
-            let input_shape = input_shape as usize;
-            let output_shape = output_shape as usize;
-
-            let weights = ConnectedWeights {
-                biases: Array1::from_shape_vec(input_shape, vec![0.0; input_shape]).unwrap(),
-                weights: Array2::from_shape_vec(
-                    [input_shape, output_shape],
-                    vec![0.0; input_shape * output_shape],
-                )
-                .unwrap(),
-                scales: if batch_normalize {
-                    Some(ScaleWeights::new(output_shape as usize))
-                } else {
-                    None
-                },
-            };
-
-            Self {
-                node: node.clone(),
-                weights,
-            }
-        }
-
-        pub fn load_weights(
-            &mut self,
-            mut reader: impl ReadBytesExt,
-            transpose: bool,
-        ) -> Result<()> {
-            let Self {
-                node:
-                    ConnectedNode {
-                        config:
-                            config::Connected {
-                                common:
-                                    config::Common {
-                                        dont_load,
-                                        dont_load_scales,
-                                        ..
-                                    },
-                                ..
-                            },
-                        input_shape,
-                        output_shape,
-                        ..
-                    },
-                weights:
-                    ConnectedWeights {
-                        ref mut biases,
-                        ref mut weights,
-                        ref mut scales,
-                    },
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            reader.read_f32_into::<LittleEndian>(biases.as_slice_mut().unwrap())?;
-            reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
-
-            if transpose {
-                crate::utils::transpose_matrix(
-                    weights.as_slice_mut().unwrap(),
-                    input_shape as usize,
-                    output_shape as usize,
-                )?;
-            }
-
-            if let (Some(scales), false) = (scales, dont_load_scales) {
-                scales.load_weights(reader)?;
-            }
-
-            Ok(())
-        }
-    }
-
-    impl ConvolutionalLayer {
-        pub fn new(node: &ConvolutionalNode, layer_index: usize) -> Result<Self> {
-            let ConvolutionalNode {
-                config:
-                    config::Convolutional {
-                        share_index,
-                        filters,
-                        batch_normalize,
-                        size,
-                        groups,
-                        ..
-                    },
-                input_shape: [_, _, in_c],
-                ..
-            } = *node;
-
-            ensure!(
-                in_c % groups == 0,
-                "the input channels is not multiple of groups"
-            );
-
-            let weights = if let Some(share_index) = share_index {
-                let share_index = share_index
-                    .to_absolute(layer_index)
-                    .ok_or_else(|| format_err!("invalid layer index"))?;
-                ConvolutionalWeights::Ref { share_index }
-            } else {
-                let weights_shape = {
-                    let [s1, s2, s3, s4] = [in_c / groups, filters, size, size];
-                    [s1 as usize, s2 as usize, s3 as usize, s4 as usize]
-                };
-                let weights = Array4::from_shape_vec(
-                    weights_shape,
-                    vec![0.0; weights_shape.iter().cloned().product()],
-                )
-                .unwrap();
-                let biases =
-                    Array1::from_shape_vec(filters as usize, vec![0.0; filters as usize]).unwrap();
-                let scales = if batch_normalize {
-                    Some(ScaleWeights::new(filters as usize))
-                } else {
-                    None
-                };
-
-                ConvolutionalWeights::Owned {
-                    biases,
-                    weights,
-                    scales,
-                }
-            };
-
-            Ok(Self {
-                node: node.clone(),
-                weights,
-            })
-        }
-
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                node:
-                    ConvolutionalNode {
-                        config:
-                            config::Convolutional {
-                                groups,
-                                size,
-                                filters,
-                                flipped,
-                                common:
-                                    config::Common {
-                                        dont_load,
-                                        dont_load_scales,
-                                        ..
-                                    },
-                                ..
-                            },
-                        input_shape: [_h, _w, in_c],
-                        ..
-                    },
-                ref mut weights,
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            match weights {
-                ConvolutionalWeights::Ref { .. } => (),
-                ConvolutionalWeights::Owned {
-                    biases,
-                    scales,
-                    weights,
-                } => {
-                    reader.read_f32_into::<LittleEndian>(biases.as_slice_mut().unwrap())?;
-
-                    if let (Some(scales), false) = (scales, dont_load_scales) {
-                        scales.load_weights(&mut reader)?;
-                    }
-
-                    reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
-
-                    if flipped {
-                        crate::utils::transpose_matrix(
-                            weights.as_slice_mut().unwrap(),
-                            ((in_c / groups) * size.pow(2)) as usize,
-                            filters as usize,
-                        )?;
-                    }
-                }
-            }
-
-            Ok(())
-        }
-    }
-
-    impl BatchNormLayer {
-        pub fn new(node: &BatchNormNode) -> Self {
-            let [_h, _w, channels] = node.inout_shape;
-            let channels = channels as usize;
-
-            let biases = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
-            let scales = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
-            let rolling_mean = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
-            let rolling_variance = Array1::from_shape_vec(channels, vec![0.0; channels]).unwrap();
-
-            let weights = BatchNormWeights {
-                biases,
-                scales,
-                rolling_mean,
-                rolling_variance,
-            };
-
-            Self {
-                node: node.clone(),
-                weights,
-            }
-        }
-
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                node:
-                    BatchNormNode {
-                        config:
-                            config::BatchNorm {
-                                common: config::Common { dont_load, .. },
-                                ..
-                            },
-                        ..
-                    },
-                weights:
-                    BatchNormWeights {
-                        ref mut biases,
-                        ref mut scales,
-                        ref mut rolling_mean,
-                        ref mut rolling_variance,
-                    },
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            reader.read_f32_into::<LittleEndian>(biases.as_slice_mut().unwrap())?;
-            reader.read_f32_into::<LittleEndian>(scales.as_slice_mut().unwrap())?;
-            reader.read_f32_into::<LittleEndian>(rolling_mean.as_slice_mut().unwrap())?;
-            reader.read_f32_into::<LittleEndian>(rolling_variance.as_slice_mut().unwrap())?;
-
-            Ok(())
-        }
-    }
-
-    impl ShortcutLayer {
-        pub fn new(node: &ShortcutNode) -> Self {
-            let ShortcutNode {
-                config:
-                    config::Shortcut {
-                        weights_type,
-                        ref from,
-                        ..
-                    },
-                output_shape: [_, _, out_c],
-                ..
-            } = *node;
-
-            let out_c = out_c as usize;
-            let num_input_layers = from.len() + 1;
-
-            let weights = match weights_type {
-                WeightsType::None => ShortcutWeights::None,
-                WeightsType::PerFeature => ShortcutWeights::PerFeature(
-                    Array1::from_shape_vec(num_input_layers, vec![0.0; num_input_layers]).unwrap(),
-                ),
-                WeightsType::PerChannel => ShortcutWeights::PerChannel(
-                    Array2::from_shape_vec(
-                        [num_input_layers, out_c],
-                        vec![0.0; num_input_layers * out_c],
-                    )
-                    .unwrap(),
-                ),
-            };
-
-            ShortcutLayer {
-                node: node.clone(),
-                weights,
-            }
-        }
-
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                node:
-                    ShortcutNode {
-                        config:
-                            config::Shortcut {
-                                common: config::Common { dont_load, .. },
-                                ..
-                            },
-                        ..
-                    },
-                ref mut weights,
-                ..
-            } = *self;
-
-            if dont_load {
-                return Ok(());
-            }
-
-            match weights {
-                ShortcutWeights::None => (),
-                ShortcutWeights::PerFeature(weights) => {
-                    reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
-                }
-                ShortcutWeights::PerChannel(weights) => {
-                    reader.read_f32_into::<LittleEndian>(weights.as_slice_mut().unwrap())?;
-                }
-            }
-
-            Ok(())
-        }
-    }
-}
-
-mod weights {
-    use super::*;
-
-    #[derive(Debug, Clone)]
-    pub struct ScaleWeights {
-        pub scales: Array1<f32>,
-        pub rolling_mean: Array1<f32>,
-        pub rolling_variance: Array1<f32>,
-    }
-
-    impl ScaleWeights {
-        pub fn new(size: usize) -> Self {
-            Self {
-                scales: Array1::from_shape_vec(size, vec![0.0; size]).unwrap(),
-                rolling_mean: Array1::from_shape_vec(size, vec![0.0; size]).unwrap(),
-                rolling_variance: Array1::from_shape_vec(size, vec![0.0; size]).unwrap(),
-            }
-        }
-
-        pub fn load_weights(&mut self, mut reader: impl ReadBytesExt) -> Result<()> {
-            let Self {
-                scales,
-                rolling_mean,
-                rolling_variance,
-            } = self;
-
-            reader.read_f32_into::<LittleEndian>(scales.as_slice_mut().unwrap())?;
-            reader.read_f32_into::<LittleEndian>(rolling_mean.as_slice_mut().unwrap())?;
-            reader.read_f32_into::<LittleEndian>(rolling_variance.as_slice_mut().unwrap())?;
-            Ok(())
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct ConnectedWeights {
-        pub biases: Array1<f32>,
-        pub weights: Array2<f32>,
-        pub scales: Option<ScaleWeights>,
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum ConvolutionalWeights {
-        Owned {
-            biases: Array1<f32>,
-            weights: Array4<f32>,
-            scales: Option<ScaleWeights>,
-        },
-        Ref {
-            share_index: usize,
-        },
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct BatchNormWeights {
-        pub biases: Array1<f32>,
-        pub scales: Array1<f32>,
-        pub rolling_mean: Array1<f32>,
-        pub rolling_variance: Array1<f32>,
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum ShortcutWeights {
-        None,
-        PerFeature(Array1<f32>),
-        PerChannel(Array2<f32>),
-    }
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub(crate) struct Items(pub Vec<Item>);
 }

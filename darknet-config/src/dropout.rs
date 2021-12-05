@@ -1,11 +1,12 @@
-use super::*;
+use super::{Meta, Shape};
+use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawDropout", into = "RawDropout")]
 pub struct Dropout {
     pub probability: R64,
     pub dropblock: DropBlock,
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl Dropout {
@@ -45,14 +46,14 @@ impl TryFrom<RawDropout> for Dropout {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawDropout {
-    #[serde(default = "defaults::probability")]
+    #[serde(default = "default_probability")]
     pub probability: R64,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub dropblock: bool,
     pub dropblock_size_rel: Option<R64>,
     pub dropblock_size_abs: Option<R64>,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl From<Dropout> for RawDropout {
@@ -84,4 +85,8 @@ pub enum DropBlock {
     None,
     Absolute(R64),
     Relative(R64),
+}
+
+pub fn default_probability() -> R64 {
+    R64::new(0.2)
 }

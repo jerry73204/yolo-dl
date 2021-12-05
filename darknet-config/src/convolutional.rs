@@ -1,4 +1,5 @@
-use super::*;
+use super::{Activation, Deform, LayerIndex, Meta};
+use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawConvolutional", into = "RawConvolutional")]
@@ -27,7 +28,7 @@ pub struct Convolutional {
     pub reverse: bool,
     pub coordconv: bool,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl Convolutional {
@@ -155,60 +156,60 @@ impl TryFrom<RawConvolutional> for Convolutional {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawConvolutional {
     pub filters: usize,
-    #[serde(default = "defaults::groups")]
+    #[serde(default = "num_traits::one")]
     pub groups: usize,
     pub size: usize,
-    #[serde(default = "defaults::stride")]
+    #[serde(default = "num_traits::one")]
     pub stride: usize,
     pub stride_x: Option<usize>,
     pub stride_y: Option<usize>,
-    #[serde(default = "defaults::dilation")]
+    #[serde(default = "num_traits::one")]
     pub dilation: usize,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub antialiasing: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub pad: bool,
     pub padding: Option<usize>,
     pub activation: Activation,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub assisted_excitation: bool,
     pub share_index: Option<LayerIndex>,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub batch_normalize: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub cbn: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub binary: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub xnor: bool,
     #[serde(
         rename = "bin_output",
-        with = "serde_::zero_one_bool",
-        default = "defaults::bool_false"
+        with = "utils::zero_one_bool",
+        default = "utils::bool_false"
     )]
     pub use_bin_output: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub sway: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub rotate: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub stretch: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub stretch_sway: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub flipped: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub dot: bool,
-    #[serde(default = "defaults::angle")]
+    #[serde(default = "default_angle")]
     pub angle: R64,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub grad_centr: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub reverse: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub coordconv: bool,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
 
 impl From<Convolutional> for RawConvolutional {
@@ -252,7 +253,7 @@ impl From<Convolutional> for RawConvolutional {
             filters,
             groups,
             size,
-            stride: defaults::stride(),
+            stride: num_traits::one(),
             stride_x: Some(stride_x),
             stride_y: Some(stride_y),
             dilation,
@@ -280,4 +281,8 @@ impl From<Convolutional> for RawConvolutional {
             common,
         }
     }
+}
+
+fn default_angle() -> R64 {
+    R64::new(15.0)
 }

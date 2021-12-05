@@ -1,9 +1,9 @@
-use super::*;
+use super::{IouLoss, IouThreshold, Meta, NmsKind, OutputShape, YoloPoint};
+use crate::{common::*, utils};
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
-#[serde(try_from = "RawYolo")]
-pub struct Yolo {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Derivative, Serialize, Deserialize)]
+#[serde(try_from = "RawGaussianYolo")]
+pub struct GaussianYolo {
     pub classes: usize,
     pub max_boxes: usize,
     pub max_delta: Option<R64>,
@@ -11,6 +11,7 @@ pub struct Yolo {
     pub label_smooth_eps: R64,
     pub scale_x_y: R64,
     pub objectness_smooth: bool,
+    pub uc_normalizer: R64,
     pub iou_normalizer: R64,
     pub obj_normalizer: R64,
     pub cls_normalizer: R64,
@@ -19,26 +20,19 @@ pub struct Yolo {
     pub beta_nms: R64,
     pub jitter: R64,
     pub resize: R64,
-    pub focal_loss: bool,
     pub ignore_thresh: R64,
     pub truth_thresh: R64,
     pub iou_thresh: R64,
     pub random: R64,
-    pub track_history_size: usize,
-    pub sim_thresh: R64,
-    pub dets_for_track: usize,
-    pub dets_for_show: usize,
-    pub track_ciou_norm: R64,
-    pub embedding_layer: Option<LayerIndex>,
     pub map: Option<PathBuf>,
     pub anchors: Vec<(usize, usize)>,
     pub yolo_point: YoloPoint,
     pub iou_loss: IouLoss,
     pub nms_kind: NmsKind,
-    pub common: Common,
+    pub common: Meta,
 }
 
-impl Yolo {
+impl GaussianYolo {
     pub fn output_shape(&self, input_shape: [usize; 3]) -> Option<OutputShape> {
         let Self {
             classes,
@@ -56,11 +50,11 @@ impl Yolo {
     }
 }
 
-impl TryFrom<RawYolo> for Yolo {
+impl TryFrom<RawGaussianYolo> for GaussianYolo {
     type Error = Error;
 
-    fn try_from(from: RawYolo) -> Result<Self, Self::Error> {
-        let RawYolo {
+    fn try_from(from: RawGaussianYolo) -> Result<Self, Self::Error> {
+        let RawGaussianYolo {
             classes,
             num,
             mask,
@@ -70,6 +64,7 @@ impl TryFrom<RawYolo> for Yolo {
             label_smooth_eps,
             scale_x_y,
             objectness_smooth,
+            uc_normalizer,
             iou_normalizer,
             obj_normalizer,
             cls_normalizer,
@@ -81,43 +76,33 @@ impl TryFrom<RawYolo> for Yolo {
             yolo_point,
             jitter,
             resize,
-            focal_loss,
             ignore_thresh,
             truth_thresh,
             iou_thresh,
             random,
-            track_history_size,
-            sim_thresh,
-            dets_for_track,
-            dets_for_show,
-            track_ciou_norm,
-            embedding_layer,
             map,
             anchors,
             common,
         } = from;
 
-        let mask = mask.unwrap_or_else(IndexSet::new);
+        let mask = mask.unwrap_or_else(Vec::new);
         let anchors = match (num, anchors) {
             (0, None) => vec![],
-            (num, None) => {
-                warn!("num={} is inconsistent with actual number of anchors (0), the field is ignored", num);
-                vec![]
-            }
-            (num, Some(anchors)) => {
-                if anchors.len() != num as usize {
-                    warn!("num={} is inconsistent with actual number of anchors ({}), the field is ignored", num, anchors.len());
-                }
-
+            (_, None) => bail!("num and length of anchors mismatch"),
+            (_, Some(anchors)) => {
+                ensure!(
+                    anchors.len() == num as usize,
+                    "num and length of anchors mismatch"
+                );
                 let anchors: Option<Vec<_>> = mask
                     .into_iter()
                     .map(|index| anchors.get(index as usize).copied())
                     .collect();
-                anchors.ok_or_else(|| format_err!("mask index exceeds total number of anchors"))?
+                anchors.ok_or_else(|| anyhow!("mask index exceeds total number of anchors"))?
             }
         };
 
-        Ok(Yolo {
+        Ok(GaussianYolo {
             classes,
             max_boxes,
             max_delta,
@@ -125,6 +110,7 @@ impl TryFrom<RawYolo> for Yolo {
             label_smooth_eps,
             scale_x_y,
             objectness_smooth,
+            uc_normalizer,
             iou_normalizer,
             obj_normalizer,
             cls_normalizer,
@@ -133,17 +119,10 @@ impl TryFrom<RawYolo> for Yolo {
             beta_nms,
             jitter,
             resize,
-            focal_loss,
             ignore_thresh,
             truth_thresh,
             iou_thresh,
             random,
-            track_history_size,
-            sim_thresh,
-            dets_for_track,
-            dets_for_show,
-            track_ciou_norm,
-            embedding_layer,
             map,
             anchors,
             yolo_point,
@@ -156,71 +135,91 @@ impl TryFrom<RawYolo> for Yolo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
 #[derivative(Hash)]
-pub(super) struct RawYolo {
-    #[serde(default = "defaults::classes")]
+pub(super) struct RawGaussianYolo {
     pub classes: usize,
-    #[serde(default = "defaults::num")]
-    pub num: usize,
-    #[derivative(Hash(hash_with = "hash_option_vec_indexset::<usize, _>"))]
-    #[serde(with = "serde_::mask", default)]
-    pub mask: Option<IndexSet<usize>>,
-    #[serde(rename = "max", default = "defaults::max_boxes")]
+    #[serde(rename = "max", default = "utils::integer::<_, 200>")]
     pub max_boxes: usize,
+    #[serde(default = "num_traits::one")]
+    pub num: usize,
+    #[serde(with = "utils::serde_comma_list", default)]
+    pub mask: Option<Vec<usize>>,
     pub max_delta: Option<R64>,
-    #[serde(with = "serde_::opt_vec_usize", default)]
+    #[serde(with = "utils::serde_comma_list", default)]
     pub counters_per_class: Option<Vec<usize>>,
-    #[serde(default = "defaults::yolo_label_smooth_eps")]
+    #[serde(default = "num_traits::zero")]
     pub label_smooth_eps: R64,
-    #[serde(default = "defaults::scale_x_y")]
+    #[serde(default = "num_traits::one")]
     pub scale_x_y: R64,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub objectness_smooth: bool,
-    #[serde(default = "defaults::iou_normalizer")]
+    #[serde(default = "num_traits::one")]
+    pub uc_normalizer: R64,
+    #[serde(default = "utils::ratio::<_, 75, 100>")]
     pub iou_normalizer: R64,
-    #[serde(default = "defaults::obj_normalizer")]
+    #[serde(default = "num_traits::one")]
     pub obj_normalizer: R64,
-    #[serde(default = "defaults::cls_normalizer")]
+    #[serde(default = "num_traits::one")]
     pub cls_normalizer: R64,
-    #[serde(default = "defaults::delta_normalizer")]
+    #[serde(default = "num_traits::one")]
     pub delta_normalizer: R64,
-    #[serde(default = "defaults::iou_loss")]
+    #[serde(default = "default_iou_loss")]
     pub iou_loss: IouLoss,
-    #[serde(default = "defaults::iou_thresh_kind")]
+    #[serde(default = "default_iou_thresh_kind")]
     pub iou_thresh_kind: IouThreshold,
-    #[serde(default = "defaults::beta_nms")]
+    #[serde(default = "num_traits::zero")]
     pub beta_nms: R64,
-    #[serde(default = "defaults::nms_kind")]
+    #[serde(default = "default_nms_kind")]
     pub nms_kind: NmsKind,
-    #[serde(default = "defaults::yolo_point")]
+    #[serde(default = "default_yolo_point")]
     pub yolo_point: YoloPoint,
-    #[serde(default = "defaults::jitter")]
+    #[serde(default = "utils::ratio::<_, 2, 10>")]
     pub jitter: R64,
-    #[serde(default = "defaults::resize")]
+    #[serde(default = "num_traits::one")]
     pub resize: R64,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
-    pub focal_loss: bool,
-    #[serde(default = "defaults::ignore_thresh")]
+    #[serde(default = "utils::ratio::<_, 5, 10>")]
     pub ignore_thresh: R64,
-    #[serde(default = "defaults::truth_thresh")]
+    #[serde(default = "num_traits::one")]
     pub truth_thresh: R64,
-    #[serde(default = "defaults::iou_thresh")]
+    #[serde(default = "num_traits::one")]
     pub iou_thresh: R64,
-    #[serde(default = "defaults::random")]
+    #[serde(default = "num_traits::zero")]
     pub random: R64,
-    #[serde(default = "defaults::track_history_size")]
-    pub track_history_size: usize,
-    #[serde(default = "defaults::sim_thresh")]
-    pub sim_thresh: R64,
-    #[serde(default = "defaults::dets_for_track")]
-    pub dets_for_track: usize,
-    #[serde(default = "defaults::dets_for_show")]
-    pub dets_for_show: usize,
-    #[serde(default = "defaults::track_ciou_norm")]
-    pub track_ciou_norm: R64,
-    pub embedding_layer: Option<LayerIndex>,
     pub map: Option<PathBuf>,
-    #[serde(with = "serde_::anchors", default)]
+    #[serde(with = "utils::serde_anchors", default)]
     pub anchors: Option<Vec<(usize, usize)>>,
     #[serde(flatten)]
-    pub common: Common,
+    pub common: Meta,
 }
+
+// pub fn classes() -> usize {
+//     warn!("classes option is not specified, use default 20");
+//     20
+// }
+
+pub fn default_iou_loss() -> IouLoss {
+    IouLoss::Mse
+}
+
+pub fn default_iou_thresh_kind() -> IouThreshold {
+    IouThreshold::IoU
+}
+
+pub fn default_nms_kind() -> NmsKind {
+    NmsKind::Default
+}
+
+pub fn default_yolo_point() -> YoloPoint {
+    YoloPoint::Center
+}
+
+// pub fn default_jitter() -> R64 {
+//     R64::new(0.2)
+// }
+
+// pub fn default_ignore_thresh() -> R64 {
+//     R64::new(0.5)
+// }
+
+// pub fn default_iou_normalizer() -> R64 {
+//     R64::new(0.75)
+// }

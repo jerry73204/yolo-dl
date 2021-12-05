@@ -1,6 +1,6 @@
 use super::graph::*;
 use crate::common::*;
-use darknet_config::config as dark_cfg;
+use darknet_config as dark;
 use model_config::{self as config, Module, ShapeOutput};
 
 use dark_input_keys::*;
@@ -104,11 +104,11 @@ mod dark_input_keys {
 }
 
 impl Graph {
-    pub fn from_darknet(config: &dark_cfg::Darknet) -> Result<Self> {
+    pub fn from_darknet(config: &dark::Darknet) -> Result<Self> {
         // load config file
-        let dark_cfg::Darknet {
+        let dark::Darknet {
             net:
-                dark_cfg::Net {
+                dark::Net {
                     input_size: model_input_shape,
                     ..
                 },
@@ -123,23 +123,25 @@ impl Graph {
                         .iter()
                         .enumerate()
                         .map(|(layer_index, layer_config)| -> Result<_> {
+                            use dark::Layer as L;
+
                             let from_indexes = match layer_config {
-                                dark_cfg::Layer::Convolutional(_)
-                                | dark_cfg::Layer::Connected(_)
-                                | dark_cfg::Layer::BatchNorm(_)
-                                | dark_cfg::Layer::MaxPool(_)
-                                | dark_cfg::Layer::UpSample(_)
-                                | dark_cfg::Layer::Dropout(_)
-                                | dark_cfg::Layer::Softmax(_)
-                                | dark_cfg::Layer::GaussianYolo(_)
-                                | dark_cfg::Layer::Yolo(_) => {
+                                L::Convolutional(_)
+                                | L::Connected(_)
+                                | L::BatchNorm(_)
+                                | L::MaxPool(_)
+                                | L::UpSample(_)
+                                | L::Dropout(_)
+                                | L::Softmax(_)
+                                | L::GaussianYolo(_)
+                                | L::Yolo(_) => {
                                     if layer_index == 0 {
                                         DarkInputKeys::Single(DarkNodeKey::Input)
                                     } else {
                                         DarkInputKeys::Single(DarkNodeKey::Index(layer_index - 1))
                                     }
                                 }
-                                dark_cfg::Layer::Shortcut(conf) => {
+                                L::Shortcut(conf) => {
                                     let from = &conf.from;
                                     let first_index = if layer_index == 0 {
                                         DarkNodeKey::Input
@@ -163,7 +165,7 @@ impl Graph {
 
                                     DarkInputKeys::Indexed(from_indexes)
                                 }
-                                dark_cfg::Layer::Route(conf) => {
+                                L::Route(conf) => {
                                     let from_indexes: Vec<_> = conf
                                         .layers
                                         .iter()
@@ -216,15 +218,15 @@ impl Graph {
                 (|| -> Result<_> {
                     let output_shape: ShapeOutput = match key {
                         DarkNodeKey::Input => match model_input_shape {
-                            dark_cfg::Shape::Dim3([h, w, c]) => [c, h, w].into(),
-                            dark_cfg::Shape::Dim1(c) => [c].into(),
+                            dark::Shape::Dim3([h, w, c]) => [c, h, w].into(),
+                            dark::Shape::Dim1(c) => [c].into(),
                         },
                         DarkNodeKey::Index(_) => {
                             let from_keys = &input_keys_map[&key];
                             let layer_config = &layer_configs[&key];
                             // eprintln!("{}\t{:?}\t{}", key, from_keys, layer_config.as_ref());
 
-                            let input_shape: dark_cfg::InputShape = match from_keys {
+                            let input_shape: dark::InputShape = match from_keys {
                                 DarkInputKeys::Single(from_key) => {
                                     let input_shape = &collected[&from_key];
                                     let shape = input_shape.tensor().ok_or_else(|| {
@@ -270,13 +272,13 @@ impl Graph {
                                 })?;
 
                             match output_shape {
-                                dark_cfg::OutputShape::Shape(dark_cfg::Shape::Dim1(out_c)) => {
+                                dark::OutputShape::Shape(dark::Shape::Dim1(out_c)) => {
                                     [out_c].into()
                                 }
-                                dark_cfg::OutputShape::Shape(dark_cfg::Shape::Dim3(
+                                dark::OutputShape::Shape(dark::Shape::Dim3(
                                     [out_h, out_w, out_c],
                                 )) => [out_c, out_h, out_w].into(),
-                                dark_cfg::OutputShape::Yolo(_shape) => ShapeOutput::Detect2D,
+                                dark::OutputShape::Yolo(_shape) => ShapeOutput::Detect2D,
                             }
                         }
                     };
@@ -304,8 +306,8 @@ impl Graph {
                     let module: Module = match key {
                         DarkNodeKey::Input => {
                             let shape = match model_input_shape {
-                                dark_cfg::Shape::Dim3([h, w, c]) => vec![c, h, w].into(),
-                                dark_cfg::Shape::Dim1(size) => vec![size].into(),
+                                dark::Shape::Dim3([h, w, c]) => vec![c, h, w].into(),
+                                dark::Shape::Dim1(size) => vec![size].into(),
                             };
                             Module::Input(config::Input {
                                 name: "input".parse().unwrap(),
@@ -313,10 +315,12 @@ impl Graph {
                             })
                         }
                         DarkNodeKey::Index(_) => {
+                            use dark::Layer as L;
+
                             let layer_config = layer_configs.remove(&key).unwrap().clone();
 
                             match layer_config {
-                                dark_cfg::Layer::Convolutional(dark_cfg::Convolutional {
+                                L::Convolutional(dark::Convolutional {
                                     filters,
                                     size,
                                     stride_x,
@@ -352,7 +356,7 @@ impl Graph {
                                     }
                                     .into()
                                 }
-                                dark_cfg::Layer::Connected(dark_cfg::Connected {
+                                L::Connected(dark::Connected {
                                     output,
                                     batch_normalize,
                                     ..
@@ -368,25 +372,22 @@ impl Graph {
                                     },
                                 }
                                 .into(),
-                                dark_cfg::Layer::Route(dark_cfg::Route { group, .. }) => {
-                                    config::DarknetRoute {
+                                L::Route(dark::Route { group, .. }) => config::DarknetRoute {
+                                    name: None,
+                                    from: None,
+                                    group_id: group.group_id(),
+                                    num_groups: group.num_groups(),
+                                }
+                                .into(),
+                                L::Shortcut(dark::Shortcut { weights_type, .. }) => {
+                                    config::DarknetShortcut {
                                         name: None,
                                         from: None,
-                                        group_id: group.group_id(),
-                                        num_groups: group.num_groups(),
+                                        weights_type,
                                     }
                                     .into()
                                 }
-                                dark_cfg::Layer::Shortcut(dark_cfg::Shortcut {
-                                    weights_type,
-                                    ..
-                                }) => config::DarknetShortcut {
-                                    name: None,
-                                    from: None,
-                                    weights_type,
-                                }
-                                .into(),
-                                dark_cfg::Layer::MaxPool(dark_cfg::MaxPool {
+                                L::MaxPool(dark::MaxPool {
                                     stride_x,
                                     stride_y,
                                     size,
@@ -403,43 +404,39 @@ impl Graph {
                                     maxpool_depth,
                                 }
                                 .into(),
-                                dark_cfg::Layer::UpSample(dark_cfg::UpSample {
-                                    stride,
-                                    reverse,
-                                    ..
+                                L::UpSample(dark::UpSample {
+                                    stride, reverse, ..
                                 }) => config::UpSample2D {
                                     name: None,
                                     from: None,
                                     config: config::UpSample2DConfig::ByStride { stride, reverse },
                                 }
                                 .into(),
-                                dark_cfg::Layer::BatchNorm(dark_cfg::BatchNorm { .. }) => {
+                                L::BatchNorm(dark::BatchNorm { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::Dropout(dark_cfg::Dropout { .. }) => {
+                                L::Dropout(dark::Dropout { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::Softmax(dark_cfg::Softmax { .. }) => {
+                                L::Softmax(dark::Softmax { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::Cost(dark_cfg::Cost { .. }) => {
+                                L::Cost(dark::Cost { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::Crop(dark_cfg::Crop { .. }) => {
+                                L::Crop(dark::Crop { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::AvgPool(dark_cfg::AvgPool { .. }) => {
+                                L::AvgPool(dark::AvgPool { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::Yolo(dark_cfg::Yolo { .. }) => {
+                                L::Yolo(dark::Yolo { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::GaussianYolo(dark_cfg::GaussianYolo {
-                                    ..
-                                }) => {
+                                L::GaussianYolo(dark::GaussianYolo { .. }) => {
                                     todo!();
                                 }
-                                dark_cfg::Layer::Unimplemented(_) => {
+                                L::Unimplemented(_) => {
                                     bail!("the layer {} is not implemented", key)
                                 }
                             }
@@ -474,7 +471,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR")
         ))?
         .try_for_each(|file| -> Result<_> {
-            let config = darknet_config::Darknet::load(file?)?;
+            let config = dark::Darknet::load(file?)?;
             let _graph = Graph::from_darknet(&config)?;
             Ok(())
         })?;

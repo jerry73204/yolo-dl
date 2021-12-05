@@ -1,44 +1,44 @@
-use super::*;
+use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "RawCommon")]
-pub struct Common {
+#[serde(try_from = "RawMeta")]
+pub struct Meta {
     pub clip: Option<R64>,
     #[serde(
         rename = "onlyforward",
-        with = "serde_::zero_one_bool",
-        default = "defaults::bool_false"
+        with = "utils::zero_one_bool",
+        default = "utils::bool_false"
     )]
     pub only_forward: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub dont_update: bool,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub burnin_update: bool,
-    #[serde(rename = "stopbackward", default = "defaults::stop_backward")]
+    #[serde(rename = "stopbackward", default = "num_traits::zero")]
     pub stop_backward: usize,
-    #[serde(with = "serde_::zero_one_bool", default = "defaults::bool_false")]
+    #[serde(with = "utils::zero_one_bool", default = "utils::bool_false")]
     pub train_only_bn: bool,
     #[serde(
         rename = "dontload",
-        with = "serde_::zero_one_bool",
-        default = "defaults::bool_false"
+        with = "utils::zero_one_bool",
+        default = "utils::bool_false"
     )]
     pub dont_load: bool,
     #[serde(
         rename = "dontloadscales",
-        with = "serde_::zero_one_bool",
-        default = "defaults::bool_false"
+        with = "utils::zero_one_bool",
+        default = "utils::bool_false"
     )]
     pub dont_load_scales: bool,
-    #[serde(rename = "learning_rate", default = "defaults::learning_rate_scale")]
+    #[serde(rename = "learning_rate", default = "num_traits::one")]
     pub learning_rate_scale: R64,
 }
 
-impl TryFrom<RawCommon> for Common {
+impl TryFrom<RawMeta> for Meta {
     type Error = Error;
 
-    fn try_from(from: RawCommon) -> Result<Self, Self::Error> {
-        let RawCommon {
+    fn try_from(from: RawMeta) -> Result<Self, Self::Error> {
+        let RawMeta {
             clip,
             only_forward,
             dont_update,
@@ -52,7 +52,7 @@ impl TryFrom<RawCommon> for Common {
 
         let parse_r64 = |text: &str| -> Result<R64> {
             R64::try_new(f64::from_str(text)?)
-                .ok_or_else(|| format_err!("'{}' is not a finite number", text))
+                .ok_or_else(|| anyhow!("'{}' is not a finite number", text))
         };
 
         let parse_zero_one_bool = |text: &str| -> Result<_> {
@@ -84,7 +84,7 @@ impl TryFrom<RawCommon> for Common {
         let stop_backward = stop_backward
             .map(|text| text.parse())
             .transpose()?
-            .unwrap_or_else(defaults::stop_backward);
+            .unwrap_or_else(num_traits::zero);
 
         let train_only_bn = train_only_bn
             .map(|text| parse_zero_one_bool(text.as_ref()))
@@ -104,7 +104,7 @@ impl TryFrom<RawCommon> for Common {
         let learning_rate_scale = learning_rate_scale
             .map(|text| parse_r64(text.as_ref()))
             .transpose()?
-            .unwrap_or_else(defaults::learning_rate_scale);
+            .unwrap_or_else(num_traits::one);
 
         Ok(Self {
             clip,
@@ -121,7 +121,7 @@ impl TryFrom<RawCommon> for Common {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(super) struct RawCommon {
+pub(super) struct RawMeta {
     pub clip: Option<String>,
     #[serde(rename = "onlyforward")]
     pub only_forward: Option<String>,

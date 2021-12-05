@@ -5,7 +5,7 @@ use crate::common::*;
 pub struct DarknetShortcut {
     pub name: Option<ModuleName>,
     pub from: Option<ModulePath>,
-    pub weights_type: darknet_config::config::WeightsType,
+    pub weights_type: darknet_config::WeightsType,
 }
 
 impl ModuleEx for DarknetShortcut {
