@@ -21,10 +21,6 @@ impl Shortcut {
     }
 }
 
-pub fn weights_type_none() -> WeightsType {
-    WeightsType::None
-}
-
 mod serde_weights_type {
     use super::*;
 
@@ -54,6 +50,10 @@ mod serde_weights_type {
     }
 }
 
-pub fn default_weights_normalization() -> WeightsNormalization {
+fn default_weights_normalization() -> WeightsNormalization {
     WeightsNormalization::None
+}
+
+fn weights_type_none() -> WeightsType {
+    WeightsType::None
 }

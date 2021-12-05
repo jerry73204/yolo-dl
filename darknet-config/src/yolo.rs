@@ -156,7 +156,7 @@ impl TryFrom<RawYolo> for Yolo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize, Hash)]
-pub(super) struct RawYolo {
+struct RawYolo {
     pub classes: usize,
     #[serde(default = "num_traits::one")]
     pub num: usize,
@@ -223,18 +223,18 @@ pub(super) struct RawYolo {
     pub common: Meta,
 }
 
-pub fn default_iou_loss() -> IouLoss {
+fn default_iou_loss() -> IouLoss {
     IouLoss::Mse
 }
 
-pub fn default_iou_thresh_kind() -> IouThreshold {
+fn default_iou_thresh_kind() -> IouThreshold {
     IouThreshold::IoU
 }
 
-pub fn default_nms_kind() -> NmsKind {
+fn default_nms_kind() -> NmsKind {
     NmsKind::Default
 }
 
-pub fn default_yolo_point() -> YoloPoint {
+fn default_yolo_point() -> YoloPoint {
     YoloPoint::Center
 }

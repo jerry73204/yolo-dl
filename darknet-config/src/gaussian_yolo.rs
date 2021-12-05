@@ -135,7 +135,7 @@ impl TryFrom<RawGaussianYolo> for GaussianYolo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
 #[derivative(Hash)]
-pub(super) struct RawGaussianYolo {
+struct RawGaussianYolo {
     pub classes: usize,
     #[serde(rename = "max", default = "utils::integer::<_, 200>")]
     pub max_boxes: usize,
@@ -196,30 +196,18 @@ pub(super) struct RawGaussianYolo {
 //     20
 // }
 
-pub fn default_iou_loss() -> IouLoss {
+fn default_iou_loss() -> IouLoss {
     IouLoss::Mse
 }
 
-pub fn default_iou_thresh_kind() -> IouThreshold {
+fn default_iou_thresh_kind() -> IouThreshold {
     IouThreshold::IoU
 }
 
-pub fn default_nms_kind() -> NmsKind {
+fn default_nms_kind() -> NmsKind {
     NmsKind::Default
 }
 
-pub fn default_yolo_point() -> YoloPoint {
+fn default_yolo_point() -> YoloPoint {
     YoloPoint::Center
 }
-
-// pub fn default_jitter() -> R64 {
-//     R64::new(0.2)
-// }
-
-// pub fn default_ignore_thresh() -> R64 {
-//     R64::new(0.5)
-// }
-
-// pub fn default_iou_normalizer() -> R64 {
-//     R64::new(0.75)
-// }

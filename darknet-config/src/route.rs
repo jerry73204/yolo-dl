@@ -1,4 +1,4 @@
-use super::{LayerIndex, Meta, RouteGroup};
+use super::{Meta, RouteGroup};
 use crate::{common::*, utils, utils::FromLayers};
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
@@ -80,48 +80,6 @@ impl From<Route> for RawRoute {
             groups: NonZeroUsize::new(group.num_groups()).unwrap().into(),
             common,
         }
-    }
-}
-
-pub mod serde_layers {
-    use super::*;
-
-    pub fn serialize<S>(indexes: &IndexSet<LayerIndex>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let text = indexes
-            .iter()
-            .cloned()
-            .map(|index| isize::from(index).to_string())
-            .join(",");
-        text.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexSet<LayerIndex>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let text = String::deserialize(deserializer)?;
-        let layers_vec: Vec<_> = text
-            .split(',')
-            .map(|token| -> Result<_, String> {
-                let index: isize = token
-                    .trim()
-                    .parse()
-                    .map_err(|_| format!("{} is not a valid index", token))?;
-                let index = LayerIndex::from_ordinal(index);
-                Ok(index)
-            })
-            .try_collect()
-            .map_err(|err| D::Error::custom(format!("failed to parse layer index: {:?}", err)))?;
-        let layers_set: IndexSet<LayerIndex> = layers_vec.iter().cloned().collect();
-
-        if layers_vec.len() != layers_set.len() {
-            return Err(D::Error::custom("duplicated layer index is not allowed"));
-        }
-
-        Ok(layers_set)
     }
 }
 

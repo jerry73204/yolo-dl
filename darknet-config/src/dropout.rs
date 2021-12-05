@@ -87,6 +87,6 @@ pub enum DropBlock {
     Relative(R64),
 }
 
-pub fn default_probability() -> R64 {
+fn default_probability() -> R64 {
     R64::new(0.2)
 }

@@ -21,16 +21,12 @@ mod shortcut;
 mod softmax;
 mod unimplemented;
 mod up_sample;
+mod utils;
 mod yolo;
-// pub mod darknet;
-// pub mod graph;
-pub mod utils;
 
-// pub use darknet::DarknetModel;
-// pub use graph::{Graph, Node, NodeKey};
 pub use avg_pool::*;
 pub use batch_norm::*;
-pub use common::*;
+use common::*;
 pub use connected::*;
 pub use convolutional::*;
 pub use cost::*;

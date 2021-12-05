@@ -592,15 +592,15 @@ impl From<Net> for RawNet {
     }
 }
 
-pub fn default_mixup() -> MixUp {
+fn default_mixup() -> MixUp {
     MixUp::Random
 }
 
-pub fn default_policy() -> PolicyKind {
+fn default_policy() -> PolicyKind {
     PolicyKind::Constant
 }
 
-pub mod serde_net_steps {
+mod serde_net_steps {
     use super::*;
 
     pub fn serialize<S>(steps: &Option<Vec<usize>>, serializer: S) -> Result<S::Ok, S::Error>

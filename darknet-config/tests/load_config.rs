@@ -20,3 +20,56 @@ fn load_darknet_config() -> Result<()> {
 
     Ok(())
 }
+
+// use serde::Serialize;
+// use serde::Deserialize;
+// use anyhow::Error;
+// use anyhow::bail;
+
+// #[derive(Clone, Serialize, Deserialize)]
+// struct Outer {
+//     #[serde(flatten)]
+//     inner: Inner,
+// }
+
+// #[derive(Clone, Serialize, Deserialize)]
+// #[serde(try_from = "RawInner", into = "RawInner")]
+// enum Inner {
+//     A,
+//     B,
+// }
+
+// #[derive(Clone, Serialize, Deserialize)]
+// struct RawInner {
+//     pub a: bool,
+//     pub b: bool,
+// }
+
+// impl From<Inner> for RawInner {
+//     fn from(from: Inner) -> Self {
+//         let (a, b) = match from {
+//             Inner::A => (true, false),
+//             Inner::B => (false, true)
+//         };
+//         Self {a, b}
+//     }
+// }
+
+// impl TryFrom<RawInner> for Inner {
+//     type Error = Error;
+
+//     fn try_from(from: RawInner) -> Result<Self, Self::Error> {
+//         let RawInner {a, b} = from;
+//         let value = match (a, b) {
+//             (true, false) => Self::A,
+//             (false, true) => Self::B,
+//             _ => bail!("error")
+//         };
+//         Ok(value)
+//     }
+// }
+
+// #[test]
+// fn wtf() {
+//     let _: Outer = serde_json::from_str(r#"{"a": true, "b": false}"#).unwrap();
+// }

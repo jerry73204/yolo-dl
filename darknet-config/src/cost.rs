@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Cost {
-    #[serde(default = "default_cost_type")]
+    #[serde(default = "cost_sse")]
     pub r#type: CostType,
     #[serde(default = "num_traits::one")]
     pub scale: R64,
@@ -22,6 +22,6 @@ pub enum CostType {
     Smooth,
 }
 
-pub fn default_cost_type() -> CostType {
+fn cost_sse() -> CostType {
     CostType::Sse
 }
