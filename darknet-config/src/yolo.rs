@@ -1,4 +1,4 @@
-use super::{IouLoss, IouThreshold, LayerIndex, Meta, NmsKind, OutputShape, YoloPoint};
+use super::{LayerIndex, Meta, OutputShape};
 use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
@@ -160,6 +160,8 @@ struct RawYolo {
     pub classes: usize,
     #[serde(default = "num_traits::one")]
     pub num: usize,
+    #[serde(with = "utils::serde_anchors", default)]
+    pub anchors: Option<Vec<(usize, usize)>>,
     #[serde(with = "utils::serde_comma_list", default)]
     pub mask: Option<Vec<usize>>,
     #[serde(rename = "max", default = "utils::integer::<_, 200>")]
@@ -217,10 +219,54 @@ struct RawYolo {
     pub track_ciou_norm: R64,
     pub embedding_layer: Option<LayerIndex>,
     pub map: Option<PathBuf>,
-    #[serde(with = "utils::serde_anchors", default)]
-    pub anchors: Option<Vec<(usize, usize)>>,
     #[serde(flatten)]
     pub common: Meta,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IouLoss {
+    #[serde(rename = "mse")]
+    Mse,
+    #[serde(rename = "iou")]
+    IoU,
+    #[serde(rename = "giou")]
+    GIoU,
+    #[serde(rename = "diou")]
+    DIoU,
+    #[serde(rename = "ciou")]
+    CIoU,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IouThreshold {
+    #[serde(rename = "iou")]
+    IoU,
+    #[serde(rename = "giou")]
+    GIoU,
+    #[serde(rename = "diou")]
+    DIoU,
+    #[serde(rename = "ciou")]
+    CIoU,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum YoloPoint {
+    #[serde(rename = "center")]
+    Center,
+    #[serde(rename = "left_top")]
+    LeftTop,
+    #[serde(rename = "right_bottom")]
+    RightBottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NmsKind {
+    #[serde(rename = "default")]
+    Default,
+    #[serde(rename = "greedynms")]
+    Greedy,
+    #[serde(rename = "diounms")]
+    DIoU,
 }
 
 fn default_iou_loss() -> IouLoss {

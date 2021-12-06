@@ -1,4 +1,4 @@
-use super::{Meta, RouteGroup};
+use super::Meta;
 use crate::{common::*, utils, utils::FromLayers};
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
@@ -80,6 +80,33 @@ impl From<Route> for RawRoute {
             groups: NonZeroUsize::new(group.num_groups()).unwrap().into(),
             common,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RouteGroup {
+    group_id: usize,
+    num_groups: usize,
+}
+
+impl RouteGroup {
+    pub fn new(group_id: usize, num_groups: usize) -> Option<Self> {
+        if num_groups == 0 || group_id >= num_groups {
+            None
+        } else {
+            Some(Self {
+                group_id,
+                num_groups,
+            })
+        }
+    }
+
+    pub fn group_id(&self) -> usize {
+        self.group_id
+    }
+
+    pub fn num_groups(&self) -> usize {
+        self.num_groups
     }
 }
 

@@ -1,4 +1,4 @@
-use super::{Activation, Deform, LayerIndex, Meta};
+use super::{Activation, LayerIndex, Meta};
 use crate::{common::*, utils};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -285,4 +285,13 @@ impl From<Convolutional> for RawConvolutional {
 
 fn default_angle() -> R64 {
     R64::new(15.0)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Deform {
+    None,
+    Sway,
+    Rotate,
+    Stretch,
+    StretchSway,
 }

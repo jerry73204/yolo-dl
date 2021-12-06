@@ -30,6 +30,8 @@ fn load_darknet_config() -> Result<()> {
 // struct Outer {
 //     #[serde(flatten)]
 //     inner: Inner,
+//     #[serde(flatten)]
+//     inner2: Inner2,
 // }
 
 // #[derive(Clone, Serialize, Deserialize)]
@@ -67,6 +69,11 @@ fn load_darknet_config() -> Result<()> {
 //         };
 //         Ok(value)
 //     }
+// }
+
+// #[derive(Clone, Serialize, Deserialize)]
+// struct Inner2 {
+//     pub name: Option<String>,
 // }
 
 // #[test]

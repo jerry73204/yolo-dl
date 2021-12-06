@@ -105,15 +105,6 @@ mod anchors {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Deform {
-    None,
-    Sway,
-    Rotate,
-    Stretch,
-    StretchSway,
-}
-
 pub use activation::*;
 mod activation {
     use super::*;
@@ -194,110 +185,6 @@ mod activation {
             }
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum IouLoss {
-    #[serde(rename = "mse")]
-    Mse,
-    #[serde(rename = "iou")]
-    IoU,
-    #[serde(rename = "giou")]
-    GIoU,
-    #[serde(rename = "diou")]
-    DIoU,
-    #[serde(rename = "ciou")]
-    CIoU,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum IouThreshold {
-    #[serde(rename = "iou")]
-    IoU,
-    #[serde(rename = "giou")]
-    GIoU,
-    #[serde(rename = "diou")]
-    DIoU,
-    #[serde(rename = "ciou")]
-    CIoU,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum YoloPoint {
-    #[serde(rename = "center")]
-    Center,
-    #[serde(rename = "left_top")]
-    LeftTop,
-    #[serde(rename = "right_bottom")]
-    RightBottom,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum NmsKind {
-    #[serde(rename = "default")]
-    Default,
-    #[serde(rename = "greedynms")]
-    Greedy,
-    #[serde(rename = "diounms")]
-    DIoU,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PolicyKind {
-    #[serde(rename = "random")]
-    Random,
-    #[serde(rename = "poly")]
-    Poly,
-    #[serde(rename = "constant")]
-    Constant,
-    #[serde(rename = "step")]
-    Step,
-    #[serde(rename = "exp")]
-    Exp,
-    #[serde(rename = "sigmoid")]
-    Sigmoid,
-    #[serde(rename = "steps")]
-    Steps,
-    #[serde(rename = "sgdr")]
-    Sgdr,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Policy {
-    Random,
-    Poly,
-    Constant,
-    Step {
-        step: usize,
-        scale: R64,
-    },
-    Exp {
-        gamma: R64,
-    },
-    Sigmoid {
-        gamma: R64,
-        step: usize,
-    },
-    Steps {
-        steps: Vec<usize>,
-        scales: Vec<R64>,
-        seq_scales: Vec<R64>,
-    },
-    Sgdr,
-    SgdrCustom {
-        steps: Vec<usize>,
-        scales: Vec<R64>,
-        seq_scales: Vec<R64>,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
-#[repr(usize)]
-pub enum MixUp {
-    MixUp = 1,
-    CutMix = 2,
-    Mosaic = 3,
-    Random = 4,
 }
 
 pub use layer_index::*;
@@ -403,59 +290,5 @@ mod layer_index {
             let index = isize::deserialize(deserializer)?;
             Ok(Self::from_ordinal(index))
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Adam {
-    pub b1: R64,
-    pub b2: R64,
-    pub eps: R64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum WeightsType {
-    #[serde(rename = "none")]
-    None,
-    #[serde(rename = "per_feature")]
-    PerFeature,
-    #[serde(rename = "per_channel")]
-    PerChannel,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum WeightsNormalization {
-    #[serde(rename = "none")]
-    None,
-    #[serde(rename = "relu")]
-    Relu,
-    #[serde(rename = "softmax")]
-    Softmax,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RouteGroup {
-    group_id: usize,
-    num_groups: usize,
-}
-
-impl RouteGroup {
-    pub fn new(group_id: usize, num_groups: usize) -> Option<Self> {
-        if num_groups == 0 || group_id >= num_groups {
-            None
-        } else {
-            Some(Self {
-                group_id,
-                num_groups,
-            })
-        }
-    }
-
-    pub fn group_id(&self) -> usize {
-        self.group_id
-    }
-
-    pub fn num_groups(&self) -> usize {
-        self.num_groups
     }
 }

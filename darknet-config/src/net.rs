@@ -1,4 +1,4 @@
-use super::{Adam, MixUp, Policy, PolicyKind, Shape};
+use super::Shape;
 use crate::{common::*, utils, utils::default};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -590,6 +590,71 @@ impl From<Net> for RawNet {
             gamma: gamma.into(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PolicyKind {
+    #[serde(rename = "random")]
+    Random,
+    #[serde(rename = "poly")]
+    Poly,
+    #[serde(rename = "constant")]
+    Constant,
+    #[serde(rename = "step")]
+    Step,
+    #[serde(rename = "exp")]
+    Exp,
+    #[serde(rename = "sigmoid")]
+    Sigmoid,
+    #[serde(rename = "steps")]
+    Steps,
+    #[serde(rename = "sgdr")]
+    Sgdr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Policy {
+    Random,
+    Poly,
+    Constant,
+    Step {
+        step: usize,
+        scale: R64,
+    },
+    Exp {
+        gamma: R64,
+    },
+    Sigmoid {
+        gamma: R64,
+        step: usize,
+    },
+    Steps {
+        steps: Vec<usize>,
+        scales: Vec<R64>,
+        seq_scales: Vec<R64>,
+    },
+    Sgdr,
+    SgdrCustom {
+        steps: Vec<usize>,
+        scales: Vec<R64>,
+        seq_scales: Vec<R64>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Adam {
+    pub b1: R64,
+    pub b2: R64,
+    pub eps: R64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
+#[repr(usize)]
+pub enum MixUp {
+    MixUp = 1,
+    CutMix = 2,
+    Mosaic = 3,
+    Random = 4,
 }
 
 fn default_mixup() -> MixUp {

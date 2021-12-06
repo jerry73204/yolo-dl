@@ -1,4 +1,4 @@
-use super::{Activation, Meta, WeightsNormalization, WeightsType};
+use super::{Activation, Meta};
 use crate::{common::*, utils::FromLayers};
 
 #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
@@ -19,6 +19,26 @@ impl Shortcut {
         let set: HashSet<_> = input_shapes.iter().map(|&[h, w, _c]| [h, w]).collect();
         (set.len() == 1).then(|| input_shapes[0])
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WeightsType {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "per_feature")]
+    PerFeature,
+    #[serde(rename = "per_channel")]
+    PerChannel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WeightsNormalization {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "relu")]
+    Relu,
+    #[serde(rename = "softmax")]
+    Softmax,
 }
 
 mod serde_weights_type {
