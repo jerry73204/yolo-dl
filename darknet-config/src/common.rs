@@ -10,6 +10,7 @@ pub use serde::{
 };
 pub use serde_repr::{Deserialize_repr, Serialize_repr};
 pub use std::{
+    cmp::Ordering::*,
     collections::HashSet,
     fmt,
     fmt::{Debug, Display},

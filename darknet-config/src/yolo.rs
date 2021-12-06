@@ -1,169 +1,11 @@
 use super::{LayerIndex, Meta, OutputShape};
 use crate::{common::*, utils};
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
-#[serde(try_from = "RawYolo")]
+#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize, Hash)]
 pub struct Yolo {
     pub classes: usize,
-    pub max_boxes: usize,
-    pub max_delta: Option<R64>,
-    pub counters_per_class: Option<Vec<usize>>,
-    pub label_smooth_eps: R64,
-    pub scale_x_y: R64,
-    pub objectness_smooth: bool,
-    pub iou_normalizer: R64,
-    pub obj_normalizer: R64,
-    pub cls_normalizer: R64,
-    pub delta_normalizer: R64,
-    pub iou_thresh_kind: IouThreshold,
-    pub beta_nms: R64,
-    pub jitter: R64,
-    pub resize: R64,
-    pub focal_loss: bool,
-    pub ignore_thresh: R64,
-    pub truth_thresh: R64,
-    pub iou_thresh: R64,
-    pub random: R64,
-    pub track_history_size: usize,
-    pub sim_thresh: R64,
-    pub dets_for_track: usize,
-    pub dets_for_show: usize,
-    pub track_ciou_norm: R64,
-    pub embedding_layer: Option<LayerIndex>,
-    pub map: Option<PathBuf>,
-    pub anchors: Vec<(usize, usize)>,
-    pub yolo_point: YoloPoint,
-    pub iou_loss: IouLoss,
-    pub nms_kind: NmsKind,
-    pub common: Meta,
-}
-
-impl Yolo {
-    pub fn output_shape(&self, input_shape: [usize; 3]) -> Option<OutputShape> {
-        let Self {
-            classes,
-            ref anchors,
-            ..
-        } = *self;
-        let num_anchors = anchors.len();
-        let [in_h, in_w, in_c] = input_shape;
-
-        if in_c != num_anchors * (classes + 4 + 1) {
-            return None;
-        }
-
-        Some(OutputShape::Yolo([in_h, in_w, in_c]))
-    }
-}
-
-impl TryFrom<RawYolo> for Yolo {
-    type Error = Error;
-
-    fn try_from(from: RawYolo) -> Result<Self, Self::Error> {
-        let RawYolo {
-            classes,
-            num,
-            mask,
-            max_boxes,
-            max_delta,
-            counters_per_class,
-            label_smooth_eps,
-            scale_x_y,
-            objectness_smooth,
-            iou_normalizer,
-            obj_normalizer,
-            cls_normalizer,
-            delta_normalizer,
-            iou_loss,
-            iou_thresh_kind,
-            beta_nms,
-            nms_kind,
-            yolo_point,
-            jitter,
-            resize,
-            focal_loss,
-            ignore_thresh,
-            truth_thresh,
-            iou_thresh,
-            random,
-            track_history_size,
-            sim_thresh,
-            dets_for_track,
-            dets_for_show,
-            track_ciou_norm,
-            embedding_layer,
-            map,
-            anchors,
-            common,
-        } = from;
-
-        let mask = mask.unwrap_or_else(Vec::new);
-        let anchors = match (num, anchors) {
-            (0, None) => vec![],
-            (num, None) => {
-                warn!("num={} is inconsistent with actual number of anchors (0), the field is ignored", num);
-                vec![]
-            }
-            (num, Some(anchors)) => {
-                if anchors.len() != num as usize {
-                    warn!("num={} is inconsistent with actual number of anchors ({}), the field is ignored", num, anchors.len());
-                }
-
-                let anchors: Option<Vec<_>> = mask
-                    .into_iter()
-                    .map(|index| anchors.get(index as usize).copied())
-                    .collect();
-                anchors.ok_or_else(|| anyhow!("mask index exceeds total number of anchors"))?
-            }
-        };
-
-        Ok(Yolo {
-            classes,
-            max_boxes: max_boxes,
-            max_delta,
-            counters_per_class,
-            label_smooth_eps,
-            scale_x_y,
-            objectness_smooth,
-            iou_normalizer: iou_normalizer,
-            obj_normalizer,
-            cls_normalizer,
-            delta_normalizer,
-            iou_thresh_kind,
-            beta_nms,
-            jitter: jitter,
-            resize,
-            focal_loss,
-            ignore_thresh: ignore_thresh,
-            truth_thresh,
-            iou_thresh,
-            random,
-            track_history_size: track_history_size,
-            sim_thresh: sim_thresh,
-            dets_for_track: dets_for_track,
-            dets_for_show: dets_for_show,
-            track_ciou_norm: track_ciou_norm,
-            embedding_layer,
-            map,
-            anchors,
-            yolo_point,
-            iou_loss,
-            nms_kind,
-            common,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize, Hash)]
-struct RawYolo {
-    pub classes: usize,
-    #[serde(default = "num_traits::one")]
-    pub num: usize,
-    #[serde(with = "utils::serde_anchors", default)]
-    pub anchors: Option<Vec<(usize, usize)>>,
-    #[serde(with = "utils::serde_comma_list", default)]
-    pub mask: Option<Vec<usize>>,
+    #[serde(flatten)]
+    pub anchors: Anchors,
     #[serde(rename = "max", default = "utils::integer::<_, 200>")]
     pub max_boxes: usize,
     pub max_delta: Option<R64>,
@@ -223,6 +65,24 @@ struct RawYolo {
     pub common: Meta,
 }
 
+impl Yolo {
+    pub fn output_shape(&self, input_shape: [usize; 3]) -> Option<OutputShape> {
+        let Self {
+            classes,
+            ref anchors,
+            ..
+        } = *self;
+        let num_anchors = anchors.0.len();
+        let [in_h, in_w, in_c] = input_shape;
+
+        if in_c != num_anchors * (classes + 4 + 1) {
+            return None;
+        }
+
+        Some(OutputShape::Yolo([in_h, in_w, in_c]))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum IouLoss {
     #[serde(rename = "mse")]
@@ -267,6 +127,127 @@ pub enum NmsKind {
     Greedy,
     #[serde(rename = "diounms")]
     DIoU,
+}
+
+pub use anchors::*;
+mod anchors {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct Anchor {
+        pub enabled: bool,
+        pub row: usize,
+        pub col: usize,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+    #[serde(try_from = "RawAnchors", into = "RawAnchors")]
+    pub struct Anchors(pub Vec<Anchor>);
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+    pub struct RawAnchors {
+        // #[serde(default = "num_traits::one")]
+        // pub num: usize,
+        pub num: String,
+        #[serde(with = "utils::serde_anchors", default)]
+        pub anchors: Option<Vec<(usize, usize)>>,
+        #[serde(with = "utils::serde_comma_list", default)]
+        pub mask: Option<Vec<usize>>,
+    }
+
+    impl TryFrom<RawAnchors> for Anchors {
+        type Error = Error;
+
+        fn try_from(from: RawAnchors) -> Result<Self, Self::Error> {
+            let RawAnchors { num, anchors, mask } = from;
+            let num: usize = num
+                .parse()
+                .map_err(|_| anyhow!(r#"invalid "num" value {}"#, num))?;
+
+            let anchors_vec: Vec<_> = match (num, anchors, mask) {
+                (0, None, None) => vec![],
+                (num, Some(anchors), mask) => {
+                    let num_anchors = anchors.len();
+
+                    match num.cmp(&num_anchors) {
+                        Greater => {
+                            bail!(
+                                r#"num={} is greater than number of anchors ({})"#,
+                                num,
+                                num_anchors
+                            )
+                        }
+                        Equal => {}
+                        Less => {
+                            warn!(
+                                r#"num={} is less than number of anchors ({})"#,
+                                num, num_anchors
+                            );
+                        }
+                    }
+
+                    let mask_set: HashSet<_> = mask
+                        .iter()
+                        .flatten()
+                        .cloned()
+                        .map(|index: usize| -> Result<_> {
+                            ensure!(
+                                index < anchors.len(),
+                                "mask index {} exceeds the length of anchors ({})",
+                                index,
+                                anchors.len()
+                            );
+                            Ok(index)
+                        })
+                        .try_collect()?;
+
+                    let anchors_vec: Vec<_> = anchors[0..num]
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(index, (row, col))| Anchor {
+                            enabled: mask_set.contains(&index),
+                            row,
+                            col,
+                        })
+                        .collect();
+
+                    anchors_vec
+                }
+                _ => {
+                    bail!(r#"the "num", length of "anchors" and indexes of "mask" does not match"#)
+                }
+            };
+
+            Ok(Self(anchors_vec))
+        }
+    }
+
+    impl From<Anchors> for RawAnchors {
+        fn from(from: Anchors) -> Self {
+            let mask: Vec<_> = from
+                .0
+                .iter()
+                .enumerate()
+                .filter_map(|(index, anchor)| anchor.enabled.then(|| index))
+                .collect();
+
+            let anchors: Vec<(usize, usize)> = from
+                .0
+                .into_iter()
+                .map(|anchor| {
+                    let Anchor { row, col, .. } = anchor;
+                    (row, col)
+                })
+                .collect();
+
+            Self {
+                num: anchors.len().to_string(),
+                anchors: (!anchors.is_empty()).then(|| anchors),
+                mask: (!mask.is_empty()).then(|| mask),
+            }
+        }
+    }
 }
 
 fn default_iou_loss() -> IouLoss {
