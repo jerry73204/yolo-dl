@@ -9,11 +9,11 @@ edition = "2018"
 [build-dependencies]
 cc = "1.0.72"
 envy = "0.4.2"
-pkg-config = "0.3.22"
+pkg-config = "0.3.23"
 serde = { version = "1.0.130", features = ["derive"] }
 
 [dependencies]
-libc = "0.2.107"
+libc = "0.2.109"
 static_assertions = "1.1.0"
 tch = "0.6.1"
 torch-sys = "0.6.1"

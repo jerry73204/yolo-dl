@@ -2,13 +2,17 @@
 
 use crate::common::*;
 use yolo_dl::loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind};
+use serde_semver::SemverReq;
 
 pub use dataset::*;
 pub use model::*;
 pub use preprocessor::*;
 pub use training::*;
 
-serde_semver::declare_version!(ConfigVersion, 0, 1, 0);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SemverReq)]
+#[version("0.1.0")]
+pub struct ConfigVersion;
 
 /// The main training configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]

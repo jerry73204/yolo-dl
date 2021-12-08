@@ -7,27 +7,27 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.45"
+anyhow = "1.0.51"
 tch = "0.6.1"
-itertools = "0.10.1"
+itertools = "0.10.3"
 image = "0.23.14"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.130", features = ["derive"] }
 tch-tensor-like = { version = "0.5.0", features = ["derive"] }
 approx = "0.5.0"
-getset = "0.1.1"
+getset = "0.1.2"
 unzip-n = "0.1.2"
 num-traits = "0.2.14"
 maplit = "1.0.2"
 log = "0.4.14"
-ndarray = "0.15.3"
-cv-convert = { version = "0.13.0", default-features = false, features = ["tch", "ndarray"] }
+ndarray = "0.15.4"
+cv-convert = { version = "0.14.0", default-features = false, features = ["tch", "ndarray"] }
 mona = "0.1.0"
-opencv = { version = "0.60.0", optional = true }
+opencv = { version = "0.61.1", optional = true }
 
 [dev-dependencies]
-cv-convert = { version = "0.13.0", default-features = false, features = ["tch", "ndarray"] }
-ndarray = "0.15.3"
+cv-convert = { version = "0.14.0", default-features = false, features = ["tch", "ndarray"] }
+ndarray = "0.15.4"
 
 [features]
 default = ["opencv"]
