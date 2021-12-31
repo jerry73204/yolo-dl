@@ -1,4 +1,12 @@
 use crate::{common::*, config, logging::LoggingMessage};
+use yolo_dl::{
+    dataset::{
+        CocoDataset, CsvDataset, DataRecord, FileCacheDataset, IiiDataset, MemoryCacheDataset,
+        OnDemandDataset, RandomAccessDataset, SanitizedDataset, VocDataset,
+    },
+    processor::{MosaicProcessorInit, RandomAffineInit},
+    profiling::Timing,
+};
 
 /// Asynchronous data stream for training.
 #[derive(Derivative)]
@@ -191,28 +199,34 @@ impl TrainingStream {
         })
     }
 
-    pub fn train_stream(
-        &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<TrainingRecord>> + Send>>> {
+    pub fn train_stream(&self) -> Result<BoxStream<'static, Result<TrainingRecord>>> {
         // parallel stream config
-        let par_config: par_stream::ParStreamConfig = self
-            .preprocessor_config
-            .deref()
-            .borrow()
-            .pipeline
-            .worker_buf_size
-            .map(|buf_size| (1.0, buf_size).into())
-            .unwrap_or((1.0, 2.0).into());
+        let par_config: par_stream::ParParams = {
+            let buf_size: par_stream::BufSize = self
+                .preprocessor_config
+                .deref()
+                .borrow()
+                .pipeline
+                .worker_buf_size
+                .map(|buf_size| Some(buf_size).into())
+                .unwrap_or(2.0.into());
+
+            Some(par_stream::ParParamsConfig::Manual {
+                num_workers: par_stream::NumWorkers::Default,
+                buf_size: buf_size,
+            })
+            .into()
+        };
 
         // repeating
-        let stream = stream::repeat(()).enumerate();
+        let stream = stream::iter(0..);
 
         // sample 4 records per step
         let stream = {
             let num_records = self.dataset.num_records();
 
-            stream.flat_map(move |(epoch, ())| {
-                let mut rng = rand::thread_rng();
+            stream.flat_map(move |epoch| {
+                let mut rng = OsRng;
 
                 let mut index_iters = (0..4)
                     .map(|_| {
@@ -239,10 +253,10 @@ impl TrainingStream {
         // add step count
         let stream = stream
             .enumerate()
-            .map(|(step, (epoch, indexes))| Ok((step, epoch, indexes)));
+            .map(|(step, (epoch, indexes))| (step, epoch, indexes));
 
         // start of unordered ops
-        let stream = stream.try_wrapping_enumerate();
+        let stream = stream.enumerate();
 
         // load samples and scale bboxes
         let stream = {
@@ -264,32 +278,34 @@ impl TrainingStream {
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
 
-            stream.try_par_then_unordered(par_config.clone(), move |args| {
-                let (index, (step, epoch, record_indexes)) = args;
-                let dataset = dataset.clone();
-                let logging_tx = logging_tx.clone();
-                let mut timing = Timing::new("pipeline");
-                let mut rng = StdRng::from_entropy();
-                let par_config = par_config.clone();
+            stream
+                .map(Ok)
+                .try_par_then_unordered(par_config.clone(), move |args| {
+                    let (index, (step, epoch, record_indexes)) = args;
+                    let dataset = dataset.clone();
+                    let logging_tx = logging_tx.clone();
+                    let mut timing = Timing::new("pipeline");
+                    let mut rng = StdRng::from_entropy();
+                    let par_config = par_config.clone();
 
-                async move {
-                    timing.add_event("init");
+                    async move {
+                        timing.add_event("init");
 
-                    // sample mix method
-                    let mix_kind = [
-                        (MixKind::None, 1.0 - mixup_prob - cutmix_prob - mosaic_prob),
-                        (MixKind::MixUp, mixup_prob),
-                        (MixKind::CutMix, cutmix_prob),
-                        (MixKind::Mosaic, mosaic_prob),
-                    ]
-                    .choose_weighted(&mut rng, |(_kind, prob)| *prob)
-                    .unwrap()
-                    .0;
+                        // sample mix method
+                        let mix_kind = [
+                            (MixKind::None, 1.0 - mixup_prob - cutmix_prob - mosaic_prob),
+                            (MixKind::MixUp, mixup_prob),
+                            (MixKind::CutMix, cutmix_prob),
+                            (MixKind::Mosaic, mosaic_prob),
+                        ]
+                        .choose_weighted(&mut rng, |(_kind, prob)| *prob)
+                        .unwrap()
+                        .0;
 
-                    // load images
-                    let image_bbox_vec: Vec<_> =
-                        stream::iter(record_indexes.into_iter().take(mix_kind.num_samples()))
-                            .par_then_unordered(par_config.clone(), move |record_index| {
+                        // load images
+                        let image_bbox_vec: Vec<_> = stream::iter(record_indexes)
+                            .take(mix_kind.num_samples())
+                            .par_then_unordered(par_config, move |record_index| {
                                 let dataset = dataset.clone();
 
                                 async move {
@@ -312,31 +328,31 @@ impl TrainingStream {
                             .try_collect()
                             .await?;
 
-                    // pack into mixed data type
-                    let data = MixData::new(mix_kind, image_bbox_vec).unwrap();
+                        // pack into mixed data type
+                        let data = MixData::new(mix_kind, image_bbox_vec).unwrap();
 
-                    // send to logger
-                    if let Some(logging_tx) = &logging_tx {
-                        let (images, bboxes) = data
-                            .as_ref()
-                            .iter()
-                            .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
-                            .unzip_n_vec();
+                        // send to logger
+                        if let Some(logging_tx) = &logging_tx {
+                            let (images, bboxes) = data
+                                .as_ref()
+                                .iter()
+                                .map(|(image, bboxes)| (image.shallow_clone(), bboxes.clone()))
+                                .unzip_n_vec();
 
-                        let msg = LoggingMessage::new_debug_images(
-                            "sample-loading",
-                            images,
-                            Some(bboxes),
-                        );
-                        let _ = logging_tx.send(msg);
+                            let msg = LoggingMessage::new_debug_images(
+                                "sample-loading",
+                                images,
+                                Some(bboxes),
+                            );
+                            let _ = logging_tx.send(msg);
+                        }
+
+                        timing.add_event("data loading");
+
+                        Fallible::Ok((index, (step, epoch, data, timing)))
                     }
-
-                    timing.add_event("data loading");
-
-                    Fallible::Ok((index, (step, epoch, data, timing)))
-                }
-                .instrument(trace_span!("data_loading"))
-            })
+                    .instrument(trace_span!("data_loading"))
+                })
         };
 
         // color jitter
@@ -347,34 +363,30 @@ impl TrainingStream {
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
 
-            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
+            stream.try_par_map_unordered(par_config.clone(), move |(index, args)| {
                 let color_jitter = color_jitter.clone();
                 let logging_tx = logging_tx.clone();
-                let par_config = par_config.clone();
 
-                async move {
+                move || {
                     let (step, epoch, input, mut timing) = args;
                     timing.add_event("in channel");
 
                     let mix_kind = input.kind();
-                    let pairs: Vec<_> = stream::iter(input.into_iter())
-                        .par_map_unordered(par_config.clone(), move |(image, bboxes)| {
-                            let color_jitter = color_jitter.clone();
-                            let mut rng = StdRng::from_entropy();
+                    let pairs: Vec<_> = input
+                        .into_iter()
+                        .map(|(image, bboxes)| -> Result<_> {
+                            let mut rng = OsRng;
+                            let yes = rng.gen_bool(color_jitter_prob.to_f64());
 
-                            move || -> Result<_> {
-                                let (new_image, new_bboxes) =
-                                    if rng.gen_bool(color_jitter_prob.to_f64()) {
-                                        let new_image = color_jitter.forward(&image)?;
-                                        (new_image, bboxes)
-                                    } else {
-                                        (image, bboxes)
-                                    };
-                                Ok((new_image, new_bboxes))
-                            }
+                            let (new_image, new_bboxes) = if yes {
+                                let new_image = color_jitter.forward(&image)?;
+                                (new_image, bboxes)
+                            } else {
+                                (image, bboxes)
+                            };
+                            Ok((new_image, new_bboxes))
                         })
-                        .try_collect()
-                        .await?;
+                        .try_collect()?;
                     let output = MixData::new(mix_kind, pairs).unwrap();
 
                     // send to logger
@@ -392,7 +404,6 @@ impl TrainingStream {
                     timing.add_event("color jitter");
                     Fallible::Ok((index, (step, epoch, output, timing)))
                 }
-                .instrument(trace_span!("color_jitter"))
             })
         };
 
@@ -437,33 +448,29 @@ impl TrainingStream {
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
 
-            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
+            stream.try_par_map_unordered(par_config.clone(), move |(index, args)| {
                 let random_affine = random_affine.clone();
                 let logging_tx = logging_tx.clone();
-                let par_config = par_config.clone();
 
-                async move {
+                move || {
                     let (step, epoch, data, mut timing) = args;
                     timing.add_event("in channel");
 
                     let mix_kind = data.kind();
-                    let pairs: Vec<_> = stream::iter(data.into_iter())
-                        .par_map_unordered(par_config.clone(), move |(image, bboxes)| {
-                            let random_affine = random_affine.clone();
-                            let mut rng = StdRng::from_entropy();
+                    let pairs: Vec<_> = data
+                        .into_iter()
+                        .map(move |(image, bboxes)| -> Result<_> {
+                            let mut rng = OsRng;
 
-                            move || -> Result<_> {
-                                let (new_image, new_bboxes) = if rng.gen_bool(affine_prob.to_f64())
-                                {
-                                    random_affine.forward(&image, &bboxes)?
-                                } else {
-                                    (image, bboxes)
-                                };
-                                Ok((new_image, new_bboxes))
-                            }
+                            let yes = rng.gen_bool(affine_prob.to_f64());
+                            let (new_image, new_bboxes) = if yes {
+                                random_affine.forward(&image, &bboxes)?
+                            } else {
+                                (image, bboxes)
+                            };
+                            Ok((new_image, new_bboxes))
                         })
-                        .try_collect()
-                        .await?;
+                        .try_collect()?;
 
                     let new_data = MixData::new(mix_kind, pairs).unwrap();
 
@@ -482,7 +489,6 @@ impl TrainingStream {
                     timing.add_event("random affine");
                     Fallible::Ok((index, (step, epoch, new_data, timing)))
                 }
-                .instrument(trace_span!("random_affine"))
             })
         };
 
@@ -513,9 +519,8 @@ impl TrainingStream {
                 "the sum of mixup, cutmix, mosaic probabilities must not exceed 1.0"
             );
             let mosaic_processor = Arc::new(
-                ParallelMosaicProcessorInit {
+                MosaicProcessorInit {
                     mosaic_margin: mosaic_margin.to_f64(),
-                    max_workers: None,
                     min_bbox_size: Some(min_bbox_size.into()),
                     min_bbox_cropping_ratio: Some(min_bbox_cropping_ratio.into()),
                 }
@@ -523,11 +528,11 @@ impl TrainingStream {
             );
             let logging_tx = self.logging_tx.clone();
 
-            stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
+            stream.try_par_map_unordered(par_config.clone(), move |(index, args)| {
                 let mosaic_processor = mosaic_processor.clone();
                 let logging_tx = logging_tx.clone();
 
-                async move {
+                move || {
                     let (step, epoch, data, mut timing) = args;
                     timing.add_event("in channel");
 
@@ -544,9 +549,7 @@ impl TrainingStream {
                             warn!("cutmix is not implemented yet");
                             Vec::from(pairs).into_iter().next().unwrap()
                         }
-                        MixData::Mosaic(pairs) => {
-                            mosaic_processor.forward(Vec::from(pairs)).await?
-                        }
+                        MixData::Mosaic(pairs) => mosaic_processor.forward(Vec::from(pairs))?,
                     };
 
                     // filter out small bboxes after mixing
@@ -572,7 +575,6 @@ impl TrainingStream {
                     timing.add_event("mosaic processor");
                     Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
                 }
-                .instrument(trace_span!("mixup"))
             })
         };
 
@@ -596,24 +598,22 @@ impl TrainingStream {
                 .pipeline
                 .unordered_records
             {
-                Box::pin(stream.map_ok(|(_index, args)| args))
+                stream.map_ok(|(_index, args)| args).boxed()
             } else {
-                Box::pin(stream.try_reorder_enumerated())
+                stream.try_reorder_enumerated().boxed()
             }
         };
 
         // group into chunks
-        let stream = {
-            stream
-                .chunks(self.batch_size)
-                .wrapping_enumerate()
-                .par_map_unordered(par_config.clone(), |(index, results)| {
-                    move || {
-                        let chunk: Vec<_> = results.into_iter().try_collect()?;
-                        Fallible::Ok((index, chunk))
-                    }
-                })
-        };
+        let stream = stream
+            .chunks(self.batch_size)
+            .enumerate()
+            .par_map_unordered(par_config.clone(), |(index, results)| {
+                move || {
+                    let chunk: Vec<_> = results.into_iter().try_collect()?;
+                    Fallible::Ok((index, chunk))
+                }
+            });
 
         // convert to batched type
         let stream = stream.try_par_map_unordered(par_config.clone(), |(index, mut chunk)| {
@@ -643,38 +643,34 @@ impl TrainingStream {
         });
 
         // map to output type
-        let stream = stream.try_par_then_unordered(par_config.clone(), move |(index, args)| {
-            async move {
-                let (step, epoch, bboxes, image, mut timing) = args;
-                timing.add_event("in channel");
+        let stream = stream.map(move |result| {
+            let (index, args) = result?;
+            let (step, epoch, bboxes, image, mut timing) = args;
+            timing.add_event("in channel");
 
-                let mut record = TrainingRecord {
-                    epoch,
-                    step,
-                    image: image.set_requires_grad(false),
-                    bboxes,
-                    timing,
-                };
-                record.timing.add_event("map to output type");
+            let mut record = TrainingRecord {
+                epoch,
+                step,
+                image: image.set_requires_grad(false),
+                bboxes,
+                timing,
+            };
+            record.timing.add_event("map to output type");
 
-                Ok((index, record))
-            }
-            .instrument(trace_span!("map_to_output"))
+            Ok((index, record))
         });
 
         // optionally reorder back
-        let stream: Pin<Box<dyn Stream<Item = Result<_>> + Send>> = {
-            if self
-                .preprocessor_config
-                .deref()
-                .borrow()
-                .pipeline
-                .unordered_batches
-            {
-                Box::pin(stream.map_ok(|(_index, args)| args))
-            } else {
-                Box::pin(stream.try_reorder_enumerated())
-            }
+        let stream = if self
+            .preprocessor_config
+            .deref()
+            .borrow()
+            .pipeline
+            .unordered_batches
+        {
+            stream.map_ok(|(_index, args)| args).boxed()
+        } else {
+            stream.try_reorder_enumerated().boxed()
         };
 
         Ok(stream)

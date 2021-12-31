@@ -7,6 +7,10 @@ use crate::{
 };
 use async_std::{fs::File, io::BufWriter};
 use tch_goodies::MergedDenseDetection;
+use yolo_dl::{
+    loss::{MatchingOutput, YoloBenchmarkOutput, YoloInferenceOutput, YoloLossOutput},
+    profiling::Timing,
+};
 
 pub use logging_message::*;
 pub use logging_worker::*;

@@ -252,6 +252,8 @@ impl ParallelMosaicProcessor {
         }
 
         // crop images
+        let max_workers = max_workers.unwrap_or_else(|| num_cpus::get());
+
         let mut crop_iter = stream::iter(pairs.into_iter().zip_eq(ranges.into_iter())).par_map(
             max_workers,
             move |args| {

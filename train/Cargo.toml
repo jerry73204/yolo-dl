@@ -18,12 +18,12 @@ unzip-n = "0.1.2"
 serde_json = "1.0.72"
 async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
 json5 = "0.4.1"
-par-stream = { version = "0.7.0", features = ["runtime-tokio"] }
+par-stream = { version = "0.8.0", features = ["runtime-tokio"] }
 futures = "0.3.18"
 rand = "0.8.4"
 percent-encoding = "2.1.0"
 image = "0.23.14"
-tokio = { version = "1.14.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
+tokio = { version = "1.15.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
 tfrecord = { version = "0.10.0", features = ["full"] }
 ndarray = "0.15.4"
 tch-serde = "0.7.0"

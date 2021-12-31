@@ -132,7 +132,7 @@ impl InputStream {
         let stream = self.dataset.stream()?;
 
         // add indexe
-        let stream = stream.try_wrapping_enumerate();
+        let stream = stream.try_enumerate();
 
         // group into chunks
         let stream = {

@@ -1,14 +1,16 @@
 //! Training program configuration format.
 
 use crate::common::*;
-use yolo_dl::loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind};
 use serde_semver::SemverReq;
+use yolo_dl::{
+    loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind, YoloLossInit},
+    processor::ColorJitterInit,
+};
 
 pub use dataset::*;
 pub use model::*;
 pub use preprocessor::*;
 pub use training::*;
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SemverReq)]
 #[version("0.1.0")]

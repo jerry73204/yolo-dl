@@ -2,6 +2,7 @@
 
 use crate::{common::*, config};
 use model_graph as graph;
+use yolo_dl::model::YoloModel;
 
 /// The generic model adaptor.
 #[derive(Debug)]

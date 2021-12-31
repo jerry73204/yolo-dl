@@ -1,8 +1,8 @@
 pub use anyhow::{format_err, Error, Result};
 pub use cv_convert::{IntoCv, ShapeConvention, TensorAsImage, TryIntoCv};
 pub use futures::{
-    future::FutureExt,
-    stream::{self, Stream, StreamExt, TryStreamExt},
+    future::FutureExt as _,
+    stream::{self, Stream, StreamExt as _, TryStreamExt as _},
 };
 pub use itertools::Itertools;
 pub use noisy_float::prelude::*;

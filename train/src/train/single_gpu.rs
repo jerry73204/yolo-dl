@@ -7,6 +7,7 @@ use crate::{
     utils::{self, LrScheduler, RateCounter},
 };
 use tch_goodies::MergedDenseDetection;
+use yolo_dl::loss::{YoloBenchmarkInit, YoloInferenceInit};
 
 /// Start the single-GPU training worker.
 pub fn single_gpu_training_worker(

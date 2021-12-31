@@ -15,10 +15,11 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
     // load model
     let workers: Vec<_> = stream::iter(config.model.devices.clone())
-        .par_map_init_unordered(
-            num_devices,
-            || config.clone(),
-            move |config, device| {
+        .par_map_unordered(num_devices, {
+            let config = config.clone();
+            move |device| {
+                let config = config.clone();
+
                 move || -> Result<_> {
                     let vs = nn::VarStore::new(device);
                     let root = vs.root();
@@ -27,8 +28,8 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
                     Ok((vs, model))
                 }
-            },
-        )
+            }
+        })
         .try_collect()
         .await?;
 
@@ -36,41 +37,44 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
     let input_stream = InputStream::new(config.clone()).await?;
 
     // scatter input to workers
-    let data_stream = input_stream.stream()?.scatter(None);
+    let data_stream = input_stream.stream()?.shared();
 
-    let inference_futs = workers.into_iter().map(|(vs, model)| {
-        let data_stream = data_stream.clone();
+    let inference_futs = workers.into_iter().map({
         let config = config.clone();
-        let device = vs.device();
-        let output_tx = output_tx.clone();
-        let OutputConfig {
-            nms_iou_thresh,
-            nms_conf_thresh,
-            ..
-        } = config.output;
-        let yolo_inference = YoloInferenceInit {
-            nms_iou_thresh,
-            nms_conf_thresh,
-            suppress_by_class: false,
-        }
-        .build()
-        .unwrap();
+        move |(vs, model)| {
+            let data_stream = data_stream.clone();
+            let config = config.clone();
+            let device = vs.device();
+            let output_tx = output_tx.clone();
+            let OutputConfig {
+                nms_iou_thresh,
+                nms_conf_thresh,
+                ..
+            } = config.output;
+            let yolo_inference = YoloInferenceInit {
+                nms_iou_thresh,
+                nms_conf_thresh,
+                suppress_by_class: false,
+            }
+            .build()
+            .unwrap();
 
-        async move {
-            data_stream
-                .try_fold(
-                    (model, yolo_inference),
-                    |(mut model, yolo_inference), record| async {
-                        let images = record.images.to_device(device);
-                        let output = model.forward_t(&images, false)?;
-                        let output = MergedDenseDetection::try_from(output)?;
-                        let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
-                        output_tx.send((record, inferences)).await.unwrap();
-                        Ok((model, yolo_inference))
-                    },
-                )
-                .await?;
-            Ok(())
+            async move {
+                data_stream
+                    .try_fold(
+                        (model, yolo_inference),
+                        |(mut model, yolo_inference), record| async {
+                            let images = record.images.to_device(device);
+                            let output = model.forward_t(&images, false)?;
+                            let output = MergedDenseDetection::try_from(output)?;
+                            let inferences = yolo_inference.forward(&output).to_device(Device::Cpu);
+                            output_tx.send((record, inferences)).await.unwrap();
+                            Ok((model, yolo_inference))
+                        },
+                    )
+                    .await?;
+                Ok(())
+            }
         }
     });
 

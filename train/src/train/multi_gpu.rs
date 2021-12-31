@@ -8,6 +8,13 @@ use crate::{
     training_stream::TrainingRecord,
     utils::{self, LrScheduler, RateCounter},
 };
+use yolo_dl::{
+    loss::{
+        MatchingOutput, YoloBenchmarkInit, YoloInferenceInit, YoloLoss, YoloLossAuxiliary,
+        YoloLossOutput,
+    },
+    profiling::Timing,
+};
 
 struct WorkerContext {
     device: Device,
@@ -396,7 +403,7 @@ async fn initialize_worker_contexts(
         let config = config.clone();
 
         stream::iter(workers.to_owned())
-            .wrapping_enumerate()
+            .enumerate()
             .par_map_unordered(None, move |(index, (device, minibatch_size))| {
                 let config = config.clone();
 
@@ -509,7 +516,7 @@ async fn sync_weights(worker_contexts: Vec<WorkerContext>) -> Result<Vec<WorkerC
     let other_contexts: Vec<_> = {
         let first_vs = first_vs.clone();
         stream::iter(iter)
-            .wrapping_enumerate()
+            .enumerate()
             .par_map(None, move |(index, mut context)| {
                 let first_vs = first_vs.clone();
                 move || {
@@ -578,7 +585,7 @@ async fn forward_step(
     // run tasks
     let (worker_contexts, outputs_per_worker) =
         stream::iter(worker_contexts.into_iter().zip_eq(jobs))
-            .wrapping_enumerate()
+            .enumerate()
             .par_map_unordered(None, |(worker_index, (mut context, jobs))| {
                 move || {
                     let outputs: Vec<_> = jobs
