@@ -5,9 +5,9 @@ authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0.130", features = ["derive"] }
+serde = { version = "1.0.134", features = ["derive"] }
 serde_ini = "0.2.0"
-anyhow = "1.0.51"
+anyhow = "1.0.53"
 noisy_float = { version = "0.2.0", features = ["serde"] }
 itertools = "0.10.3"
 # binread = "2.2.0"
@@ -15,7 +15,7 @@ itertools = "0.10.3"
 log = "0.4.14"
 serde_repr = "0.1.7"
 # petgraph = "0.6.0"
-indexmap = { version = "1.7.0", features = ["serde"] }
+indexmap = { version = "1.8.0", features = ["serde"] }
 byteorder = "1.4.3"
 derivative = "2.2.0"
 # ndarray = "0.15.3"
