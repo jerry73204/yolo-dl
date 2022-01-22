@@ -41,6 +41,4 @@ pub use yolo_dl::{
     model::YoloModel,
 };
 
-pub type Fallible<T> = Result<T, Error>;
-
 unzip_n::unzip_n!(pub 3);

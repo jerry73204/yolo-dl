@@ -37,8 +37,6 @@ pub use tch_goodies::{
 };
 pub use tch_tensor_like::TensorLike;
 
-pub type Fallible<T> = Result<T, Error>;
-
 unzip_n::unzip_n!(pub 2);
 unzip_n::unzip_n!(pub 3);
 unzip_n::unzip_n!(pub 4);

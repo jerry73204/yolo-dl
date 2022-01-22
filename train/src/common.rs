@@ -73,8 +73,6 @@ pub use tracing::{error, info, info_span, instrument, trace, trace_span, warn, I
 pub use tracing_subscriber::{prelude::*, EnvFilter};
 pub use uuid::Uuid;
 
-pub type Fallible<T> = Result<T, Error>;
-
 unzip_n::unzip_n!(pub 2);
 unzip_n::unzip_n!(pub 3);
 unzip_n::unzip_n!(pub 4);

@@ -75,8 +75,6 @@ pub use tokio::sync::{broadcast, mpsc};
 pub use tracing::instrument;
 pub use uuid::Uuid;
 
-pub type Fallible<T> = Result<T, Error>;
-
 unzip_n::unzip_n!(pub 2);
 unzip_n::unzip_n!(pub 3);
 unzip_n::unzip_n!(pub 4);

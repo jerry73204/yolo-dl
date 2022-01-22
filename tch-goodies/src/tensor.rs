@@ -82,9 +82,7 @@ mod tensor_ext {
         {
             let weighted_pairs: Vec<_> = pairs
                 .into_iter()
-                .map(|(tensor, weight)| {
-                    Fallible::Ok((tensor.borrow().f_mul_scalar(weight)?, weight))
-                })
+                .map(|(tensor, weight)| anyhow::Ok((tensor.borrow().f_mul_scalar(weight)?, weight)))
                 .try_collect()?;
             let (tensors, weights) = weighted_pairs.into_iter().unzip_n_vec();
             let sum_tensors = Self::f_sum_tensors(tensors)?;

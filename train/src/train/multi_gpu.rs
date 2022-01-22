@@ -185,7 +185,7 @@ pub async fn multi_gpu_training_worker(
                     )?;
                     Ok((worker_contexts, outputs))
                 })
-                .map(|result| Fallible::Ok(result??))
+                .map(|result| anyhow::Ok(result??))
                 .instrument(trace_span!("backward"))
                 .await?
             };
@@ -213,7 +213,7 @@ pub async fn multi_gpu_training_worker(
 
                 Ok((losses, worker_outputs))
             })
-            .map(|result| Fallible::Ok(result??))
+            .map(|result| anyhow::Ok(result??))
             .instrument(trace_span!("merge_outputs"))
             .await?;
 
@@ -337,7 +337,7 @@ pub async fn multi_gpu_training_worker(
 
                     Ok(worker_contexts)
                 })
-                .map(|result| Fallible::Ok(result??))
+                .map(|result| anyhow::Ok(result??))
                 .instrument(trace_span!("save_checkpoint"))
                 .await?;
                 timing.add_event("save checkpoint");
@@ -442,7 +442,7 @@ async fn initialize_worker_contexts(
                         opt
                     };
 
-                    Fallible::Ok((
+                    anyhow::Ok((
                         index,
                         WorkerContext {
                             device,
@@ -475,7 +475,7 @@ async fn initialize_worker_contexts(
 
             Ok(worker_contexts)
         })
-        .map(|result| Fallible::Ok(result??))
+        .map(|result| anyhow::Ok(result??))
         .await?
     };
     init_timing.add_event("load checkpoint");
@@ -521,7 +521,7 @@ async fn sync_weights(worker_contexts: Vec<WorkerContext>) -> Result<Vec<WorkerC
                 let first_vs = first_vs.clone();
                 move || {
                     context.vs.copy(&*first_vs)?;
-                    Fallible::Ok((index, context))
+                    anyhow::Ok((index, context))
                 }
             })
             .try_reorder_enumerated()
@@ -647,7 +647,7 @@ async fn forward_step(
                         })
                         .try_collect()?;
 
-                    Fallible::Ok((worker_index, (context, outputs)))
+                    anyhow::Ok((worker_index, (context, outputs)))
                 }
             })
             .try_reorder_enumerated()

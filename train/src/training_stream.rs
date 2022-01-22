@@ -321,7 +321,7 @@ impl TrainingStream {
                                             class: bbox.class,
                                         })
                                         .collect();
-                                    Fallible::Ok((image, bboxes))
+                                    anyhow::Ok((image, bboxes))
                                 }
                                 .instrument(trace_span!("load_sample"))
                             })
@@ -349,7 +349,7 @@ impl TrainingStream {
 
                         timing.add_event("data loading");
 
-                        Fallible::Ok((index, (step, epoch, data, timing)))
+                        anyhow::Ok((index, (step, epoch, data, timing)))
                     }
                     .instrument(trace_span!("data_loading"))
                 })
@@ -402,7 +402,7 @@ impl TrainingStream {
                     }
 
                     timing.add_event("color jitter");
-                    Fallible::Ok((index, (step, epoch, output, timing)))
+                    anyhow::Ok((index, (step, epoch, output, timing)))
                 }
             })
         };
@@ -487,7 +487,7 @@ impl TrainingStream {
                     }
 
                     timing.add_event("random affine");
-                    Fallible::Ok((index, (step, epoch, new_data, timing)))
+                    anyhow::Ok((index, (step, epoch, new_data, timing)))
                 }
             })
         };
@@ -573,7 +573,7 @@ impl TrainingStream {
                     }
 
                     timing.add_event("mosaic processor");
-                    Fallible::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
+                    anyhow::Ok((index, (step, epoch, mixed_bboxes, mixed_image, timing)))
                 }
             })
         };
@@ -585,7 +585,7 @@ impl TrainingStream {
                 timing.add_event("in channel");
                 let new_image = image.unsqueeze(0);
                 timing.add_event("batch dimensions");
-                Fallible::Ok((index, (step, epoch, bboxes, new_image, timing)))
+                anyhow::Ok((index, (step, epoch, bboxes, new_image, timing)))
             }
         });
 
@@ -611,7 +611,7 @@ impl TrainingStream {
             .par_map_unordered(par_config.clone(), |(index, results)| {
                 move || {
                     let chunk: Vec<_> = results.into_iter().try_collect()?;
-                    Fallible::Ok((index, chunk))
+                    anyhow::Ok((index, chunk))
                 }
             });
 
@@ -635,7 +635,7 @@ impl TrainingStream {
                 let image_batch = Tensor::cat(&image_vec, 0);
                 let timing = Timing::merge("batching", timing_vec).unwrap();
 
-                Fallible::Ok((
+                anyhow::Ok((
                     index,
                     (min_step, min_epoch, bboxes_vec, image_batch, timing),
                 ))

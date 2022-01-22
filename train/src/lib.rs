@@ -73,9 +73,9 @@ pub async fn start(config: Arc<config::Config>) -> Result<()> {
                 .map_err(|_| format_err!("failed to send message to training worker"))?;
         }
 
-        Fallible::Ok(())
+        anyhow::Ok(())
     })
-    .map(|result| Fallible::Ok(result??));
+    .map(|result| anyhow::Ok(result??));
 
     // training worker
     let training_worker_future = {
@@ -146,9 +146,9 @@ pub async fn start(config: Arc<config::Config>) -> Result<()> {
                 }
             }
 
-            Fallible::Ok(())
+            anyhow::Ok(())
         })
-        .map(|result| Fallible::Ok(result??))
+        .map(|result| anyhow::Ok(result??))
     };
 
     futures::try_join!(training_data_future, training_worker_future, logging_future)?;

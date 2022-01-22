@@ -58,9 +58,9 @@ impl IiiDataset {
                     })
                     .filter_map(|result| result.transpose())
                     .try_collect()?;
-                Fallible::Ok(xml_files)
+                anyhow::Ok(xml_files)
             })
-            .map(|result| Fallible::Ok(result??))
+            .map(|result| anyhow::Ok(result??))
             .await?
         };
 
@@ -82,7 +82,7 @@ impl IiiDataset {
                             tokio::task::spawn_blocking(move || {
                                 serde_xml_rs::from_str(&xml_content)
                             })
-                            .map(|result| Fallible::Ok(result??))
+                            .map(|result| anyhow::Ok(result??))
                             .await
                             .with_context(|| {
                                 format!(
@@ -115,7 +115,7 @@ impl IiiDataset {
                             image_file,
                         };
 
-                        Fallible::Ok(sample)
+                        anyhow::Ok(sample)
                     }
                 })
                 .try_collect()

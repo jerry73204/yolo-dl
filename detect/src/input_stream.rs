@@ -143,7 +143,7 @@ impl InputStream {
                 .par_map_unordered(None, |results| {
                     move || {
                         let chunk: Vec<_> = results.into_iter().try_collect()?;
-                        Fallible::Ok(chunk)
+                        anyhow::Ok(chunk)
                     }
                 })
         };

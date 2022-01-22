@@ -170,7 +170,7 @@ pub async fn start(config: Arc<Config>) -> Result<()> {
 
     futures::try_join!(
         futures::future::try_join_all(inference_futs),
-        output_fut.map(|_| Fallible::Ok(())),
+        output_fut.map(|_| anyhow::Ok(())),
     )?;
 
     Ok(())
