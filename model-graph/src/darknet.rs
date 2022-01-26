@@ -3,9 +3,7 @@ use crate::common::*;
 use darknet_config as dark;
 use model_config::{self as config, Module, ShapeOutput};
 
-use dark_input_keys::*;
 use dark_node_key::*;
-
 mod dark_node_key {
     use super::*;
 
@@ -52,6 +50,7 @@ mod dark_node_key {
     }
 }
 
+use dark_input_keys::*;
 mod dark_input_keys {
     use super::*;
 
@@ -200,10 +199,8 @@ impl Graph {
                 graph
             };
 
-            let sorted_node_keys = petgraph::algo::toposort(&graph, None)
-                .map_err(|cycle| format_err!("cycle detected at layer {:?}", cycle.node_id()))?;
-
-            sorted_node_keys
+            petgraph::algo::toposort(&graph, None)
+                .map_err(|cycle| format_err!("cycle detected at layer {:?}", cycle.node_id()))?
         };
 
         let layer_configs: IndexMap<DarkNodeKey, _> = sorted_node_keys
@@ -228,7 +225,7 @@ impl Graph {
 
                             let input_shape: dark::InputShape = match from_keys {
                                 DarkInputKeys::Single(from_key) => {
-                                    let input_shape = &collected[&from_key];
+                                    let input_shape = &collected[from_key];
                                     let shape = input_shape.tensor().ok_or_else(|| {
                                         format_err!(
                                             "invalid input shape '{}' for layer {}",

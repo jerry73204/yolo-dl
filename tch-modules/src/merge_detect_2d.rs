@@ -17,3 +17,9 @@ impl MergeDetect2D {
         DenseDetectionTensorList::from_detection_tensors(detections)
     }
 }
+
+impl Default for MergeDetect2D {
+    fn default() -> Self {
+        Self::new()
+    }
+}

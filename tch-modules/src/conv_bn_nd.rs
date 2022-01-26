@@ -87,7 +87,7 @@ impl nn::ModuleT for ConvBn {
             activation,
         } = *self;
 
-        let output = if bn_first {
+        if bn_first {
             let xs = bn.forward_t(input, train);
             let xs = conv.forward(&xs);
             xs.activation(activation)
@@ -95,9 +95,7 @@ impl nn::ModuleT for ConvBn {
             let xs = conv.forward(input);
             let xs = xs.activation(activation);
             bn.forward_t(&xs, train)
-        };
-
-        output
+        }
     }
 }
 

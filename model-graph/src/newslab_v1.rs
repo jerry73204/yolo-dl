@@ -13,7 +13,7 @@ impl Graph {
 
     pub fn from_newslab_v1_model(config: &Model) -> Result<Self> {
         let Model { main_group, groups } = config;
-        let graph = Self::from_model_groups(&groups, &main_group)?;
+        let graph = Self::from_model_groups(groups, main_group)?;
         Ok(graph)
     }
 
@@ -78,7 +78,7 @@ impl Graph {
                             let group_prefix = prefix.join(layer_name);
                             let (nodes, group_edges) = traverse_nodes(
                                 groups,
-                                &sub_group_name,
+                                sub_group_name,
                                 group_prefix.clone(),
                                 key_enumerator,
                             )?;
@@ -320,47 +320,41 @@ impl Graph {
                             if path.depth() == 1 {
                                 // top level input has no input
                                 ensure!(matches!(input_keys, InputKeys::PlaceHolder), "TODO");
-                                let output_shape =
-                                    layer.output_shape(ShapeInput::PlaceHolder).unwrap();
-                                output_shape
+                                layer.output_shape(ShapeInput::PlaceHolder).unwrap()
                             } else {
                                 // non-top level input has one input
                                 let src_key = match input_keys {
                                     InputKeys::Single(key) => key,
                                     _ => bail!("TODO"),
                                 };
-                                let input_shape = output_shape_map[&src_key]
+                                let input_shape = output_shape_map[src_key]
                                     .tensor()
                                     .ok_or_else(|| format_err!("TODO"))?;
 
                                 // ensure input shape is consistent with specified shape
-                                let output_shape = layer.output_shape(input_shape.into()).unwrap();
-                                output_shape
+                                layer.output_shape(input_shape.into()).unwrap()
                             }
                         }
                         Module::GroupRef(_) => unreachable!(),
                         layer => match input_keys {
                             InputKeys::None => {
                                 let input_shape = ShapeInput::None;
-                                let output_shape = layer
+                                layer
                                     .output_shape(input_shape)
-                                    .ok_or_else(|| format_err!("TODO"))?;
-                                output_shape
+                                    .ok_or_else(|| format_err!("TODO"))?
                             }
                             InputKeys::PlaceHolder => {
                                 let input_shape = ShapeInput::None;
-                                let output_shape = layer
+                                layer
                                     .output_shape(input_shape)
-                                    .ok_or_else(|| format_err!("TODO"))?;
-                                output_shape
+                                    .ok_or_else(|| format_err!("TODO"))?
                             }
                             InputKeys::Single(src_key) => {
                                 let input_shape: ShapeInput =
-                                    (&output_shape_map[&src_key]).try_into()?;
-                                let output_shape = layer
+                                    (&output_shape_map[src_key]).try_into()?;
+                                layer
                                     .output_shape(input_shape)
-                                    .ok_or_else(|| format_err!("TODO"))?;
-                                output_shape
+                                    .ok_or_else(|| format_err!("TODO"))?
                             }
                             InputKeys::Indexed(src_keys) => {
                                 let shapes: Vec<_> = src_keys
@@ -369,10 +363,12 @@ impl Graph {
                                     .map(|src_key| &output_shape_map[&src_key])
                                     .collect();
                                 let input_shape: ShapeInput = shapes.as_slice().try_into()?;
-                                let output_shape = layer
-                                    .output_shape(input_shape)
-                                    .ok_or_else(|| format_err!("cannot compute output shape from input shapes: {:?}", shapes))?;
-                                output_shape
+                                layer.output_shape(input_shape).ok_or_else(|| {
+                                    format_err!(
+                                        "cannot compute output shape from input shapes: {:?}",
+                                        shapes
+                                    )
+                                })?
                             }
                         },
                     };

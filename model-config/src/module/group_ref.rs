@@ -1,8 +1,8 @@
 use super::*;
 use crate::{common::*, group::GroupName, utils};
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+#[derivative(PartialEq, Eq, Hash)]
 pub struct GroupRef {
     pub name: ModuleName,
     #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<ModuleName, ModulePath, _>"))]

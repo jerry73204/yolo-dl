@@ -38,9 +38,7 @@ impl FromStr for ModulePath {
 
     fn from_str(name: &str) -> Result<Self, Self::Err> {
         let tokens = name.split('.');
-        let components: Vec<_> = tokens
-            .map(|token| ModuleName::from_str(token))
-            .try_collect()?;
+        let components: Vec<_> = tokens.map(ModuleName::from_str).try_collect()?;
         Ok(Self(components))
     }
 }

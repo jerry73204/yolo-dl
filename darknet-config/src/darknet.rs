@@ -174,8 +174,8 @@ mod item {
                 Self::Cost(layer) => Layer::Cost(layer),
                 Self::Crop(layer) => Layer::Crop(layer),
                 Self::AvgPool(layer) => Layer::AvgPool(layer),
-                Self::GaussianYolo(layer) => Layer::GaussianYolo(layer.try_into()?),
-                Self::Yolo(layer) => Layer::Yolo(layer.try_into()?),
+                Self::GaussianYolo(layer) => Layer::GaussianYolo(layer),
+                Self::Yolo(layer) => Layer::Yolo(layer),
                 Self::Net(_layer) => {
                     bail!("the 'net' layer must appear in the first section")
                 }

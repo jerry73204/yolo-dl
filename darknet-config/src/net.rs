@@ -128,11 +128,7 @@ impl TryFrom<RawNet> for Net {
         let sgdr_cycle = sgdr_cycle.unwrap_or(max_batches);
         let sequential_subdivisions = sequential_subdivisions.unwrap_or(subdivisions);
         let adam = if adam {
-            Some(Adam {
-                b1: b1,
-                b2: b2,
-                eps: eps,
-            })
+            Some(Adam { b1, b2, eps })
         } else {
             None
         };
@@ -149,15 +145,9 @@ impl TryFrom<RawNet> for Net {
             PolicyKind::Random => Policy::Random,
             PolicyKind::Poly => Policy::Poly,
             PolicyKind::Constant => Policy::Constant,
-            PolicyKind::Step => Policy::Step {
-                step: step,
-                scale: scale,
-            },
-            PolicyKind::Exp => Policy::Exp { gamma: gamma },
-            PolicyKind::Sigmoid => Policy::Sigmoid {
-                gamma: gamma,
-                step: step,
-            },
+            PolicyKind::Step => Policy::Step { step, scale },
+            PolicyKind::Exp => Policy::Exp { gamma },
+            PolicyKind::Sigmoid => Policy::Sigmoid { gamma, step },
             PolicyKind::Steps => {
                 let steps =
                     steps.ok_or_else(|| anyhow!("steps must be specified for step policy"))?;
@@ -548,9 +538,9 @@ impl From<Net> for RawNet {
             optimized_memory,
             workspace_size_limit_mb,
             adam,
-            b1: b1.into(),
-            b2: b2.into(),
-            eps: eps.into(),
+            b1,
+            b2,
+            eps,
             width: width.map(|w| NonZeroUsize::new(w).unwrap()),
             height: height.map(|h| NonZeroUsize::new(h).unwrap()),
             channels: channels.map(|c| NonZeroUsize::new(c).unwrap()),
@@ -582,12 +572,12 @@ impl From<Net> for RawNet {
             power,
             policy,
             burn_in,
-            step: step.into(),
-            scale: scale.into(),
+            step,
+            scale,
             steps,
             scales,
             seq_scales,
-            gamma: gamma.into(),
+            gamma,
         }
     }
 }

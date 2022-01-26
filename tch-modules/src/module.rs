@@ -5,11 +5,8 @@ use crate::{
     merge_detect_2d::MergeDetect2D, spp_csp_2d::SppCsp2D, sum_2d::Sum2D, up_sample_2d::UpSample2D,
 };
 
-pub use module::*;
-pub use module_input::*;
-pub use module_output::*;
-
-mod module {
+pub use module_::*;
+mod module_ {
 
     use super::*;
 
@@ -23,8 +20,8 @@ mod module {
         UpSample2D(UpSample2D),
         Sum2D(Sum2D),
         Concat2D(Concat2D),
-        DarkCsp2D(DarkCsp2D),
-        SppCsp2D(SppCsp2D),
+        DarkCsp2D(Box<DarkCsp2D>),
+        SppCsp2D(Box<SppCsp2D>),
         Detect2D(Detect2D),
         DarknetRoute(DarknetRoute),
         DarknetShortcut(DarknetShortcut),
@@ -116,13 +113,13 @@ mod module {
 
     impl From<SppCsp2D> for Module {
         fn from(v: SppCsp2D) -> Self {
-            Self::SppCsp2D(v)
+            Self::SppCsp2D(Box::new(v))
         }
     }
 
     impl From<DarkCsp2D> for Module {
         fn from(v: DarkCsp2D) -> Self {
-            Self::DarkCsp2D(v)
+            Self::DarkCsp2D(Box::new(v))
         }
     }
 
@@ -279,6 +276,7 @@ mod module {
     }
 }
 
+pub use module_input::*;
 mod module_input {
     use super::*;
 
@@ -382,18 +380,13 @@ mod module_input {
 
     impl<'a, 'b> From<&'b [&'a Tensor]> for ModuleInput<'a> {
         fn from(from: &'b [&'a Tensor]) -> Self {
-            Self::Indexed(
-                from.iter()
-                    .cloned()
-                    .map(|tensor| DataKind::from(tensor))
-                    .collect(),
-            )
+            Self::Indexed(from.iter().cloned().map(DataKind::from).collect())
         }
     }
 
     impl<'a> From<&'a [Tensor]> for ModuleInput<'a> {
         fn from(from: &'a [Tensor]) -> Self {
-            Self::Indexed(from.iter().map(|tensor| DataKind::from(tensor)).collect())
+            Self::Indexed(from.iter().map(DataKind::from).collect())
         }
     }
 
@@ -405,18 +398,13 @@ mod module_input {
 
     impl<'a, 'b> From<&'b [&'a tch_goodies::DenseDetectionTensor]> for ModuleInput<'a> {
         fn from(from: &'b [&'a tch_goodies::DenseDetectionTensor]) -> Self {
-            Self::Indexed(
-                from.iter()
-                    .cloned()
-                    .map(|tensor| DataKind::from(tensor))
-                    .collect(),
-            )
+            Self::Indexed(from.iter().cloned().map(DataKind::from).collect())
         }
     }
 
     impl<'a> From<&'a [tch_goodies::DenseDetectionTensor]> for ModuleInput<'a> {
         fn from(from: &'a [tch_goodies::DenseDetectionTensor]) -> Self {
-            Self::Indexed(from.iter().map(|output| DataKind::from(output)).collect())
+            Self::Indexed(from.iter().map(DataKind::from).collect())
         }
     }
 
@@ -437,11 +425,8 @@ mod module_input {
         type Error = Error;
 
         fn try_from(from: &'b [&'a ModuleOutput]) -> Result<Self, Self::Error> {
-            let kinds: Vec<DataKind> = from
-                .iter()
-                .cloned()
-                .map(|output| DataKind::try_from(output))
-                .try_collect()?;
+            let kinds: Vec<DataKind> =
+                from.iter().cloned().map(DataKind::try_from).try_collect()?;
             Ok(Self::Indexed(kinds))
         }
     }
@@ -450,15 +435,13 @@ mod module_input {
         type Error = Error;
 
         fn try_from(from: &'a [ModuleOutput]) -> Result<Self, Self::Error> {
-            let kinds: Vec<DataKind> = from
-                .iter()
-                .map(|output| DataKind::try_from(output))
-                .try_collect()?;
+            let kinds: Vec<DataKind> = from.iter().map(DataKind::try_from).try_collect()?;
             Ok(Self::Indexed(kinds))
         }
     }
 }
 
+pub use module_output::*;
 mod module_output {
     use super::*;
 

@@ -214,9 +214,9 @@ mod conv_nd_ {
             input.convolution(
                 weight,
                 bias.as_ref(),
-                &stride,
-                &padding,
-                &dilation,
+                stride,
+                padding,
+                dilation,
                 transposed,
                 output_padding.unwrap_or(&vec![0; ndims]),
                 groups,

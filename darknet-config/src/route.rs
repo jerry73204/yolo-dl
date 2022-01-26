@@ -1,8 +1,7 @@
 use super::Meta;
 use crate::{common::*, utils, utils::FromLayers};
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "RawRoute", into = "RawRoute")]
 pub struct Route {
     pub layers: FromLayers,
@@ -54,8 +53,7 @@ impl TryFrom<RawRoute> for Route {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(super) struct RawRoute {
     pub layers: FromLayers,
     #[serde(default = "default_groups")]
@@ -76,8 +74,8 @@ impl From<Route> for RawRoute {
 
         Self {
             layers,
-            group_id: group.group_id().into(),
-            groups: NonZeroUsize::new(group.num_groups()).unwrap().into(),
+            group_id: group.group_id(),
+            groups: NonZeroUsize::new(group.num_groups()).unwrap(),
             common,
         }
     }

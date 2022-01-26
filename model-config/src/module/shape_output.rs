@@ -3,8 +3,7 @@ use crate::{
     types::{Dim, Shape},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ShapeOutput {
     Shape(Shape),
     Detect2D,
@@ -32,17 +31,11 @@ impl ShapeOutput {
     }
 
     pub fn is_detect_2d(&self) -> bool {
-        match self {
-            Self::Detect2D => true,
-            _ => false,
-        }
+        matches!(self, Self::Detect2D)
     }
 
     pub fn is_merge_detect_2d(&self) -> bool {
-        match self {
-            Self::MergeDetect2D => true,
-            _ => false,
-        }
+        matches!(self, Self::MergeDetect2D)
     }
 }
 

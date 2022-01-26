@@ -15,17 +15,11 @@ pub enum ShapeInput<'a> {
 
 impl ShapeInput<'_> {
     pub fn is_none(&self) -> bool {
-        match self {
-            Self::None => true,
-            _ => false,
-        }
+        matches!(self, Self::None)
     }
 
     pub fn is_placeholder(&self) -> bool {
-        match self {
-            Self::PlaceHolder => true,
-            _ => false,
-        }
+        matches!(self, Self::PlaceHolder)
     }
 
     pub fn single_tensor(&self) -> Option<&Shape> {

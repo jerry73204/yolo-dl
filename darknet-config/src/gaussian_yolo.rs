@@ -1,8 +1,7 @@
 use super::{Anchors, IouLoss, IouThreshold, Meta, NmsKind, OutputShape, YoloPoint};
 use crate::{common::*, utils};
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GaussianYolo {
     pub classes: usize,
     #[serde(flatten)]

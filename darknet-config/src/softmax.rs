@@ -38,10 +38,10 @@ impl TryFrom<RawSoftmax> for Softmax {
             .transpose()?;
 
         Ok(Self {
-            groups: groups,
-            temperature: temperature,
+            groups,
+            temperature,
             tree,
-            spatial: spatial,
+            spatial,
             noloss,
             common,
         })
@@ -83,10 +83,10 @@ impl TryFrom<Softmax> for RawSoftmax {
             .transpose()?;
 
         Ok(Self {
-            groups: groups.into(),
-            temperature: temperature.into(),
+            groups,
+            temperature,
             tree_file,
-            spatial: spatial.into(),
+            spatial,
             noloss,
             common,
         })

@@ -42,8 +42,8 @@ impl Model {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+#[derivative(PartialEq, Eq, Hash)]
 struct ModelUnchecked {
     #[serde(default = "utils::empty_index_set::<PathBuf>")]
     #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<PathBuf, _>"))]

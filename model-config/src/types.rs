@@ -257,6 +257,10 @@ mod shape {
     pub struct Shape(Vec<Dim>);
 
     impl Shape {
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
+        }
+
         pub fn len(&self) -> usize {
             self.0.len()
         }
@@ -472,7 +476,7 @@ mod shape {
 
     impl From<&Shape> for Vec<Dim> {
         fn from(shape: &Shape) -> Self {
-            shape.0.iter().cloned().collect()
+            shape.0.to_vec()
         }
     }
 
@@ -515,7 +519,7 @@ mod shape {
                     output[index] = dim;
                     Some(output)
                 })
-                .ok_or_else(|| "shape cannot be fully determined")
+                .ok_or("shape cannot be fully determined")
         }
     }
 
@@ -530,7 +534,7 @@ mod shape {
                     output.push(dim.size()?);
                     Some(output)
                 })
-                .ok_or_else(|| "shape cannot be fully determined")
+                .ok_or("shape cannot be fully determined")
         }
     }
 

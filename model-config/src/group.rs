@@ -1,11 +1,7 @@
 use super::module::{GroupRef, Module, ModuleEx};
 use crate::{common::*, utils};
 
-pub use group::*;
 pub use group_name::*;
-pub use groups::*;
-pub use groups_unit::*;
-
 mod group_name {
     use super::*;
 
@@ -70,11 +66,12 @@ mod group_name {
     }
 }
 
+pub use groups::*;
 mod groups {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+    #[derivative(PartialEq, Eq, Hash)]
     #[serde(try_from = "GroupsUnchecked", into = "GroupsUnchecked")]
     pub struct Groups(
         #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<GroupName, Group, _>"))]
@@ -195,8 +192,8 @@ mod groups {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+    #[derivative(PartialEq, Eq, Hash)]
     pub struct GroupsUnchecked(
         #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<GroupName, Group, _>"))]
         IndexMap<GroupName, Group>,
@@ -218,11 +215,12 @@ mod groups {
     }
 }
 
+pub use groups_unit::*;
 mod groups_unit {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
+    #[derivative(PartialEq, Eq, Hash)]
     pub struct GroupsUnit {
         #[serde(default = "utils::empty_index_set::<PathBuf>")]
         #[derivative(Hash(hash_with = "utils::hash_vec_indexset::<PathBuf, _>"))]
@@ -245,11 +243,11 @@ mod groups_unit {
     }
 }
 
-mod group {
+pub use group_::*;
+mod group_ {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(try_from = "GroupUnchecked", into = "GroupUnchecked")]
     pub struct Group(pub(super) Vec<Module>);
 
@@ -259,8 +257,7 @@ mod group {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-    #[derivative(Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
     struct GroupUnchecked(Vec<Module>);
 
     impl TryFrom<GroupUnchecked> for Group {

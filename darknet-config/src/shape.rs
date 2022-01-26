@@ -1,10 +1,7 @@
 use crate::common::*;
 
-pub use input_shape::*;
-pub use output_shape::*;
-pub use shape::*;
-
-mod shape {
+pub use shape_::*;
+mod shape_ {
     use super::*;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -76,6 +73,7 @@ mod shape {
     }
 }
 
+pub use input_shape::*;
 mod input_shape {
     use super::*;
 
@@ -150,6 +148,7 @@ mod input_shape {
     }
 }
 
+pub use output_shape::*;
 mod output_shape {
     use super::*;
 

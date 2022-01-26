@@ -1,8 +1,7 @@
 use super::{Activation, Meta};
 use crate::{common::*, utils::FromLayers};
 
-#[derive(Debug, Clone, PartialEq, Eq, Derivative, Serialize, Deserialize)]
-#[derivative(Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Shortcut {
     pub from: FromLayers,
     pub activation: Activation,

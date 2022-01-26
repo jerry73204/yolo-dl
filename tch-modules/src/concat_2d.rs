@@ -25,3 +25,9 @@ impl Concat2D {
         Ok(output)
     }
 }
+
+impl Default for Concat2D {
+    fn default() -> Self {
+        Self::new()
+    }
+}

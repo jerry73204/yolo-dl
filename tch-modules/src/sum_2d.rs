@@ -31,3 +31,9 @@ impl Sum2D {
         Ok(output)
     }
 }
+
+impl Default for Sum2D {
+    fn default() -> Self {
+        Self::new()
+    }
+}
