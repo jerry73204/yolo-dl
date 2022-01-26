@@ -9,8 +9,8 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.53"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
-serde = { version = "1.0.134", features = ["derive"] }
-serde_json = "1.0.75"
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.78"
 indexmap = { version = "1.8.0", features = ["serde"] }
 derivative = "2.2.0"
 json5 = "0.4.1"

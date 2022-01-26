@@ -5,7 +5,7 @@ authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-serde = { version = "1.0.134", features = ["derive"] }
+serde = { version = "1.0.136", features = ["derive"] }
 serde_ini = "0.2.0"
 anyhow = "1.0.53"
 noisy_float = { version = "0.2.0", features = ["serde"] }
