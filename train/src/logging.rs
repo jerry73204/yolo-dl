@@ -16,6 +16,8 @@ pub use logging_message::*;
 pub use logging_worker::*;
 
 mod logging_worker {
+    use tfrecord::{ColorSpace, EventAsyncWriter, TchChannelOrder, TchTensorAsImageList};
+
     use super::*;
 
     /// The data logging worker.
@@ -23,7 +25,7 @@ mod logging_worker {
     pub struct LoggingWorker {
         config: ArcRef<config::Config>,
         debug_step: i64,
-        event_writer: EventWriter<BufWriter<File>>,
+        event_writer: EventAsyncWriter<BufWriter<File>>,
         rate_counter: RateCounter,
         rx: broadcast::Receiver<LoggingMessage>,
     }
@@ -47,9 +49,8 @@ mod logging_worker {
 
             tokio::fs::create_dir_all(&event_dir).await?;
 
-            let event_writer = EventWriterInit::default()
-                .from_prefix_async(event_path_prefix, None)
-                .await?;
+            let event_writer =
+                EventAsyncWriter::from_prefix(event_path_prefix, "", Default::default()).await?;
             let rate_counter = RateCounter::with_second_intertal();
 
             Ok(Self {
@@ -274,25 +275,25 @@ mod logging_worker {
 
             // log parameters
             self.event_writer
-                .write_scalar_async(format!("params/learning_rate",), step, lr.raw() as f32)
+                .write_scalar(format!("params/learning_rate",), step, lr.raw() as f32)
                 .await?;
 
             // log losses
             self.event_writer
-                .write_scalar_async(format!("loss/total_loss",), step, losses.total_loss.into())
+                .write_scalar(format!("loss/total_loss",), step, losses.total_loss.into())
                 .await?;
             self.event_writer
-                .write_scalar_async(format!("loss/iou_loss",), step, losses.iou_loss.into())
+                .write_scalar(format!("loss/iou_loss",), step, losses.iou_loss.into())
                 .await?;
             self.event_writer
-                .write_scalar_async(
+                .write_scalar(
                     format!("loss/classification_loss",),
                     step,
                     losses.classification_loss.into(),
                 )
                 .await?;
             self.event_writer
-                .write_scalar_async(
+                .write_scalar(
                     format!("loss/objectness_loss",),
                     step,
                     losses.objectness_loss.into(),
@@ -302,16 +303,16 @@ mod logging_worker {
             // log debug statistics
             if let Some((cy_mean, cx_mean, h_mean, w_mean)) = debug_stat {
                 self.event_writer
-                    .write_scalar_async(format!("stat/cy_mean",), step, cy_mean)
+                    .write_scalar(format!("stat/cy_mean",), step, cy_mean)
                     .await?;
                 self.event_writer
-                    .write_scalar_async(format!("stat/cx_mean",), step, cx_mean)
+                    .write_scalar(format!("stat/cx_mean",), step, cx_mean)
                     .await?;
                 self.event_writer
-                    .write_scalar_async(format!("stat/h_mean",), step, h_mean)
+                    .write_scalar(format!("stat/h_mean",), step, h_mean)
                     .await?;
                 self.event_writer
-                    .write_scalar_async(format!("stat/w_mean",), step, w_mean)
+                    .write_scalar(format!("stat/w_mean",), step, w_mean)
                     .await?;
             }
 
@@ -325,28 +326,28 @@ mod logging_worker {
                 } = benchmark;
 
                 self.event_writer
-                    .write_scalar_async(
+                    .write_scalar(
                         format!("benchmark/objectness_accuracy",),
                         step,
                         obj_accuracy as f32,
                     )
                     .await?;
                 self.event_writer
-                    .write_scalar_async(
+                    .write_scalar(
                         format!("benchmark/objectness_precision",),
                         step,
                         obj_precision as f32,
                     )
                     .await?;
                 self.event_writer
-                    .write_scalar_async(
+                    .write_scalar(
                         format!("benchmark/objectness_recall",),
                         step,
                         obj_recall as f32,
                     )
                     .await?;
                 self.event_writer
-                    .write_scalar_async(
+                    .write_scalar(
                         format!("benchmark/classification_accuracy",),
                         step,
                         class_accuracy as f32,
@@ -358,7 +359,7 @@ mod logging_worker {
             if let Some(weights) = weights {
                 for (name, weight) in weights {
                     self.event_writer
-                        .write_scalar_async(format!("weights/{}", name), step, weight as f32)
+                        .write_scalar(format!("weights/{}", name), step, weight as f32)
                         .await?;
                 }
             }
@@ -366,31 +367,52 @@ mod logging_worker {
             if let Some(gradients) = gradients {
                 for (name, grad) in gradients {
                     self.event_writer
-                        .write_scalar_async(format!("gradients/{}", name), step, grad as f32)
+                        .write_scalar(format!("gradients/{}", name), step, grad as f32)
                         .await?;
                 }
             }
 
             // write images
             if let Some(image) = training_bbox_image {
+                use ColorSpace as C;
+                use TchChannelOrder as O;
+
                 self.event_writer
-                    .write_image_list_async(format!("training_bboxes",), step, image)
+                    .write_image_list(
+                        "training_bboxes",
+                        step,
+                        TchTensorAsImageList::new(C::Rgb, O::CHW, image)?,
+                    )
                     .await?;
 
                 timing.add_event("write events");
             }
 
             if let Some(image) = inference_bbox_image {
+                use ColorSpace as C;
+                use TchChannelOrder as O;
+
                 self.event_writer
-                    .write_image_list_async(format!("inference_bboxes",), step, image)
+                    .write_image_list(
+                        "inference_bboxes",
+                        step,
+                        TchTensorAsImageList::new(C::Rgb, O::CHW, image)?,
+                    )
                     .await?;
 
                 timing.add_event("write events");
             }
 
             if let Some(objectness_image) = objectness_image {
+                use ColorSpace as C;
+                use TchChannelOrder as O;
+
                 self.event_writer
-                    .write_image_list_async(format!("objectness",), step, objectness_image)
+                    .write_image_list(
+                        "objectness",
+                        step,
+                        TchTensorAsImageList::new(C::Luma, O::CHW, objectness_image)?,
+                    )
                     .await?;
 
                 timing.add_event("write events");
@@ -417,8 +439,10 @@ mod logging_worker {
             } = msg;
 
             if enable_debug_stat && enable_images {
-                let color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
+                use ColorSpace as C;
+                use TchChannelOrder as O;
 
+                let color = Tensor::of_slice(&[1.0f32, 1.0, 0.0]);
                 let image_vec: Vec<_> = if let Some(bboxes) = bboxes {
                     ensure!(images.len() == bboxes.len());
                     izip!(images, bboxes)
@@ -458,11 +482,14 @@ mod logging_worker {
                         .map(|image| tch::no_grad(|| image.copy().to_device(Device::Cpu)))
                         .collect()
                 };
-
                 let images = Tensor::stack(&image_vec, 0);
 
                 self.event_writer
-                    .write_image_list_async(name, self.debug_step, images)
+                    .write_image_list(
+                        name,
+                        self.debug_step,
+                        TchTensorAsImageList::new(C::Rgb, O::CHW, images)?,
+                    )
                     .await?;
 
                 self.debug_step += 1;

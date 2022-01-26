@@ -67,7 +67,6 @@ pub use tch_goodies::{
     Ratio, RatioCyCxHW, RatioRectLabel, Rect as _, TLBRTensor, TensorExt, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
-pub use tfrecord::{EventWriter, EventWriterInit};
 pub use tokio::sync::{broadcast, mpsc};
 pub use tracing::{error, info, info_span, instrument, trace, trace_span, warn, Instrument};
 pub use tracing_subscriber::{prelude::*, EnvFilter};
