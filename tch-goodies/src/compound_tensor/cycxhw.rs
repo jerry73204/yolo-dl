@@ -81,7 +81,7 @@ impl CyCxHWTensor {
     pub fn giou_with(&self, other: &Self) -> Tensor {
         let inter_area = self.intersect_area_with(other);
         let outer_area = self.area().area() + other.area().area() - inter_area.area() + EPSILON;
-        let closure = self.closure_with(&other);
+        let closure = self.closure_with(other);
         let closure_area = closure.area();
         let iou = inter_area.area() / &outer_area;
         iou - (closure_area.area() - &outer_area) / (closure_area.area() + EPSILON)
@@ -111,8 +111,8 @@ impl CyCxHWTensor {
         let closure = TLBRTensor::from(self).closure_with(&TLBRTensor::from(other));
         let closure_size = closure.size();
 
-        let pred_angle = self.h().atan2(&self.w());
-        let target_angle = other.h().atan2(&other.w());
+        let pred_angle = self.h().atan2(self.w());
+        let target_angle = other.h().atan2(other.w());
 
         let diagonal_square =
             closure_size.h().pow(&2i64.into()) + closure_size.w().pow(&2i64.into()) + EPSILON;

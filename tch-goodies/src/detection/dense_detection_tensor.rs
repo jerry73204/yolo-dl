@@ -577,6 +577,7 @@ impl TryFrom<DenseDetectionTensorUnchecked> for DenseDetectionTensor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cv_convert::{IntoCv as _, TryIntoCv as _};
 
     #[test]
     fn cat_test() -> Result<()> {
