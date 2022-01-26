@@ -143,17 +143,10 @@ impl ApCalculator {
                 let points_iter =
                     (0..n_points).map(|index| r64(index as f64 / (n_points - 1) as f64));
 
-                let interpolated: Vec<_> =
-                    utils::interpolate_stepwise_values(points_iter, &enveloped)
-                        .into_iter()
-                        .map(|(recall, precision)| PrecRec { recall, precision })
-                        .collect();
-                let ap = interpolated
+                let interpolated = utils::interpolate_stepwise_values(points_iter, &enveloped)
                     .into_iter()
-                    .map(|prec_rec| prec_rec.precision)
-                    .sum::<R64>()
-                    / r64(n_points as f64);
-                ap
+                    .map(|(recall, precision)| PrecRec { recall, precision });
+                interpolated.map(|prec_rec| prec_rec.precision).sum::<R64>() / r64(n_points as f64)
             }
             IntegralMethod::Continuous => {
                 todo!();
@@ -193,8 +186,7 @@ impl ApCalculator {
                     (det, is_tp)
                 });
                 let remaining = dets.map(|det| (det, false));
-                let iter = first.chain(remaining);
-                iter
+                first.chain(remaining)
             })
             .collect();
 
@@ -223,8 +215,7 @@ impl ApCalculator {
             .collect();
 
         // compute ap
-        let ap = self.compute_by_prec_rec(&prec_rec);
-        ap
+        self.compute_by_prec_rec(&prec_rec)
     }
 }
 
@@ -279,8 +270,7 @@ impl MeanApCalculator {
                 ap
             })
             .sum();
-        let mean_ap = sum_ap / self.iou_thresholds.len() as f64;
-        mean_ap
+        sum_ap / self.iou_thresholds.len() as f64
     }
 }
 
@@ -390,65 +380,66 @@ mod tests {
             match &self.ground_truth {
                 None => r64(0.0),
                 Some(gt) => {
-                    let xa = std::cmp::max(self.detection.x1, gt.x1);
-                    let ya = std::cmp::max(self.detection.y1, gt.y1);
-                    let xb = std::cmp::min(self.detection.x2, gt.x2);
-                    let yb = std::cmp::min(self.detection.y2, gt.y2);
-                    let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
-                        * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+                    let xa = cmp::max(self.detection.x1, gt.x1);
+                    let ya = cmp::max(self.detection.y1, gt.y1);
+                    let xb = cmp::min(self.detection.x2, gt.x2);
+                    let yb = cmp::min(self.detection.y2, gt.y2);
+                    let inter_area = cmp::max(r64(0.0), xb - xa + r64(1.0))
+                        * cmp::max(r64(0.0), yb - ya + r64(1.0));
                     let box_a_area = (self.detection.x2 - self.detection.x1 + r64(1.0))
                         * (self.detection.y2 - self.detection.y1 + r64(1.0));
                     let box_b_area = (gt.x2 - gt.x1 + r64(1.0)) * (gt.y2 - gt.y1 + r64(1.0));
-                    let iou = inter_area / (box_a_area + box_b_area - inter_area);
-                    iou
+                    inter_area / (box_a_area + box_b_area - inter_area)
                 }
             }
         }
     }
 
     impl TestDetection {
-        fn new_f64(
-            d_id: i32,
-            d_x1: f64,
-            d_y1: f64,
-            d_x2: f64,
-            d_y2: f64,
-            d_conf: f64,
-            d_cls_conf: f64,
-            d_cls_id: i32,
-            g_id: i32,
-            g_cls_id: i32,
-            g_x1: f64,
-            g_y1: f64,
-            g_x2: f64,
-            g_y2: f64,
-        ) -> TestDetection {
-            TestDetection {
-                detection: MDetection::new_f64(
-                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
-                ),
-                ground_truth: Some(MDetection::new_f64(
-                    g_id, g_x1, g_y1, g_x2, g_y2, 1.0000, 1.0000, g_cls_id,
-                )),
-            }
-        }
-        fn new_no_gt_f64(
-            d_id: i32,
-            d_x1: f64,
-            d_y1: f64,
-            d_x2: f64,
-            d_y2: f64,
-            d_conf: f64,
-            d_cls_conf: f64,
-            d_cls_id: i32,
-        ) -> TestDetection {
-            TestDetection {
-                detection: MDetection::new_f64(
-                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
-                ),
-                ground_truth: None,
-            }
-        }
+        // fn new_f64(
+        //     d_id: i32,
+        //     d_x1: f64,
+        //     d_y1: f64,
+        //     d_x2: f64,
+        //     d_y2: f64,
+        //     d_conf: f64,
+        //     d_cls_conf: f64,
+        //     d_cls_id: i32,
+        //     g_id: i32,
+        //     g_cls_id: i32,
+        //     g_x1: f64,
+        //     g_y1: f64,
+        //     g_x2: f64,
+        //     g_y2: f64,
+        // ) -> TestDetection {
+        //     TestDetection {
+        //         detection: MDetection::new_f64(
+        //             d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
+        //         ),
+        //         ground_truth: Some(MDetection::new_f64(
+        //             g_id, g_x1, g_y1, g_x2, g_y2, 1.0000, 1.0000, g_cls_id,
+        //         )),
+        //     }
+        // }
+
+        // fn new_no_gt_f64(
+        //     d_id: i32,
+        //     d_x1: f64,
+        //     d_y1: f64,
+        //     d_x2: f64,
+        //     d_y2: f64,
+        //     d_conf: f64,
+        //     d_cls_conf: f64,
+        //     d_cls_id: i32,
+        // ) -> TestDetection {
+        //     TestDetection {
+        //         detection: MDetection::new_f64(
+        //             d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
+        //         ),
+        //         ground_truth: None,
+        //     }
+        // }
+
         fn new(
             d_id: i32,
             d_x1: R64,
@@ -500,16 +491,15 @@ mod tests {
         }
     }
     fn cal_iou_xxyys(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
-        let xa = std::cmp::max(bbox_a.0, bbox_b.0);
-        let ya = std::cmp::max(bbox_a.1, bbox_b.1);
-        let xb = std::cmp::min(bbox_a.2, bbox_b.2);
-        let yb = std::cmp::min(bbox_a.3, bbox_b.3);
-        let inter_area = std::cmp::max(r64(0.0), xb - xa + r64(1.0))
-            * std::cmp::max(r64(0.0), yb - ya + r64(1.0));
+        let xa = cmp::max(bbox_a.0, bbox_b.0);
+        let ya = cmp::max(bbox_a.1, bbox_b.1);
+        let xb = cmp::min(bbox_a.2, bbox_b.2);
+        let yb = cmp::min(bbox_a.3, bbox_b.3);
+        let inter_area =
+            cmp::max(r64(0.0), xb - xa + r64(1.0)) * cmp::max(r64(0.0), yb - ya + r64(1.0));
         let box_a_area = (bbox_a.2 - bbox_a.0 + r64(1.0)) * (bbox_a.3 - bbox_a.1 + r64(1.0));
         let box_b_area = (bbox_b.2 - bbox_b.0 + r64(1.0)) * (bbox_b.3 - bbox_b.1 + r64(1.0));
-        let iou = inter_area / (box_a_area + box_b_area - inter_area);
-        iou
+        inter_area / (box_a_area + box_b_area - inter_area)
     }
 
     fn match_d_g(dets: &[MDetection], gts: &[MDetection]) -> Vec<TestDetection> {
@@ -690,10 +680,10 @@ mod tests {
             .collect();
         let gt_vec = gt_vec?;
         let m_gt_vec = vecg_to_mdetection(gt_vec);
-        let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
+        // let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
         let t_vec: Vec<TestDetection>;
         t_vec = match_d_g(&m_d_vec, &m_gt_vec);
-        let class_split_vec = split_detection_class(&t_vec);
+        // let class_split_vec = split_detection_class(&t_vec);
 
         let ap_cal = ApCalculator::new_coco();
         let ret = ap_cal.compute_by_detections(t_vec, 4, R64::new(0.5));

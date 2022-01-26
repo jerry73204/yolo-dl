@@ -1,9 +1,10 @@
 //! The random affine transformation algorithm.
 
 use crate::common::*;
+use tch_goodies::{Ratio, RatioCyCxHW, RatioRectLabel, Rect as _, TLBR};
 
 /// Random affine transformation processor initializer.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct RandomAffineInit {
     /// The probability to apply rotation.
     pub rotate_prob: Option<Ratio>,
@@ -110,25 +111,6 @@ impl RandomAffineInit {
     }
 }
 
-impl Default for RandomAffineInit {
-    fn default() -> Self {
-        Self {
-            rotate_prob: None,
-            rotate_radians: None,
-            translation_prob: None,
-            translation: None,
-            scale_prob: None,
-            scale: None,
-            // shear_prob: None,
-            // shear: None,
-            horizontal_flip_prob: None,
-            vertical_flip_prob: None,
-            min_bbox_size: None,
-            min_bbox_cropping_ratio: None,
-        }
-    }
-}
-
 /// Random affine transformation processor.
 #[derive(Debug, Clone)]
 pub struct RandomAffine {
@@ -169,7 +151,7 @@ impl RandomAffine {
                     Some(prob) => {
                         if rng.gen_bool(prob) {
                             let flip = Tensor::of_slice(
-                                &[
+                                [
                                     [-1f32, 0.0, 0.0], // row 1
                                     [0.0, 1.0, 0.0],   // row 2
                                     [0.0, 0.0, 1.0],   // row 3
@@ -190,7 +172,7 @@ impl RandomAffine {
                     Some(prob) => {
                         if rng.gen_bool(prob) {
                             let flip = Tensor::of_slice(
-                                &[
+                                [
                                     [1f32, 0.0, 0.0], // row 1
                                     [0.0, -1.0, 0.0], // row 2
                                     [0.0, 0.0, 1.0],  // row 3
@@ -211,7 +193,7 @@ impl RandomAffine {
                         if rng.gen_bool(prob) {
                             let ratio = rng.gen_range(lower..upper) as f32;
                             let scaling = Tensor::of_slice(
-                                &[
+                                [
                                     [ratio, 0.0, 0.0], // row 1
                                     [0.0, ratio, 0.0], // row 2
                                     [0.0, 0.0, 1.0],   // row 3
@@ -255,7 +237,7 @@ impl RandomAffine {
                             let cos = angle.cos() as f32;
                             let sin = angle.sin() as f32;
                             let rotation = Tensor::of_slice(
-                                &[
+                                [
                                     [cos, -sin, 0.0], // row 1
                                     [sin, cos, 0.0],  // row 2
                                     [0.0, 0.0, 1.0],  // row 3
@@ -281,7 +263,7 @@ impl RandomAffine {
                                 (rng.gen_range((-max_translation)..max_translation) * 2.0) as f32;
 
                             let translation = Tensor::of_slice(
-                                &[
+                                [
                                     [1.0, 0.0, horizontal_translation], // row 1
                                     [0.0, 1.0, vertical_translation],   // row 2
                                     [0.0, 0.0, 1.0],                    // row 3
@@ -338,7 +320,7 @@ impl RandomAffine {
                         let orig_r = tlbr.r();
 
                         let orig_corners = Tensor::of_slice(
-                            &[
+                            [
                                 [orig_l, orig_t, 1.0],
                                 [orig_l, orig_b, 1.0],
                                 [orig_r, orig_t, 1.0],
@@ -357,7 +339,7 @@ impl RandomAffine {
                 // transform corner points, it runs on CPU
                 let new_corners = {
                     let coord_change = Tensor::of_slice(
-                        &[
+                        [
                             [2f32, 0.0, -1.0], // row 1
                             [0.0, 2.0, -1.0],  // row 2
                             [0.0, 0.0, 1.0],   // row 3

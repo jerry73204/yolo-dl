@@ -2,31 +2,9 @@
 
 use crate::common::*;
 
-lazy_static! {
-    static ref PROFILING_CONFIG: ProfilingConfig = {
-        let config: ProfilingConfig = match envy::prefixed("YOLODL_").from_env() {
-            Ok(config) => config,
-            Err(err) => {
-                eprintln!("failed to load profiling environment variables, fallback to default values: {:?}", err);
-                Default::default()
-            }
-        };
-        config
-    };
-    static ref REGISTERED_TIMINGS: DashSet<&'static str> = DashSet::new();
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProfilingConfig {
     pub profiling_whitelist: Option<HashSet<String>>,
-}
-
-impl Default for ProfilingConfig {
-    fn default() -> Self {
-        Self {
-            profiling_whitelist: None,
-        }
-    }
 }
 
 /// A profiler that measures elapsed time between events.
@@ -42,13 +20,18 @@ pub struct Timing {
 /// A profiler that measures elapsed time between events.
 #[cfg(not(feature = "profiling"))]
 #[derive(Debug, Clone)]
-pub struct Timing;
+pub struct Timing {
+    _private: [u8; 0],
+}
 
 impl Timing {
     /// Create a new timing profiler.
     pub fn new(name: &'static str) -> Self {
         #[cfg(feature = "profiling")]
         {
+            use once_cell::sync::Lazy;
+            static REGISTERED_TIMINGS: Lazy<DashSet<&'static str>> = Lazy::new(|| DashSet::new());
+
             if REGISTERED_TIMINGS.insert(name) {
                 info!("registered timing profile '{}'", name);
             }
@@ -64,7 +47,7 @@ impl Timing {
         #[cfg(not(feature = "profiling"))]
         {
             let _ = name;
-            Self
+            Self { _private: [] }
         }
     }
 
@@ -97,12 +80,12 @@ impl Timing {
         {
             let _ = timings;
             let _ = name;
-            Ok(Self)
+            Ok(Self { _private: [] })
         }
     }
 
     /// Add an event. It measures the elapsed time since the last event.
-    pub fn add_event<'a>(&mut self, name: &'static str) {
+    pub fn add_event(&mut self, name: &'static str) {
         #[cfg(feature = "profiling")]
         {
             self.elapsed.push((name, self.instant.elapsed()));
@@ -117,6 +100,18 @@ impl Timing {
     pub fn report(&self) {
         #[cfg(feature = "profiling")]
         {
+            use once_cell::sync::Lazy;
+            static PROFILING_CONFIG: Lazy<ProfilingConfig> = Lazy::new(|| {
+                let config: ProfilingConfig = match envy::prefixed("YOLODL_").from_env() {
+                    Ok(config) => config,
+                    Err(err) => {
+                        eprintln!("failed to load profiling environment variables, fallback to default values: {:?}", err);
+                        Default::default()
+                    }
+                };
+                config
+            });
+
             let can_report = PROFILING_CONFIG
                 .profiling_whitelist
                 .as_ref()

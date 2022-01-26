@@ -1,6 +1,6 @@
 use super::nms::{NmsOutput, NonMaxSuppression, NonMaxSuppressionInit};
 use crate::common::*;
-use tch_goodies::detection::MergedDenseDetection;
+use tch_goodies::{detection::MergedDenseDetection, TLBRTensor};
 
 #[derive(Debug)]
 pub struct YoloInferenceInit {

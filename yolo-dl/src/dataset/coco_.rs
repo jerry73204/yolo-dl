@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::*;
+use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
 
 /// The Microsoft COCO dataset.
 #[derive(Debug, Clone)]
@@ -116,7 +117,7 @@ impl CocoDataset {
                             None => return Ok(None),
                         };
                         if let Some(whitelist) = &class_whitelist {
-                            if let None = whitelist.get(category_name) {
+                            if whitelist.get(category_name).is_none() {
                                 return Ok(None);
                             }
                         }

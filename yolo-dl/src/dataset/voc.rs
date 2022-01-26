@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::*;
+use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
 
 /// The Pascal VOC dataset.
 #[derive(Debug, Clone)]

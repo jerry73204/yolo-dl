@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::*;
+use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelTLBR, Ratio, Rect as _};
 
 /// The dataset that filters out bad boxes.
 #[derive(Debug)]

@@ -1,6 +1,10 @@
 //! The file caching implementation.
 
 use crate::{common::*, profiling::Timing};
+use percent_encoding::NON_ALPHANUMERIC;
+use tch_goodies::{
+    PixelRectLabel, PixelRectTransform, PixelSize, PixelTLBR, RatioRectLabel, TensorExt,
+};
 
 /// Image caching processor.
 #[derive(Debug, Clone)]

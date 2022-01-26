@@ -1,6 +1,8 @@
 //! The Mosaic mixing algorithm.
 
 use crate::common::*;
+use tch_goodies::{RatioCyCxHW, RatioRectLabel, Rect as _, TensorExt};
+use tracing::instrument;
 
 /// Mosaic processor initializer.
 #[derive(Debug, Clone)]
@@ -252,7 +254,7 @@ impl ParallelMosaicProcessor {
         }
 
         // crop images
-        let max_workers = max_workers.unwrap_or_else(|| num_cpus::get());
+        let max_workers = max_workers.unwrap_or_else(num_cpus::get);
 
         let mut crop_iter = stream::iter(pairs.into_iter().zip_eq(ranges.into_iter())).par_map(
             max_workers,

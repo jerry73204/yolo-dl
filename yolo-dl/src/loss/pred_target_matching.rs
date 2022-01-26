@@ -1,7 +1,10 @@
 use super::misc::MatchGrid;
 use crate::common::*;
-use tch_goodies::detection::{
-    DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergedDenseDetection,
+use tch_goodies::{
+    detection::{
+        DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergedDenseDetection,
+    },
+    GridCyCxHW, LabelTensor, ObjectDetectionTensor, RatioRectLabel, Rect as _,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

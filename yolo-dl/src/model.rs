@@ -1,6 +1,7 @@
 use crate::common::*;
 use model_config as config;
 use model_graph as graph;
+use tch_goodies::RatioSize;
 use tch_modules as modules;
 
 /// The model running on libtorch.
@@ -272,8 +273,7 @@ impl YoloModel {
                             .iter()
                             .map(|size| -> Result<_> {
                                 let config::Size { h, w } = *size;
-                                let size =
-                                    RatioSize::from_hw(h.try_into()?, w.try_into()?).unwrap();
+                                let size = RatioSize::from_hw(h, w).unwrap();
                                 Ok(size)
                             })
                             .try_collect()?;

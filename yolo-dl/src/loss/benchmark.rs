@@ -2,7 +2,7 @@ use crate::{
     common::*,
     loss::{inference::YoloInferenceOutput, MatchingOutput},
 };
-use tch_goodies::detection::MergedDenseDetection;
+use tch_goodies::{detection::MergedDenseDetection, TensorExt};
 
 #[derive(Debug, Clone)]
 pub struct YoloBenchmarkInit {

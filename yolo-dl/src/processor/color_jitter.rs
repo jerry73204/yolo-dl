@@ -1,6 +1,7 @@
 //! The random color distortion algorithm.
 
 use crate::common::*;
+use tch_goodies::TensorExt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ColorJitterInit {

@@ -1,6 +1,7 @@
 use super::*;
 use crate::common::*;
 use iii_formosa_dataset as iii;
+use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
 
 const III_DEPTH: usize = 3;
 

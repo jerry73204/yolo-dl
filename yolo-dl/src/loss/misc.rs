@@ -1,4 +1,6 @@
 use crate::common::*;
+use getset::Getters;
+use tch_goodies::{CyCxHWTensor, CyCxHWTensorUnchecked};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MatchGrid {

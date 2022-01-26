@@ -1,5 +1,8 @@
 use crate::common::*;
-use tch_goodies::detection::{MergedDenseDetection, MergedDenseDetectionUnchecked};
+use tch_goodies::{
+    detection::{MergedDenseDetection, MergedDenseDetectionUnchecked},
+    TLBRTensor, TLBRTensorUnchecked,
+};
 
 // it prevents OOM on CUDA.
 const MAX_DETS: usize = 65536;
@@ -136,14 +139,13 @@ impl NonMaxSuppression {
                         let ltrb_chunk = ltrb.i((start..end, ..));
                         let conf_chunk = conf.i((start..end, ..));
                         let group_chunk = group.i(start..end);
-                        let keep_chunk = tch_nms::nms_by_scores(
+                        tch_nms::nms_by_scores(
                             &ltrb_chunk,
                             &conf_chunk.view([-1]),
                             &group_chunk,
                             iou_threshold.raw(),
                         )
-                        .unwrap();
-                        keep_chunk
+                        .unwrap()
                     })
                     .collect();
                 Tensor::cat(&keep_vec, 0)

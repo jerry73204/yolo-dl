@@ -11,7 +11,7 @@ pub async fn load_classes_file(path: impl AsRef<Path>) -> Result<IndexSet<String
         path.display()
     );
     ensure!(
-        classes.len() > 0,
+        !classes.is_empty(),
         "no classes found in '{}'",
         path.display()
     );

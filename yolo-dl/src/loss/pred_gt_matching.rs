@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::*;
+use tch_goodies::{Rect as _, UnitlessTLBR};
 
 /// Trait for predicted bounding boxes
 pub trait PredBox {
@@ -12,7 +13,7 @@ pub trait PredBox {
     fn to_mdetection(&self) -> MDetection {
         MDetection {
             id: self.id(),
-            tlbr: self.tlbr().clone(),
+            tlbr: self.tlbr(),
             conf: self.confidence(),
             cls_conf: self.cls_conf(),
             cls_id: self.cls_id(),
@@ -95,7 +96,7 @@ impl average_precision::DetectionForAp<MDetection, MDetection> for DetBoxStruct 
         self.ground_truth
             .as_ref()
             .map(|ground_truth| ground_truth.tlbr().iou_with(&self.detection.tlbr()))
-            .unwrap_or(r64(0.0))
+            .unwrap_or_else(|| r64(0.0))
     }
 }
 
