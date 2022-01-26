@@ -1,9 +1,7 @@
 use crate::common::*;
 
 pub use into_index_list::*;
-pub use into_tensor::*;
 pub use tensor_ext::*;
-pub use try_into_tensor::*;
 
 mod tensor_ext {
     use crate::Activation;
@@ -1069,77 +1067,6 @@ mod tensor_ext {
 
         fn leaky_relu_ext(&self, negative_slope: impl Into<Option<f64>>) -> Tensor {
             self.maximum(&(self * negative_slope.into().unwrap_or(0.01)))
-        }
-    }
-}
-
-mod into_tensor {
-    use super::*;
-
-    pub trait IntoTensor {
-        fn into_tensor(self) -> Tensor;
-    }
-
-    impl<P, Container> IntoTensor for &ImageBuffer<P, Container>
-    where
-        P: Pixel + 'static,
-        P::Subpixel: 'static + Element,
-        Container: Deref<Target = [P::Subpixel]>,
-    {
-        fn into_tensor(self) -> Tensor {
-            let (width, height) = self.dimensions();
-            let height = height as usize;
-            let width = width as usize;
-            let channels = P::CHANNEL_COUNT as usize;
-
-            let buffer = unsafe {
-                let buf_len = channels * height * width;
-                let mut buffer: Vec<P::Subpixel> = Vec::with_capacity(buf_len);
-                let ptr = buffer.as_mut_ptr();
-                self.enumerate_pixels().for_each(|(x, y, pixel)| {
-                    let x = x as usize;
-                    let y = y as usize;
-                    pixel
-                        .channels()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .for_each(|(c, component)| {
-                            *ptr.add(x + width * (y + height * c)) = component;
-                        });
-                });
-                buffer.set_len(buf_len);
-                buffer
-            };
-
-            Tensor::of_slice(&buffer).view([channels as i64, height as i64, width as i64])
-        }
-    }
-}
-
-mod try_into_tensor {
-    use super::*;
-
-    pub trait TryIntoTensor {
-        type Error;
-
-        fn try_into_tensor(self) -> Result<Tensor, Self::Error>;
-    }
-
-    impl TryIntoTensor for &DynamicImage {
-        type Error = Error;
-
-        fn try_into_tensor(self) -> Result<Tensor, Self::Error> {
-            let tensor = match self {
-                DynamicImage::ImageLuma8(image) => image.into_tensor(),
-                DynamicImage::ImageLumaA8(image) => image.into_tensor(),
-                DynamicImage::ImageRgb8(image) => image.into_tensor(),
-                DynamicImage::ImageRgba8(image) => image.into_tensor(),
-                DynamicImage::ImageBgr8(image) => image.into_tensor(),
-                DynamicImage::ImageBgra8(image) => image.into_tensor(),
-                _ => bail!("cannot convert an image with u16 components to a tensor"),
-            };
-            Ok(tensor)
         }
     }
 }
