@@ -38,7 +38,7 @@ model-config = { version = "0.1", path = "../model-config" }
 derivative = "2.2.0"
 cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"] }
 ptree = { version = "0.4.0", optional = true }
-tch-nms = { version = "0.1.0", path = "../tch-nms" }
+tch-nms = { git = "https://github.com/jerry73204/tch-nms.git", revision = "9d56c4745d198078a3381a2fdd2a3d4d50e77e19" }
 iii-formosa-dataset = "0.2.0"
 voc-dataset = "0.3.0"
 owning_ref = "0.4.1"
