@@ -9,7 +9,6 @@ members = [
     "model-config",
     "model-graph",
     "yolo-dl-doc",
-    "tch-nms",
     "tch-modules",
 ]
 
