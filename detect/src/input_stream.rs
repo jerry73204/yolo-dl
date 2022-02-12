@@ -2,6 +2,13 @@ use crate::{
     common::*,
     config::{Config, DatasetKind, InputConfig, PreprocessConfig},
 };
+use tch::Tensor;
+use tch_goodies::RatioRectLabel;
+use tch_tensor_like::TensorLike;
+use yolo_dl::dataset::{
+    CocoDataset, CsvDataset, DataRecord, IiiDataset, OnDemandDataset, RandomAccessStream,
+    SanitizedDataset, StreamingDataset, VocDataset,
+};
 
 #[derive(Debug, TensorLike)]
 pub struct InputRecord {

@@ -34,7 +34,7 @@ ndarray = "0.14.0"
 itertools = "0.10.0"
 glob = "0.3.0"
 approx = "0.3.2"
-cv-convert = { version = "0.9.1", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.9.1", features = ["tch_0-6", "ndarray_0-15"] }
 
 [features]
 default = ["enable-cuda", "enable-cudnn"]

@@ -15,15 +15,15 @@ tch-tensor-like = { version = "0.5.0", features = ["derive"] }
 anyhow = "1.0.53"
 approx = "0.5.1"
 unzip-n = "0.1.2"
-serde_json = "1.0.78"
+serde_json = "1.0.79"
 async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
 json5 = "0.4.1"
-par-stream = { version = "0.10.0", features = ["runtime-tokio"] }
-futures = "0.3.19"
+par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
+futures = "0.3.21"
 rand = "0.8.4"
 percent-encoding = "2.1.0"
-image = "0.23.14"
-tokio = { version = "1.15.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
+image = "0.24.0"
+tokio = { version = "1.16.1", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
 tfrecord = { version = "0.13.0", features = ["full"] }
 ndarray = "0.15.4"
 tch-serde = "0.7.0"
@@ -36,15 +36,18 @@ num_cpus = "1.13.1"
 serde-xml-rs = "0.5.1"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 yolo-dl = { version = "0.1", path = "../yolo-dl", features = ["opencv"] }
-tracing = "0.1.29"
+tracing = "0.1.30"
 structopt = "0.3.26"
 model-graph = { version = "0.1", path = "../model-graph" }
 darknet-config = { version = "0.1", path = "../darknet-config" }
 csv = "1.1.6"
 imagesize = "0.9.0"
 owning_ref = "0.4.1"
-semver ={ version = "1.0.4", features = ["serde"] }
+semver ={ version = "1.0.5", features = ["serde"] }
 once_cell = "1.9.0"
 async-channel = "1.6.1"
-cv-convert = { version = "0.15.0", default-features = false, features = ["opencv-clang-runtime", "tch"] }
-opencv = "0.62.0"
+cv-convert = { version = "0.17.2", features = ["tch_0-6", "opencv_0-63" ] }
+opencv = { version = "0.63.0", default-features = false, features = ["imgcodecs", "imgproc"] }
+
+[features]
+opencv-clang-runtime = ["opencv/clang-runtime"]

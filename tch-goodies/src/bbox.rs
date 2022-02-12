@@ -1017,16 +1017,16 @@ mod rect_label {
 #[cfg(feature = "opencv")]
 mod opencv_convert {
     use super::*;
-    use opencv::core;
+    use opencv::core as core_cv;
 
-    impl<T> TryFrom<&core::Rect_<T>> for PixelTLBR<T>
+    impl<T> TryFrom<&core_cv::Rect_<T>> for PixelTLBR<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy + PartialOrd,
     {
         type Error = Error;
 
-        fn try_from(from: &core::Rect_<T>) -> Result<Self, Self::Error> {
-            let core::Rect_ {
+        fn try_from(from: &core_cv::Rect_<T>) -> Result<Self, Self::Error> {
+            let core_cv::Rect_ {
                 x: l,
                 y: t,
                 width: w,
@@ -1036,25 +1036,25 @@ mod opencv_convert {
         }
     }
 
-    impl<T> TryFrom<core::Rect_<T>> for PixelTLBR<T>
+    impl<T> TryFrom<core_cv::Rect_<T>> for PixelTLBR<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy + PartialOrd,
     {
         type Error = Error;
 
-        fn try_from(from: core::Rect_<T>) -> Result<Self, Self::Error> {
+        fn try_from(from: core_cv::Rect_<T>) -> Result<Self, Self::Error> {
             (&from).try_into()
         }
     }
 
-    impl<T> TryFrom<&core::Rect_<T>> for PixelCyCxHW<T>
+    impl<T> TryFrom<&core_cv::Rect_<T>> for PixelCyCxHW<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy + PartialOrd,
     {
         type Error = Error;
 
-        fn try_from(from: &core::Rect_<T>) -> Result<Self, Self::Error> {
-            let core::Rect_ {
+        fn try_from(from: &core_cv::Rect_<T>) -> Result<Self, Self::Error> {
+            let core_cv::Rect_ {
                 x: l,
                 y: t,
                 width: w,
@@ -1064,20 +1064,20 @@ mod opencv_convert {
         }
     }
 
-    impl<T> TryFrom<core::Rect_<T>> for PixelCyCxHW<T>
+    impl<T> TryFrom<core_cv::Rect_<T>> for PixelCyCxHW<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy + PartialOrd,
     {
         type Error = Error;
 
-        fn try_from(from: core::Rect_<T>) -> Result<Self, Self::Error> {
+        fn try_from(from: core_cv::Rect_<T>) -> Result<Self, Self::Error> {
             (&from).try_into()
         }
     }
 
-    impl<T> From<&PixelTLBR<T>> for core::Rect_<T>
+    impl<T> From<&PixelTLBR<T>> for core_cv::Rect_<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy,
     {
         fn from(from: &PixelTLBR<T>) -> Self {
             Self {
@@ -1089,18 +1089,18 @@ mod opencv_convert {
         }
     }
 
-    impl<T> From<PixelTLBR<T>> for core::Rect_<T>
+    impl<T> From<PixelTLBR<T>> for core_cv::Rect_<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy,
     {
         fn from(from: PixelTLBR<T>) -> Self {
             (&from).into()
         }
     }
 
-    impl<T> From<&PixelCyCxHW<T>> for core::Rect_<T>
+    impl<T> From<&PixelCyCxHW<T>> for core_cv::Rect_<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy,
     {
         fn from(from: &PixelCyCxHW<T>) -> Self {
             Self {
@@ -1112,9 +1112,9 @@ mod opencv_convert {
         }
     }
 
-    impl<T> From<PixelCyCxHW<T>> for core::Rect_<T>
+    impl<T> From<PixelCyCxHW<T>> for core_cv::Rect_<T>
     where
-        T: Num + core::ValidRectType,
+        T: Num + Copy,
     {
         fn from(from: PixelCyCxHW<T>) -> Self {
             (&from).into()

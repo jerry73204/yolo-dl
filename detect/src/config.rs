@@ -1,9 +1,7 @@
 use crate::common::*;
-
-pub use input::*;
-pub use model::*;
-pub use output::*;
-pub use preprocess::*;
+use std::path::PathBuf;
+use tch::Device;
+use tch_goodies::Ratio;
 
 /// The version of configuration format.
 ///
@@ -31,6 +29,33 @@ impl Config {
     }
 }
 
+fn empty_hashset<T>() -> HashSet<T> {
+    HashSet::new()
+}
+
+pub fn deserialize_version<'de, D>(deserializer: D) -> Result<Version, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let text = String::deserialize(deserializer)?;
+    let version = Version::parse(&text).map_err(|err| {
+        D::Error::custom(format!(
+            "failed to parse version number '{}': {:?}",
+            text, err
+        ))
+    })?;
+
+    if !CONFIG_VERSION.matches(&version) {
+        return Err(D::Error::custom(format!(
+            "incompatible version: get '{}', but it is incompatible with requirement '{}'",
+            version, &*CONFIG_VERSION,
+        )));
+    }
+
+    Ok(version)
+}
+
+pub use model::*;
 mod model {
     use super::*;
 
@@ -46,6 +71,7 @@ mod model {
     }
 }
 
+pub use input::*;
 mod input {
     use super::*;
 
@@ -94,6 +120,7 @@ mod input {
     }
 }
 
+pub use preprocess::*;
 mod preprocess {
     use super::*;
 
@@ -114,6 +141,7 @@ mod preprocess {
     }
 }
 
+pub use output::*;
 mod output {
     use super::*;
 
@@ -124,32 +152,6 @@ mod output {
         pub nms_iou_thresh: R64,
         pub nms_conf_thresh: R64,
     }
-}
-
-fn empty_hashset<T>() -> HashSet<T> {
-    HashSet::new()
-}
-
-pub fn deserialize_version<'de, D>(deserializer: D) -> Result<Version, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let text = String::deserialize(deserializer)?;
-    let version = Version::parse(&text).map_err(|err| {
-        D::Error::custom(format!(
-            "failed to parse version number '{}': {:?}",
-            text, err
-        ))
-    })?;
-
-    if !CONFIG_VERSION.matches(&version) {
-        return Err(D::Error::custom(format!(
-            "incompatible version: get '{}', but it is incompatible with requirement '{}'",
-            version, &*CONFIG_VERSION,
-        )));
-    }
-
-    Ok(version)
 }
 
 mod serde_vec_device {

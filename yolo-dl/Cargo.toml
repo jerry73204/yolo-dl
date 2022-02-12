@@ -15,14 +15,14 @@ tch-tensor-like = { version = "0.5.0", features = ["derive"] }
 anyhow = "1.0.53"
 approx = "0.5.1"
 unzip-n = "0.1.2"
-serde_json = "1.0.78"
+serde_json = "1.0.79"
 async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", rev = "bfb5425f5ba238dac756a8d79e29e7a76c8120c5", features = ["async"] }
-par-stream = { version = "0.10.0", features = ["runtime-tokio"] }
-futures = "0.3.19"
+par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
+futures = "0.3.21"
 rand = "0.8.4"
 percent-encoding = "2.1.0"
-tokio = { version = "1.15.0", features = ["sync", "fs"] }
+tokio = { version = "1.16.1", features = ["sync", "fs"] }
 tfrecord = { version = "0.13.0", features = ["full"] }
 ndarray = "0.15.4"
 log = "0.4.14"
@@ -31,12 +31,12 @@ indexmap = "1.8.0"
 num_cpus = "1.13.1"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 lazy_static = "1.4.0"
-dashmap = "5.0.0"
+dashmap = "5.1.0"
 slice-of-array = "0.3.1"
 getset = "0.1.2"
 model-config = { version = "0.1", path = "../model-config" }
 derivative = "2.2.0"
-cv-convert = { version = "0.15.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"] }
 ptree = { version = "0.4.0", optional = true }
 tch-nms = { version = "0.1.0", path = "../tch-nms" }
 iii-formosa-dataset = "0.2.0"
@@ -46,7 +46,7 @@ imagesize = "0.9.0"
 csv = "1.1.6"
 glob = "0.3.0"
 serde-xml-rs = "0.5.1"
-tracing = "0.1.29"
+tracing = "0.1.30"
 flurry = "0.3.1"
 model-graph = { version = "0.1.0", path = "../model-graph" }
 tch-modules = { version = "0.1.0", path = "../tch-modules" }
@@ -59,4 +59,4 @@ profiling = ["ptree", "envy"]
 opencv = ["tch-goodies/opencv"]
 
 [dev-dependencies]
-counter = "0.5.2"
+counter = "0.5.3"

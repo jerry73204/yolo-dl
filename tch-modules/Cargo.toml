@@ -9,9 +9,9 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.53"
 approx = "0.5.1"
-cv-convert = { version = "0.15.0", default-features = false, features = ["tch", "ndarray"] }
+cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"] }
 getset = "0.1.2"
-image = "0.23.14"
+image = "0.24.0"
 itertools = "0.10.3"
 log = "0.4.14"
 mona = "0.1.0"
