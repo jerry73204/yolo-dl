@@ -10,6 +10,7 @@ members = [
     "model-graph",
     "yolo-dl-doc",
     "tch-modules",
+    "yolo-tool",
 ]
 
 [profile.release]

@@ -1,12 +1,18 @@
 use crate::{common::*, utils};
 use model_config::{Module, ModulePath, ShapeOutput};
 
-#[derive(Debug, Clone, Derivative, Serialize, Deserialize, getset::Getters)]
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct Graph {
     #[derivative(Hash(hash_with = "utils::hash_vec_indexmap::<NodeKey, Node, _>"))]
-    #[getset(get = "pub")]
     pub(crate) nodes: IndexMap<NodeKey, Node>,
+}
+
+impl Graph {
+    /// Get a reference to the graph's nodes.
+    pub fn nodes(&self) -> &IndexMap<NodeKey, Node> {
+        &self.nodes
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

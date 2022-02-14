@@ -1,33 +1,29 @@
 use anyhow::Result;
+use clap::Parser;
 use model_graph::Graph;
 use prettytable::{cell, row, Table};
-use std::{
-    fs::File,
-    io::BufWriter,
-    path::{Path, PathBuf},
-};
-use structopt::StructOpt;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Parser)]
+enum Opts {
+    Info {
+        /// configuration file
+        config_file: PathBuf,
+    },
+    MakeDotFile {
+        /// configuration file
+        config_file: PathBuf,
+        /// output DOT file
+        output_file: PathBuf,
+    },
+}
 
 fn main() -> Result<()> {
-    #[derive(Debug, Clone, StructOpt)]
-    enum Args {
-        Info {
-            /// configuration file
-            config_file: PathBuf,
-        },
-        MakeDotFile {
-            /// configuration file
-            config_file: PathBuf,
-            /// output DOT file
-            output_file: PathBuf,
-        },
-    }
-
-    match Args::from_args() {
-        Args::Info { config_file } => {
+    match Opts::parse() {
+        Opts::Info { config_file } => {
             info(config_file)?;
         }
-        Args::MakeDotFile {
+        Opts::MakeDotFile {
             config_file,
             output_file,
         } => {

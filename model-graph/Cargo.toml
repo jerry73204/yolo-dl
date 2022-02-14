@@ -13,7 +13,6 @@ serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 indexmap = { version = "1.8.0", features = ["serde"] }
 derivative = "2.2.0"
-structopt = "0.3.26"
 json5 = "0.4.1"
 itertools = "0.10.3"
 petgraph = "0.6.0"
@@ -21,8 +20,6 @@ take_mut = "0.2.2"
 unzip-n = "0.1.2"
 strum = { version = "0.23.0", features = ["derive"] }
 dot = { version = "0.1.4", optional = true }
-getset = "0.1.2"
-prettytable-rs = "0.8.0"
 darknet-config = { path = "../darknet-config" }
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
 model-config = { version = "0.1.0", path = "../model-config" }
