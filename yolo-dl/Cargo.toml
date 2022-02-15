@@ -20,7 +20,7 @@ async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
 coco = { git = "https://github.com/jerry73204/coco-rs.git", rev = "bfb5425f5ba238dac756a8d79e29e7a76c8120c5", features = ["async"] }
 par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
 futures = "0.3.21"
-rand = "0.8.4"
+rand = "0.8.5"
 percent-encoding = "2.1.0"
 tokio = { version = "1.16.1", features = ["sync", "fs"] }
 tfrecord = { version = "0.13.0", features = ["full"] }

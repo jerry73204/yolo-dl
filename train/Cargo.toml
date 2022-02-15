@@ -20,7 +20,7 @@ async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
 json5 = "0.4.1"
 par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
 futures = "0.3.21"
-rand = "0.8.4"
+rand = "0.8.5"
 percent-encoding = "2.1.0"
 image = "0.24.0"
 tokio = { version = "1.16.1", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
