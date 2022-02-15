@@ -11,7 +11,8 @@ members = [
     "yolo-dl-doc",
     "tch-modules",
     "yolo-tool",
-    "bbox"
+    "bbox",
+    "unit-wrapper",
 ]
 
 [profile.release]
