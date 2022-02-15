@@ -1,20 +1,25 @@
 use super::{CyCxHW, Rect};
-use crate::{common::*, RectElement};
+use crate::{common::*, element::Element};
 
 /// Bounding box in TLBR format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TLBR<T> {
+pub struct TLBR<T>
+where
+    T: Element,
+{
     pub(crate) t: T,
     pub(crate) l: T,
     pub(crate) b: T,
     pub(crate) r: T,
 }
 
-impl<T> TLBR<T> {
-    pub fn cast<V>(&self) -> Option<TLBR<V>>
+impl<T> TLBR<T>
+where
+    T: Element,
+{
+    pub fn try_cast<V>(&self) -> Option<TLBR<V>>
     where
-        T: Copy + ToPrimitive,
-        V: NumCast,
+        V: Element + NumCast,
     {
         Some(TLBR {
             t: V::from(self.t)?,
@@ -23,11 +28,18 @@ impl<T> TLBR<T> {
             r: V::from(self.r)?,
         })
     }
+
+    pub fn cast<V>(&self) -> TLBR<V>
+    where
+        V: Element + NumCast,
+    {
+        self.try_cast().unwrap()
+    }
 }
 
 impl<T> Rect for TLBR<T>
 where
-    T: RectElement,
+    T: Element,
 {
     type Type = T;
 
@@ -67,10 +79,7 @@ where
         self.r - self.l
     }
 
-    fn try_from_cycxhw(cycxhw: [Self::Type; 4]) -> Result<Self>
-    where
-        T: Num + Copy + PartialOrd,
-    {
+    fn try_from_cycxhw(cycxhw: [Self::Type; 4]) -> Result<Self> {
         let [cy, cx, h, w] = cycxhw;
         let zero = T::zero();
         ensure!(h >= zero && w >= zero, "h and w must be non-negative");
@@ -84,20 +93,14 @@ where
         Ok(Self { t, l, b, r })
     }
 
-    fn try_from_tlbr(tlbr: [Self::Type; 4]) -> Result<Self>
-    where
-        T: PartialOrd,
-    {
+    fn try_from_tlbr(tlbr: [Self::Type; 4]) -> Result<Self> {
         let [t, l, b, r] = tlbr;
         ensure!(b >= t && r >= l, "b >= t and r >= l must hold");
 
         Ok(Self { t, l, b, r })
     }
 
-    fn try_from_tlhw(tlhw: [Self::Type; 4]) -> Result<Self>
-    where
-        T: Num + Copy + PartialOrd,
-    {
+    fn try_from_tlhw(tlhw: [Self::Type; 4]) -> Result<Self> {
         let [t, l, h, w] = tlhw;
         let b = t + h;
         let r = l + w;
@@ -107,7 +110,7 @@ where
 
 impl<T> From<CyCxHW<T>> for TLBR<T>
 where
-    T: Num + Copy,
+    T: Element,
 {
     fn from(from: CyCxHW<T>) -> Self {
         Self::from(&from)
@@ -116,7 +119,7 @@ where
 
 impl<T> From<&CyCxHW<T>> for TLBR<T>
 where
-    T: Num + Copy,
+    T: Element,
 {
     fn from(from: &CyCxHW<T>) -> Self {
         let two = T::one() + T::one();

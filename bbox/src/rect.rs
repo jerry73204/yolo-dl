@@ -1,10 +1,10 @@
-use super::{CyCxHW, EPSILON, TLBR};
-use crate::common::*;
+use super::{CyCxHW, TLBR};
+use crate::{common::*, element::Element};
 
 /// The generic rectangle.
 pub trait Rect
 where
-    Self::Type: RectElement,
+    Self::Type: Element,
 {
     type Type;
 
@@ -82,7 +82,10 @@ pub trait RectExt: Rect {
         }
     }
 
-    fn area(&self) -> Self::Type {
+    fn area(&self) -> <Self::Type as Mul<Self::Type>>::Output
+    where
+        Self::Type: Mul<Self::Type>,
+    {
         self.h() * self.w()
     }
 
@@ -102,21 +105,11 @@ pub trait RectExt: Rect {
     where
         R: Rect<Type = Self::Type>,
     {
-        let zero = Self::Type::zero();
-
         let t = self.t().max(other.t());
         let l = self.l().max(other.l());
         let b = self.b().min(other.b());
         let r = self.r().min(other.r());
-
-        let h = b - t;
-        let w = r - l;
-
-        if h <= zero || w <= zero {
-            return None;
-        }
-
-        Some(TLBR::from_tlbr([t, l, b, r]))
+        (b > t && r > l).then(|| TLBR::from_tlbr([t, l, b, r]))
     }
 
     fn intersection_area_with<R>(&self, other: &R) -> Self::Type
@@ -128,13 +121,12 @@ pub trait RectExt: Rect {
             .unwrap_or_else(Self::Type::zero)
     }
 
-    fn iou_with<R>(&self, other: &R) -> Self::Type
+    fn iou_with_epsilon<R>(&self, other: &R, epsilon: Self::Type) -> Self::Type
     where
         R: Rect<Type = Self::Type>,
     {
         let inter_area = self.intersection_area_with(other);
-        let union_area = self.area() + other.area() - inter_area
-            + <Self::Type as NumCast>::from(EPSILON).unwrap();
+        let union_area = self.area() + other.area() - inter_area + epsilon;
         inter_area / union_area
     }
 
@@ -174,5 +166,3 @@ pub trait RectExt: Rect {
 }
 
 impl<T> RectExt for T where T: Rect {}
-
-pub trait RectElement: Float + PartialOrd + Copy {}

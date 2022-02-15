@@ -1,20 +1,25 @@
 use super::{Rect, TLBR};
-use crate::{common::*, RectElement};
+use crate::{common::*, element::Element};
 
 /// Bounding box in CyCxHW format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CyCxHW<T> {
+pub struct CyCxHW<T>
+where
+    T: Element,
+{
     pub(crate) cy: T,
     pub(crate) cx: T,
     pub(crate) h: T,
     pub(crate) w: T,
 }
 
-impl<T> CyCxHW<T> {
+impl<T> CyCxHW<T>
+where
+    T: Element,
+{
     pub fn try_cast<V>(&self) -> Option<CyCxHW<V>>
     where
-        T: Copy + ToPrimitive,
-        V: NumCast,
+        V: Element + NumCast,
     {
         Some(CyCxHW {
             cy: V::from(self.cy)?,
@@ -26,16 +31,12 @@ impl<T> CyCxHW<T> {
 
     pub fn cast<V>(&self) -> CyCxHW<V>
     where
-        T: Copy + ToPrimitive,
-        V: NumCast,
+        V: Element + NumCast,
     {
         self.try_cast().unwrap()
     }
 
-    pub fn scale(&self, scale: T) -> Result<Self>
-    where
-        T: Num + Copy + PartialOrd,
-    {
+    pub fn scale(&self, scale: T) -> Result<Self> {
         let zero = T::zero();
         ensure!(scale > zero, "scaling factor must be positive");
 
@@ -47,10 +48,7 @@ impl<T> CyCxHW<T> {
         Ok(Self { cy, cx, h, w })
     }
 
-    pub fn scale_hw(&self, scale_h: T, scale_w: T) -> Result<Self>
-    where
-        T: Num + Copy + PartialOrd,
-    {
+    pub fn scale_hw(&self, scale_h: T, scale_w: T) -> Result<Self> {
         let zero = T::zero();
         ensure!(
             scale_h > zero && scale_w > zero,
@@ -67,7 +65,7 @@ impl<T> CyCxHW<T> {
 
 impl<T> Rect for CyCxHW<T>
 where
-    T: RectElement,
+    T: Element,
 {
     type Type = T;
 
@@ -107,10 +105,7 @@ where
         self.w
     }
 
-    fn try_from_tlbr(tlbr: [T; 4]) -> Result<Self>
-    where
-        T: Num + Copy + PartialOrd,
-    {
+    fn try_from_tlbr(tlbr: [T; 4]) -> Result<Self> {
         let [t, l, b, r] = tlbr;
         let zero = T::zero();
         let two = T::one() + T::one();
@@ -126,10 +121,7 @@ where
         Ok(Self { cy, cx, h, w })
     }
 
-    fn try_from_tlhw(tlhw: [T; 4]) -> Result<Self>
-    where
-        T: Num + Copy + PartialOrd,
-    {
+    fn try_from_tlhw(tlhw: [T; 4]) -> Result<Self> {
         let [t, l, h, w] = tlhw;
         let zero = T::zero();
         let two = T::one() + T::one();
@@ -144,10 +136,7 @@ where
         Ok(Self { cy, cx, h, w })
     }
 
-    fn try_from_cycxhw(cycxhw: [T; 4]) -> Result<Self>
-    where
-        T: Num + PartialOrd,
-    {
+    fn try_from_cycxhw(cycxhw: [T; 4]) -> Result<Self> {
         let [cy, cx, h, w] = cycxhw;
         let zero = T::zero();
         ensure!(
@@ -161,7 +150,7 @@ where
 
 impl<T> From<TLBR<T>> for CyCxHW<T>
 where
-    T: Copy + Num,
+    T: Element,
 {
     fn from(from: TLBR<T>) -> Self {
         Self::from(&from)
@@ -170,7 +159,7 @@ where
 
 impl<T> From<&TLBR<T>> for CyCxHW<T>
 where
-    T: Copy + Num,
+    T: Element,
 {
     fn from(from: &TLBR<T>) -> Self {
         let two = T::one() + T::one();

@@ -1,11 +1,11 @@
-use crate::{common::*, PixelCyCxHW, PixelTLBR, Rect};
+use crate::{common::*, CyCxHW, Element, Rect, TLBR};
 use opencv::core as core_cv;
 
-impl<T> TryFrom<&core_cv::Rect_<T>> for PixelTLBR<T>
+impl<T> TryFrom<&core_cv::Rect_<T>> for TLBR<T>
 where
-    T: Num + Copy + PartialOrd,
+    T: Element,
 {
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn try_from(from: &core_cv::Rect_<T>) -> Result<Self, Self::Error> {
         let core_cv::Rect_ {
@@ -14,26 +14,26 @@ where
             width: w,
             height: h,
         } = *from;
-        Self::from_tlhw(t, l, h, w)
+        Self::try_from_tlhw([t, l, h, w])
     }
 }
 
-impl<T> TryFrom<core_cv::Rect_<T>> for PixelTLBR<T>
+impl<T> TryFrom<core_cv::Rect_<T>> for TLBR<T>
 where
-    T: Num + Copy + PartialOrd,
+    T: Element,
 {
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn try_from(from: core_cv::Rect_<T>) -> Result<Self, Self::Error> {
         (&from).try_into()
     }
 }
 
-impl<T> TryFrom<&core_cv::Rect_<T>> for PixelCyCxHW<T>
+impl<T> TryFrom<&core_cv::Rect_<T>> for CyCxHW<T>
 where
-    T: Num + Copy + PartialOrd,
+    T: Element,
 {
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn try_from(from: &core_cv::Rect_<T>) -> Result<Self, Self::Error> {
         let core_cv::Rect_ {
@@ -42,26 +42,26 @@ where
             width: w,
             height: h,
         } = *from;
-        Self::from_tlhw(t, l, h, w)
+        Self::try_from_tlhw([t, l, h, w])
     }
 }
 
-impl<T> TryFrom<core_cv::Rect_<T>> for PixelCyCxHW<T>
+impl<T> TryFrom<core_cv::Rect_<T>> for CyCxHW<T>
 where
-    T: Num + Copy + PartialOrd,
+    T: Element,
 {
-    type Error = Error;
+    type Error = anyhow::Error;
 
     fn try_from(from: core_cv::Rect_<T>) -> Result<Self, Self::Error> {
         (&from).try_into()
     }
 }
 
-impl<T> From<&PixelTLBR<T>> for core_cv::Rect_<T>
+impl<T> From<&TLBR<T>> for core_cv::Rect_<T>
 where
-    T: Num + Copy,
+    T: Element,
 {
-    fn from(from: &PixelTLBR<T>) -> Self {
+    fn from(from: &TLBR<T>) -> Self {
         Self {
             x: from.l(),
             y: from.t(),
@@ -71,20 +71,20 @@ where
     }
 }
 
-impl<T> From<PixelTLBR<T>> for core_cv::Rect_<T>
+impl<T> From<TLBR<T>> for core_cv::Rect_<T>
 where
-    T: Num + Copy,
+    T: Element,
 {
-    fn from(from: PixelTLBR<T>) -> Self {
+    fn from(from: TLBR<T>) -> Self {
         (&from).into()
     }
 }
 
-impl<T> From<&PixelCyCxHW<T>> for core_cv::Rect_<T>
+impl<T> From<&CyCxHW<T>> for core_cv::Rect_<T>
 where
-    T: Num + Copy,
+    T: Element,
 {
-    fn from(from: &PixelCyCxHW<T>) -> Self {
+    fn from(from: &CyCxHW<T>) -> Self {
         Self {
             x: from.l(),
             y: from.t(),
@@ -94,11 +94,11 @@ where
     }
 }
 
-impl<T> From<PixelCyCxHW<T>> for core_cv::Rect_<T>
+impl<T> From<CyCxHW<T>> for core_cv::Rect_<T>
 where
-    T: Num + Copy,
+    T: Element,
 {
-    fn from(from: PixelCyCxHW<T>) -> Self {
+    fn from(from: CyCxHW<T>) -> Self {
         (&from).into()
     }
 }

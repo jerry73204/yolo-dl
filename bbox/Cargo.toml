@@ -12,3 +12,6 @@ opencv = { version = "0.63.0", optional = true, default-features = false }
 
 [features]
 with-open = ["opencv"]
+
+[dev-dependencies]
+approx = "0.5.1"

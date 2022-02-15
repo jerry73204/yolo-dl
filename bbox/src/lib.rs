@@ -1,23 +1,37 @@
 //! Safe bounding box types and functions.
 
-const EPSILON: f64 = 1e-16;
-
 mod common;
 
-// pub use transform::*;
-// mod transform;
+pub mod into_tlbr;
+pub use into_tlbr::*;
+
+pub mod into_cycxhw;
+pub use into_cycxhw::*;
+
+pub use transform::*;
+mod transform;
 
 pub use rect::*;
-mod rect;
+pub mod rect;
 
 pub use tlbr::*;
-mod tlbr;
+pub mod tlbr;
 
 pub use cycxhw::*;
-mod cycxhw;
+pub mod cycxhw;
 
-// pub use rect_label::*;
-// mod rect_label;
+pub use hw::*;
+pub mod hw;
 
-// #[cfg(feature = "opencv")]
-// mod with_opencv;
+pub use element::*;
+pub mod element;
+
+pub use into_hw::*;
+pub mod into_hw;
+
+#[cfg(feature = "opencv")]
+mod with_opencv;
+
+pub mod prelude {
+    pub use crate::rect::{Rect, RectExt};
+}
