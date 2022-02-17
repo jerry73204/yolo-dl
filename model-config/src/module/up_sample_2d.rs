@@ -28,8 +28,8 @@ impl ModuleEx for UpSample2D {
         match self.config {
             UpSample2DConfig::ByScale { scale } => match input_shape.single_tensor()?.as_ref() {
                 &[b, c, h, w] => {
-                    let out_h = h.scale_r64(scale);
-                    let out_w = w.scale_r64(scale);
+                    let out_h = h.scale(scale);
+                    let out_w = w.scale(scale);
                     Some(vec![b, c, out_h, out_w].into())
                 }
                 _ => None,

@@ -1,5 +1,6 @@
 use super::*;
-use crate::{common::*, types::Shape};
+use crate::common::*;
+use tensor_shape::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(from = "RawConvBn2D", into = "RawConvBn2D")]

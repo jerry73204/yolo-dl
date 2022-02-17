@@ -1,8 +1,6 @@
 use super::*;
-use crate::{
-    common::*,
-    types::{Dim, Size},
-};
+use crate::{common::*, types::Size};
+use tensor_shape::Dim;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Detect2D {

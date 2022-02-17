@@ -1,7 +1,5 @@
-use crate::{
-    common::*,
-    types::{Dim, Shape},
-};
+use crate::common::*;
+use tensor_shape::{Dim, Shape};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ShapeOutput {
