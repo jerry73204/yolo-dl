@@ -79,9 +79,9 @@ where
 }
 
 impl<T> Transform<T> {
-    pub fn cast<V>(&self) -> Option<Transform<V>>
+    pub fn try_cast<V>(self) -> Option<Transform<V>>
     where
-        T: Copy + ToPrimitive,
+        T: ToPrimitive,
         V: NumCast,
     {
         Some(Transform {
@@ -90,6 +90,14 @@ impl<T> Transform<T> {
             ty: V::from(self.ty)?,
             tx: V::from(self.tx)?,
         })
+    }
+
+    pub fn cast<V>(self) -> Transform<V>
+    where
+        T: ToPrimitive,
+        V: NumCast,
+    {
+        self.try_cast().unwrap()
     }
 }
 
