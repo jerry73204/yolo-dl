@@ -6,4 +6,3 @@ mod newslab_v1;
 mod utils;
 
 pub use graph::{Graph, InputKeys, Node, NodeKey};
-pub use model_config::types::Shape;
