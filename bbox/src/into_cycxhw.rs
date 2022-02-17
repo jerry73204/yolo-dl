@@ -1,11 +1,9 @@
-use crate::{element::Element, rect::Rect, CyCxHW};
+use crate::{rect::Rect, CyCxHW};
+use num_traits::Num;
 
 /// Unchecked bounding box in CyCxHW format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CyCxHW_<T>
-where
-    T: Element,
-{
+pub struct CyCxHW_<T> {
     pub cy: T,
     pub cx: T,
     pub h: T,
@@ -14,7 +12,7 @@ where
 
 impl<T> TryFrom<&CyCxHW_<T>> for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 
@@ -26,7 +24,7 @@ where
 
 impl<T> TryFrom<CyCxHW_<T>> for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 

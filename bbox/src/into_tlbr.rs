@@ -1,4 +1,5 @@
-use crate::{element::Element, rect::Rect, TLBR};
+use crate::{rect::Rect, TLBR};
+use num_traits::Num;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TLBR_<T> {
@@ -10,7 +11,7 @@ pub struct TLBR_<T> {
 
 impl<T> TryFrom<TLBR_<T>> for TLBR<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 
@@ -21,7 +22,7 @@ where
 
 impl<T> TryFrom<&TLBR_<T>> for TLBR<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 

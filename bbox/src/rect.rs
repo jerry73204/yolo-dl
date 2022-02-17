@@ -1,11 +1,8 @@
 use super::{CyCxHW, TLBR};
-use crate::{common::*, element::Element};
+use crate::common::*;
 
 /// The generic rectangle.
-pub trait Rect
-where
-    Self::Type: Element,
-{
+pub trait Rect {
     type Type;
 
     fn t(&self) -> Self::Type;
@@ -30,7 +27,10 @@ where
         Self: Sized;
 }
 
-pub trait RectExt: Rect {
+pub trait RectNum: Rect
+where
+    Self::Type: Num + PartialOrd,
+{
     fn from_tlbr(tlbr: [Self::Type; 4]) -> Self
     where
         Self: Sized,
@@ -88,7 +88,12 @@ pub trait RectExt: Rect {
     {
         self.h() * self.w()
     }
+}
 
+pub trait RectFloat: RectNum
+where
+    Self::Type: Float,
+{
     /// Compute intersection area in TLBR format.
     fn closure_with<R>(&self, other: &R) -> TLBR<Self::Type>
     where
@@ -165,4 +170,16 @@ pub trait RectExt: Rect {
     }
 }
 
-impl<T> RectExt for T where T: Rect {}
+impl<T> RectNum for T
+where
+    T: Rect,
+    T::Type: Num + PartialOrd,
+{
+}
+
+impl<T> RectFloat for T
+where
+    T: Rect,
+    T::Type: Float,
+{
+}

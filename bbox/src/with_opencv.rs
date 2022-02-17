@@ -1,9 +1,9 @@
-use crate::{common::*, CyCxHW, Element, Rect, TLBR};
+use crate::{common::*, CyCxHW, Rect, TLBR};
 use opencv::core as core_cv;
 
 impl<T> TryFrom<&core_cv::Rect_<T>> for TLBR<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 
@@ -20,7 +20,7 @@ where
 
 impl<T> TryFrom<core_cv::Rect_<T>> for TLBR<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 
@@ -31,7 +31,7 @@ where
 
 impl<T> TryFrom<&core_cv::Rect_<T>> for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 
@@ -48,7 +48,7 @@ where
 
 impl<T> TryFrom<core_cv::Rect_<T>> for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     type Error = anyhow::Error;
 
@@ -59,7 +59,7 @@ where
 
 impl<T> From<&TLBR<T>> for core_cv::Rect_<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     fn from(from: &TLBR<T>) -> Self {
         Self {
@@ -73,7 +73,7 @@ where
 
 impl<T> From<TLBR<T>> for core_cv::Rect_<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     fn from(from: TLBR<T>) -> Self {
         (&from).into()
@@ -82,7 +82,7 @@ where
 
 impl<T> From<&CyCxHW<T>> for core_cv::Rect_<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     fn from(from: &CyCxHW<T>) -> Self {
         Self {
@@ -96,7 +96,7 @@ where
 
 impl<T> From<CyCxHW<T>> for core_cv::Rect_<T>
 where
-    T: Element,
+    T: Copy + PartialOrd + Num,
 {
     fn from(from: CyCxHW<T>) -> Self {
         (&from).into()

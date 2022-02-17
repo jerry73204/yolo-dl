@@ -1,25 +1,20 @@
 use super::{CyCxHW, Rect};
-use crate::{common::*, element::Element};
+use crate::common::*;
 
 /// Bounding box in TLBR format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TLBR<T>
-where
-    T: Element,
-{
+pub struct TLBR<T> {
     pub(crate) t: T,
     pub(crate) l: T,
     pub(crate) b: T,
     pub(crate) r: T,
 }
 
-impl<T> TLBR<T>
-where
-    T: Element,
-{
+impl<T> TLBR<T> {
     pub fn try_cast<V>(&self) -> Option<TLBR<V>>
     where
-        V: Element + NumCast,
+        T: Copy + ToPrimitive,
+        V: NumCast,
     {
         Some(TLBR {
             t: V::from(self.t)?,
@@ -31,7 +26,8 @@ where
 
     pub fn cast<V>(&self) -> TLBR<V>
     where
-        V: Element + NumCast,
+        T: Copy + ToPrimitive,
+        V: NumCast,
     {
         self.try_cast().unwrap()
     }
@@ -39,7 +35,7 @@ where
 
 impl<T> Rect for TLBR<T>
 where
-    T: Element,
+    T: Copy + Num + PartialOrd,
 {
     type Type = T;
 
@@ -110,7 +106,7 @@ where
 
 impl<T> From<CyCxHW<T>> for TLBR<T>
 where
-    T: Element,
+    T: Copy + Num,
 {
     fn from(from: CyCxHW<T>) -> Self {
         Self::from(&from)
@@ -119,7 +115,7 @@ where
 
 impl<T> From<&CyCxHW<T>> for TLBR<T>
 where
-    T: Element,
+    T: Copy + Num,
 {
     fn from(from: &CyCxHW<T>) -> Self {
         let two = T::one() + T::one();

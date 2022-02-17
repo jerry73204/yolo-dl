@@ -1,17 +1,14 @@
-use crate::{common::*, element::Element};
+use crate::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct HW<T>
-where
-    T: Element,
-{
+pub struct HW<T> {
     w: T,
     h: T,
 }
 
 impl<T> HW<T>
 where
-    T: Element,
+    T: Num + PartialOrd + Copy,
 {
     pub fn try_from_hw(hw: [T; 2]) -> Result<Self> {
         let [h, w] = hw;

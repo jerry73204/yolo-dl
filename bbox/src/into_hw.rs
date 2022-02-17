@@ -1,4 +1,4 @@
-use crate::{common::*, element::Element, HW};
+use crate::{common::*, HW};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HW_<T> {
@@ -8,7 +8,7 @@ pub struct HW_<T> {
 
 impl<T> TryFrom<HW_<T>> for HW<T>
 where
-    T: Element,
+    T: Copy + Num + PartialOrd,
 {
     type Error = anyhow::Error;
 
@@ -19,7 +19,7 @@ where
 
 impl<T> TryFrom<&HW_<T>> for HW<T>
 where
-    T: Element,
+    T: Copy + Num + PartialOrd,
 {
     type Error = anyhow::Error;
 

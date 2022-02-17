@@ -1,11 +1,8 @@
 use super::{CyCxHW, Rect, TLBR};
-use crate::{common::*, element::Element, RectExt, HW};
+use crate::{common::*, RectNum, HW};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Transform<T>
-where
-    T: Element,
-{
+pub struct Transform<T> {
     pub sy: T,
     pub sx: T,
     pub ty: T,
@@ -14,7 +11,7 @@ where
 
 impl<T> Transform<T>
 where
-    T: Element,
+    T: Copy + Num + PartialOrd,
 {
     pub fn from_rects<R>(src: &R, tgt: &R) -> Self
     where
@@ -65,7 +62,12 @@ where
 
         Self::from_rects(&src, &tgt)
     }
+}
 
+impl<T> Transform<T>
+where
+    T: Copy + Num + Neg<Output = T>,
+{
     pub fn inverse(&self) -> Self {
         let sy = T::one() / self.sy;
         let sx = T::one() / self.sx;
@@ -74,10 +76,13 @@ where
 
         Self { sy, sx, ty, tx }
     }
+}
 
+impl<T> Transform<T> {
     pub fn cast<V>(&self) -> Option<Transform<V>>
     where
-        V: Element,
+        T: Copy + ToPrimitive,
+        V: NumCast,
     {
         Some(Transform {
             sy: V::from(self.sy)?,
@@ -90,7 +95,7 @@ where
 
 impl<T> Mul<&TLBR<T>> for &Transform<T>
 where
-    T: Element,
+    T: Copy + Num,
 {
     type Output = TLBR<T>;
 
@@ -106,7 +111,7 @@ where
 
 impl<T> Mul<&CyCxHW<T>> for &Transform<T>
 where
-    T: Element,
+    T: Copy + Num,
 {
     type Output = CyCxHW<T>;
 

@@ -23,9 +23,6 @@ pub mod cycxhw;
 pub use hw::*;
 pub mod hw;
 
-pub use element::*;
-pub mod element;
-
 pub use into_hw::*;
 pub mod into_hw;
 
@@ -33,5 +30,5 @@ pub mod into_hw;
 mod with_opencv;
 
 pub mod prelude {
-    pub use crate::rect::{Rect, RectExt};
+    pub use crate::rect::{Rect, RectFloat, RectNum};
 }

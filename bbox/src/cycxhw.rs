@@ -1,25 +1,20 @@
 use super::{Rect, TLBR};
-use crate::{common::*, element::Element};
+use crate::common::*;
 
 /// Bounding box in CyCxHW format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CyCxHW<T>
-where
-    T: Element,
-{
+pub struct CyCxHW<T> {
     pub(crate) cy: T,
     pub(crate) cx: T,
     pub(crate) h: T,
     pub(crate) w: T,
 }
 
-impl<T> CyCxHW<T>
-where
-    T: Element,
-{
+impl<T> CyCxHW<T> {
     pub fn try_cast<V>(&self) -> Option<CyCxHW<V>>
     where
-        V: Element + NumCast,
+        T: Copy + ToPrimitive,
+        V: NumCast,
     {
         Some(CyCxHW {
             cy: V::from(self.cy)?,
@@ -31,11 +26,17 @@ where
 
     pub fn cast<V>(&self) -> CyCxHW<V>
     where
-        V: Element + NumCast,
+        T: Copy + ToPrimitive,
+        V: NumCast,
     {
         self.try_cast().unwrap()
     }
+}
 
+impl<T> CyCxHW<T>
+where
+    T: Copy + Num + PartialOrd,
+{
     pub fn scale(&self, scale: T) -> Result<Self> {
         let zero = T::zero();
         ensure!(scale > zero, "scaling factor must be positive");
@@ -65,7 +66,7 @@ where
 
 impl<T> Rect for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + Num + PartialOrd,
 {
     type Type = T;
 
@@ -150,7 +151,7 @@ where
 
 impl<T> From<TLBR<T>> for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + Num,
 {
     fn from(from: TLBR<T>) -> Self {
         Self::from(&from)
@@ -159,7 +160,7 @@ where
 
 impl<T> From<&TLBR<T>> for CyCxHW<T>
 where
-    T: Element,
+    T: Copy + Num,
 {
     fn from(from: &TLBR<T>) -> Self {
         let two = T::one() + T::one();
