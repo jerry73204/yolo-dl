@@ -1,4 +1,4 @@
-use crate::{common::*, ratio::Ratio};
+use crate::common::*;
 
 pub use into_tch_element::*;
 
@@ -78,11 +78,11 @@ mod into_tch_element {
         }
     }
 
-    impl IntoTchElement for Ratio {
-        type Output = f64;
+    // impl IntoTchElement for Ratio {
+    //     type Output = f64;
 
-        fn into_tch_element(self) -> Self::Output {
-            self.to_f64()
-        }
-    }
+    //     fn into_tch_element(self) -> Self::Output {
+    //         self.to_f64()
+    //     }
+    // }
 }

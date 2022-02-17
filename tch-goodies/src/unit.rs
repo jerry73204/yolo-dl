@@ -1,25 +1,30 @@
-//! Unit marker types.
+use unit_wrapper::unit_wrapper;
 
-use crate::common::*;
+unit_wrapper!(pub Pixel);
+unit_wrapper!(pub Ratio);
 
-pub trait Unit {}
-impl Unit for PixelUnit {}
-impl Unit for GridUnit {}
-impl Unit for RatioUnit {}
-impl Unit for Unitless {}
+// //! Unit marker types.
 
-/// The pixel unit marker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
-pub struct PixelUnit;
+// use crate::common::*;
 
-/// The ratio unit marker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
-pub struct RatioUnit;
+// pub trait Unit {}
+// impl Unit for PixelUnit {}
+// impl Unit for GridUnit {}
+// impl Unit for RatioUnit {}
+// impl Unit for Unitless {}
 
-/// The grid unit marker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
-pub struct GridUnit;
+// /// The pixel unit marker.
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
+// pub struct PixelUnit;
 
-/// The unit-less marker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
-pub struct Unitless;
+// /// The ratio unit marker.
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
+// pub struct RatioUnit;
+
+// /// The grid unit marker.
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
+// pub struct GridUnit;
+
+// /// The unit-less marker.
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TensorLike)]
+// pub struct Unitless;

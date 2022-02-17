@@ -1,10 +1,5 @@
 use super::{area::AreaTensor, cycxhw::CyCxHWTensor, size::SizeTensor};
-use crate::{
-    bbox::{CyCxHW, Rect},
-    common::*,
-    unit::Unit,
-    utils::IntoTchElement,
-};
+use crate::{common::*, utils::IntoTchElement};
 
 /// Checked tensor of batched box parameters in TLBR format.
 #[derive(Debug, TensorLike, Getters)]
@@ -229,98 +224,98 @@ impl From<&CyCxHWTensor> for TLBRTensor {
     }
 }
 
-impl<T, U> From<&[&CyCxHW<T, U>]> for TLBRTensor
-where
-    T: Float + IntoTchElement,
-    U: Unit,
-{
-    fn from(from: &[&CyCxHW<T, U>]) -> Self {
-        bboxes_to_tlbr_tensor(from)
-    }
-}
+// impl<T, U> From<&[&CyCxHW<T, U>]> for TLBRTensor
+// where
+//     T: Float + IntoTchElement,
+//     U: Unit,
+// {
+//     fn from(from: &[&CyCxHW<T, U>]) -> Self {
+//         bboxes_to_tlbr_tensor(from)
+//     }
+// }
 
-impl<T, U> From<&[CyCxHW<T, U>]> for TLBRTensor
-where
-    T: Float + IntoTchElement,
-    U: Unit,
-{
-    fn from(from: &[CyCxHW<T, U>]) -> Self {
-        bboxes_to_tlbr_tensor(from)
-    }
-}
+// impl<T, U> From<&[CyCxHW<T, U>]> for TLBRTensor
+// where
+//     T: Float + IntoTchElement,
+//     U: Unit,
+// {
+//     fn from(from: &[CyCxHW<T, U>]) -> Self {
+//         bboxes_to_tlbr_tensor(from)
+//     }
+// }
 
-impl<T, U> From<&Vec<CyCxHW<T, U>>> for TLBRTensor
-where
-    T: Float + IntoTchElement,
-    U: Unit,
-{
-    fn from(from: &Vec<CyCxHW<T, U>>) -> Self {
-        bboxes_to_tlbr_tensor(from.as_slice())
-    }
-}
+// impl<T, U> From<&Vec<CyCxHW<T, U>>> for TLBRTensor
+// where
+//     T: Float + IntoTchElement,
+//     U: Unit,
+// {
+//     fn from(from: &Vec<CyCxHW<T, U>>) -> Self {
+//         bboxes_to_tlbr_tensor(from.as_slice())
+//     }
+// }
 
-impl<T, U> From<Vec<CyCxHW<T, U>>> for TLBRTensor
-where
-    T: Float + IntoTchElement,
-    U: Unit,
-{
-    fn from(from: Vec<CyCxHW<T, U>>) -> Self {
-        bboxes_to_tlbr_tensor(from.as_slice())
-    }
-}
+// impl<T, U> From<Vec<CyCxHW<T, U>>> for TLBRTensor
+// where
+//     T: Float + IntoTchElement,
+//     U: Unit,
+// {
+//     fn from(from: Vec<CyCxHW<T, U>>) -> Self {
+//         bboxes_to_tlbr_tensor(from.as_slice())
+//     }
+// }
 
-impl<T, U> TryFrom<&TLBRTensor> for Vec<CyCxHW<T, U>>
-where
-    T: Float,
-    U: Unit,
-{
-    type Error = Error;
+// impl<T, U> TryFrom<&TLBRTensor> for Vec<CyCxHW<T, U>>
+// where
+//     T: Float,
+//     U: Unit,
+// {
+//     type Error = Error;
 
-    fn try_from(from: &TLBRTensor) -> Result<Self, Self::Error> {
-        (&CyCxHWTensor::from(from)).try_into()
-    }
-}
+//     fn try_from(from: &TLBRTensor) -> Result<Self, Self::Error> {
+//         (&CyCxHWTensor::from(from)).try_into()
+//     }
+// }
 
-impl<T, U> TryFrom<TLBRTensor> for Vec<CyCxHW<T, U>>
-where
-    T: Float,
-    U: Unit,
-{
-    type Error = Error;
+// impl<T, U> TryFrom<TLBRTensor> for Vec<CyCxHW<T, U>>
+// where
+//     T: Float,
+//     U: Unit,
+// {
+//     type Error = Error;
 
-    fn try_from(from: TLBRTensor) -> Result<Self, Self::Error> {
-        (&from).try_into()
-    }
-}
+//     fn try_from(from: TLBRTensor) -> Result<Self, Self::Error> {
+//         (&from).try_into()
+//     }
+// }
 
-fn bboxes_to_tlbr_tensor<B, T, U>(bboxes: &[B]) -> TLBRTensor
-where
-    B: AsRef<CyCxHW<T, U>>,
-    T: Float + IntoTchElement,
-    U: Unit,
-{
-    let (t_vec, l_vec, b_vec, r_vec) = bboxes
-        .iter()
-        .map(|bbox| {
-            let tlbr = bbox.as_ref().to_tlbr();
-            (
-                tlbr.t().into_tch_element(),
-                tlbr.l().into_tch_element(),
-                tlbr.b().into_tch_element(),
-                tlbr.r().into_tch_element(),
-            )
-        })
-        .unzip_n_vec();
+// fn bboxes_to_tlbr_tensor<B, T, U>(bboxes: &[B]) -> TLBRTensor
+// where
+//     B: AsRef<CyCxHW<T, U>>,
+//     T: Float + IntoTchElement,
+//     U: Unit,
+// {
+//     let (t_vec, l_vec, b_vec, r_vec) = bboxes
+//         .iter()
+//         .map(|bbox| {
+//             let tlbr = bbox.as_ref().to_tlbr();
+//             (
+//                 tlbr.t().into_tch_element(),
+//                 tlbr.l().into_tch_element(),
+//                 tlbr.b().into_tch_element(),
+//                 tlbr.r().into_tch_element(),
+//             )
+//         })
+//         .unzip_n_vec();
 
-    let t_tensor = Tensor::of_slice(&t_vec);
-    let l_tensor = Tensor::of_slice(&l_vec);
-    let b_tensor = Tensor::of_slice(&b_vec);
-    let r_tensor = Tensor::of_slice(&r_vec);
+//     let t_tensor = Tensor::of_slice(&t_vec);
+//     let l_tensor = Tensor::of_slice(&l_vec);
+//     let b_tensor = Tensor::of_slice(&b_vec);
+//     let r_tensor = Tensor::of_slice(&r_vec);
 
-    TLBRTensor {
-        t: t_tensor,
-        l: l_tensor,
-        b: b_tensor,
-        r: r_tensor,
-    }
-}
+//     TLBRTensor {
+//         t: t_tensor,
+//         l: l_tensor,
+//         b: b_tensor,
+//         r: r_tensor,
+//     }
+// }

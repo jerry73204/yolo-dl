@@ -1,10 +1,5 @@
 use super::{area::AreaTensor, size::SizeTensor, tlbr::TLBRTensor};
-use crate::{
-    bbox::{CyCxHW, Rect},
-    common::*,
-    unit::Unit,
-    utils::EPSILON,
-};
+use crate::{common::*, utils::EPSILON};
 use num_traits::NumCast;
 
 /// Checked tensor of batched box parameters in CyCxHW format.
@@ -202,88 +197,88 @@ impl From<&TLBRTensor> for CyCxHWTensor {
     }
 }
 
-impl<T, U> TryFrom<&CyCxHWTensor> for Vec<CyCxHW<T, U>>
-where
-    T: Float,
-    U: Unit,
-{
-    type Error = Error;
+// impl<T, U> TryFrom<&CyCxHWTensor> for Vec<CyCxHW<T, U>>
+// where
+//     T: Float,
+//     U: Unit,
+// {
+//     type Error = Error;
 
-    fn try_from(from: &CyCxHWTensor) -> Result<Self, Self::Error> {
-        let bboxes: Option<Vec<_>> = izip!(
-            Vec::<f32>::from(from.cy()),
-            Vec::<f32>::from(from.cx()),
-            Vec::<f32>::from(from.h()),
-            Vec::<f32>::from(from.w()),
-        )
-        .map(|(cy, cx, h, w)| {
-            let cycxhw =
-                CyCxHW::<T, U>::from_cycxhw(T::from(cy)?, T::from(cx)?, T::from(h)?, T::from(w)?)
-                    .unwrap();
-            Some(cycxhw)
-        })
-        .collect();
+//     fn try_from(from: &CyCxHWTensor) -> Result<Self, Self::Error> {
+//         let bboxes: Option<Vec<_>> = izip!(
+//             Vec::<f32>::from(from.cy()),
+//             Vec::<f32>::from(from.cx()),
+//             Vec::<f32>::from(from.h()),
+//             Vec::<f32>::from(from.w()),
+//         )
+//         .map(|(cy, cx, h, w)| {
+//             let cycxhw =
+//                 CyCxHW::<T, U>::from_cycxhw(T::from(cy)?, T::from(cx)?, T::from(h)?, T::from(w)?)
+//                     .unwrap();
+//             Some(cycxhw)
+//         })
+//         .collect();
 
-        bboxes.ok_or_else(|| format_err!("casting error"))
-    }
-}
+//         bboxes.ok_or_else(|| format_err!("casting error"))
+//     }
+// }
 
-impl<T, U> FromIterator<CyCxHW<T, U>> for CyCxHWTensor
-where
-    T: Float,
-    U: Unit,
-{
-    fn from_iter<I: IntoIterator<Item = CyCxHW<T, U>>>(iter: I) -> Self {
-        let (cy, cx, h, w) = iter
-            .into_iter()
-            .map(|cycxhw| {
-                let [cy, cx, h, w] = cycxhw.cycxhw();
-                (
-                    <f32 as NumCast>::from(cy).unwrap(),
-                    <f32 as NumCast>::from(cx).unwrap(),
-                    <f32 as NumCast>::from(h).unwrap(),
-                    <f32 as NumCast>::from(w).unwrap(),
-                )
-            })
-            .unzip_n_vec();
+// impl<T, U> FromIterator<CyCxHW<T, U>> for CyCxHWTensor
+// where
+//     T: Float,
+//     U: Unit,
+// {
+//     fn from_iter<I: IntoIterator<Item = CyCxHW<T, U>>>(iter: I) -> Self {
+//         let (cy, cx, h, w) = iter
+//             .into_iter()
+//             .map(|cycxhw| {
+//                 let [cy, cx, h, w] = cycxhw.cycxhw();
+//                 (
+//                     <f32 as NumCast>::from(cy).unwrap(),
+//                     <f32 as NumCast>::from(cx).unwrap(),
+//                     <f32 as NumCast>::from(h).unwrap(),
+//                     <f32 as NumCast>::from(w).unwrap(),
+//                 )
+//             })
+//             .unzip_n_vec();
 
-        CyCxHWTensorUnchecked {
-            cy: Tensor::of_slice(&cy),
-            cx: Tensor::of_slice(&cx),
-            h: Tensor::of_slice(&h),
-            w: Tensor::of_slice(&w),
-        }
-        .try_into()
-        .unwrap()
-    }
-}
+//         CyCxHWTensorUnchecked {
+//             cy: Tensor::of_slice(&cy),
+//             cx: Tensor::of_slice(&cx),
+//             h: Tensor::of_slice(&h),
+//             w: Tensor::of_slice(&w),
+//         }
+//         .try_into()
+//         .unwrap()
+//     }
+// }
 
-impl<'a, T, U> FromIterator<&'a CyCxHW<T, U>> for CyCxHWTensor
-where
-    T: Float,
-    U: Unit,
-{
-    fn from_iter<I: IntoIterator<Item = &'a CyCxHW<T, U>>>(iter: I) -> Self {
-        let (cy, cx, h, w) = iter
-            .into_iter()
-            .map(|cycxhw| {
-                let [cy, cx, h, w] = cycxhw.cycxhw();
-                (
-                    <f32 as NumCast>::from(cy).unwrap(),
-                    <f32 as NumCast>::from(cx).unwrap(),
-                    <f32 as NumCast>::from(h).unwrap(),
-                    <f32 as NumCast>::from(w).unwrap(),
-                )
-            })
-            .unzip_n_vec();
+// impl<'a, T, U> FromIterator<&'a CyCxHW<T, U>> for CyCxHWTensor
+// where
+//     T: Float,
+//     U: Unit,
+// {
+//     fn from_iter<I: IntoIterator<Item = &'a CyCxHW<T, U>>>(iter: I) -> Self {
+//         let (cy, cx, h, w) = iter
+//             .into_iter()
+//             .map(|cycxhw| {
+//                 let [cy, cx, h, w] = cycxhw.cycxhw();
+//                 (
+//                     <f32 as NumCast>::from(cy).unwrap(),
+//                     <f32 as NumCast>::from(cx).unwrap(),
+//                     <f32 as NumCast>::from(h).unwrap(),
+//                     <f32 as NumCast>::from(w).unwrap(),
+//                 )
+//             })
+//             .unzip_n_vec();
 
-        CyCxHWTensorUnchecked {
-            cy: Tensor::of_slice(&cy),
-            cx: Tensor::of_slice(&cx),
-            h: Tensor::of_slice(&h),
-            w: Tensor::of_slice(&w),
-        }
-        .try_into()
-        .unwrap()
-    }
-}
+//         CyCxHWTensorUnchecked {
+//             cy: Tensor::of_slice(&cy),
+//             cx: Tensor::of_slice(&cx),
+//             h: Tensor::of_slice(&h),
+//             w: Tensor::of_slice(&w),
+//         }
+//         .try_into()
+//         .unwrap()
+//     }
+// }

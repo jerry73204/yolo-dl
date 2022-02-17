@@ -1,4 +1,5 @@
-use crate::{common::*, size::RatioSize};
+use crate::{common::*, unit::Ratio};
+use bbox::HW;
 
 /// Represents the output feature map of a layer.
 ///
@@ -178,14 +179,13 @@ impl DenseDetectionTensor {
         let h = h * orig_h as f64 / new_h as f64;
         let w = w * orig_w as f64 / new_w as f64;
 
-        let anchors: Vec<RatioSize<_>> = anchors
+        let anchors: Vec<Ratio<HW<_>>> = anchors
             .iter()
             .map(|size| {
-                RatioSize::from_hw(
-                    size.h * orig_h as f64 / new_h as f64,
-                    size.w * orig_w as f64 / new_w as f64,
-                )
-                .unwrap()
+                Ratio(HW::from_hw([
+                    size.h() * orig_h as f64 / new_h as f64,
+                    size.w() * orig_w as f64 / new_w as f64,
+                ]))
             })
             .collect();
 
@@ -387,7 +387,7 @@ impl DenseDetectionTensor {
             .next()
             .unwrap()
             .into_iter()
-            .map(|size| RatioSize::from_hw(size.h / num_tensors as f64, size.w).unwrap())
+            .map(|size| Ratio(HW::from_hw([size.h() / num_tensors as f64, size.w()])))
             .collect();
 
         Ok(Self {
@@ -482,12 +482,12 @@ impl DenseDetectionTensor {
         let w = Tensor::cat(&w_vec, 4);
         let obj_logit = Tensor::cat(&obj_vec, 4);
         let class_logit = Tensor::cat(&class_vec, 4);
-        let anchors: Vec<RatioSize<_>> = anchors_set
+        let anchors: Vec<Ratio<HW<_>>> = anchors_set
             .into_iter()
             .next()
             .unwrap()
             .into_iter()
-            .map(|size| RatioSize::from_hw(size.h, size.w / num_tensors as f64).unwrap())
+            .map(|size| Ratio(HW::from_hw([size.h(), size.w() / num_tensors as f64])))
             .collect();
 
         Ok(Self {
@@ -519,7 +519,7 @@ pub struct DenseDetectionTensorUnchecked {
     /// The scores the object is of that class. It number of entries is the number of classes.
     pub class_logit: Tensor,
     #[tensor_like(clone)]
-    pub anchors: Vec<RatioSize<R64>>,
+    pub anchors: Vec<Ratio<HW<R64>>>,
 }
 
 impl DenseDetectionTensorUnchecked {
@@ -642,7 +642,7 @@ mod tests {
                 w,
                 obj_logit,
                 class_logit,
-                anchors: vec![RatioSize::from_hw(r64(1.0), r64(1.0)).unwrap()],
+                anchors: vec![Ratio(HW::from_hw([r64(1.0), r64(1.0)]))],
             }
             .try_into()?;
 
