@@ -1,4 +1,5 @@
 use crate::common::*;
+use tch_goodies::{DenseDetectionTensor, DenseDetectionTensorList};
 
 #[derive(Debug)]
 pub struct MergeDetect2D {

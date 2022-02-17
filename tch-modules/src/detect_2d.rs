@@ -1,9 +1,11 @@
 use crate::common::*;
+use bbox::HW;
+use tch_goodies::{DenseDetectionTensor, DenseDetectionTensorUnchecked, Pixel, Ratio};
 
 #[derive(Debug, Clone)]
 pub struct Detect2DInit {
     pub num_classes: usize,
-    pub anchors: Vec<RatioSize<R64>>,
+    pub anchors: Vec<Ratio<HW<R64>>>,
 }
 
 impl Detect2DInit {
@@ -31,7 +33,7 @@ impl Detect2DInit {
 #[derive(Debug)]
 pub struct Detect2D {
     num_classes: usize,
-    anchors: Vec<RatioSize<R64>>,
+    anchors: Vec<Ratio<HW<R64>>>,
     device: Device,
     cache: Option<Cache>,
 }
@@ -69,7 +71,10 @@ impl Detect2D {
         let cx = (outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_w as f64
             + x_offsets.view([1, 1, 1, 1, feature_w]);
 
+        #[cfg(feature = "debug_assertions")]
         debug_assert!({
+            use ndarray::Array5;
+
             let expect_cy = {
                 let array: Array5<f32> = outputs
                     .i((.., 0..1, .., .., ..))
@@ -148,7 +153,7 @@ impl Detect2D {
         self.num_classes
     }
 
-    pub fn anchors(&self) -> &[RatioSize<R64>] {
+    pub fn anchors(&self) -> &[Ratio<HW<R64>>] {
         &self.anchors
     }
 
@@ -162,7 +167,7 @@ impl Detect2D {
             } = *self;
 
             let (_b, _c, feature_h, feature_w) = tensor.size4()?;
-            let expect_size = GridSize::from_hw(feature_h, feature_w).unwrap();
+            let expect_size = Pixel(HW::from_hw([feature_h, feature_w]));
 
             let is_hit = cache
                 .as_ref()
@@ -172,13 +177,17 @@ impl Detect2D {
             if !is_hit {
                 // print anchor sizes in grid unit
                 for (index, ratio_size) in anchors.iter().enumerate() {
-                    let grid_h = ratio_size.h * feature_h as f64;
-                    let grid_w = ratio_size.w * feature_w as f64;
+                    let grid_h = ratio_size.h() * feature_h as f64;
+                    let grid_w = ratio_size.w() * feature_w as f64;
                     info!("anchro sizes for Detect2D");
                     info!("  - feature size\t{}x{}", feature_h, feature_w);
                     info!(
                         "  - anchor size {}\t{}x{} (ratio) => {}x{} (grid)",
-                        index, ratio_size.h, ratio_size.w, grid_h, grid_w
+                        index,
+                        ratio_size.h(),
+                        ratio_size.w(),
+                        grid_h,
+                        grid_w
                     );
                 }
 
@@ -194,8 +203,8 @@ impl Detect2D {
                         .iter()
                         .cloned()
                         .map(|anchor_size| {
-                            let anchor_size = anchor_size.cast::<f32>().unwrap();
-                            (anchor_size.h, anchor_size.w)
+                            let anchor_size = (*anchor_size).clone().cast::<f32>();
+                            (anchor_size.h(), anchor_size.w())
                         })
                         .unzip_n_vec();
 
@@ -228,7 +237,7 @@ impl Detect2D {
 
 #[derive(Debug)]
 struct Cache {
-    feature_size: GridSize<i64>,
+    feature_size: Pixel<HW<i64>>,
     y_offsets: Tensor,
     x_offsets: Tensor,
     anchor_heights: Tensor,

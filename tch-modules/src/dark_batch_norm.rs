@@ -1,4 +1,5 @@
 use crate::common::*;
+use tch_goodies::TensorExt as _;
 
 #[cfg(debug_assertions)]
 static SMALL_SCALING_WARN: Once = Once::new();

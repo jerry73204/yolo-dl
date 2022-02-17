@@ -1,4 +1,5 @@
 use crate::common::*;
+use tch_goodies::TensorExt as _;
 
 /// Focal loss initializer.
 #[derive(Derivative)]

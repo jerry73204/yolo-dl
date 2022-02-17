@@ -1,5 +1,5 @@
 use crate::common::*;
-use model_graph::Shape;
+use tensor_shape::Shape;
 
 #[derive(Debug)]
 pub struct Input {

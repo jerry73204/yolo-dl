@@ -1,3 +1,5 @@
+use tch_goodies::TensorExt as _;
+
 use crate::common::*;
 
 #[derive(Debug)]

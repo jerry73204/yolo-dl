@@ -1,4 +1,5 @@
 use crate::common::*;
+use tch_goodies::TensorExt as _;
 
 #[derive(Debug, Clone)]
 pub struct InstanceNormInit {
