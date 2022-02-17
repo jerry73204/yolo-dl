@@ -5,6 +5,26 @@ pub struct HW<T> {
     w: T,
     h: T,
 }
+impl<T> HW<T> {
+    pub fn try_cast<U>(self) -> Option<HW<U>>
+    where
+        T: ToPrimitive,
+        U: NumCast,
+    {
+        Some(HW {
+            h: U::from(self.h)?,
+            w: U::from(self.w)?,
+        })
+    }
+
+    pub fn cast<U>(self) -> HW<U>
+    where
+        T: ToPrimitive,
+        U: NumCast,
+    {
+        self.try_cast().unwrap()
+    }
+}
 
 impl<T> HW<T>
 where
