@@ -1,12 +1,28 @@
 #[macro_export]
 macro_rules! unit_wrapper {
-    ($name:ident) => {
+    ($name:ident) => { unit_wrapper!(() $name); };
+    (pub $name:ident) => { unit_wrapper!((pub) $name); };
+    (($($vis:tt)*) $name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub struct $name<T>(pub T);
+        $($vis)* struct $name<T>(pub T);
 
         impl<T> From<T> for $name<T> {
             fn from(value: T) -> Self {
                 Self(value)
+            }
+        }
+
+        impl<T> std::ops::Deref for $name<T> {
+            type Target = T;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl<T> std::ops::DerefMut for $name<T> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
             }
         }
 
