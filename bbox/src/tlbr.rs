@@ -1,5 +1,5 @@
 use super::{CyCxHW, Rect};
-use crate::common::*;
+use crate::{common::*, Transform};
 
 /// Bounding box in TLBR format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -30,6 +30,20 @@ impl<T> TLBR<T> {
         V: NumCast,
     {
         self.try_cast().unwrap()
+    }
+}
+
+impl<T> TLBR<T>
+where
+    T: Copy + Num,
+{
+    pub fn transform(&self, transform: &Transform<T>) -> Self {
+        TLBR {
+            t: self.t * transform.sy + transform.ty,
+            l: self.l * transform.sx + transform.tx,
+            b: self.b * transform.sy + transform.ty,
+            r: self.r * transform.sx + transform.tx,
+        }
     }
 }
 

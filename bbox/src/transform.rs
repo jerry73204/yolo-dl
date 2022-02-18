@@ -108,12 +108,7 @@ where
     type Output = TLBR<T>;
 
     fn mul(self, rhs: &TLBR<T>) -> Self::Output {
-        TLBR {
-            t: rhs.t * self.sy + self.ty,
-            l: rhs.l * self.sx + self.tx,
-            b: rhs.b * self.sy + self.ty,
-            r: rhs.r * self.sx + self.tx,
-        }
+        rhs.transform(&self)
     }
 }
 
@@ -124,12 +119,7 @@ where
     type Output = CyCxHW<T>;
 
     fn mul(self, rhs: &CyCxHW<T>) -> Self::Output {
-        CyCxHW {
-            cy: rhs.cy * self.sy + self.ty,
-            cx: rhs.cx * self.sx + self.tx,
-            h: rhs.h * self.sy,
-            w: rhs.w * self.sx,
-        }
+        rhs.transform(&self)
     }
 }
 

@@ -1,5 +1,5 @@
 use super::{Rect, TLBR};
-use crate::common::*;
+use crate::{common::*, Transform};
 
 /// Bounding box in CyCxHW format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -35,9 +35,23 @@ impl<T> CyCxHW<T> {
 
 impl<T> CyCxHW<T>
 where
+    T: Copy + Num,
+{
+    pub fn transform(&self, transform: &Transform<T>) -> Self {
+        CyCxHW {
+            cy: self.cy * transform.sy + transform.ty,
+            cx: self.cx * transform.sx + transform.tx,
+            h: self.h * transform.sy,
+            w: self.w * transform.sx,
+        }
+    }
+}
+
+impl<T> CyCxHW<T>
+where
     T: Copy + Num + PartialOrd,
 {
-    pub fn scale(&self, scale: T) -> Result<Self> {
+    pub fn try_scale(&self, scale: T) -> Result<Self> {
         let zero = T::zero();
         ensure!(scale > zero, "scaling factor must be positive");
 
@@ -49,7 +63,11 @@ where
         Ok(Self { cy, cx, h, w })
     }
 
-    pub fn scale_hw(&self, scale_h: T, scale_w: T) -> Result<Self> {
+    pub fn scale(&self, scale: T) -> Self {
+        self.try_scale(scale).unwrap()
+    }
+
+    pub fn try_scale_hw(&self, scale_h: T, scale_w: T) -> Result<Self> {
         let zero = T::zero();
         ensure!(
             scale_h > zero && scale_w > zero,
@@ -61,6 +79,10 @@ where
         let w = w * scale_w;
         debug_assert!(h >= zero && w >= zero);
         Ok(Self { cy, cx, h, w })
+    }
+
+    pub fn scale_hw(&self, scale_h: T, scale_w: T) -> Self {
+        self.try_scale_hw(scale_h, scale_w).unwrap()
     }
 }
 

@@ -57,6 +57,10 @@ where
     pub fn h(&self) -> T {
         self.h
     }
+
+    pub fn hw(&self) -> [T; 2] {
+        [self.h, self.w]
+    }
 }
 
 #[cfg(test)]
