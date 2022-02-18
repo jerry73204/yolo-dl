@@ -14,6 +14,7 @@ members = [
     "bbox",
     "unit-wrapper",
     "tensor-shape",
+    "cache",
     "label",
 ]
 

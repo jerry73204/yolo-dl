@@ -1,0 +1,19 @@
+[package]
+name = "cache"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.53"
+tch = "0.6.1"
+futures = "0.3.21"
+itertools = "0.10.3"
+noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
+percent-encoding = "2.1.0"
+async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
+bbox = { version = "0.1.0", path = "../bbox" }
+label = { version = "0.1.0", path = "../label" }
+flurry = "0.3.1"
+tch-goodies = { version = "0.1", path = "../tch-goodies" }
