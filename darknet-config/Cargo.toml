@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0.136", features = ["derive"] }
 serde_ini = "0.2.0"
-anyhow = "1.0.53"
+anyhow = "1.0.54"
 noisy_float = { version = "0.2.0", features = ["serde"] }
 itertools = "0.10.3"
 log = "0.4.14"
