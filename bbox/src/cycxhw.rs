@@ -67,8 +67,10 @@ where
         self.try_scale(scale).unwrap()
     }
 
-    pub fn try_scale_hw(&self, scale_h: T, scale_w: T) -> Result<Self> {
+    pub fn try_scale_hw(&self, scale_hw: [T; 2]) -> Result<Self> {
         let zero = T::zero();
+        let [scale_h, scale_w] = scale_hw;
+
         ensure!(
             scale_h > zero && scale_w > zero,
             "scaling factor must be positive"
@@ -81,8 +83,8 @@ where
         Ok(Self { cy, cx, h, w })
     }
 
-    pub fn scale_hw(&self, scale_h: T, scale_w: T) -> Self {
-        self.try_scale_hw(scale_h, scale_w).unwrap()
+    pub fn scale_hw(&self, scale_hw: [T; 2]) -> Self {
+        self.try_scale_hw(scale_hw).unwrap()
     }
 }
 

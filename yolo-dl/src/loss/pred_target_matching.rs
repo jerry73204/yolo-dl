@@ -85,10 +85,8 @@ impl CyCxHWMatcher {
 
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes: Vec<_> = {
-                    let target_bbox_grid: Pixel<CyCxHW<R64>> = {
-                        let [h, w] = feature_size.cast::<R64>().hw();
-                        Pixel(target_bbox.rect.scale_hw(h, w))
-                    };
+                    let target_bbox_grid: Pixel<CyCxHW<R64>> =
+                        Pixel(target_bbox.rect.scale_hw(feature_size.cast::<R64>().hw()));
                     let cy = target_bbox_grid.cy();
                     let cx = target_bbox_grid.cx();
                     debug_assert!(cy >= 0.0 && cx >= 0.0);
@@ -159,10 +157,8 @@ impl CyCxHWMatcher {
 
                         debug_assert!({
                             let feature_size = &prediction.info[layer_index].feature_size;
-                            let target_bbox_grid: Pixel<CyCxHW<R64>> = {
-                                let [h, w] = feature_size.cast::<R64>().hw();
-                                Pixel(target_bbox.rect.scale_hw(h, w))
-                            };
+                            let target_bbox_grid: Pixel<CyCxHW<R64>> =
+                                Pixel(target_bbox.rect.scale_hw(feature_size.cast::<R64>().hw()));
                             let target_cy = target_bbox_grid.cy();
                             let target_cx = target_bbox_grid.cx();
 
@@ -221,10 +217,12 @@ impl CyCxHWMatcher {
                 ..
             } = *instance_index;
             let feature_size = &prediction.info[layer_index as usize].feature_size;
-            let target_bbox_grid: Pixel<CyCxHW<f64>> = {
-                let [h, w] = feature_size.cast::<f64>().hw();
-                Pixel(target_bbox.rect.cast::<f64>().scale_hw(h, w))
-            };
+            let target_bbox_grid: Pixel<CyCxHW<f64>> = Pixel(
+                target_bbox
+                    .rect
+                    .cast::<f64>()
+                    .scale_hw(feature_size.cast::<f64>().hw()),
+            );
             let target_cy = target_bbox_grid.cy();
             let target_cx = target_bbox_grid.cx();
 
