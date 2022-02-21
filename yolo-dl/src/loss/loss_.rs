@@ -5,7 +5,6 @@ use super::{
     pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
 use crate::{common::*, profiling::Timing};
-use ndarray::{Array2, Array3, ArrayD};
 use tch_goodies::{
     detection::{FlatIndex, FlatIndexTensor, MergedDenseDetection},
     RatioRectLabel, TensorExt,
@@ -341,7 +340,11 @@ mod yolo_loss {
                         .full_like(neg)
                         .scatter_(1, target_class_sparse, &pos_values);
 
+                #[cfg(feature = "debug-assert")]
                 debug_assert!({
+                    use cv_convert::prelude::*;
+                    use ndarray::{Array2, ArrayD};
+
                     let sparse_class_array: ArrayD<i64> =
                         matchings.target.class().try_into_cv().unwrap();
                     let target_array: ArrayD<f32> = (&target_dense).try_into_cv().unwrap();
@@ -413,7 +416,11 @@ mod yolo_loss {
                     target
                 };
 
+                #[cfg(feature = "debug-assert")]
                 debug_assert!({
+                    use cv_convert::prelude::*;
+                    use ndarray::{Array3, ArrayD};
+
                     let (batch_size, _num_entries, num_instances) =
                         pred_objectness.size3().unwrap();
                     let target_array: ArrayD<f32> = (&target_objectness).try_into_cv().unwrap();

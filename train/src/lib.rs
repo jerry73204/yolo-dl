@@ -60,15 +60,10 @@ pub async fn start(config: Arc<config::Config>) -> Result<()> {
     let training_data_future = tokio::task::spawn(async move {
         let mut train_stream = dataset.train_stream()?;
 
-        while let Some(result) = train_stream
-            .next()
-            .instrument(trace_span!("recv_next_batch"))
-            .await
-        {
+        while let Some(result) = train_stream.next().await {
             let record = result?;
             data_tx
                 .send(record)
-                .instrument(trace_span!("send_batch_to_training_loop"))
                 .await
                 .map_err(|_| format_err!("failed to send message to training worker"))?;
         }

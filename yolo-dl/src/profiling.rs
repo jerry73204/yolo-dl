@@ -29,6 +29,8 @@ impl Timing {
     pub fn new(name: &'static str) -> Self {
         #[cfg(feature = "profiling")]
         {
+            use dashmap::DashSet;
+
             use once_cell::sync::Lazy;
             static REGISTERED_TIMINGS: Lazy<DashSet<&'static str>> = Lazy::new(|| DashSet::new());
 

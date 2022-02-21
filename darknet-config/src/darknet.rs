@@ -3,6 +3,7 @@ use super::{
     MaxPool, Net, Route, Shortcut, Softmax, UnimplementedLayer, UpSample, Yolo,
 };
 use crate::common::*;
+use regex::RegexBuilder;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(try_from = "Items")]

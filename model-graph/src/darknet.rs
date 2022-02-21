@@ -2,6 +2,7 @@ use super::graph::*;
 use crate::common::*;
 use darknet_config as dark;
 use model_config::{self as config, Module, ShapeOutput};
+use petgraph::graphmap::DiGraphMap;
 
 use dark_node_key::*;
 mod dark_node_key {

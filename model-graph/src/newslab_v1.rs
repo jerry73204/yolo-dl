@@ -4,6 +4,7 @@ use model_config::{
     self as config, GroupName, Groups, Model, Module, ModuleEx, ModuleInput, ModulePath,
     ShapeInput, ShapeOutput,
 };
+use petgraph::graphmap::DiGraphMap;
 
 impl Graph {
     pub fn load_newslab_v1_json(file: impl AsRef<Path>) -> Result<Self> {

@@ -20,8 +20,8 @@ num-traits = "0.2.14"
 maplit = "1.0.2"
 log = "0.4.14"
 mona = "0.1.0"
-opencv = { version = "0.63.0", default-features = false, optional = true }
 tch-act = { version = "0.1.0", path = "../tch-act", features = ["tch", "serde"] }
+opencv = { version = "0.63.0", default-features = false, optional = true }
 
 [dev-dependencies]
 cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"] }

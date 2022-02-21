@@ -1,7 +1,7 @@
 pub use anyhow::{bail, ensure, format_err, Context as _, Error, Result};
 pub use approx::abs_diff_eq;
 pub use getset::{CopyGetters, Getters};
-pub use itertools::{iproduct, izip, Itertools};
+pub use itertools::{iproduct, izip, Itertools as _};
 pub use log::warn;
 pub use maplit::hashset;
 pub use mona::prelude::*;
@@ -14,7 +14,6 @@ pub use std::{
     borrow::Borrow,
     cmp::Ordering,
     collections::HashSet,
-    convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
     iter::{self, FromIterator},
     marker::PhantomData,
