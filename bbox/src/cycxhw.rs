@@ -11,9 +11,9 @@ pub struct CyCxHW<T> {
 }
 
 impl<T> CyCxHW<T> {
-    pub fn try_cast<V>(self) -> Option<CyCxHW<V>>
+    pub fn try_cast<V>(&self) -> Option<CyCxHW<V>>
     where
-        T: ToPrimitive,
+        T: Copy + ToPrimitive,
         V: NumCast,
     {
         Some(CyCxHW {
@@ -24,9 +24,9 @@ impl<T> CyCxHW<T> {
         })
     }
 
-    pub fn cast<V>(self) -> CyCxHW<V>
+    pub fn cast<V>(&self) -> CyCxHW<V>
     where
-        T: ToPrimitive,
+        T: Copy + ToPrimitive,
         V: NumCast,
     {
         self.try_cast().unwrap()

@@ -11,9 +11,9 @@ pub struct TLBR<T> {
 }
 
 impl<T> TLBR<T> {
-    pub fn try_cast<V>(self) -> Option<TLBR<V>>
+    pub fn try_cast<V>(&self) -> Option<TLBR<V>>
     where
-        T: ToPrimitive,
+        T: Copy + ToPrimitive,
         V: NumCast,
     {
         Some(TLBR {
@@ -24,9 +24,9 @@ impl<T> TLBR<T> {
         })
     }
 
-    pub fn cast<V>(self) -> TLBR<V>
+    pub fn cast<V>(&self) -> TLBR<V>
     where
-        T: ToPrimitive,
+        T: Copy + ToPrimitive,
         V: NumCast,
     {
         self.try_cast().unwrap()

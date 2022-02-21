@@ -6,9 +6,9 @@ pub struct HW<T> {
     h: T,
 }
 impl<T> HW<T> {
-    pub fn try_cast<U>(self) -> Option<HW<U>>
+    pub fn try_cast<U>(&self) -> Option<HW<U>>
     where
-        T: ToPrimitive,
+        T: Copy + ToPrimitive,
         U: NumCast,
     {
         Some(HW {
@@ -17,9 +17,9 @@ impl<T> HW<T> {
         })
     }
 
-    pub fn cast<U>(self) -> HW<U>
+    pub fn cast<U>(&self) -> HW<U>
     where
-        T: ToPrimitive,
+        T: Copy + ToPrimitive,
         U: NumCast,
     {
         self.try_cast().unwrap()
