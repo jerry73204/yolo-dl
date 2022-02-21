@@ -1,7 +1,5 @@
 pub use anyhow::{bail, ensure, format_err, Context as _, Error, Result};
 pub use approx::{abs_diff_eq, assert_abs_diff_eq};
-pub use cv_convert::TryIntoCv as _;
-pub use dashmap::DashSet;
 pub use futures::{
     future,
     future::FutureExt as _,
@@ -26,7 +24,6 @@ pub use std::{
     borrow::{Borrow, Cow},
     cmp::{self, Ordering},
     collections::{hash_map, HashMap, HashSet},
-    convert::{TryFrom, TryInto},
     env::{self, VarError},
     fmt,
     fmt::Debug,

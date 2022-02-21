@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.53"
+anyhow = "1.0.54"
 tch = "0.6.1"
 itertools = "0.10.3"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
@@ -20,6 +20,7 @@ num-traits = "0.2.14"
 maplit = "1.0.2"
 log = "0.4.14"
 mona = "0.1.0"
+tch-act = { version = "0.1.0", path = "../tch-act", features = ["tch", "serde"] }
 opencv = { version = "0.63.0", default-features = false, optional = true }
 bbox = { version = "0.1.0", path = "../bbox" }
 unit-wrapper = { version = "0.1.0", path = "../unit-wrapper" }

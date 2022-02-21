@@ -1,6 +1,7 @@
 //! The memory caching implementation.
 
 use crate::{common::*, profiling::Timing};
+use dashmap::DashMap;
 use percent_encoding::NON_ALPHANUMERIC;
 use tch_goodies::{
     PixelRectLabel, PixelRectTransform, PixelSize, PixelTLBR, RatioRectLabel, TensorExt,
@@ -14,7 +15,7 @@ pub struct MemoryCache {
     image_size: usize,
     image_channels: usize,
     device: Device,
-    cache: flurry::HashMap<String, CacheEntry>,
+    cache: DashMap<String, CacheEntry>,
 }
 
 #[derive(Debug)]
@@ -50,7 +51,7 @@ impl MemoryCache {
             image_size,
             image_channels,
             device: device.into().unwrap_or(Device::Cpu),
-            cache: flurry::HashMap::new(),
+            cache: DashMap::new(),
         };
 
         Ok(loader)
@@ -105,7 +106,6 @@ where {
 
         // write cache if the cache is not valid
         let entry = cache
-            .pin()
             .get(&cache_key)
             .map(|entry| entry.get().to_device(device));
 
@@ -159,9 +159,7 @@ where {
                 .await?;
                 timing = timing_;
 
-                cache
-                    .pin()
-                    .insert(cache_key, CacheEntry::new(image.shallow_clone()));
+                cache.insert(cache_key, CacheEntry::new(image.shallow_clone()));
                 image
             }
         };

@@ -51,35 +51,6 @@ mod activation {
         #[serde(rename = "relu6")]
         Relu6,
     }
-
-    impl From<Activation> for tch_goodies::Activation {
-        fn from(act: Activation) -> Self {
-            match act {
-                Activation::Mish => Self::Mish,
-                Activation::HardMish => Self::HardMish,
-                Activation::Swish => Self::Swish,
-                Activation::NormalizeChannels => Self::NormalizeChannels,
-                Activation::NormalizeChannelsSoftmax => Self::NormalizeChannelsSoftmax,
-                Activation::NormalizeChannelsSoftmaxMaxval => Self::NormalizeChannelsSoftmaxMaxval,
-                Activation::Logistic => Self::Logistic,
-                Activation::Loggy => Self::Loggy,
-                Activation::Relu => Self::Relu,
-                Activation::Elu => Self::Elu,
-                Activation::Selu => Self::Selu,
-                Activation::Gelu => Self::Gelu,
-                Activation::Relie => Self::Relie,
-                Activation::Ramp => Self::Ramp,
-                Activation::Linear => Self::Linear,
-                Activation::Tanh => Self::Tanh,
-                Activation::Plse => Self::Plse,
-                Activation::Leaky => Self::Leaky,
-                Activation::Stair => Self::Stair,
-                Activation::Hardtan => Self::Hardtan,
-                Activation::Lhtan => Self::Lhtan,
-                Activation::Relu6 => Self::Relu6,
-            }
-        }
-    }
 }
 
 pub use layer_index::*;

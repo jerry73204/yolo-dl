@@ -16,6 +16,7 @@ members = [
     "tensor-shape",
     "cache",
     "label",
+    "tch-act",
 ]
 
 [profile.release]

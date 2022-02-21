@@ -71,8 +71,10 @@ impl Detect2D {
         let cx = (outputs.i((.., 1..2, .., .., ..)).sigmoid() * 2.0 - 0.5) / feature_w as f64
             + x_offsets.view([1, 1, 1, 1, feature_w]);
 
-        #[cfg(feature = "debug_assertions")]
+        #[cfg(feature = "debug-assert")]
         debug_assert!({
+            use approx::abs_diff_eq;
+            use cv_convert::TryIntoCv;
             use ndarray::Array5;
 
             let expect_cy = {

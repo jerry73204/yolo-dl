@@ -2,7 +2,6 @@
 
 use crate::common::*;
 use tch_goodies::{RatioCyCxHW, RatioRectLabel, Rect as _, TensorExt};
-use tracing::instrument;
 
 /// Mosaic processor initializer.
 #[derive(Debug, Clone)]
@@ -208,7 +207,6 @@ pub struct ParallelMosaicProcessor {
 
 impl ParallelMosaicProcessor {
     /// Apply mosaic mixup on a set of 4 images and boxes.
-    #[instrument(skip(input))]
     pub async fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,

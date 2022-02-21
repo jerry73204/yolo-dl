@@ -4,13 +4,10 @@ version = "0.1.0"
 authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-anyhow = "1.0.53"
+anyhow = "1.0.54"
 itertools = "0.10.3"
 log = "0.4.14"
-ndarray = { version = "0.15.4", optional = true }
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.136", features = ["derive"] }
 tch = "0.6.1"
@@ -21,9 +18,13 @@ strum = { version = "0.23.0", features = ["derive"] }
 derivative = "2.2.0"
 bbox = { version = "0.1.0", path = "../bbox" }
 tensor-shape = { version = "0.1.0", path = "../tensor-shape" }
+ndarray = { version = "0.15.4", optional = true }
+cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"], optional = true }
+approx = { version = "0.5.1", optional = true }
+tch-act = { version = "0.1.0", path = "../tch-act", features = ["tch"] }
 
 [dev-dependencies]
 rand = "0.8.5"
 
 [features]
-debug-asserts = ["ndarray"]
+debug-assert = ["ndarray", "cv-convert", "approx"]

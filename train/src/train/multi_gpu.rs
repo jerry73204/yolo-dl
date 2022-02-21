@@ -89,9 +89,7 @@ pub async fn multi_gpu_training_worker(
 
     // initialize workers
     let (mut worker_contexts, init_training_step) =
-        initialize_worker_contexts(config.clone(), workers)
-            .instrument(trace_span!("initialize_worker_contexts"))
-            .await?;
+        initialize_worker_contexts(config.clone(), workers).await?;
 
     info!("initialization finished, start training");
 
@@ -131,11 +129,7 @@ pub async fn multi_gpu_training_worker(
         }
 
         loop {
-            let mut record = data_rx
-                .recv()
-                .instrument(trace_span!("recv_next_batch"))
-                .await
-                .unwrap();
+            let mut record = data_rx.recv().await.unwrap();
             record.timing.add_event("in channel");
 
             let (epoch, image, bboxes, mut timing) = tokio::task::spawn_blocking(move || {
@@ -152,22 +146,17 @@ pub async fn multi_gpu_training_worker(
 
                 (epoch, image, bboxes, timing)
             })
-            .instrument(trace_span!("move_to_master_device"))
             .await?;
             timing.add_event("move to master device");
 
             // sync weights among workers
-            worker_contexts = sync_weights(worker_contexts)
-                .instrument(trace_span!("sync_weights"))
-                .await?;
+            worker_contexts = sync_weights(worker_contexts).await?;
             timing.add_event("sync weights");
 
             // forward step
             let (worker_contexts_, outputs) = {
                 let image = image.shallow_clone();
-                forward_step(config.clone(), worker_contexts, image, &bboxes)
-                    .instrument(trace_span!("forward"))
-                    .await?
+                forward_step(config.clone(), worker_contexts, image, &bboxes).await?
             };
             worker_contexts = worker_contexts_;
             timing.add_event("forward step");
@@ -186,7 +175,6 @@ pub async fn multi_gpu_training_worker(
                     Ok((worker_contexts, outputs))
                 })
                 .map(|result| anyhow::Ok(result??))
-                .instrument(trace_span!("backward"))
                 .await?
             };
             worker_contexts = worker_contexts_;
@@ -214,7 +202,6 @@ pub async fn multi_gpu_training_worker(
                 Ok((losses, worker_outputs))
             })
             .map(|result| anyhow::Ok(result??))
-            .instrument(trace_span!("merge_outputs"))
             .await?;
 
             timing.add_event("compute loss");
@@ -271,7 +258,6 @@ pub async fn multi_gpu_training_worker(
 
                     Ok((model_output, matchings, inference, benchmark, timing))
                 })
-                .instrument(trace_span!("compute_benchmark"))
                 .await??
             };
 
@@ -338,7 +324,6 @@ pub async fn multi_gpu_training_worker(
                     Ok(worker_contexts)
                 })
                 .map(|result| anyhow::Ok(result??))
-                .instrument(trace_span!("save_checkpoint"))
                 .await?;
                 timing.add_event("save checkpoint");
             }

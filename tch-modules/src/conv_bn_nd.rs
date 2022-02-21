@@ -3,7 +3,7 @@ use crate::{
     conv_nd::{ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn},
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
-use tch_goodies::{Activation, TensorExt as _};
+use tch_act::{Activation, TensorActivationExt as _};
 
 #[derive(Debug, Clone)]
 pub struct ConvBnInit<S>

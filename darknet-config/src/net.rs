@@ -1,5 +1,6 @@
 use super::Shape;
 use crate::{common::*, utils, utils::default};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "RawNet", into = "RawNet")]

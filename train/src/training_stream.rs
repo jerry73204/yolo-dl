@@ -323,7 +323,6 @@ impl TrainingStream {
                                         .collect();
                                     anyhow::Ok((image, bboxes))
                                 }
-                                .instrument(trace_span!("load_sample"))
                             })
                             .try_collect()
                             .await?;
@@ -351,7 +350,6 @@ impl TrainingStream {
 
                         anyhow::Ok((index, (step, epoch, data, timing)))
                     }
-                    .instrument(trace_span!("data_loading"))
                 })
         };
 
