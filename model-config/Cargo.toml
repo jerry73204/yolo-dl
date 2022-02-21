@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.53"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
@@ -19,10 +17,10 @@ petgraph = "0.6.0"
 take_mut = "0.2.2"
 unzip-n = "0.1.2"
 strum = { version = "0.23.0", features = ["derive"] }
-dot = { version = "0.1.4", optional = true }
 getset = "0.1.2"
 darknet-config = { path = "../darknet-config" }
-tch-goodies = { version = "0.1", path = "../tch-goodies" }
+tch-act = { version = "0.1.0", path = "../tch-act", features = ["serde"] }
+dot = { version = "0.1.4", optional = true }
 
 [dev-dependencies]
 glob = "0.3.0"

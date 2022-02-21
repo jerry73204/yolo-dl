@@ -1,6 +1,5 @@
 //! The crate provides extension to [Tensor](tch::Tensor) type and utilities.
 
-pub mod activation;
 pub mod bbox;
 mod common;
 pub mod compound_tensor;
@@ -12,7 +11,6 @@ pub mod tensor_list;
 pub mod unit;
 mod utils;
 
-pub use activation::*;
 pub use bbox::*;
 pub use compound_tensor::*;
 pub use detection::*;

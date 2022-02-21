@@ -21,8 +21,8 @@ unzip-n = "0.1.2"
 strum = { version = "0.23.0", features = ["derive"] }
 dot = { version = "0.1.4", optional = true }
 darknet-config = { path = "../darknet-config" }
-tch-goodies = { version = "0.1", path = "../tch-goodies" }
 model-config = { version = "0.1.0", path = "../model-config" }
+tch-act = { version = "0.1.0", path = "../tch-act" }
 
 [dev-dependencies]
 glob = "0.3.0"

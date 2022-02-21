@@ -13,6 +13,7 @@ members = [
     "yolo-tool",
     "bbox",
     "unit-wrapper",
+    "tch-act",
 ]
 
 [profile.release]

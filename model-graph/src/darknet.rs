@@ -343,7 +343,7 @@ impl Graph {
                                         d: dilation,
                                         g: groups,
                                         bias: true,
-                                        act: activation.into(),
+                                        act: dark_to_tch_act(activation),
                                         bn: config::BatchNorm {
                                             enabled: batch_normalize,
                                             affine: true,
@@ -454,6 +454,36 @@ impl Graph {
         };
 
         Ok(Graph { nodes })
+    }
+}
+
+fn dark_to_tch_act(act: dark::Activation) -> tch_act::Activation {
+    use dark::Activation as D;
+    use tch_act::Activation as T;
+
+    match act {
+        D::Mish => T::Mish,
+        D::HardMish => T::HardMish,
+        D::Swish => T::Swish,
+        D::NormalizeChannels => T::NormalizeChannels,
+        D::NormalizeChannelsSoftmax => T::NormalizeChannelsSoftmax,
+        D::NormalizeChannelsSoftmaxMaxval => T::NormalizeChannelsSoftmaxMaxval,
+        D::Logistic => T::Logistic,
+        D::Loggy => T::Loggy,
+        D::Relu => T::Relu,
+        D::Elu => T::Elu,
+        D::Selu => T::Selu,
+        D::Gelu => T::Gelu,
+        D::Relie => T::Relie,
+        D::Ramp => T::Ramp,
+        D::Linear => T::Linear,
+        D::Tanh => T::Tanh,
+        D::Plse => T::Plse,
+        D::Leaky => T::Leaky,
+        D::Stair => T::Stair,
+        D::Hardtan => T::Hardtan,
+        D::Lhtan => T::Lhtan,
+        D::Relu6 => T::Relu6,
     }
 }
 

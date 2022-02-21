@@ -2,6 +2,7 @@ use crate::{
     common::*,
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
+use tch_act::Activation;
 
 #[derive(Debug, Clone)]
 pub struct DeconvBn2DInit {

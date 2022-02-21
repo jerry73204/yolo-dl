@@ -24,7 +24,6 @@ pub use std::{
     string::ToString,
 };
 pub use strum::AsRefStr;
-pub use tch_goodies::Activation;
 pub use unzip_n::unzip_n;
 
 unzip_n!(pub 2);

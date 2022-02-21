@@ -24,9 +24,10 @@ pub use tch::{
     nn::{self, Module as _, ModuleT as _, OptimizerConfig as _},
     vision, Device, IndexOp, Kind, Reduction, Tensor,
 };
+pub use tch_act::TensorActivationExt as _;
 pub use tch_goodies::{
-    Activation, DenseDetectionTensor, DenseDetectionTensorList, DenseDetectionTensorUnchecked,
-    GridSize, RatioSize, TensorExt,
+    DenseDetectionTensor, DenseDetectionTensorList, DenseDetectionTensorUnchecked, GridSize,
+    RatioSize, TensorExt as _,
 };
 pub use tch_tensor_like::TensorLike;
 

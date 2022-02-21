@@ -3,6 +3,7 @@ use crate::{
     conv_nd::{ConvND, ConvNDGrad, ConvNDInit, ConvNDInitDyn},
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
+use tch_act::Activation;
 
 #[derive(Debug, Clone)]
 pub struct ConvBnInit<S>

@@ -1,3 +1,5 @@
+use tch_act::Activation;
+
 use crate::{
     common::*,
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
@@ -116,9 +118,7 @@ impl ConvBn2D {
             bn: bn.as_ref().map(|bn| bn.grad()),
         }
     }
-}
 
-impl ConvBn2D {
     pub fn clamp_running_var(&mut self) {
         if let Some(bn) = &mut self.bn {
             bn.clamp_running_var();

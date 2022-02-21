@@ -1,26 +1,15 @@
 use crate::common::*;
+use tch_act::TensorActivationExt;
 
-pub use into_index_list::*;
 pub use tensor_ext::*;
-
 mod tensor_ext {
-    use crate::Activation;
-
     use super::*;
 
     /// A trait that extends the functionality of [Tensor](tch::Tensor) type.
-    pub trait TensorExt {
+    pub trait TensorExt: TensorActivationExt {
         fn is_all_finite(&self) -> bool;
 
         fn has_nan(&self) -> bool;
-
-        fn activation(&self, act: Activation) -> Tensor;
-
-        fn lrelu(&self) -> Tensor {
-            self.leaky_relu_ext(0.2)
-        }
-
-        fn leaky_relu_ext(&self, negative_slope: impl Into<Option<f64>>) -> Tensor;
 
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor>;
 
@@ -270,12 +259,6 @@ mod tensor_ext {
         /// Resize the tensor of an image and keep the ratio.
         fn resize2d_letterbox(&self, new_height: i64, new_width: i64) -> Result<Tensor>;
 
-        /// Swish activation function.
-        fn swish(&self) -> Tensor;
-
-        /// Hard-Mish activation function.
-        fn hard_mish(&self) -> Tensor;
-
         /// Convert from RGB to HSV color space.
         fn f_rgb_to_hsv(&self) -> Result<Tensor>;
 
@@ -303,10 +286,6 @@ mod tensor_ext {
 
         fn has_nan(&self) -> bool {
             bool::from(self.isnan().any())
-        }
-
-        fn activation(&self, act: Activation) -> Tensor {
-            act.forward(self)
         }
 
         fn f_multi_softmax(&self, dims: &[i64], kind: Kind) -> Result<Tensor> {
@@ -967,16 +946,6 @@ mod tensor_ext {
             })
         }
 
-        fn swish(&self) -> Tensor {
-            self * self.sigmoid()
-        }
-
-        fn hard_mish(&self) -> Tensor {
-            let case1 = self.clamp(-2.0, 0.0);
-            let case2 = self.clamp_min(0.0);
-            (case1.pow(&2i64.into()) / 2.0 + &case1) + case2
-        }
-
         // fn normalize_channels(&self) -> Tensor {
         //     todo!();
         // }
@@ -1064,13 +1033,10 @@ mod tensor_ext {
 
             Ok(rgb)
         }
-
-        fn leaky_relu_ext(&self, negative_slope: impl Into<Option<f64>>) -> Tensor {
-            self.maximum(&(self * negative_slope.into().unwrap_or(0.01)))
-        }
     }
 }
 
+pub use into_index_list::*;
 mod into_index_list {
     use super::*;
 

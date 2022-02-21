@@ -21,6 +21,7 @@ derivative = "2.2.0"
 ndarray = { version = "0.15.4", optional = true }
 cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"], optional = true }
 approx = { version = "0.5.1", optional = true }
+tch-act = { version = "0.1.0", path = "../tch-act", features = ["tch"] }
 
 [dev-dependencies]
 rand = "0.8.5"
