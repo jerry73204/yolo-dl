@@ -10,7 +10,7 @@ mod module_ {
 
     use super::*;
 
-    #[derive(AsRefStr, Derivative)]
+    #[derive(strum::AsRefStr, Derivative)]
     #[derivative(Debug)]
     pub enum Module {
         Input(Input),

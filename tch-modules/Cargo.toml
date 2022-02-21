@@ -4,20 +4,12 @@ version = "0.1.0"
 authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.53"
-approx = "0.5.1"
-cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"] }
 getset = "0.1.2"
-image = "0.24.0"
 itertools = "0.10.3"
 log = "0.4.14"
-mona = "0.1.0"
-ndarray = "0.15.4"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
-num-traits = "0.2.14"
 serde = { version = "1.0.136", features = ["derive"] }
 tch = "0.6.1"
 tch-tensor-like = { version = "0.5.0", features = ["derive"] }
@@ -26,6 +18,12 @@ model-graph = { version = "0.1.0", path = "../model-graph" }
 tch-goodies = { version = "0.1.0", path = "../tch-goodies" }
 strum = "0.23.0"
 derivative = "2.2.0"
+ndarray = { version = "0.15.4", optional = true }
+cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"], optional = true }
+approx = { version = "0.5.1", optional = true }
 
 [dev-dependencies]
 rand = "0.8.5"
+
+[features]
+debug-assert = ["ndarray", "cv-convert", "approx"]
