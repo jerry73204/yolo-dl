@@ -23,12 +23,6 @@ pub use rand::{
     rngs::{OsRng, StdRng},
     seq::SliceRandom as _,
 };
-pub use regex::Regex;
-pub use serde::{
-    de::{Error as _, Visitor},
-    ser::{Error as _, SerializeSeq},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
 pub use std::{
     borrow::{Borrow, Cow},
     cmp::Ordering,
@@ -58,11 +52,6 @@ pub use tch::{
     kind::FLOAT_CPU,
     nn::{self, OptimizerConfig as _},
     vision, Device, IndexOp, Kind, Reduction, Tensor,
-};
-pub use tch_goodies::{
-    detection::{DenseDetectionTensorList, DetectionInfo, FlatIndex, InstanceIndex},
-    CyCxHW, GridCyCxHW, GridRectLabel, GridSize, PixelCyCxHW, PixelRectLabel, PixelSize, PixelTLBR,
-    Ratio, RatioCyCxHW, RatioRectLabel, Rect as _, TLBRTensor, TensorExt, TLBR,
 };
 pub use tch_tensor_like::TensorLike;
 pub use tokio::sync::{broadcast, mpsc};

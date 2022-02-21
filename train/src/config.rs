@@ -1,16 +1,12 @@
 //! Training program configuration format.
 
 use crate::common::*;
+use serde::{ser::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use serde_semver::SemverReq;
 use yolo_dl::{
     loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind, YoloLossInit},
     processor::ColorJitterInit,
 };
-
-pub use dataset::*;
-pub use model::*;
-pub use preprocessor::*;
-pub use training::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SemverReq)]
 #[version("0.1.0")]
@@ -39,6 +35,7 @@ impl Config {
     }
 }
 
+pub use model::*;
 mod model {
     use super::*;
 
@@ -63,6 +60,7 @@ mod model {
     }
 }
 
+pub use dataset::*;
 mod dataset {
     use super::*;
 
@@ -111,6 +109,7 @@ mod dataset {
     }
 }
 
+pub use preprocessor::*;
 mod preprocessor {
     use super::*;
 
@@ -152,44 +151,44 @@ mod preprocessor {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct MixUp {
         /// The probability to apply Mix-Up.
-        pub mixup_prob: Ratio,
+        pub mixup_prob: R64,
         /// The probability to apply Cut-Mix.
-        pub cutmix_prob: Ratio,
+        pub cutmix_prob: R64,
         /// The probability to apply Mosaic mixing.
-        pub mosaic_prob: Ratio,
+        pub mosaic_prob: R64,
         /// The minimum offset from image boundary of pivot point in Mosaic mixing.
         ///
         /// It is specified in ratio unit.
-        pub mosaic_margin: Ratio,
+        pub mosaic_margin: R64,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct RandomAffine {
         /// The probability to apply random affine transformation.
-        pub affine_prob: Ratio,
+        pub affine_prob: R64,
         /// The probability to apply random rotation.
-        pub rotate_prob: Option<Ratio>,
+        pub rotate_prob: Option<R64>,
         /// The maximum degrees of random rotation.
         pub rotate_degrees: Option<R64>,
         /// The probability to apply random translation.
-        pub translation_prob: Option<Ratio>,
+        pub translation_prob: Option<R64>,
         /// The maximum distance of random translation in ratio unit.
         pub translation: Option<R64>,
         /// The probability to apply random scaling.
-        pub scale_prob: Option<Ratio>,
+        pub scale_prob: Option<R64>,
         /// The pair of minimum and maximum scaling ratio.
         pub scale: Option<(R64, R64)>,
-        // pub shear_prob: Option<Ratio>,
+        // pub shear_prob: Option<R64>,
         // pub shear: Option<R64>,
         /// The probability to apply horizontal flip.
-        pub horizontal_flip_prob: Option<Ratio>,
+        pub horizontal_flip_prob: Option<R64>,
         /// The probability to apply vertical flip.
-        pub vertical_flip_prob: Option<Ratio>,
+        pub vertical_flip_prob: Option<R64>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ColorJitter {
-        pub color_jitter_prob: Ratio,
+        pub color_jitter_prob: R64,
         pub hue_shift: Option<R64>,
         pub saturation_shift: Option<R64>,
         pub value_shift: Option<R64>,
@@ -219,12 +218,13 @@ mod preprocessor {
         /// The factor that tolerates out-of-image boundary bounding boxes.
         pub out_of_bound_tolerance: R64,
         /// The minimum bounding box size in ratio unit.
-        pub min_bbox_size: Ratio,
+        pub min_bbox_size: R64,
         /// The minimum ratio of preserving area after a bounding box is cropped.
-        pub min_bbox_cropping_ratio: Ratio,
+        pub min_bbox_cropping_ratio: R64,
     }
 }
 
+pub use training::*;
 mod training {
     use super::*;
 

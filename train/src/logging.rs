@@ -6,8 +6,10 @@ use crate::{
     utils::{CowTensor, RateCounter},
 };
 use async_std::{fs::File, io::BufWriter};
+use bbox::prelude::*;
 use tch_goodies::MergedDenseDetection;
 use yolo_dl::{
+    label::RatioLabel,
     loss::{MatchingOutput, YoloBenchmarkOutput, YoloInferenceOutput, YoloLossOutput},
     profiling::Timing,
 };
@@ -16,6 +18,7 @@ pub use logging_message::*;
 pub use logging_worker::*;
 
 mod logging_worker {
+    use tch_goodies::{TLBRTensor, TensorExt as _};
     use tfrecord::{ColorSpace, EventAsyncWriter, TchChannelOrder, TchTensorAsImageList};
 
     use super::*;
@@ -145,7 +148,7 @@ mod logging_worker {
                         // plotting is faster on CPU
                         let mut canvas = input.copy().to_device(Device::Cpu);
 
-                        let target_color = Tensor::of_slice(&[1.0, 1.0, 0.0]);
+                        let target_color = Tensor::of_slice(&[1.0f32, 1.0, 0.0]);
                         let pred_color = Tensor::of_slice(&[0.0, 1.0, 0.0]);
 
                         // draw target bboxes
@@ -192,8 +195,8 @@ mod logging_worker {
                             .iter()
                             .zip_eq(output.info.iter())
                             .map(|(feature_map, meta)| {
-                                let feature_h = meta.feature_size.h;
-                                let feature_w = meta.feature_size.w;
+                                let feature_h = meta.feature_size.h();
+                                let feature_w = meta.feature_size.w();
                                 let num_anchors = meta.anchors.len() as i64;
                                 feature_map
                                     .obj_prob()
@@ -456,8 +459,7 @@ mod logging_worker {
                                 let mut canvas = image.copy().to_device(Device::Cpu);
 
                                 for labeled_bbox in bboxes {
-                                    let [cy, cx, h, w] =
-                                        labeled_bbox.rect.cast::<f64>().unwrap().cycxhw();
+                                    let [cy, cx, h, w] = labeled_bbox.rect.cast::<f64>().cycxhw();
 
                                     let top = cy - h / 2.0;
                                     let left = cx - w / 2.0;
@@ -524,7 +526,7 @@ mod logging_message {
             name: impl Into<Cow<'a, str>>,
             images: impl IntoIterator<Item = impl Into<CowTensor<'b>>>,
             bboxes: Option<
-                impl IntoIterator<Item = impl IntoIterator<Item = impl Borrow<RatioRectLabel<R64>>>>,
+                impl IntoIterator<Item = impl IntoIterator<Item = impl Borrow<RatioLabel>>>,
             >,
         ) -> Self {
             let name = name.into().into_owned();
@@ -601,7 +603,7 @@ mod logging_message {
         pub name: String,
         pub images: Vec<Tensor>,
         #[tensor_like(clone)]
-        pub bboxes: Option<Vec<Vec<RatioRectLabel<R64>>>>,
+        pub bboxes: Option<Vec<Vec<RatioLabel>>>,
     }
 
     impl Clone for DebugImageLog {

@@ -1,9 +1,13 @@
 use crate::{common::*, config, logging::LoggingMessage};
+use bbox::prelude::*;
+use label::Label;
+use tch_goodies::Ratio;
 use yolo_dl::{
     dataset::{
         CocoDataset, CsvDataset, DataRecord, FileCacheDataset, IiiDataset, MemoryCacheDataset,
         OnDemandDataset, RandomAccessDataset, SanitizedDataset, VocDataset,
     },
+    label::RatioLabel,
     processor::{MosaicProcessorInit, RandomAffineInit},
     profiling::Timing,
 };
@@ -271,9 +275,9 @@ impl TrainingStream {
                 cleanse: config::Cleanse { bbox_scaling, .. },
                 ..
             } = *self.preprocessor_config.deref().borrow();
-            let mixup_prob = mixup_prob.to_f64();
-            let cutmix_prob = cutmix_prob.to_f64();
-            let mosaic_prob = mosaic_prob.to_f64();
+            let mixup_prob = mixup_prob.raw();
+            let cutmix_prob = cutmix_prob.raw();
+            let mosaic_prob = mosaic_prob.raw();
             let dataset = self.dataset.clone();
             let logging_tx = self.logging_tx.clone();
             let par_config = par_config.clone();
@@ -316,9 +320,11 @@ impl TrainingStream {
                                     // scale bboxes
                                     let bboxes: Vec<_> = bboxes
                                         .into_iter()
-                                        .map(|bbox| RatioRectLabel {
-                                            rect: bbox.rect.scale_size(bbox_scaling).unwrap(),
-                                            class: bbox.class,
+                                        .map(|bbox| {
+                                            Ratio(Label {
+                                                rect: bbox.rect.scale(bbox_scaling),
+                                                class: bbox.class,
+                                            })
                                         })
                                         .collect();
                                     anyhow::Ok((image, bboxes))
@@ -374,7 +380,7 @@ impl TrainingStream {
                         .into_iter()
                         .map(|(image, bboxes)| -> Result<_> {
                             let mut rng = OsRng;
-                            let yes = rng.gen_bool(color_jitter_prob.to_f64());
+                            let yes = rng.gen_bool(color_jitter_prob.raw());
 
                             let (new_image, new_bboxes) = if yes {
                                 let new_image = color_jitter.forward(&image)?;
@@ -460,7 +466,7 @@ impl TrainingStream {
                         .map(move |(image, bboxes)| -> Result<_> {
                             let mut rng = OsRng;
 
-                            let yes = rng.gen_bool(affine_prob.to_f64());
+                            let yes = rng.gen_bool(affine_prob.raw());
                             let (new_image, new_bboxes) = if yes {
                                 random_affine.forward(&image, &bboxes)?
                             } else {
@@ -509,16 +515,16 @@ impl TrainingStream {
                     },
                 ..
             } = *self.preprocessor_config.deref().borrow();
-            let mixup_prob = mixup_prob.to_f64();
-            let cutmix_prob = cutmix_prob.to_f64();
-            let mosaic_prob = mosaic_prob.to_f64();
+            let mixup_prob = mixup_prob.raw();
+            let cutmix_prob = cutmix_prob.raw();
+            let mosaic_prob = mosaic_prob.raw();
             ensure!(
                 mixup_prob + cutmix_prob + mosaic_prob <= 1.0 + f64::default_epsilon(),
                 "the sum of mixup, cutmix, mosaic probabilities must not exceed 1.0"
             );
             let mosaic_processor = Arc::new(
                 MosaicProcessorInit {
-                    mosaic_margin: mosaic_margin.to_f64(),
+                    mosaic_margin: mosaic_margin.raw(),
                     min_bbox_size: Some(min_bbox_size.into()),
                     min_bbox_cropping_ratio: Some(min_bbox_cropping_ratio.into()),
                 }
@@ -554,8 +560,8 @@ impl TrainingStream {
                     let mixed_bboxes: Vec<_> = mixed_bboxes
                         .into_iter()
                         .filter_map(|bbox| {
-                            let ok = bbox.h() >= min_bbox_size.to_r64()
-                                && bbox.w() >= min_bbox_size.to_r64();
+                            let ok = bbox.rect.h() >= min_bbox_size.raw()
+                                && bbox.rect.w() >= min_bbox_size.raw();
                             ok.then(|| bbox)
                         })
                         .collect();
@@ -690,7 +696,7 @@ pub struct TrainingRecord {
     pub step: usize,
     pub image: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<RatioRectLabel<R64>>>,
+    pub bboxes: Vec<Vec<RatioLabel>>,
     #[tensor_like(clone)]
     pub timing: Timing,
 }
@@ -716,14 +722,14 @@ impl MixKind {
 
 #[derive(Debug)]
 enum MixData {
-    None([(Tensor, Vec<RatioRectLabel<R64>>); 1]),
-    MixUp([(Tensor, Vec<RatioRectLabel<R64>>); 2]),
-    CutMix([(Tensor, Vec<RatioRectLabel<R64>>); 2]),
-    Mosaic([(Tensor, Vec<RatioRectLabel<R64>>); 4]),
+    None([(Tensor, Vec<RatioLabel>); 1]),
+    MixUp([(Tensor, Vec<RatioLabel>); 2]),
+    CutMix([(Tensor, Vec<RatioLabel>); 2]),
+    Mosaic([(Tensor, Vec<RatioLabel>); 4]),
 }
 
 impl MixData {
-    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<RatioRectLabel<R64>>)>) -> Result<Self> {
+    pub fn new(kind: MixKind, pairs: Vec<(Tensor, Vec<RatioLabel>)>) -> Result<Self> {
         let data = (|| {
             let data = match kind {
                 MixKind::None => Self::None(pairs.try_into()?),
@@ -752,7 +758,7 @@ impl MixData {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<RatioRectLabel<R64>>)> {
+    pub fn iter(&self) -> impl Iterator<Item = &(Tensor, Vec<RatioLabel>)> {
         match self {
             Self::None(array) => array.iter(),
             Self::MixUp(array) => array.iter(),
@@ -761,13 +767,13 @@ impl MixData {
         }
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<RatioRectLabel<R64>>)> {
+    pub fn into_iter(self) -> impl Iterator<Item = (Tensor, Vec<RatioLabel>)> {
         Vec::from(self).into_iter()
     }
 }
 
-impl AsRef<[(Tensor, Vec<RatioRectLabel<R64>>)]> for MixData {
-    fn as_ref(&self) -> &[(Tensor, Vec<RatioRectLabel<R64>>)] {
+impl AsRef<[(Tensor, Vec<RatioLabel>)]> for MixData {
+    fn as_ref(&self) -> &[(Tensor, Vec<RatioLabel>)] {
         match self {
             Self::None(array) => array.as_ref(),
             Self::MixUp(array) => array.as_ref(),
@@ -777,7 +783,7 @@ impl AsRef<[(Tensor, Vec<RatioRectLabel<R64>>)]> for MixData {
     }
 }
 
-impl From<MixData> for Vec<(Tensor, Vec<RatioRectLabel<R64>>)> {
+impl From<MixData> for Vec<(Tensor, Vec<RatioLabel>)> {
     fn from(data: MixData) -> Self {
         match data {
             MixData::None(array) => array.into(),

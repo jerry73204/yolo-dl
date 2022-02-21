@@ -9,6 +9,7 @@ use crate::{
     utils::{self, LrScheduler, RateCounter},
 };
 use yolo_dl::{
+    label::RatioLabel,
     loss::{
         MatchingOutput, YoloBenchmarkInit, YoloInferenceInit, YoloLoss, YoloLossAuxiliary,
         YoloLossOutput,
@@ -30,7 +31,7 @@ struct WorkerJob {
     job_index: usize,
     minibatch_size: usize,
     image: Tensor,
-    bboxes: Vec<Vec<RatioRectLabel<R64>>>,
+    bboxes: Vec<Vec<RatioLabel>>,
 }
 
 struct WorkerOutput {
@@ -527,7 +528,7 @@ async fn forward_step(
     config: ArcRef<config::Config>,
     worker_contexts: Vec<WorkerContext>,
     image: Tensor,
-    bboxes: &[Vec<RatioRectLabel<R64>>],
+    bboxes: &[Vec<RatioLabel>],
 ) -> Result<(Vec<WorkerContext>, Vec<WorkerOutput>)> {
     let config::Config {
         training: config::Training { batch_size, .. },
