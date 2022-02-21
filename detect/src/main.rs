@@ -7,6 +7,8 @@ use crate::{
     config::{Config, OutputConfig},
     input_stream::{InputRecord, InputStream},
 };
+use bbox::{prelude::*, CyCxHW, HW};
+use itertools::izip;
 use opencv::{
     core::{Mat, Scalar, Vector},
     imgcodecs, imgproc,
@@ -14,7 +16,7 @@ use opencv::{
 use std::{path::PathBuf, sync::Arc};
 use structopt::StructOpt;
 use tch::{nn, Device, IndexOp};
-use tch_goodies::{MergedDenseDetection, PixelCyCxHW, PixelSize, RatioCyCxHW};
+use tch_goodies::{CyCxHWTensor, CyCxHWTensorUnchecked, MergedDenseDetection, Pixel, Ratio};
 use tch_tensor_like::TensorLike;
 use yolo_dl::{loss::YoloInferenceInit, model::YoloModel};
 
@@ -136,14 +138,25 @@ pub async fn main() -> Result<()> {
 
                     let image = images.i((minibatch_index, .., .., ..));
                     let inference = inferences.batch_select(minibatch_index);
-                    let pred_bboxes: Vec<RatioCyCxHW<R64>> = inference.bbox.try_into()?;
+                    let pred_bboxes: Vec<Ratio<CyCxHW<R64>>> = {
+                        let cycxhw: CyCxHWTensor = (&inference.bbox).into();
+                        let CyCxHWTensorUnchecked { cy, cx, h, w } = cycxhw.into();
+                        let cy: Vec<f32> = cy.into();
+                        let cx: Vec<f32> = cx.into();
+                        let h: Vec<f32> = h.into();
+                        let w: Vec<f32> = w.into();
 
-                    let image_size: PixelSize<R64> = {
+                        izip!(cy, cx, h, w)
+                            .map(|(cy, cx, h, w)| {
+                                Ratio(CyCxHW::from_cycxhw([cy, cx, h, w]).cast::<R64>())
+                            })
+                            .collect()
+                    };
+
+                    let image_size: Pixel<HW<R64>> = {
                         let (_c, image_h, image_w) = image.size3().unwrap();
-                        PixelSize::from_hw(image_h, image_w)
-                            .unwrap()
-                            .cast()
-                            .unwrap()
+
+                        Pixel(HW::from_hw([image_h, image_w]).cast())
                     };
 
                     let mut canvas: Mat =
@@ -151,12 +164,12 @@ pub async fn main() -> Result<()> {
 
                     // plot target boxes
                     target_bboxes.iter().try_for_each(|bbox| -> Result<_> {
-                        let rect: PixelCyCxHW<i32> =
-                            bbox.rect.to_pixel_cycxhw(&image_size).cast().unwrap();
+                        let rect: Pixel<CyCxHW<i32>> =
+                            Pixel(bbox.rect.scale_hw(image_size.hw()).cast());
 
                         imgproc::rectangle(
                             &mut canvas,
-                            rect.into(),
+                            rect.0.into(),
                             Scalar::new(255.0, 255.0, 0.0, 0.0), // color
                             1,                                   // thickness
                             imgproc::LINE_8,                     // line_type
@@ -168,12 +181,12 @@ pub async fn main() -> Result<()> {
 
                     // plot predicted boxes
                     pred_bboxes.iter().try_for_each(|cycxhw| -> Result<_> {
-                        let rect: PixelCyCxHW<i32> =
-                            cycxhw.to_pixel_cycxhw(&image_size).cast().unwrap();
+                        let rect: Pixel<CyCxHW<i32>> =
+                            Pixel(cycxhw.scale_hw(image_size.hw()).cast());
 
                         imgproc::rectangle(
                             &mut canvas,
-                            rect.into(),
+                            rect.0.into(),
                             Scalar::new(0.0, 255.0, 255.0, 0.0), // color
                             1,                                   // thickness
                             imgproc::LINE_8,                     // line_type

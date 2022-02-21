@@ -1,7 +1,6 @@
 use crate::common::*;
 use std::path::PathBuf;
 use tch::Device;
-use tch_goodies::Ratio;
 
 /// The version of configuration format.
 ///
@@ -132,9 +131,9 @@ mod preprocess {
         /// The factor that tolerates out-of-image boundary bounding boxes.
         pub out_of_bound_tolerance: R64,
         /// The minimum bounding box size in ratio unit.
-        pub min_bbox_size: Ratio,
+        pub min_bbox_size: R64,
         /// The minimum ratio of preserving area after a bounding box is cropped.
-        pub min_bbox_cropping_ratio: Ratio,
+        pub min_bbox_cropping_ratio: R64,
         /// The device where the preprocessor works on.
         #[serde(with = "tch_serde::serde_device")]
         pub device: Device,

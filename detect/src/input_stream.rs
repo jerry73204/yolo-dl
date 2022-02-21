@@ -3,11 +3,13 @@ use crate::{
     config::{Config, DatasetKind, InputConfig, PreprocessConfig},
 };
 use tch::Tensor;
-use tch_goodies::RatioRectLabel;
 use tch_tensor_like::TensorLike;
-use yolo_dl::dataset::{
-    CocoDataset, CsvDataset, DataRecord, IiiDataset, OnDemandDataset, RandomAccessStream,
-    SanitizedDataset, StreamingDataset, VocDataset,
+use yolo_dl::{
+    dataset::{
+        CocoDataset, CsvDataset, DataRecord, IiiDataset, OnDemandDataset, RandomAccessStream,
+        SanitizedDataset, StreamingDataset, VocDataset,
+    },
+    label::RatioLabel,
 };
 
 #[derive(Debug, TensorLike)]
@@ -15,7 +17,7 @@ pub struct InputRecord {
     pub indexes: Vec<usize>,
     pub images: Tensor,
     #[tensor_like(clone)]
-    pub bboxes: Vec<Vec<RatioRectLabel<R64>>>,
+    pub bboxes: Vec<Vec<RatioLabel>>,
 }
 
 #[derive(Debug)]
