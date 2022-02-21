@@ -1,8 +1,8 @@
-use tch_act::{Activation, TensorActivationExt as _};
 use crate::{
     common::*,
     dark_batch_norm::{DarkBatchNorm, DarkBatchNormGrad, DarkBatchNormInit},
 };
+use tch_act::{Activation, TensorActivationExt as _};
 
 #[derive(Debug, Clone)]
 pub struct ConvBn2DInit {

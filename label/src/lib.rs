@@ -2,7 +2,7 @@ use bbox::{CyCxHW, Rect, Transform, TLBR};
 use num_traits::Num;
 use std::ops::Mul;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Label<R, C>
 where
     R: Rect,

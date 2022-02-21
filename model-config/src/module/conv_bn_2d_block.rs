@@ -1,7 +1,7 @@
 use super::*;
 use crate::common::*;
-use tensor_shape::Shape;
 pub use tch_act::Activation;
+use tensor_shape::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(from = "RawConvBn2D", into = "RawConvBn2D")]
