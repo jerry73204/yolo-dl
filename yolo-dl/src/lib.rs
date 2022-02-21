@@ -2,6 +2,7 @@
 
 mod common;
 pub mod dataset;
+pub mod label;
 pub mod loss;
 pub mod model;
 pub mod processor;

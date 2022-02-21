@@ -1,9 +1,13 @@
 //! The file caching implementation.
 
-use crate::{common::*, profiling::Timing};
-use tch_goodies::{
-    PixelRectLabel, PixelRectTransform, PixelSize, PixelTLBR, RatioRectLabel, TensorExt,
+use crate::{
+    common::*,
+    label::{PixelLabel, RatioLabel},
+    profiling::Timing,
 };
+use bbox::{prelude::*, Transform, HW, TLBR};
+use label::Label;
+use tch_goodies::{Pixel, Ratio, TensorExt as _};
 
 /// Image caching processor.
 #[derive(Debug, Clone)]
@@ -40,9 +44,9 @@ impl OnDemandLoader {
     pub async fn load(
         &self,
         image_path: impl AsRef<async_std::path::Path>,
-        orig_size: &PixelSize<usize>,
-        bboxes: impl IntoIterator<Item = impl Borrow<PixelRectLabel<R64>>>,
-    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)> {
+        orig_size: &Pixel<HW<usize>>,
+        bboxes: impl IntoIterator<Item = impl Borrow<PixelLabel>>,
+    ) -> Result<(Tensor, Vec<RatioLabel>)> {
         let Self {
             image_size,
             image_channels,
@@ -123,28 +127,27 @@ impl OnDemandLoader {
 
         // compute new bboxes
         let transform = {
-            let src = PixelTLBR::from_tlbr(0.0, 0.0, orig_h as f64, orig_w as f64).unwrap();
-            let tgt = PixelTLBR::from_tlhw(
+            let src = TLBR::from_tlbr([0.0, 0.0, orig_h as f64, orig_w as f64]);
+            let tgt = TLBR::from_tlhw([
                 top_pad as f64,
                 left_pad as f64,
                 cache_h as f64,
                 cache_w as f64,
-            )
-            .unwrap();
-            PixelRectTransform::from_rects(&src, &tgt)
-                .cast::<R64>()
-                .unwrap()
+            ]);
+            Transform::from_rects(&src, &tgt).cast::<R64>()
         };
 
         let output_bboxes: Vec<_> = {
-            let image_size = R64::new(image_size as f64);
+            let image_size = r64(image_size as f64);
             bboxes
                 .into_iter()
                 .map(|orig_label| -> Result<_> {
                     let orig_label = orig_label.borrow();
-                    let new_label = (&transform * orig_label)
-                        .to_ratio_label(&PixelSize::from_hw(image_size, image_size)?);
-                    Ok(new_label)
+                    let new_rect = (&transform * &orig_label.rect).scale(image_size.recip());
+                    Ok(Ratio(Label {
+                        rect: new_rect,
+                        class: orig_label.class,
+                    }))
                 })
                 .try_collect()?
         };

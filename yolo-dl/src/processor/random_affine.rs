@@ -1,29 +1,31 @@
 //! The random affine transformation algorithm.
 
-use crate::common::*;
-use tch_goodies::{Ratio, RatioCyCxHW, RatioRectLabel, Rect as _, TLBR};
+use crate::{common::*, label::RatioLabel};
+use bbox::{prelude::*, CyCxHW};
+use label::Label;
+use tch_goodies::Ratio;
 
 /// Random affine transformation processor initializer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct RandomAffineInit {
     /// The probability to apply rotation.
-    pub rotate_prob: Option<Ratio>,
+    pub rotate_prob: Option<R64>,
     /// The maximum rotation angle in radians.
     pub rotate_radians: Option<R64>,
     /// The probability to translate image location.
-    pub translation_prob: Option<Ratio>,
+    pub translation_prob: Option<R64>,
     /// The maximum translation distance along X and Y axises in ratio unit.
     pub translation: Option<R64>,
     /// The probability to scale up or down the image size.
-    pub scale_prob: Option<Ratio>,
+    pub scale_prob: Option<R64>,
     /// The pair of minimum and maximum scaling ratio.
     pub scale: Option<(R64, R64)>,
     // pub shear_prob: Option<Ratio>,
     // pub shear: Option<R64>,
     /// The probability to apply horizontal flip.
-    pub horizontal_flip_prob: Option<Ratio>,
+    pub horizontal_flip_prob: Option<R64>,
     /// The probability to apply vertical flip.
-    pub vertical_flip_prob: Option<Ratio>,
+    pub vertical_flip_prob: Option<R64>,
     pub min_bbox_size: Option<R64>,
     pub min_bbox_cropping_ratio: Option<R64>,
 }
@@ -45,66 +47,42 @@ impl RandomAffineInit {
             min_bbox_cropping_ratio,
         } = self;
 
-        let rotate_radians = rotate_radians
-            .map(|val| {
-                ensure!(val >= 0.0, "rotate_radians must be non-negative");
-                Ok(val.raw())
-            })
-            .transpose()?;
-        let translation = translation
-            .map(|val| {
-                ensure!(val >= 0.0, "translation must be non-negative");
-                Ok(val.raw())
-            })
-            .transpose()?;
-        let scale = scale
-            .map(|(lo, up)| {
-                ensure!(lo >= 0.0, "scale min must be non-negative");
-                ensure!(up >= 0.0, "scale max must be non-negative");
-                ensure!(lo <= up, "scale min must not exceed scale max");
-                Ok((lo.raw(), up.raw()))
-            })
-            .transpose()?;
-        // let shear = shear
-        //     .map(|val| {
-        //         ensure!(val >= 0.0, "shear must be non-negative");
-        //         Ok(val.raw())
-        //     })
-        //     .transpose()?;
+        ensure!(
+            matches!(rotate_radians, Some(val) if val >= 0.0),
+            "rotate_radians must be non-negative"
+        );
 
-        let min_bbox_size = min_bbox_size
-            .map(|min_bbox_size| {
-                let min_bbox_size = min_bbox_size.raw();
-                ensure!(
-                    (0.0..=1.0).contains(&min_bbox_size),
-                    "min_bbox_size must be between 0.0 and 1.0"
-                );
-                Ok(min_bbox_size)
-            })
-            .transpose()?;
+        ensure!(
+            matches!(translation, Some(val) if val >= 0.0),
+            "translation must be non-negative"
+        );
 
-        let min_bbox_cropping_ratio = min_bbox_cropping_ratio
-            .map(|min_bbox_cropping_ratio| {
-                let min_bbox_cropping_ratio = min_bbox_cropping_ratio.raw();
-                ensure!(
-                    (0.0..=1.0).contains(&min_bbox_cropping_ratio),
-                    "min_bbox_cropping_ratio must be between 0.0 and 1.0"
-                );
-                Ok(min_bbox_cropping_ratio)
-            })
-            .transpose()?;
+        ensure!(
+            matches!(scale, Some((lo, up)) if lo >= 0.0 && up >= 0.0 && lo <= up),
+            "scale min and max must be non-negative, and min must be lower or equal to max"
+        );
+
+        ensure!(
+            matches!(min_bbox_size, Some(size) if (0.0..=1.0).contains(&size.raw())),
+            "min_bbox_size must be between 0.0 and 1.0"
+        );
+
+        ensure!(
+            matches!(min_bbox_cropping_ratio, Some(ratio) if (0.0..=1.0).contains(&ratio.raw())),
+            "min_bbox_cropping_ratio must be between 0.0 and 1.0"
+        );
 
         Ok(RandomAffine {
-            rotate_prob: rotate_prob.as_ref().map(Ratio::to_f64),
+            rotate_prob,
             rotate_radians,
-            translation_prob: translation_prob.as_ref().map(Ratio::to_f64),
+            translation_prob,
             translation,
-            scale_prob: scale_prob.as_ref().map(Ratio::to_f64),
+            scale_prob,
             scale,
             // shear_prob: shear_prob.as_ref().map(Ratio::to_f64),
             // shear,
-            horizontal_flip_prob: horizontal_flip_prob.as_ref().map(Ratio::to_f64),
-            vertical_flip_prob: vertical_flip_prob.as_ref().map(Ratio::to_f64),
+            horizontal_flip_prob,
+            vertical_flip_prob,
             min_bbox_size,
             min_bbox_cropping_ratio,
         })
@@ -114,18 +92,18 @@ impl RandomAffineInit {
 /// Random affine transformation processor.
 #[derive(Debug, Clone)]
 pub struct RandomAffine {
-    rotate_prob: Option<f64>,
-    rotate_radians: Option<f64>,
-    translation_prob: Option<f64>,
-    translation: Option<f64>,
-    scale_prob: Option<f64>,
-    scale: Option<(f64, f64)>,
-    // shear_prob: Option<f64>,
-    // shear: Option<f64>,
-    horizontal_flip_prob: Option<f64>,
-    vertical_flip_prob: Option<f64>,
-    min_bbox_size: Option<f64>,
-    min_bbox_cropping_ratio: Option<f64>,
+    rotate_prob: Option<R64>,
+    rotate_radians: Option<R64>,
+    translation_prob: Option<R64>,
+    translation: Option<R64>,
+    scale_prob: Option<R64>,
+    scale: Option<(R64, R64)>,
+    // shear_prob: Option<R64>,
+    // shear: Option<R64>,
+    horizontal_flip_prob: Option<R64>,
+    vertical_flip_prob: Option<R64>,
+    min_bbox_size: Option<R64>,
+    min_bbox_cropping_ratio: Option<R64>,
 }
 
 impl RandomAffine {
@@ -133,8 +111,8 @@ impl RandomAffine {
     pub fn forward(
         &self,
         orig_image: &Tensor,
-        orig_bboxes: &[RatioRectLabel<R64>],
-    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)> {
+        orig_bboxes: &[RatioLabel],
+    ) -> Result<(Tensor, Vec<RatioLabel>)> {
         tch::no_grad(|| {
             let device = orig_image.device();
             let (channels, height, width) = orig_image.size3()?;
@@ -149,7 +127,7 @@ impl RandomAffine {
 
                 let transform = match self.horizontal_flip_prob {
                     Some(prob) => {
-                        if rng.gen_bool(prob) {
+                        if rng.gen_bool(prob.raw()) {
                             let flip = Tensor::of_slice(
                                 [
                                     [-1f32, 0.0, 0.0], // row 1
@@ -170,7 +148,7 @@ impl RandomAffine {
 
                 let transform = match self.vertical_flip_prob {
                     Some(prob) => {
-                        if rng.gen_bool(prob) {
+                        if rng.gen_bool(prob.raw()) {
                             let flip = Tensor::of_slice(
                                 [
                                     [1f32, 0.0, 0.0], // row 1
@@ -190,8 +168,8 @@ impl RandomAffine {
 
                 let transform = match (self.scale_prob, self.scale) {
                     (Some(prob), Some((lower, upper))) => {
-                        if rng.gen_bool(prob) {
-                            let ratio = rng.gen_range(lower..upper) as f32;
+                        if rng.gen_bool(prob.raw()) {
+                            let ratio = rng.gen_range(lower.raw()..upper.raw()) as f32;
                             let scaling = Tensor::of_slice(
                                 [
                                     [ratio, 0.0, 0.0], // row 1
@@ -232,8 +210,8 @@ impl RandomAffine {
 
                 let transform = match (self.rotate_prob, self.rotate_radians) {
                     (Some(prob), Some(max_randians)) => {
-                        if rng.gen_bool(prob) {
-                            let angle = rng.gen_range((-max_randians)..max_randians);
+                        if rng.gen_bool(prob.raw()) {
+                            let angle = rng.gen_range((-max_randians.raw())..=max_randians.raw());
                             let cos = angle.cos() as f32;
                             let sin = angle.sin() as f32;
                             let rotation = Tensor::of_slice(
@@ -255,12 +233,14 @@ impl RandomAffine {
 
                 let transform = match (self.translation_prob, self.translation) {
                     (Some(prob), Some(max_translation)) => {
-                        if rng.gen_bool(prob) {
+                        if rng.gen_bool(prob.raw()) {
                             // whole image height/width takes 2 units, so translations are doubled
                             let horizontal_translation =
-                                (rng.gen_range((-max_translation)..max_translation) * 2.0) as f32;
+                                (rng.gen_range((-max_translation.raw())..max_translation.raw())
+                                    * 2.0) as f32;
                             let vertical_translation =
-                                (rng.gen_range((-max_translation)..max_translation) * 2.0) as f32;
+                                (rng.gen_range((-max_translation.raw())..max_translation.raw())
+                                    * 2.0) as f32;
 
                             let translation = Tensor::of_slice(
                                 [
@@ -309,15 +289,16 @@ impl RandomAffine {
                 let (orig_corners_vec, class_vec) = orig_bboxes
                     .iter()
                     .map(|label| {
-                        let RatioRectLabel {
-                            rect: ref cycxhw,
-                            class,
-                        } = *label;
-                        let tlbr: TLBR<_, _> = cycxhw.cast::<f32>().unwrap().into();
-                        let orig_t = tlbr.t();
-                        let orig_l = tlbr.l();
-                        let orig_b = tlbr.b();
-                        let orig_r = tlbr.r();
+                        // let Label {
+                        //     rect: ref cycxhw,
+                        //     class,
+                        // } = **label;
+                        // let tlbr: TLBR<_> = cycxhw.cast::<f32>().into();
+                        let rect = label.rect.clone().cast::<f32>();
+                        let orig_t = rect.t();
+                        let orig_l = rect.l();
+                        let orig_b = rect.b();
+                        let orig_r = rect.r();
 
                         let orig_corners = Tensor::of_slice(
                             [
@@ -330,7 +311,7 @@ impl RandomAffine {
                         )
                         .view([4, 3]);
 
-                        (orig_corners, class)
+                        (orig_corners, label.class)
                     })
                     .unzip_n_vec();
 
@@ -399,7 +380,7 @@ impl RandomAffine {
                         }
 
                         if let Some(min_bbox_cropping_ratio) = self.min_bbox_cropping_ratio {
-                            let orig_area = orig_bbox.area();
+                            let orig_area = orig_bbox.rect.area();
                             let new_area = h * w;
                             if new_area < orig_area * min_bbox_cropping_ratio {
                                 return None;
@@ -407,16 +388,13 @@ impl RandomAffine {
                         }
 
                         // construct output bbox
-                        let new_bbox: RatioCyCxHW<R64> =
-                            RatioCyCxHW::from_tlbr(bbox_t, bbox_l, bbox_b, bbox_r)
-                                .unwrap()
-                                .cast::<R64>()
-                                .unwrap();
+                        let new_bbox: CyCxHW<R64> =
+                            CyCxHW::from_tlbr([bbox_t, bbox_l, bbox_b, bbox_r]).cast::<R64>();
 
-                        let new_label = RatioRectLabel {
+                        let new_label = Ratio(Label {
                             rect: new_bbox,
                             class,
-                        };
+                        });
 
                         Some(new_label)
                     })

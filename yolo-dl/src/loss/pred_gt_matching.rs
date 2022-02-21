@@ -1,10 +1,12 @@
 use super::*;
 use crate::common::*;
-use tch_goodies::{Rect as _, UnitlessTLBR};
+use bbox::{prelude::*, TLBR};
+
+const EPSILON: f64 = 1e-8;
 
 /// Trait for predicted bounding boxes
 pub trait PredBox {
-    fn tlbr(&self) -> UnitlessTLBR<R64>;
+    fn tlbr(&self) -> TLBR<R64>;
     fn confidence(&self) -> R64;
     fn cls_conf(&self) -> R64;
     fn cls_id(&self) -> i32;
@@ -25,7 +27,7 @@ impl<T> PredBox for &T
 where
     T: PredBox,
 {
-    fn tlbr(&self) -> UnitlessTLBR<R64> {
+    fn tlbr(&self) -> TLBR<R64> {
         (*self).tlbr()
     }
 
@@ -49,14 +51,14 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MDetection {
     pub id: i32,
-    pub tlbr: UnitlessTLBR<R64>,
+    pub tlbr: TLBR<R64>,
     pub conf: R64,
     pub cls_conf: R64,
     pub cls_id: i32,
 }
 
 impl PredBox for MDetection {
-    fn tlbr(&self) -> UnitlessTLBR<R64> {
+    fn tlbr(&self) -> TLBR<R64> {
         self.tlbr.clone()
     }
     fn confidence(&self) -> R64 {
@@ -95,7 +97,11 @@ impl average_precision::DetectionForAp<MDetection, MDetection> for DetBoxStruct 
     fn iou(&self) -> R64 {
         self.ground_truth
             .as_ref()
-            .map(|ground_truth| ground_truth.tlbr().iou_with(&self.detection.tlbr()))
+            .map(|ground_truth| {
+                ground_truth
+                    .tlbr()
+                    .iou_with(&self.detection.tlbr(), r64(EPSILON))
+            })
             .unwrap_or_else(|| r64(0.0))
     }
 }
@@ -116,7 +122,7 @@ where
             let (gt, iou) = gts
                 .iter()
                 .map(|gt| {
-                    let iou = det.tlbr().iou_with(&gt.tlbr());
+                    let iou = det.tlbr().iou_with(&gt.tlbr(), r64(EPSILON));
                     (gt, iou)
                 })
                 .max_by_key(|(_gt, iou)| *iou)
@@ -169,7 +175,7 @@ mod tests {
 
                 Ok(MDetection {
                     id: id as i32,
-                    tlbr: UnitlessTLBR::from_tlbr(t, l, b, r).unwrap().cast().unwrap(),
+                    tlbr: TLBR::from_tlbr([t, l, b, r]).cast(),
                     conf: r64(conf),
                     cls_conf: r64(cls_conf),
                     cls_id,
@@ -191,7 +197,7 @@ mod tests {
 
                 Ok(MDetection {
                     id: id as i32,
-                    tlbr: UnitlessTLBR::from_tlbr(t, l, b, r).unwrap().cast().unwrap(),
+                    tlbr: TLBR::from_tlbr([t, l, b, r]).cast(),
                     conf: r64(1.0),
                     cls_conf: r64(1.0),
                     cls_id,
@@ -215,7 +221,7 @@ mod tests {
                     .iter()
                     .filter(|gt| det.cls_id == gt.cls_id)
                     .map(|gt| {
-                        let iou = det.tlbr().iou_with(&gt.tlbr());
+                        let iou = det.tlbr().iou_with(&gt.tlbr(), r64(EPSILON));
                         (gt, iou)
                     })
                     .max_by_key(|(_gt, iou)| *iou)

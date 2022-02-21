@@ -1,6 +1,8 @@
 use super::*;
 use crate::common::*;
-use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
+use bbox::{prelude::*, CyCxHW, HW};
+use label::Label;
+use tch_goodies::Pixel;
 
 /// The Microsoft COCO dataset.
 #[derive(Debug, Clone)]
@@ -123,18 +125,18 @@ impl CocoDataset {
                         }
 
                         let [l, t, w, h] = ann.bbox;
-                        let rect = PixelCyCxHW::from_tlhw(t, l, h, w)?;
-                        Ok(Some(PixelRectLabel {
+                        let rect = CyCxHW::from_tlhw([t, l, h, w]);
+                        Ok(Some(Pixel(Label {
                             rect,
                             class: class_index,
-                        }))
+                        })))
                     })
                     .filter_map(|result| result.transpose())
                     .try_collect()?;
 
                 Ok(Arc::new(FileRecord {
                     path: dataset.image_dir.join(&image.file_name),
-                    size: PixelSize::from_hw(image.height, image.width).unwrap(),
+                    size: Pixel(HW::from_hw([image.height, image.width])),
                     bboxes,
                 }))
             })

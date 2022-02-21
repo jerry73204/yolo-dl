@@ -1,6 +1,8 @@
 use super::*;
 use crate::common::*;
-use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
+use bbox::{prelude::*, CyCxHW, HW};
+use label::Label;
+use tch_goodies::Pixel;
 
 /// The Pascal VOC dataset.
 #[derive(Debug, Clone)]
@@ -81,7 +83,7 @@ impl CsvDataset {
                                 height: img_h,
                                 width: img_w,
                             } = imagesize::size(&*image_file)?;
-                            PixelSize::from_hw(img_h, img_w)?
+                            Pixel(HW::from_hw([img_h, img_w]))
                         };
 
                         let bboxes = records
@@ -96,10 +98,10 @@ impl CsvDataset {
                             })
                             .map(|(record, class_index)| -> Result<_> {
                                 let CsvSample { cy, cx, h, w, .. } = *record;
-                                let label = PixelRectLabel {
-                                    rect: PixelCyCxHW::from_cycxhw(cy, cx, h, w)?,
+                                let label = Pixel(Label {
+                                    rect: CyCxHW::from_cycxhw([cy, cx, h, w]),
                                     class: class_index,
-                                };
+                                });
                                 Ok(label)
                             })
                             .try_collect()?;

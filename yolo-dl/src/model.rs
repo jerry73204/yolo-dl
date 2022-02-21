@@ -1,7 +1,8 @@
 use crate::common::*;
+use bbox::HW;
 use model_config as config;
 use model_graph as graph;
-use tch_goodies::RatioSize;
+use tch_goodies::Ratio;
 use tch_modules as modules;
 
 /// The model running on libtorch.
@@ -273,7 +274,7 @@ impl YoloModel {
                             .iter()
                             .map(|size| -> Result<_> {
                                 let config::Size { h, w } = *size;
-                                let size = RatioSize::from_hw(h, w).unwrap();
+                                let size = Ratio(HW::from_hw([h, w]));
                                 Ok(size)
                             })
                             .try_collect()?;
@@ -424,7 +425,7 @@ impl YoloModel {
         &self.layers
     }
 
-    pub fn anchors(&self) -> Vec<&[RatioSize<R64>]> {
+    pub fn anchors(&self) -> Vec<&[Ratio<HW<R64>>]> {
         self.detect_2d_layers()
             .into_iter()
             .map(|module| module.anchors())

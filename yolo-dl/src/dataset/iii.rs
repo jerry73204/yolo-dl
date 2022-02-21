@@ -1,7 +1,9 @@
 use super::*;
 use crate::common::*;
+use bbox::{prelude::*, CyCxHW, HW};
 use iii_formosa_dataset as iii;
-use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
+use label::Label;
+use tch_goodies::Pixel;
 
 const III_DEPTH: usize = 3;
 
@@ -143,7 +145,7 @@ impl IiiDataset {
 
                         let size = {
                             let iii::Size { width, height, .. } = annotation.size;
-                            PixelSize::from_hw(height, width).unwrap()
+                            Pixel(HW::from_hw([height, width]))
                         };
 
                         let bboxes: Vec<_> = annotation
@@ -165,7 +167,7 @@ impl IiiDataset {
                                     xmax,
                                     ymax,
                                 } = obj.bndbox;
-                                let bbox = match PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax) {
+                                let bbox = match CyCxHW::try_from_tlbr([ymin, xmin, ymax, xmax]) {
                                     Ok(bbox) => bbox,
                                     Err(_err) => {
                                         warn!(
@@ -177,10 +179,10 @@ impl IiiDataset {
                                     }
                                 };
 
-                                let labeled_bbox = PixelRectLabel {
+                                let labeled_bbox = Pixel(Label {
                                     rect: bbox,
                                     class: class_index,
-                                };
+                                });
                                 Some(labeled_bbox)
                             })
                             .collect();

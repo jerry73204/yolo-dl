@@ -50,6 +50,8 @@ cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"], optio
 ndarray = { version = "0.15.4", optional = true }
 ptree = { version = "0.4.0", optional = true }
 envy = { version = "0.4.2", optional = true }
+bbox = { version = "0.1.0", path = "../bbox" }
+label = { version = "0.1.0", path = "../label" }
 
 [features]
 profiling = ["ptree", "envy"]

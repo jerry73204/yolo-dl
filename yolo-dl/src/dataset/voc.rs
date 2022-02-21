@@ -1,6 +1,8 @@
 use super::*;
 use crate::common::*;
-use tch_goodies::{PixelCyCxHW, PixelRectLabel, PixelSize};
+use bbox::{prelude::*, CyCxHW, HW};
+use label::Label;
+use tch_goodies::Pixel;
 
 /// The Pascal VOC dataset.
 #[derive(Debug, Clone)]
@@ -58,7 +60,7 @@ impl VocDataset {
 
                         let size = {
                             let voc_dataset::Size { width, height, .. } = annotation.size;
-                            PixelSize::from_hw(height, width).unwrap()
+                            Pixel(HW::from_hw([height, width]))
                         };
 
                         let bboxes: Vec<_> = annotation
@@ -80,10 +82,10 @@ impl VocDataset {
                                     xmax,
                                     ymax,
                                 } = obj.bndbox;
-                                let bbox = PixelRectLabel {
-                                    rect: PixelCyCxHW::from_tlbr(ymin, xmin, ymax, xmax).unwrap(),
+                                let bbox = Pixel(Label {
+                                    rect: CyCxHW::from_tlbr([ymin, xmin, ymax, xmax]),
                                     class: class_index,
-                                };
+                                });
                                 Ok(bbox)
                             })
                             .try_collect()?;

@@ -4,19 +4,16 @@ use super::{
     misc::{BoxMetric, MatchGrid},
     pred_target_matching::{CyCxHWMatcher, CyCxHWMatcherInit, MatchingOutput},
 };
-use crate::{common::*, profiling::Timing};
+use crate::{common::*, label::RatioLabel, profiling::Timing};
 use tch_goodies::{
-    detection::{FlatIndex, FlatIndexTensor, MergedDenseDetection},
-    RatioRectLabel, TensorExt,
+    detection::{FlatIndexTensor, MergedDenseDetection},
+    TensorExt as _,
 };
 use tch_modules::{
     BceWithLogitsLoss, BceWithLogitsLossInit, CrossEntropyLoss, FocalLoss, FocalLossInit, L2Loss,
 };
 
-pub use yolo_loss::*;
 pub use yolo_loss_init::*;
-pub use yolo_loss_output::*;
-
 mod yolo_loss_init {
     use super::*;
 
@@ -207,7 +204,9 @@ mod yolo_loss_init {
     }
 }
 
+pub use yolo_loss::*;
 mod yolo_loss {
+
     use super::*;
 
     #[derive(Debug)]
@@ -228,7 +227,7 @@ mod yolo_loss {
         pub fn forward(
             &self,
             prediction: &MergedDenseDetection,
-            target: &[Vec<RatioRectLabel<R64>>],
+            target: &[Vec<RatioLabel>],
         ) -> (YoloLossOutput, YoloLossAuxiliary) {
             let mut timing = Timing::new("loss function");
 
@@ -420,6 +419,7 @@ mod yolo_loss {
                 debug_assert!({
                     use cv_convert::prelude::*;
                     use ndarray::{Array3, ArrayD};
+                    use tch_goodies::detection::FlatIndex;
 
                     let (batch_size, _num_entries, num_instances) =
                         pred_objectness.size3().unwrap();
@@ -511,6 +511,7 @@ mod yolo_loss {
     }
 }
 
+pub use yolo_loss_output::*;
 mod yolo_loss_output {
     use super::*;
 

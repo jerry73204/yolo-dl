@@ -1,19 +1,25 @@
 //! Loss function building blocks.
 
-mod average_precision;
-mod benchmark;
-mod inference;
-mod loss_;
-mod misc;
-mod nms;
-mod pred_gt_matching;
-mod pred_target_matching;
-
 pub use average_precision::*;
+mod average_precision;
+
 pub use benchmark::*;
+mod benchmark;
+
 pub use inference::*;
+mod inference;
+
 pub use loss_::*;
+mod loss_;
+
 pub use misc::*;
+mod misc;
+
 pub use nms::*;
+mod nms;
+
 pub use pred_gt_matching::*;
+mod pred_gt_matching;
+
 pub use pred_target_matching::*;
+mod pred_target_matching;

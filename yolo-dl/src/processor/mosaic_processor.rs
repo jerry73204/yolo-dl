@@ -1,7 +1,9 @@
 //! The Mosaic mixing algorithm.
 
-use crate::common::*;
-use tch_goodies::{RatioCyCxHW, RatioRectLabel, Rect as _, TensorExt};
+use crate::{common::*, label::RatioLabel};
+use bbox::{prelude::*, CyCxHW};
+use label::Label;
+use tch_goodies::{Ratio, TensorExt as _};
 
 /// Mosaic processor initializer.
 #[derive(Debug, Clone)]
@@ -59,10 +61,10 @@ impl MosaicProcessor {
     pub fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
-    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)>
+    ) -> Result<(Tensor, Vec<RatioLabel>)>
     where
         PairIntoIter: IntoIterator<Item = (Tensor, CyCxHWIntoIter)>,
-        CyCxHWIntoIter: IntoIterator<Item = RatioRectLabel<R64>>,
+        CyCxHWIntoIter: IntoIterator<Item = RatioLabel>,
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         tch::no_grad(|| {
@@ -210,10 +212,10 @@ impl ParallelMosaicProcessor {
     pub async fn forward<PairIntoIter, CyCxHWIntoIter>(
         &self,
         input: PairIntoIter,
-    ) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)>
+    ) -> Result<(Tensor, Vec<RatioLabel>)>
     where
         PairIntoIter: IntoIterator<Item = (Tensor, CyCxHWIntoIter)>,
-        CyCxHWIntoIter: 'static + IntoIterator<Item = RatioRectLabel<R64>> + Send,
+        CyCxHWIntoIter: 'static + IntoIterator<Item = RatioLabel> + Send,
         PairIntoIter::IntoIter: ExactSizeIterator,
     {
         let pairs: Vec<_> = input.into_iter().collect();
@@ -300,11 +302,11 @@ impl ParallelMosaicProcessor {
 
 fn crop_image_bboxes(
     image: &Tensor,
-    bboxes: impl IntoIterator<Item = RatioRectLabel<R64>>,
+    bboxes: impl IntoIterator<Item = RatioLabel>,
     tlbr: [f64; 4],
     min_bbox_size: Option<f64>,
     min_bbox_cropping_ratio: Option<f64>,
-) -> Result<(Tensor, Vec<RatioRectLabel<R64>>)> {
+) -> Result<(Tensor, Vec<RatioLabel>)> {
     tch::no_grad(|| {
         let [margin_t, margin_b, margin_l, margin_r] = tlbr;
 
@@ -315,11 +317,10 @@ fn crop_image_bboxes(
         let cropped_bboxes = bboxes
             .into_iter()
             .filter_map(|bbox| {
-                let roi = RatioCyCxHW::from_tlbr(margin_t, margin_l, margin_b, margin_r)
-                    .unwrap()
-                    .cast::<R64>()
-                    .unwrap();
-                let cropped = bbox.intersect_with(&roi)?;
+                let roi = Ratio(
+                    CyCxHW::from_tlbr([margin_t, margin_l, margin_b, margin_r]).cast::<R64>(),
+                );
+                let cropped = bbox.rect.intersect_with(&*roi)?;
 
                 let check1 = min_bbox_size
                     .map(|min_bbox_size| {
@@ -329,15 +330,17 @@ fn crop_image_bboxes(
 
                 let check2 = min_bbox_cropping_ratio
                     .map(|min_bbox_cropping_ratio| {
-                        let orig_area = bbox.area().raw();
+                        let orig_area = bbox.rect.area().raw();
                         let cropped_area = cropped.area();
                         cropped_area >= min_bbox_cropping_ratio * orig_area
                     })
                     .unwrap_or(true);
 
-                (check1 && check2).then(|| RatioRectLabel {
-                    rect: cropped.into(),
-                    class: bbox.class,
+                (check1 && check2).then(|| {
+                    Ratio(Label {
+                        rect: cropped.into(),
+                        class: bbox.class,
+                    })
                 })
             })
             .collect_vec();
