@@ -64,6 +64,10 @@ where
         [self.t(), self.l(), self.h(), self.w()]
     }
 
+    fn hw(&self) -> [Self::Type; 2] {
+        [self.h(), self.w()]
+    }
+
     fn to_cycxhw(&self) -> CyCxHW<Self::Type> {
         CyCxHW {
             cy: self.cy(),
@@ -126,7 +130,7 @@ where
             .unwrap_or_else(Self::Type::zero)
     }
 
-    fn iou_with_epsilon<R>(&self, other: &R, epsilon: Self::Type) -> Self::Type
+    fn iou_with<R>(&self, other: &R, epsilon: Self::Type) -> Self::Type
     where
         R: Rect<Type = Self::Type>,
     {
