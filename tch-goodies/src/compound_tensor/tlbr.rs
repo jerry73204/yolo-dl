@@ -1,5 +1,5 @@
 use super::{area::AreaTensor, cycxhw::CyCxHWTensor, size::SizeTensor};
-use crate::{common::*, utils::IntoTchElement};
+use crate::common::*;
 
 /// Checked tensor of batched box parameters in TLBR format.
 #[derive(Debug, TensorLike, Getters)]
@@ -221,6 +221,12 @@ impl From<&CyCxHWTensor> for TLBRTensor {
         let r = cx + w / 2.0;
 
         Self { t, l, b, r }
+    }
+}
+
+impl From<CyCxHWTensor> for TLBRTensor {
+    fn from(from: CyCxHWTensor) -> Self {
+        (&from).into()
     }
 }
 

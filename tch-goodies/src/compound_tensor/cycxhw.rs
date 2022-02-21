@@ -197,6 +197,12 @@ impl From<&TLBRTensor> for CyCxHWTensor {
     }
 }
 
+impl From<TLBRTensor> for CyCxHWTensor {
+    fn from(from: TLBRTensor) -> Self {
+        (&from).into()
+    }
+}
+
 // impl<T, U> TryFrom<&CyCxHWTensor> for Vec<CyCxHW<T, U>>
 // where
 //     T: Float,
