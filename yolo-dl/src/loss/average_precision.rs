@@ -277,105 +277,177 @@ impl MeanApCalculator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, Cursor};
+
+    mod serde_usize_from_float {
+        use super::*;
+        use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+        pub fn serialize<S>(value: &usize, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            (*value as f64).serialize(serializer)
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<usize, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let value = R64::deserialize(deserializer)?.raw() as usize;
+            Ok(value)
+        }
+    }
+
+    fn load_detection<R>(reader: R) -> Result<Vec<WithId<MDet>>>
+    where
+        R: BufRead,
+    {
+        let dets: Vec<_> = reader
+            .lines()
+            .enumerate()
+            .map(|(id, line)| {
+                let det: MDet = serde_scan::from_str(&line?)?;
+                anyhow::Ok(WithId { id, inner: det })
+            })
+            .try_collect()?;
+
+        Ok(dets)
+    }
+
+    fn load_ground_truth<R>(reader: R) -> Result<Vec<WithId<MDet>>>
+    where
+        R: BufRead,
+    {
+        let gts: Vec<_> = reader
+            .lines()
+            .enumerate()
+            .map(|(id, line)| {
+                let gt: MGt = serde_scan::from_str(&line?)?;
+                anyhow::Ok(WithId {
+                    id,
+                    inner: MDet::from(gt),
+                })
+            })
+            .try_collect()?;
+
+        Ok(gts)
+    }
+
     /// structure of detection output
     /// (x1, y1): coordinates of top-left corner of object with scale 416x416
     /// (x2, y2): coordinates of bottom-right corner of object with scale 416x416
-
-    #[derive(Debug, Clone, Eq, Copy)]
-    struct MDetection {
-        id: i32,
-        x1: R64,
-        y1: R64,
-        x2: R64,
-        y2: R64,
-        conf: R64,
-        cls_conf: R64,
-        cls_id: i32,
-    }
-    impl PartialEq for MDetection {
-        fn eq(&self, other: &MDetection) -> bool {
-            //self.id == other.id
-            self.x1 == other.x1
-                && self.x2 == other.x2
-                && self.y1 == other.y1
-                && self.y2 == other.y2
-                && self.conf == other.conf
-                && self.cls_conf == other.cls_conf
-        }
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct MDet {
+        pub x1: R64,
+        pub y1: R64,
+        pub x2: R64,
+        pub y2: R64,
+        pub conf: R64,
+        pub cls_conf: R64,
+        #[serde(with = "serde_usize_from_float")]
+        pub cls_id: usize,
     }
 
-    impl Hash for MDetection {
-        fn hash<H: Hasher>(&self, state: &mut H) {
-            self.id.hash(state);
-            //self.phone.hash(state);
-        }
-    }
-
-    impl MDetection {
-        fn new_f64(
-            id: i32,
-            x1: f64,
-            y1: f64,
-            x2: f64,
-            y2: f64,
-            conf: f64,
-            cls_conf: f64,
-            cls_id: i32,
-        ) -> MDetection {
-            MDetection {
-                id,
-                x1: r64(x1),
-                y1: r64(y1),
-                x2: r64(x2),
-                y2: r64(y2),
-                conf: r64(conf),
-                cls_conf: r64(cls_conf),
-                cls_id,
-            }
-        }
-        fn new(
-            id: i32,
-            x1: R64,
-            y1: R64,
-            x2: R64,
-            y2: R64,
-            conf: R64,
-            cls_conf: R64,
-            cls_id: i32,
-        ) -> MDetection {
-            MDetection {
-                id,
-                x1,
-                y1,
-                x2,
-                y2,
-                conf,
-                cls_conf,
-                cls_id,
-            }
-        }
-        fn get_xyxy(&self) -> (R64, R64, R64, R64) {
+    impl MDet {
+        pub fn get_xyxy(&self) -> (R64, R64, R64, R64) {
             (self.x1, self.y1, self.x2, self.y2)
         }
     }
 
-    #[derive(Debug, Clone, Copy)]
-    struct TestDetection {
-        detection: MDetection,
-        ground_truth: Option<MDetection>,
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    struct MGt {
+        #[serde(with = "serde_usize_from_float")]
+        pub cls_id: usize,
+        pub x1: R64,
+        pub y1: R64,
+        pub x2: R64,
+        pub y2: R64,
     }
-    impl DetectionForAp<MDetection, MDetection> for TestDetection {
+
+    impl From<MGt> for MDet {
+        fn from(gt: MGt) -> Self {
+            let MGt {
+                cls_id,
+                x1,
+                y1,
+                x2,
+                y2,
+            } = gt;
+
+            Self {
+                x1,
+                y1,
+                x2,
+                y2,
+                conf: r64(1.0),
+                cls_conf: r64(1.0),
+                cls_id,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct WithId<T> {
+        pub id: usize,
+        pub inner: T,
+    }
+
+    impl<T> PartialEq for WithId<T> {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
+    impl<T> Eq for WithId<T> {}
+
+    impl<T> Hash for WithId<T> {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.id.hash(state);
+        }
+    }
+
+    impl<T> Borrow<T> for WithId<T> {
+        fn borrow(&self) -> &T {
+            &self.inner
+        }
+    }
+
+    impl<T> Deref for WithId<T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.inner
+        }
+    }
+
+    impl<T> DerefMut for WithId<T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.inner
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct TestDetection {
+        pub detection: WithId<MDet>,
+        pub ground_truth: Option<WithId<MDet>>,
+    }
+
+    impl DetectionForAp<WithId<MDet>, WithId<MDet>> for TestDetection {
         // add code here
-        fn detection(&self) -> &MDetection {
+        fn detection(&self) -> &WithId<MDet> {
             &self.detection
         }
-        fn ground_truth(&self) -> Option<&MDetection> {
+
+        fn ground_truth(&self) -> Option<&WithId<MDet>> {
             self.ground_truth.as_ref()
         }
+
         fn confidence(&self) -> R64 {
             self.detection.cls_conf
             //self.detection.conf*self.detection.cls_conf
         }
+
         fn iou(&self) -> R64 {
             match &self.ground_truth {
                 None => r64(0.0),
@@ -395,101 +467,6 @@ mod tests {
         }
     }
 
-    impl TestDetection {
-        // fn new_f64(
-        //     d_id: i32,
-        //     d_x1: f64,
-        //     d_y1: f64,
-        //     d_x2: f64,
-        //     d_y2: f64,
-        //     d_conf: f64,
-        //     d_cls_conf: f64,
-        //     d_cls_id: i32,
-        //     g_id: i32,
-        //     g_cls_id: i32,
-        //     g_x1: f64,
-        //     g_y1: f64,
-        //     g_x2: f64,
-        //     g_y2: f64,
-        // ) -> TestDetection {
-        //     TestDetection {
-        //         detection: MDetection::new_f64(
-        //             d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
-        //         ),
-        //         ground_truth: Some(MDetection::new_f64(
-        //             g_id, g_x1, g_y1, g_x2, g_y2, 1.0000, 1.0000, g_cls_id,
-        //         )),
-        //     }
-        // }
-
-        // fn new_no_gt_f64(
-        //     d_id: i32,
-        //     d_x1: f64,
-        //     d_y1: f64,
-        //     d_x2: f64,
-        //     d_y2: f64,
-        //     d_conf: f64,
-        //     d_cls_conf: f64,
-        //     d_cls_id: i32,
-        // ) -> TestDetection {
-        //     TestDetection {
-        //         detection: MDetection::new_f64(
-        //             d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
-        //         ),
-        //         ground_truth: None,
-        //     }
-        // }
-
-        fn new(
-            d_id: i32,
-            d_x1: R64,
-            d_y1: R64,
-            d_x2: R64,
-            d_y2: R64,
-            d_conf: R64,
-            d_cls_conf: R64,
-            d_cls_id: i32,
-            g_id: i32,
-            g_cls_id: i32,
-            g_x1: R64,
-            g_y1: R64,
-            g_x2: R64,
-            g_y2: R64,
-        ) -> TestDetection {
-            TestDetection {
-                detection: MDetection::new(
-                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
-                ),
-                ground_truth: Some(MDetection::new(
-                    g_id,
-                    g_x1,
-                    g_y1,
-                    g_x2,
-                    g_y2,
-                    r64(1.0000),
-                    r64(1.0000),
-                    g_cls_id,
-                )),
-            }
-        }
-        fn new_no_gt(
-            d_id: i32,
-            d_x1: R64,
-            d_y1: R64,
-            d_x2: R64,
-            d_y2: R64,
-            d_conf: R64,
-            d_cls_conf: R64,
-            d_cls_id: i32,
-        ) -> TestDetection {
-            TestDetection {
-                detection: MDetection::new(
-                    d_id, d_x1, d_y1, d_x2, d_y2, d_conf, d_cls_conf, d_cls_id,
-                ),
-                ground_truth: None,
-            }
-        }
-    }
     fn cal_iou_xxyys(bbox_a: (R64, R64, R64, R64), bbox_b: (R64, R64, R64, R64)) -> R64 {
         let xa = cmp::max(bbox_a.0, bbox_b.0);
         let ya = cmp::max(bbox_a.1, bbox_b.1);
@@ -502,7 +479,7 @@ mod tests {
         inter_area / (box_a_area + box_b_area - inter_area)
     }
 
-    fn match_d_g(dets: &[MDetection], gts: &[MDetection]) -> Vec<TestDetection> {
+    fn match_d_g(dets: &[WithId<MDet>], gts: &[WithId<MDet>]) -> Vec<TestDetection> {
         let mut bbox_d: (R64, R64, R64, R64);
         let mut bbox_g: (R64, R64, R64, R64);
         let mut max_iou: R64;
@@ -510,107 +487,50 @@ mod tests {
         let mut sel_g: usize;
         let mut td: TestDetection;
         let mut t_vec: Vec<TestDetection> = Vec::new();
-        for d_id in 0..dets.len() {
+        for (d_id, det) in dets.iter().enumerate() {
             max_iou = r64(0.0);
             sel_g = 0;
-            bbox_d = dets[d_id].get_xyxy();
-            for g_id in 0..gts.len() {
-                bbox_g = gts[g_id].get_xyxy();
+            bbox_d = det.get_xyxy();
+            for (g_id, gt) in gts.iter().enumerate() {
+                bbox_g = gt.get_xyxy();
                 tmp_iou = cal_iou_xxyys(bbox_d, bbox_g);
-                if gts[g_id].cls_id == dets[d_id].cls_id && max_iou < tmp_iou {
+                if gt.cls_id == det.cls_id && max_iou < tmp_iou {
                     max_iou = tmp_iou;
                     sel_g = g_id;
                 }
             }
+
             if max_iou == r64(0.0) {
-                td = TestDetection::new_no_gt(
-                    d_id as i32,
-                    dets[d_id].x1,
-                    dets[d_id].y1,
-                    dets[d_id].x2,
-                    dets[d_id].y2,
-                    dets[d_id].conf,
-                    dets[d_id].cls_conf,
-                    dets[d_id].cls_id,
-                );
+                td = TestDetection {
+                    detection: det.clone(),
+                    ground_truth: None,
+                };
             } else {
-                td = TestDetection::new(
-                    d_id as i32,
-                    dets[d_id].x1,
-                    dets[d_id].y1,
-                    dets[d_id].x2,
-                    dets[d_id].y2,
-                    dets[d_id].conf,
-                    dets[d_id].cls_conf,
-                    dets[d_id].cls_id,
-                    sel_g as i32,
-                    gts[sel_g].cls_id,
-                    gts[sel_g].x1,
-                    gts[sel_g].y1,
-                    gts[sel_g].x2,
-                    gts[sel_g].y2,
-                );
+                td = TestDetection {
+                    detection: dets[d_id].clone(),
+                    ground_truth: Some(gts[sel_g].clone()),
+                };
             }
             t_vec.push(td);
         }
         t_vec
     }
 
-    fn vecd_to_mdetection(in_vec: Vec<Vec<f64>>) -> Vec<MDetection> {
-        let mut v_det: Vec<MDetection> = Vec::new();
-        let mut mdt: MDetection;
-        for i in 0..in_vec.len() {
-            mdt = MDetection::new_f64(
-                i as i32,
-                in_vec[i][0],
-                in_vec[i][1],
-                in_vec[i][2],
-                in_vec[i][3],
-                in_vec[i][4],
-                in_vec[i][5],
-                in_vec[i][6] as i32,
-            );
-            v_det.push(mdt);
-        }
-
-        v_det
-    }
-    fn vecg_to_mdetection(in_vec: Vec<Vec<f64>>) -> Vec<MDetection> {
-        let mut v_det: Vec<MDetection> = Vec::new();
-        let mut mdt: MDetection;
-        for i in 0..in_vec.len() {
-            mdt = MDetection::new_f64(
-                i as i32,
-                in_vec[i][1],
-                in_vec[i][2],
-                in_vec[i][3],
-                in_vec[i][4],
-                1.0,
-                1.0,
-                in_vec[i][0] as i32,
-            );
-            v_det.push(mdt);
-        }
-
-        v_det
-    }
-
-    fn split_detection_class(vec_det: &Vec<TestDetection>) -> Vec<Vec<TestDetection>> {
+    fn split_detection_class(vec_det: &[TestDetection]) -> Vec<Vec<TestDetection>> {
         let mut vec_ret: Vec<Vec<TestDetection>> = Vec::new();
-        let mut cls_id_to_vec_id: Vec<i32> = Vec::new();
-        let mut cls_id: i32;
+        let mut cls_id_to_vec_id: Vec<usize> = Vec::new();
+        let mut cls_id: usize;
         let mut vec_tmp: Vec<TestDetection>;
-        for i in 0..vec_det.len() {
-            cls_id = vec_det[i].detection.cls_id;
+        for det in vec_det {
+            cls_id = det.detection.cls_id;
             if cls_id_to_vec_id.iter().any(|&k| k == cls_id) {
                 //The class is seen
 
                 let index = cls_id_to_vec_id.iter().position(|&r| r == cls_id).unwrap();
-                vec_ret[index].push(vec_det[i]);
+                vec_ret[index].push(det.clone());
             } else {
                 cls_id_to_vec_id.push(cls_id);
-                vec_tmp = Vec::new();
-                vec_tmp.push(vec_det[i]);
+                vec_tmp = vec![det.clone()];
                 vec_ret.push(vec_tmp);
             }
         }
@@ -619,11 +539,11 @@ mod tests {
         vec_ret
     }
     //(cls_id, num of gt)
-    fn get_gt_cnt_per_class(m_gt_vec: &Vec<MDetection>) -> Vec<(i32, usize)> {
-        let mut vec_ret: Vec<(i32, usize)> = Vec::new();
-        let mut class_seen: Vec<i32> = Vec::new();
-        for i in 0..m_gt_vec.len() {
-            let cls_id = m_gt_vec[i].cls_id;
+    fn get_gt_cnt_per_class(m_gt_vec: &[WithId<MDet>]) -> Vec<(usize, usize)> {
+        let mut vec_ret: Vec<(usize, usize)> = Vec::new();
+        let mut class_seen: Vec<usize> = Vec::new();
+        for m_gt in m_gt_vec {
+            let cls_id = m_gt.cls_id;
             if class_seen.iter().any(|&k| k == cls_id) {
                 //The class is seen
                 let index = class_seen.iter().position(|&r| r == cls_id).unwrap();
@@ -649,37 +569,19 @@ mod tests {
 284.07000 191.51000 336.73000 351.94000 0.98834 0.99999 0.00000
 229.29000 222.98000 314.37000 358.82000 0.98327 0.99990 0.00000
 0.35714 234.53000 29.80900 361.46000 0.89682 0.99831 0.00000";
-        let d_vec: Result<Vec<Vec<f64>>> = text_d
-            .lines()
-            .map(|line| {
-                let values: Result<Vec<_>> = line
-                    .split(" ")
-                    .map(|token| -> Result<_> {
-                        let value: f64 = token.parse()?;
-                        Ok(value)
-                    })
-                    .collect();
-                values
-            })
-            .collect();
-        let d_vec = d_vec?;
-        let m_d_vec = vecd_to_mdetection(d_vec);
 
-        let gt_vec: Result<Vec<Vec<f64>>> = text
-            .lines()
-            .map(|line| {
-                let values: Result<Vec<_>> = line
-                    .split(" ")
-                    .map(|token| -> Result<_> {
-                        let value: f64 = token.parse()?;
-                        Ok(value)
-                    })
-                    .collect();
-                values
-            })
-            .collect();
-        let gt_vec = gt_vec?;
-        let m_gt_vec = vecg_to_mdetection(gt_vec);
+        dbg!();
+        let m_d_vec = {
+            let reader = Cursor::new(text_d);
+            load_detection(reader)?
+        };
+        dbg!();
+        let m_gt_vec = {
+            let reader = Cursor::new(text);
+            load_ground_truth(reader)?
+        };
+        dbg!();
+
         // let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
         let t_vec: Vec<TestDetection>;
         t_vec = match_d_g(&m_d_vec, &m_gt_vec);
@@ -702,45 +604,24 @@ mod tests {
         let text_d = "159.15750 105.84630 247.27790 245.03130 0.99870 0.99960 40.00000
 55.24000 31.11770 150.80330 362.72990 0.99670 0.99930 39.00000
 200.69280 35.67050 411.24700 206.84590 0.78630 0.97070 56.00000";
-        let d_vec: Result<Vec<Vec<f64>>> = text_d
-            .lines()
-            .map(|line| {
-                let values: Result<Vec<_>> = line
-                    .split(" ")
-                    .map(|token| -> Result<_> {
-                        let value: f64 = token.parse()?;
-                        Ok(value)
-                    })
-                    .collect();
-                values
-            })
-            .collect();
-        let d_vec = d_vec?;
-        let m_d_vec = vecd_to_mdetection(d_vec);
 
-        let gt_vec: Result<Vec<Vec<f64>>> = text
-            .lines()
-            .map(|line| {
-                let values: Result<Vec<_>> = line
-                    .split(" ")
-                    .map(|token| -> Result<_> {
-                        let value: f64 = token.parse()?;
-                        Ok(value)
-                    })
-                    .collect();
-                values
-            })
-            .collect();
-        let gt_vec = gt_vec?;
-        let m_gt_vec = vecg_to_mdetection(gt_vec);
+        let m_d_vec = {
+            let reader = Cursor::new(text_d);
+            load_detection(reader)?
+        };
+        let m_gt_vec = {
+            let reader = Cursor::new(text);
+            load_ground_truth(reader)?
+        };
+
         let gt_cnt = get_gt_cnt_per_class(&m_gt_vec);
         let t_vec: Vec<TestDetection>;
         t_vec = match_d_g(&m_d_vec, &m_gt_vec);
         let class_split_vec = split_detection_class(&t_vec);
         let mut sum_ret = r64(0.0);
         let map_cal = MeanApCalculator::new_coco();
-        for i in 0..class_split_vec.len() {
-            let cls_id = class_split_vec[i][0].detection.cls_id;
+        for class_split in class_split_vec {
+            let cls_id = class_split[0].detection.cls_id;
             let mut num_gt: usize = 0;
             for gt_cnt_cls in gt_cnt.iter() {
                 if gt_cnt_cls.0 == cls_id {
@@ -749,7 +630,7 @@ mod tests {
                 }
             }
 
-            let ret = map_cal.compute_mean_ap(&class_split_vec[i], num_gt);
+            let ret = map_cal.compute_mean_ap(&class_split, num_gt);
             sum_ret += ret;
         }
         let map = sum_ret / gt_cnt.len() as f64;

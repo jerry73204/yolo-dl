@@ -37,6 +37,7 @@ pub use std::{
     path::{Path, PathBuf},
     pin::Pin,
     rc::Rc,
+    str::FromStr,
     sync::{
         atomic::{self, AtomicBool},
         Arc, Once,
