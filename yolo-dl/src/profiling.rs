@@ -144,13 +144,13 @@ impl Timing {
                 .iter()
                 .enumerate()
                 .map(|(index, timing)| {
-                    let mut elapsed_cumulative = elapsed_cumulative.clone();
+                    let mut curr_elapsed_cumulative = *elapsed_cumulative;
 
                     builder.begin_child(format!("{}", index));
-                    timing.build_ptree_recursive(builder, &mut elapsed_cumulative);
+                    timing.build_ptree_recursive(builder, &mut curr_elapsed_cumulative);
                     builder.end_child();
 
-                    elapsed_cumulative
+                    curr_elapsed_cumulative
                 })
                 .max()
                 .unwrap();

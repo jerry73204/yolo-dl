@@ -164,7 +164,7 @@ mod tests {
             .lines()
             .enumerate()
             .map(|(id, line)| -> Result<_> {
-                let mut tokens = line.split(" ");
+                let mut tokens = line.split(' ');
                 let t: f64 = tokens.next().unwrap().parse()?;
                 let l: f64 = tokens.next().unwrap().parse()?;
                 let b: f64 = tokens.next().unwrap().parse()?;
@@ -188,7 +188,7 @@ mod tests {
             .lines()
             .enumerate()
             .map(|(id, line)| -> Result<_> {
-                let mut tokens = line.split(" ");
+                let mut tokens = line.split(' ');
                 let cls_id: i32 = tokens.next().unwrap().parse()?;
                 let t: f64 = tokens.next().unwrap().parse()?;
                 let l: f64 = tokens.next().unwrap().parse()?;

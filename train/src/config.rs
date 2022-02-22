@@ -1,7 +1,7 @@
 //! Training program configuration format.
 
 use crate::common::*;
-use serde::{ser::Error as _, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_semver::SemverReq;
 use yolo_dl::{
     loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind, YoloLossInit},

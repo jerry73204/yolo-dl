@@ -56,17 +56,16 @@ impl LrScheduler {
     }
 
     pub fn set_step(&mut self, new_step: usize) {
-        match self {
-            Self::StepWise {
-                step,
-                index,
-                steps,
-                lr_cache,
-            } => {
-                *step = new_step;
-                let new_index = match steps
-                    .binary_search_by_key(&new_step, |(step_thresh, _lr)| *step_thresh)
-                {
+        if let Self::StepWise {
+            step,
+            index,
+            steps,
+            lr_cache,
+        } = self
+        {
+            *step = new_step;
+            let new_index =
+                match steps.binary_search_by_key(&new_step, |(step_thresh, _lr)| *step_thresh) {
                     Ok(new_index) => new_index,
                     Err(new_index) => {
                         if new_index > 0 {
@@ -76,10 +75,8 @@ impl LrScheduler {
                         }
                     }
                 };
-                *index = new_index;
-                *lr_cache = steps[new_index].1.raw();
-            }
-            _ => (),
+            *index = new_index;
+            *lr_cache = steps[new_index].1.raw();
         }
     }
 
