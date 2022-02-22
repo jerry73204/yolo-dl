@@ -15,7 +15,6 @@ json5 = "0.4.1"
 itertools = "0.10.3"
 take_mut = "0.2.2"
 strum = { version = "0.23.0", features = ["derive"] }
-getset = "0.1.2"
 darknet-config = { path = "../darknet-config" }
 tensor-shape = { version = "0.1.0", path = "../tensor-shape" }
 tch-act = { version = "0.1.0", path = "../tch-act", features = ["serde"] }

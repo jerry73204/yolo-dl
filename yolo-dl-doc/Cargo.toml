@@ -8,7 +8,6 @@ edition = "2018"
 
 [dependencies]
 yolo-dl = { path = "../yolo-dl" }
-train = { path = "../train" }
 tch-goodies = { path = "../tch-goodies" }
 darknet-config = { path = "../darknet-config" }
 model-config = { path = "../model-config" }
