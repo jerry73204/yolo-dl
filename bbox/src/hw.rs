@@ -24,6 +24,16 @@ impl<T> HW<T> {
     {
         self.try_cast().unwrap()
     }
+
+    pub fn unit() -> Self
+    where
+        T: One,
+    {
+        Self {
+            w: T::one(),
+            h: T::one(),
+        }
+    }
 }
 
 impl<T> HW<T>

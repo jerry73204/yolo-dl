@@ -123,6 +123,22 @@ where
     }
 }
 
+impl<T> Mul<&Transform<T>> for &Transform<T>
+where
+    T: Copy + Num,
+{
+    type Output = Transform<T>;
+
+    fn mul(self, rhs: &Transform<T>) -> Self::Output {
+        Transform {
+            sx: self.sx * rhs.sx,
+            sy: self.sy * rhs.sy,
+            tx: rhs.tx * self.sx + self.tx,
+            ty: rhs.ty * self.sy + self.ty,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::HW_;
