@@ -48,7 +48,7 @@ struct WorkerOutput {
 pub async fn multi_gpu_training_worker(
     config: ArcRef<config::Config>,
     checkpoint_dir: Arc<PathBuf>,
-    mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
+    mut data_rx: flume::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     workers: &[(Device, usize)],
 ) -> Result<()> {
@@ -130,7 +130,10 @@ pub async fn multi_gpu_training_worker(
         }
 
         loop {
-            let mut record = data_rx.recv().await.unwrap();
+            let mut record = match data_rx.recv_async().await {
+                Ok(record) => record,
+                Err(_) => break,
+            };
             record.timing.add_event("in channel");
 
             let (epoch, image, bboxes, mut timing) = tokio::task::spawn_blocking(move || {
@@ -372,6 +375,8 @@ pub async fn multi_gpu_training_worker(
             timing.report();
         }
     }
+
+    Ok(())
 }
 
 async fn initialize_worker_contexts(

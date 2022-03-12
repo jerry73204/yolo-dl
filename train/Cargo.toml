@@ -41,6 +41,8 @@ serde-semver = "0.2.1"
 log = "0.4.14"
 label = { version = "0.1.0", path = "../label" }
 bbox = { version = "0.1.0", path = "../bbox" }
+pretty_env_logger = "0.4.0"
+flume = "0.10.12"
 
 [features]
 profiling = ["yolo-dl/profiling"]

@@ -21,6 +21,8 @@ struct Args {
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
+    pretty_env_logger::init();
+
     // parse arguments
     let Args { config_file } = Args::from_args();
     let config = Arc::new(
@@ -56,7 +58,7 @@ pub async fn main() -> Result<()> {
             config::DeviceConfig::MultiDevice { devices, .. } => devices.len() * 2,
             config::DeviceConfig::NonUniformMultiDevice { devices, .. } => devices.len() * 2,
         };
-        tokio::sync::mpsc::channel(channel_size)
+        flume::bounded(channel_size)
     };
 
     // load dataset
@@ -79,7 +81,7 @@ pub async fn main() -> Result<()> {
         while let Some(result) = train_stream.next().await {
             let record = result?;
             data_tx
-                .send(record)
+                .send_async(record)
                 .await
                 .map_err(|_| format_err!("failed to send message to training worker"))?;
         }

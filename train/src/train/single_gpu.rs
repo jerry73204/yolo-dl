@@ -13,7 +13,7 @@ use yolo_dl::loss::{YoloBenchmarkInit, YoloInferenceInit};
 pub fn single_gpu_training_worker(
     config: ArcRef<config::Config>,
     checkpoint_dir: Arc<PathBuf>,
-    mut data_rx: tokio::sync::mpsc::Receiver<TrainingRecord>,
+    mut data_rx: flume::Receiver<TrainingRecord>,
     logging_tx: broadcast::Sender<LoggingMessage>,
     device: Device,
 ) -> Result<()> {
@@ -133,7 +133,10 @@ pub fn single_gpu_training_worker(
         }
 
         loop {
-            let mut record = data_rx.blocking_recv().unwrap();
+            let mut record = match data_rx.recv() {
+                Ok(record) => record,
+                Err(_) => break,
+            };
             record.timing.add_event("in channel");
 
             let TrainingRecord {
@@ -278,4 +281,6 @@ pub fn single_gpu_training_worker(
             timing.report();
         }
     }
+
+    Ok(())
 }
