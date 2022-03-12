@@ -1,6 +1,6 @@
 use super::misc::MatchGrid;
 use crate::{common::*, label::RatioLabel};
-use bbox::{prelude::*, CyCxHW};
+use bbox::{prelude::*, CyCxHW, Transform, HW};
 use tch_goodies::{
     detection::{
         DetectionInfo, FlatIndexTensor, InstanceIndex, InstanceIndexTensor, MergedDenseDetection,
@@ -85,8 +85,11 @@ impl CyCxHWMatcher {
 
                 // collect neighbor grid indexes
                 let neighbor_grid_indexes: Vec<_> = {
+                    let transform =
+                        Transform::from_sizes_exact(HW::unit(), feature_size.0.cast::<R64>());
+
                     let target_bbox_grid: Pixel<CyCxHW<R64>> =
-                        Pixel(target_bbox.rect.scale_hw(feature_size.cast::<R64>().hw()));
+                        Pixel(&transform * &target_bbox.rect);
                     let cy = target_bbox_grid.cy();
                     let cx = target_bbox_grid.cx();
                     debug_assert!(cy >= 0.0 && cx >= 0.0);
@@ -157,8 +160,12 @@ impl CyCxHWMatcher {
 
                         debug_assert!({
                             let feature_size = &prediction.info[layer_index].feature_size;
+                            let transform = Transform::from_sizes_exact(
+                                HW::unit(),
+                                feature_size.0.cast::<R64>(),
+                            );
                             let target_bbox_grid: Pixel<CyCxHW<R64>> =
-                                Pixel(target_bbox.rect.scale_hw(feature_size.cast::<R64>().hw()));
+                                Pixel(&transform * &target_bbox.rect);
                             let target_cy = target_bbox_grid.cy();
                             let target_cx = target_bbox_grid.cx();
 
@@ -217,12 +224,9 @@ impl CyCxHWMatcher {
                 ..
             } = *instance_index;
             let feature_size = &prediction.info[layer_index as usize].feature_size;
-            let target_bbox_grid: Pixel<CyCxHW<f64>> = Pixel(
-                target_bbox
-                    .rect
-                    .cast::<f64>()
-                    .scale_hw(feature_size.cast::<f64>().hw()),
-            );
+            let transform = Transform::from_sizes_exact(HW::unit(), feature_size.0.cast::<R64>());
+            let target_bbox_grid: Pixel<CyCxHW<f64>> =
+                Pixel((&transform * &target_bbox.rect).cast::<f64>());
             let target_cy = target_bbox_grid.cy();
             let target_cx = target_bbox_grid.cx();
 

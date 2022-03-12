@@ -7,7 +7,7 @@ use crate::{
     config::{Config, OutputConfig},
     input_stream::{InputRecord, InputStream},
 };
-use bbox::{prelude::*, CyCxHW, HW};
+use bbox::{prelude::*, CyCxHW, Transform, HW};
 use itertools::izip;
 use opencv::{
     core::{Mat, Scalar, Vector},
@@ -162,10 +162,13 @@ pub async fn main() -> Result<()> {
                     let mut canvas: Mat =
                         TensorAsImage::new(image, ShapeConvention::Chw)?.try_into_cv()?;
 
+                    let transform =
+                        Transform::from_sizes_letterbox(HW::unit(), image_size.0.cast::<R64>());
+
                     // plot target boxes
                     target_bboxes.iter().try_for_each(|bbox| -> Result<_> {
                         let rect: Pixel<CyCxHW<i32>> =
-                            Pixel(bbox.rect.scale_hw(image_size.hw()).cast());
+                            Pixel((&transform * &bbox.rect).cast::<i32>());
 
                         imgproc::rectangle(
                             &mut canvas,
@@ -182,7 +185,7 @@ pub async fn main() -> Result<()> {
                     // plot predicted boxes
                     pred_bboxes.iter().try_for_each(|cycxhw| -> Result<_> {
                         let rect: Pixel<CyCxHW<i32>> =
-                            Pixel(cycxhw.scale_hw(image_size.hw()).cast());
+                            Pixel((&transform * &cycxhw.0).cast::<i32>());
 
                         imgproc::rectangle(
                             &mut canvas,
