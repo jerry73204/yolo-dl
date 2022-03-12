@@ -4,9 +4,9 @@ use crate::{
     logging::{LoggingMessage, TrainingOutputLog},
     model::Model,
     training_stream::TrainingRecord,
-    utils::{self, LrScheduler, RateCounter},
+    utils::{self, RateCounter},
 };
-use tch_goodies::MergedDenseDetection;
+use tch_goodies::{lr_schedule::LrScheduler, MergedDenseDetection};
 use yolo_dl::loss::{YoloBenchmarkInit, YoloInferenceInit};
 
 /// Start the single-GPU training worker.

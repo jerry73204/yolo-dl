@@ -3,6 +3,7 @@
 use crate::common::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_semver::SemverReq;
+use tch_goodies::lr_schedule;
 use yolo_dl::{
     loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind, YoloLossInit},
     processor::ColorJitterInit,
@@ -271,16 +272,6 @@ mod training {
         pub minibatch_size: NonZeroUsize,
     }
 
-    /// The learning rate scheduling strategy.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(tag = "type")]
-    pub enum LearningRateSchedule {
-        /// Use constant learning rate.
-        Constant { lr: R64 },
-        /// Use specific learning rate at specified steps.
-        StepWise { steps: Vec<(usize, R64)> },
-    }
-
     /// Checkpoint file loading method.
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "type")]
@@ -356,7 +347,7 @@ mod training {
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Optimizer {
         /// Learning rate scheduling strategy.
-        pub lr_schedule: LearningRateSchedule,
+        pub lr_schedule: lr_schedule::Config,
         /// The momentum parameter for optimizer.
         pub momentum: R64,
         /// The weight decay parameter for optimizer.

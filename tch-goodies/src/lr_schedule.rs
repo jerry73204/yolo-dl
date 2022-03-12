@@ -1,4 +1,14 @@
-use crate::{common::*, config::LearningRateSchedule};
+use crate::common::*;
+
+/// The learning rate scheduling strategy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Config {
+    /// Use constant learning rate.
+    Constant { lr: R64 },
+    /// Use specific learning rate at specified steps.
+    StepWise { steps: Vec<(usize, R64)> },
+}
 
 /// Learning rate scheduling algorithm.
 #[derive(Debug, Clone)]
@@ -15,15 +25,15 @@ pub enum LrScheduler {
 }
 
 impl LrScheduler {
-    pub fn new(config: &LearningRateSchedule, init_step: impl Into<Option<usize>>) -> Result<Self> {
+    pub fn new(config: &Config, init_step: impl Into<Option<usize>>) -> Result<Self> {
         let init_step = init_step.into();
 
         let mut scheduler = match *config {
-            LearningRateSchedule::Constant { lr } => {
+            Config::Constant { lr } => {
                 ensure!(lr >= 0.0, "the lr must be positive");
                 Self::Constant { lr }
             }
-            LearningRateSchedule::StepWise { ref steps } => {
+            Config::StepWise { ref steps } => {
                 ensure!(
                     !steps.is_empty() && steps[0].0 == 0,
                     "the steps must start from zero"

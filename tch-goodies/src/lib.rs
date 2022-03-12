@@ -6,11 +6,11 @@ pub mod compound_tensor;
 pub mod detection;
 // pub mod ratio;
 // pub mod size;
+pub mod lr_schedule;
 pub mod tensor;
 pub mod tensor_list;
 pub mod unit;
 mod utils;
-
 // pub use bbox::*;
 pub use compound_tensor::*;
 pub use detection::*;
