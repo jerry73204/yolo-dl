@@ -246,20 +246,22 @@ impl CyCxHWMatcher {
                 })
                 .unzip_n_vec();
 
+            // dbg!(cy.size(), cx.size(), h.size(), w.size());
+
             let tensor: LabelTensor = LabelTensorUnchecked {
                 cycxhw: CyCxHWTensorUnchecked {
-                    cy: Tensor::of_slice(&cy),
-                    cx: Tensor::of_slice(&cx),
-                    h: Tensor::of_slice(&h),
-                    w: Tensor::of_slice(&w),
+                    cy: Tensor::of_slice(&cy).unsqueeze(1),
+                    cx: Tensor::of_slice(&cx).unsqueeze(1),
+                    h: Tensor::of_slice(&h).unsqueeze(1),
+                    w: Tensor::of_slice(&w).unsqueeze(1),
                 },
-                class: Tensor::of_slice(&class),
+                class: Tensor::of_slice(&class).unsqueeze(1),
             }
             .try_into()
             .unwrap();
 
             // LabelTensor::from_iter(target_bboxes.values().map(|label| &**label)).to_device(device)
-            tensor
+            tensor.to_device(prediction.device())
         };
 
         MatchingOutput {
