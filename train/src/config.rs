@@ -4,10 +4,7 @@ use crate::common::*;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_semver::SemverReq;
 use tch_goodies::lr_schedule;
-use yolo_dl::{
-    loss::{BoxMetric, ClassificationLossKind, MatchGrid, ObjectnessLossKind, YoloLossInit},
-    processor::ColorJitterInit,
-};
+use yolo_dl::{loss, processor::ColorJitterInit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SemverReq)]
 #[version("0.1.0")]
@@ -244,7 +241,7 @@ mod training {
         pub device_config: DeviceConfig,
         pub optimizer: Optimizer,
         /// The loss function options.
-        pub loss: Loss,
+        pub loss: loss::Config,
     }
 
     /// Training device options.
@@ -282,66 +279,6 @@ mod training {
         FromRecent,
         /// Load the checkpoint file at specified path.
         FromFile { file: PathBuf },
-    }
-
-    /// The loss function configuration.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct Loss {
-        /// The choice of objectness loss function.
-        pub objectness_loss_fn: ObjectnessLossKind,
-        /// The choice of classification loss function.
-        pub classification_loss_fn: ClassificationLossKind,
-        /// The weight factor of positive objectness class.
-        pub objectness_positive_weight: Option<R64>,
-        /// The method to match ground truth to predicted bounding boxes.
-        pub match_grid_method: MatchGrid,
-        /// The choice of bounding box metric.
-        pub box_metric: BoxMetric,
-        /// The weight factor of IoU loss.
-        pub iou_loss_weight: Option<R64>,
-        /// The weight factor of objectness loss.
-        pub objectness_loss_weight: Option<R64>,
-        /// The weight factor of classification loss.
-        pub classification_loss_weight: Option<R64>,
-    }
-
-    impl Loss {
-        pub fn yolo_loss_init(&self) -> YoloLossInit {
-            let Self {
-                box_metric,
-                match_grid_method,
-                iou_loss_weight,
-                objectness_positive_weight,
-                objectness_loss_fn,
-                classification_loss_fn,
-                objectness_loss_weight,
-                classification_loss_weight,
-            } = *self;
-
-            let mut init = YoloLossInit {
-                reduction: Reduction::Mean,
-                match_grid_method,
-                box_metric,
-                objectness_loss_kind: objectness_loss_fn,
-                classification_loss_kind: classification_loss_fn,
-                objectness_pos_weight: objectness_positive_weight,
-                ..Default::default()
-            };
-
-            if let Some(iou_loss_weight) = iou_loss_weight {
-                init.iou_loss_weight = iou_loss_weight;
-            }
-
-            if let Some(objectness_loss_weight) = objectness_loss_weight {
-                init.objectness_loss_weight = objectness_loss_weight;
-            }
-
-            if let Some(classification_loss_weight) = classification_loss_weight {
-                init.classification_loss_weight = classification_loss_weight;
-            }
-
-            init
-        }
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

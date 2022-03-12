@@ -3,6 +3,9 @@
 pub use average_precision::*;
 mod average_precision;
 
+pub use config::*;
+mod config;
+
 pub use benchmark::*;
 mod benchmark;
 
