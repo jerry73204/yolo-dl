@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly-2021-08-08"
+channel = "stable"
 components = ["rust-docs", "rustfmt", "clippy"]
 # targets = ["x86_64-unknown-linux-gnu"]
 profile = "default"
