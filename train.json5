@@ -144,9 +144,9 @@
             // "classification_loss_weight": 0.87,
 
             // for Hausdorff
-            "iou_loss_weight": 55.0,
+            "iou_loss_weight": 1.0,
             "objectness_loss_weight": 1.0,
-            "classification_loss_weight": 55.0,
+            "classification_loss_weight": 1.0,
         },
         "save_checkpoint_steps": 1000,
         "load_checkpoint": {
