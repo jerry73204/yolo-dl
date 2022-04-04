@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.56"
-clap = { version = "3.1.6", features = ["derive"] }
+clap = { version = "3.1.8", features = ["derive"] }
 model-graph = { version = "0.1.0", path = "../model-graph" }
 prettytable-rs = "0.8.0"

@@ -5,26 +5,26 @@ authors = ["jerry73204 <jerry73204@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-tch = "0.6.1"
+tch = "0.7.0"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.136", features = ["derive"] }
 itertools = "0.10.3"
-tch-tensor-like = { version = "0.5.0", features = ["derive"] }
+tch-tensor-like = { version = "0.6.0", features = ["derive"] }
 anyhow = "1.0.56"
 approx = "0.5.1"
 unzip-n = "0.1.2"
 serde_json = "1.0.79"
-async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
+async-std = { version = "1.11.0", features = ["unstable", "attributes"] }
 json5 = "0.4.1"
 par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
 futures = "0.3.21"
 rand = "0.8.5"
 tokio = { version = "1.17.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
-tfrecord = { version = "0.13.0", features = ["async", "with-tch"] }
-tch-serde = "0.7.0"
+tfrecord = { version = "0.14.0", features = ["async", "with-tch"] }
+tch-serde = "0.8.0"
 chrono = "0.4.19"
 regex = "1.5.5"
-indexmap = "1.8.0"
+indexmap = "1.8.1"
 glob = "0.3.0"
 serde-xml-rs = "0.5.1"
 tch-goodies = { version = "0.1", path = "../tch-goodies" }
@@ -38,7 +38,7 @@ once_cell = "1.10.0"
 collected = "0.4.0"
 derivative = "2.2.0"
 serde-semver = "0.2.1"
-log = "0.4.14"
+log = "0.4.16"
 label = { version = "0.1.0", path = "../label" }
 bbox = { version = "0.1.0", path = "../bbox" }
 pretty_env_logger = "0.4.0"

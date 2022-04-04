@@ -8,23 +8,23 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.56"
-tch = "0.6.1"
+tch = "0.7.0"
 itertools = "0.10.3"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.136", features = ["derive"] }
-tch-tensor-like = { version = "0.5.0", features = ["derive"] }
+tch-tensor-like = { version = "0.6.0", features = ["derive"] }
 approx = "0.5.1"
 getset = "0.1.2"
 unzip-n = "0.1.2"
 num-traits = "0.2.14"
 maplit = "1.0.2"
-log = "0.4.14"
+log = "0.4.16"
 mona = "0.1.0"
 tch-act = { version = "0.1.0", path = "../tch-act", features = ["tch", "serde"] }
 bbox = { version = "0.1.0", path = "../bbox" }
 unit-wrapper = { version = "0.1.0", path = "../unit-wrapper" }
-opencv = { version = "0.63.0", default-features = false, optional = true }
+opencv = { version = "0.63.1", default-features = false, optional = true }
 
 [dev-dependencies]
-cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"] }
+cv-convert = { version = "0.18.0", features = ["tch_0-7", "ndarray_0-15"] }
 ndarray = "0.15.4"

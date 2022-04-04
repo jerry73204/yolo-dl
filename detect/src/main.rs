@@ -159,8 +159,11 @@ pub async fn main() -> Result<()> {
                         Pixel(HW::from_hw([image_h, image_w]).cast())
                     };
 
-                    let mut canvas: Mat =
-                        TensorAsImage::new(image, ShapeConvention::Chw)?.try_into_cv()?;
+                    let mut canvas: Mat = cv_convert::TchTensorAsImage::new(
+                        image,
+                        cv_convert::TchTensorImageShape::Chw,
+                    )?
+                    .try_into_cv()?;
 
                     let transform =
                         Transform::from_sizes_letterbox(HW::unit(), image_size.0.cast::<R64>());

@@ -7,16 +7,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tch = "0.6.1"
+tch = "0.7.0"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.136", features = ["derive"] }
 itertools = "0.10.3"
-tch-tensor-like = { version = "0.5.0", features = ["derive"] }
+tch-tensor-like = { version = "0.6.0", features = ["derive"] }
 anyhow = "1.0.56"
 approx = "0.5.1"
 unzip-n = "0.1.2"
 serde_json = "1.0.79"
-async-std = { version = "1.10.0", features = ["unstable", "attributes"] }
+async-std = { version = "1.11.0", features = ["unstable", "attributes"] }
 json5 = "0.4.1"
 par-stream = { version = "0.10.2", features = ["runtime-tokio"] }
 futures = "0.3.21"
@@ -24,10 +24,10 @@ rand = "0.8.5"
 percent-encoding = "2.1.0"
 tokio = { version = "1.17.0", features = ["sync", "rt-multi-thread", "fs", "io-util"] }
 ndarray = "0.15.4"
-tch-serde = "0.7.0"
+tch-serde = "0.8.0"
 chrono = "0.4.19"
 regex = "1.5.5"
-indexmap = "1.8.0"
+indexmap = "1.8.1"
 glob = "0.3.0"
 num_cpus = "1.13.1"
 serde-xml-rs = "0.5.1"
@@ -39,11 +39,11 @@ darknet-config = { version = "0.1", path = "../darknet-config" }
 csv = "1.1.6"
 imagesize = "0.9.0"
 owning_ref = "0.4.1"
-semver ={ version = "1.0.6", features = ["serde"] }
+semver ={ version = "1.0.7", features = ["serde"] }
 once_cell = "1.10.0"
 async-channel = "1.6.1"
-cv-convert = { version = "0.17.2", features = ["tch_0-6", "opencv_0-63" ] }
-opencv = { version = "0.63.0", default-features = false, features = ["imgcodecs", "imgproc"] }
+cv-convert = { version = "0.18.0", features = ["tch_0-7", "opencv_0-63" ] }
+opencv = { version = "0.63.1", default-features = false, features = ["imgcodecs", "imgproc"] }
 bbox = { version = "0.1.0", path = "../bbox", features = ["opencv"] }
 
 [features]

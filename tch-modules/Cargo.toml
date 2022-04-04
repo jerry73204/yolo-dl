@@ -7,11 +7,11 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0.56"
 itertools = "0.10.3"
-log = "0.4.14"
+log = "0.4.16"
 noisy_float = { version = "0.2.0", features = ["serde", "approx"] }
 serde = { version = "1.0.136", features = ["derive"] }
-tch = "0.6.1"
-tch-tensor-like = { version = "0.5.0", features = ["derive"] }
+tch = "0.7.0"
+tch-tensor-like = { version = "0.6.0", features = ["derive"] }
 unzip-n = "0.1.2"
 tch-goodies = { version = "0.1.0", path = "../tch-goodies" }
 strum = { version = "0.24.0", features = ["derive"] }
@@ -19,7 +19,7 @@ derivative = "2.2.0"
 bbox = { version = "0.1.0", path = "../bbox" }
 tensor-shape = { version = "0.1.0", path = "../tensor-shape" }
 ndarray = { version = "0.15.4", optional = true }
-cv-convert = { version = "0.17.2", features = ["tch_0-6", "ndarray_0-15"], optional = true }
+cv-convert = { version = "0.18.0", features = ["tch_0-7", "ndarray_0-15"], optional = true }
 approx = { version = "0.5.1", optional = true }
 tch-act = { version = "0.1.0", path = "../tch-act", features = ["tch"] }
 

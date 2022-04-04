@@ -1,5 +1,5 @@
 pub use anyhow::{format_err, Context as _, Error, Result};
-pub use cv_convert::{IntoCv, ShapeConvention, TensorAsImage, TryIntoCv};
+pub use cv_convert::{IntoCv as _, TryIntoCv as _};
 pub use futures::{
     future::FutureExt as _,
     stream::{self, Stream, StreamExt as _, TryStreamExt as _},
